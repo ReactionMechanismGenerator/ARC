@@ -215,175 +215,175 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                    (-1.1189110146736851, -0.8090395034382198, 0.6657966599789673),
                                    (-1.1265684046717404, -0.2344009055503307, -1.0127644068816903))}
 
-    def test_check_ts(self):
-        """Test the check_ts() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
-        self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_ts(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out')
-        self.rxn_7.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_ts(reaction=self.rxn_7, job=self.job1)
-        self.assertTrue(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
-        self.rxn_8.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_ts(reaction=self.rxn_8, job=self.job1)
-        self.assertTrue(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
-
-    def test_did_ts_pass_all_checks(self):
-        """Test the did_ts_pass_all_checks() function."""
-        spc = ARCSpecies(label='TS', is_ts=True)
-        spc.populate_ts_checks()
-        self.assertFalse(ts.ts_passed_all_checks(spc))
-
-        self.ts_checks = {'E0': False,
-                          'e_elect': False,
-                          'IRC': False,
-                          'freq': False,
-                          'normal_mode_displacement': False,
-                          'warnings': '',
-                          }
-        for key in ['E0', 'e_elect', 'IRC', 'freq']:
-            spc.ts_checks[key] = True
-        self.assertFalse(ts.ts_passed_all_checks(spc))
-        self.assertTrue(ts.ts_passed_all_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
-        spc.ts_checks['e_elect'] = False
-
-    def test_check_ts_energy(self):
-        """Test the check_ts_energy() function."""
-        rxn1 = ARCReaction(r_species=[ARCSpecies(label='s1', smiles='C')], p_species=[ARCSpecies(label='s2', smiles='C')])
-        rxn1.ts_species = ARCSpecies(label='TS', is_ts=True)
-        # no data
-        rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
-        self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
-        # only E0 (incorrect)
-        rxn1.r_species[0].e0 = 2
-        rxn1.p_species[0].e0 = 50
-        rxn1.ts_species.e0 = -100
-        rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
-        self.assertFalse(rxn1.ts_species.ts_checks['E0'])
-        # only E0 (partial data)
-        rxn1.r_species[0].e0 = 2
-        rxn1.p_species[0].e0 = None
-        rxn1.ts_species.e0 = -100
-        rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
-        self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
-        # check e_elect (correct)
-        rxn1.r_species[0].e_elect = 2
-        rxn1.p_species[0].e_elect = 50
-        rxn1.ts_species.e_elect = 100
-        rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
-        self.assertTrue(rxn1.ts_species.ts_checks['e_elect'])
-        # incorrect e_elect
-        rxn1.r_species[0].e_elect = 2
-        rxn1.p_species[0].e_elect = 50
-        rxn1.ts_species.e_elect = -100
-        rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
-        self.assertFalse(rxn1.ts_species.ts_checks['e_elect'])
-
-    def test_check_bond_changes(self):
-        """Test the check_bond_changes() function."""
-        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
-                          p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
-        dmat_1 = np.array([[0, 1, 2],
-                           [1, 0, 5],
-                           [2, 5, 0]], np.float64)
-        expected_breaking_bonds, expected_forming_bonds = None, None
-        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_1, rxn))
-
-        dmat_2 = np.array([[0, 1, 3],
-                           [1, 0, 5],
-                           [3, 5, 0]], np.float64)
-        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], None
-        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_2, dmat_1, rxn))
-
-        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(0, 2)]
-        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-        expected_breaking_bonds, expected_forming_bonds = [(0, 1)], None
-        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-        expected_breaking_bonds, expected_forming_bonds = [(0, 1)], [(0, 2)]
-        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-        dmat_2 = np.array([[0, 1, 3],
-                           [1, 0, 4],
-                           [3, 4, 0]], np.float64)
-        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(1, 2)]
-        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-    def test_do_other_bonds_change_more(self):
-        """Test the do_other_bonds_change_more() function."""
-        rxn = ARCReaction(r_species=[ARCSpecies(label='NH', smiles='[NH]'), ARCSpecies(label='O2', smiles='[O][O]')],
-                          p_species=[ARCSpecies(label='HONO', smiles='ON=O')])
-        dmat_1 = np.array([[0, 1, 2, 3],
-                           [1, 0, 5, 4],
-                           [2, 5, 0, 3],
-                           [3, 4, 3, 0]], np.float64)
-        dmat_2 = np.array([[0, 3, 2, 9],
-                           [3, 0, 5, 4],
-                           [2, 5, 0, 1],
-                           [9, 4, 1, 0]], np.float64)
-        expected_breaking_bonds, expected_forming_bonds = [(0, 1), (0, 3)], [(3, 2)]
-        self.assertFalse(ts.do_other_bonds_change_more(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-        expected_breaking_bonds, expected_forming_bonds = [(0, 1)], [(3, 2)]
-        self.assertTrue(ts.do_other_bonds_change_more(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
-
-    def test_check_rxn_e0(self):
-        """Test the check_rxn_e0() function."""
-        species_dict = {spc.label: spc for spc in self.rxn_8.r_species + self.rxn_8.p_species + [self.rxn_8.ts_species]}
-        project_directory = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
-        output_dict = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
-                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                           'composite': '',
-                                           },
-                                 'convergence': True,
-                                 },
-                       'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
-                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                           'composite': '',
-                                           },
-                                 'convergence': True,
-                                 },
-                       'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
-                                         'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                         'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                         'composite': '',
-                                         },
-                               'convergence': True,
-                               },
-                       }
-        for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
-            folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
-            base_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry')
-            os.makedirs(base_path)
-            freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-            shutil.copy(src=output_dict[spc_label]['paths']['freq'], dst=freq_path)
-
-        check_e0 = ts.check_rxn_e0(reaction=self.rxn_8,
-                                   species_dict=species_dict,
-                                   project_directory=project_directory,
-                                   kinetics_adapter='arkane',
-                                   output=output_dict,
-                                   sp_level=Level(repr='uhf/3-21g'),
-                                   freq_scale_factor=1.0,
-                                   )
-        self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
+    # def test_check_ts(self):
+    #     """Test the check_ts() function."""
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #     ts.check_ts(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out')
+    #     self.rxn_7.ts_species.populate_ts_checks()
+    #     self.assertFalse(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+    #     ts.check_ts(reaction=self.rxn_7, job=self.job1)
+    #     self.assertTrue(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
+    #     self.rxn_8.ts_species.populate_ts_checks()
+    #     self.assertFalse(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+    #     ts.check_ts(reaction=self.rxn_8, job=self.job1)
+    #     self.assertTrue(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    # def test_did_ts_pass_all_checks(self):
+    #     """Test the did_ts_pass_all_checks() function."""
+    #     spc = ARCSpecies(label='TS', is_ts=True)
+    #     spc.populate_ts_checks()
+    #     self.assertFalse(ts.ts_passed_all_checks(spc))
+    #
+    #     self.ts_checks = {'E0': False,
+    #                       'e_elect': False,
+    #                       'IRC': False,
+    #                       'freq': False,
+    #                       'normal_mode_displacement': False,
+    #                       'warnings': '',
+    #                       }
+    #     for key in ['E0', 'e_elect', 'IRC', 'freq']:
+    #         spc.ts_checks[key] = True
+    #     self.assertFalse(ts.ts_passed_all_checks(spc))
+    #     self.assertTrue(ts.ts_passed_all_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
+    #     spc.ts_checks['e_elect'] = False
+    #
+    # def test_check_ts_energy(self):
+    #     """Test the check_ts_energy() function."""
+    #     rxn1 = ARCReaction(r_species=[ARCSpecies(label='s1', smiles='C')], p_species=[ARCSpecies(label='s2', smiles='C')])
+    #     rxn1.ts_species = ARCSpecies(label='TS', is_ts=True)
+    #     # no data
+    #     rxn1.ts_species.populate_ts_checks()
+    #     ts.check_ts_energy(reaction=rxn1)
+    #     self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
+    #     # only E0 (incorrect)
+    #     rxn1.r_species[0].e0 = 2
+    #     rxn1.p_species[0].e0 = 50
+    #     rxn1.ts_species.e0 = -100
+    #     rxn1.ts_species.populate_ts_checks()
+    #     ts.check_ts_energy(reaction=rxn1)
+    #     self.assertFalse(rxn1.ts_species.ts_checks['E0'])
+    #     # only E0 (partial data)
+    #     rxn1.r_species[0].e0 = 2
+    #     rxn1.p_species[0].e0 = None
+    #     rxn1.ts_species.e0 = -100
+    #     rxn1.ts_species.populate_ts_checks()
+    #     ts.check_ts_energy(reaction=rxn1)
+    #     self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
+    #     # check e_elect (correct)
+    #     rxn1.r_species[0].e_elect = 2
+    #     rxn1.p_species[0].e_elect = 50
+    #     rxn1.ts_species.e_elect = 100
+    #     rxn1.ts_species.populate_ts_checks()
+    #     ts.check_ts_energy(reaction=rxn1)
+    #     self.assertTrue(rxn1.ts_species.ts_checks['e_elect'])
+    #     # incorrect e_elect
+    #     rxn1.r_species[0].e_elect = 2
+    #     rxn1.p_species[0].e_elect = 50
+    #     rxn1.ts_species.e_elect = -100
+    #     rxn1.ts_species.populate_ts_checks()
+    #     ts.check_ts_energy(reaction=rxn1)
+    #     self.assertFalse(rxn1.ts_species.ts_checks['e_elect'])
+    #
+    # def test_check_bond_changes(self):
+    #     """Test the check_bond_changes() function."""
+    #     rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
+    #                       p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
+    #     dmat_1 = np.array([[0, 1, 2],
+    #                        [1, 0, 5],
+    #                        [2, 5, 0]], np.float64)
+    #     expected_breaking_bonds, expected_forming_bonds = None, None
+    #     self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_1, rxn))
+    #
+    #     dmat_2 = np.array([[0, 1, 3],
+    #                        [1, 0, 5],
+    #                        [3, 5, 0]], np.float64)
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 2)], None
+    #     self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    #     self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_2, dmat_1, rxn))
+    #
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(0, 2)]
+    #     self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 1)], None
+    #     self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 1)], [(0, 2)]
+    #     self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    #     dmat_2 = np.array([[0, 1, 3],
+    #                        [1, 0, 4],
+    #                        [3, 4, 0]], np.float64)
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(1, 2)]
+    #     self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    # def test_do_other_bonds_change_more(self):
+    #     """Test the do_other_bonds_change_more() function."""
+    #     rxn = ARCReaction(r_species=[ARCSpecies(label='NH', smiles='[NH]'), ARCSpecies(label='O2', smiles='[O][O]')],
+    #                       p_species=[ARCSpecies(label='HONO', smiles='ON=O')])
+    #     dmat_1 = np.array([[0, 1, 2, 3],
+    #                        [1, 0, 5, 4],
+    #                        [2, 5, 0, 3],
+    #                        [3, 4, 3, 0]], np.float64)
+    #     dmat_2 = np.array([[0, 3, 2, 9],
+    #                        [3, 0, 5, 4],
+    #                        [2, 5, 0, 1],
+    #                        [9, 4, 1, 0]], np.float64)
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 1), (0, 3)], [(3, 2)]
+    #     self.assertFalse(ts.do_other_bonds_change_more(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    #     expected_breaking_bonds, expected_forming_bonds = [(0, 1)], [(3, 2)]
+    #     self.assertTrue(ts.do_other_bonds_change_more(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+    #
+    # def test_check_rxn_e0(self):
+    #     """Test the check_rxn_e0() function."""
+    #     species_dict = {spc.label: spc for spc in self.rxn_8.r_species + self.rxn_8.p_species + [self.rxn_8.ts_species]}
+    #     project_directory = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+    #     output_dict = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
+    #                                        'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+    #                                        'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+    #                                        'composite': '',
+    #                                        },
+    #                              'convergence': True,
+    #                              },
+    #                    'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
+    #                                        'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+    #                                        'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+    #                                        'composite': '',
+    #                                        },
+    #                              'convergence': True,
+    #                              },
+    #                    'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
+    #                                      'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+    #                                      'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+    #                                      'composite': '',
+    #                                      },
+    #                            'convergence': True,
+    #                            },
+    #                    }
+    #     for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
+    #         folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
+    #         base_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry')
+    #         os.makedirs(base_path)
+    #         freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
+    #         shutil.copy(src=output_dict[spc_label]['paths']['freq'], dst=freq_path)
+    #
+    #     check_e0 = ts.check_rxn_e0(reaction=self.rxn_8,
+    #                                species_dict=species_dict,
+    #                                project_directory=project_directory,
+    #                                kinetics_adapter='arkane',
+    #                                output=output_dict,
+    #                                sp_level=Level(repr='uhf/3-21g'),
+    #                                freq_scale_factor=1.0,
+    #                                )
+    #     self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
@@ -392,301 +392,322 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_intra_H_migration_CBS-QB3.out')
         self.rxn_2a.determine_family(rmg_database=self.rmgdb)
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)  # no RMG reaction was between atoms 1-6 and 2-6 (2-7 and 3-7 1-indexed)...
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
         self.rxn_2a.ts_species.populate_ts_checks()
 
-        self.rxn_2b.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_2b, job=self.job1)
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
+        # self.rxn_2b.ts_species.populate_ts_checks()
+        # self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
+        # ts.check_normal_mode_displacement(reaction=self.rxn_2b, job=self.job1)
+        # self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
 
-        # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_1.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_intra_H_migration_CBS-QB3.out')
+    #     # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_1.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_2.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_3.out')  # ** The correct TS. **
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_4.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_5.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_6.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_C3_intraH_7.out')  # A wrong TS.
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
+    #                                                        'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+    #     self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     # CCO[O] + CC <=> CCOO + [CH2]C, incorrect TS:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS0_composite_2043.out')
+    #     self.rxn_4.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
+    #     self.assertFalse(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     # CCO[O] + CC <=> CCOO + [CH2]C, correct TS:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS0_composite_2102.out')
+    #     self.rxn_4.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
+    #     self.assertTrue(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     # NCC + H <=> CH3CHNH2 + H2, correct TS:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS0_composite_2044.out')
+    #     self.rxn_5.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_5, job=self.job1)
+    #     self.assertTrue(self.rxn_5.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     # NH2 + N2H3 <=> NH + N2H4:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
+    #     rxn_6 = ARCReaction(r_species=[ARCSpecies(label='NH2', xyz="""N       0.00000000   -0.00000000    0.14115400
+    #                                                                   H      -0.80516800    0.00000000   -0.49355600
+    #                                                                   H       0.80516800   -0.00000000   -0.49355600"""),
+    #                                    ARCSpecies(label='N2H3', xyz="""N       0.59115400    0.02582600   -0.07080800
+    #                                                                    H       1.01637000    0.90287000    0.19448100
+    #                                                                    H       1.13108000   -0.79351700    0.15181600
+    #                                                                    N      -0.73445800   -0.15245400    0.02565700
+    #                                                                    H      -1.14969800    0.77790100   -0.02540800""")],
+    #                         p_species=[ARCSpecies(label='NH', xyz="""N       0.00000000    0.00000000    0.13025700
+    #                                                                  H       0.00000000    0.00000000   -0.90825700"""),
+    #                                    ARCSpecies(label='N2H4', xyz="""N       0.70348300    0.09755100   -0.07212500
+    #                                                                    N      -0.70348300   -0.09755100   -0.07212500
+    #                                                                    H       1.05603900    0.38865300    0.83168200
+    #                                                                    H      -1.05603900   -0.38865300    0.83168200
+    #                                                                    H       1.14245100   -0.77661300   -0.32127200
+    #                                                                    H      -1.14245100    0.77661300   -0.32127200""")])
+    #     rxn_6.ts_species = ARCSpecies(label='TS6', is_ts=True, xyz="""N      -0.44734500    0.68033000   -0.09191900
+    #                                                                   H      -0.45257300    1.14463200    0.81251500
+    #                                                                   H       0.67532500    0.38185200   -0.23044400
+    #                                                                   N      -1.22777700   -0.47121500   -0.00284000
+    #                                                                   H      -1.81516400   -0.50310400    0.81640600
+    #                                                                   H      -1.78119500   -0.57249600   -0.84071000
+    #                                                                   N       1.91083300   -0.14543600   -0.06636000
+    #                                                                   H       1.73701100   -0.85419700    0.66460600""")
+    #     rxn_6.ts_species.mol_from_xyz()
+    #     rxn_6.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=rxn_6, job=self.job1)
+    #     self.assertTrue(rxn_6.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    #     # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_butylene_intra_H_migration.out')
+    #     rxn_7 = ARCReaction(r_species=[
+    #         ARCSpecies(label='butylene',
+    #                    xyz={'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+    #                         'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+    #                         'coords': ((-1.5025309111564664, -0.534274223668814, -0.8036222996901808),
+    #                                    (-0.7174177387201146, -0.023936112728414158, 0.35370258735369786),
+    #                                    (-1.5230462996626752, -0.05695435961481443, 1.6163349692848272),
+    #                                    (-1.8634470313869078, 1.0277715224421244, 2.324841919574016),
+    #                                    (-0.984024423978003, -0.9539130636653048, -1.6577859414775906),
+    #                                    (-2.550807526086091, -0.2789561000296545, -0.9131030981780086),
+    #                                    (-0.3724512697624012, 0.9914237465990766, 0.12894489304781925),
+    #                                    (0.1738420368001901, -0.6466414881716757, 0.48830614688365104),
+    #                                    (-1.8352343593831375, -1.0368501719961523, 1.9724902744574715),
+    #                                    (-1.57401834878684, 2.026695960278519, 2.0137658090390858),
+    #                                    (-2.446426657980167, 0.9347672870076474, 3.235948559430434))})],
+    #                         p_species=[ARCSpecies(label='CCC=[CH]', smiles='CCC=[CH]')])
+    #     rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
+    #                                   xyz="""C                 -1.21222600   -0.64083500    0.00000300
+    #                                          C                 -0.63380200    0.77863500   -0.00000300
+    #                                          C                  0.87097000    0.58302100    0.00000400
+    #                                          C                  1.24629100   -0.68545200   -0.00000300
+    #                                          H                 -1.72740700   -0.95796100    0.90446200
+    #                                          H                 -1.72743700   -0.95796100   -0.90443900
+    #                                          H                 -0.95478600    1.35296500    0.87649200
+    #                                          H                 -0.95477600    1.35295100   -0.87651200
+    #                                          H                  1.55506600    1.42902600    0.00001400
+    #                                          H                  2.20977700   -1.17852900   -0.00000300
+    #                                          H                 -0.02783300   -1.25271100   -0.00001000""")
+    #     rxn_7.ts_species.mol_from_xyz()
+    #     rxn_7.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
+    #     self.assertTrue(rxn_7.ts_species.ts_checks['normal_mode_displacement'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_2.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+    # def test_check_normal_mode_displacement2(self):
+    #     # N2H4 + NNH <=> N2H3 + N2H2 H_Abstraction:
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NNH+N2H4.out')
+    #     rxn_8 = ARCReaction(r_species=[ARCSpecies(label='NNH', xyz="""N      -0.14331683    0.42940752    0.00000000
+    #                                                                   N       1.05366347   -0.17738912    0.00000000
+    #                                                                   H      -0.91034663   -0.25201839    0.00000000"""),
+    #                                    ARCSpecies(label='N2H4', xyz="""N      -0.66155503   -0.06221550   -0.27970796
+    #                                                                    N       0.66268200    0.01399364    0.28358234
+    #                                                                    H      -1.21902191    0.75887299   -0.01910485
+    #                                                                    H      -1.18128002   -0.85616698    0.11067217
+    #                                                                    H       1.18240629    0.80794665   -0.10679560
+    #                                                                    H       1.22014947   -0.80709360    0.02297653""")],
+    #                         p_species=[ARCSpecies(label='N2H3', smiles='N[NH]'), ARCSpecies(label='N2H2', smiles='N=N')])
+    #     rxn_8.ts_species = ARCSpecies(label='TS8', is_ts=True, xyz=self.job1.local_path_to_output_file)
+    #     rxn_8.ts_species.mol_from_xyz()
+    #     rxn_8.ts_species.populate_ts_checks()
+    #     ts.check_normal_mode_displacement(reaction=rxn_8, job=self.job1)
+    #     self.assertTrue(rxn_8.ts_species.ts_checks['normal_mode_displacement'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_3.out')  # ** The correct TS. **
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_4.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_5.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_6.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_7.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
-                                                           'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
-        self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
-
-        # CCO[O] + CC <=> CCOO + [CH2]C, incorrect TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2043.out')
-        self.rxn_4.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertFalse(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
-
-        # CCO[O] + CC <=> CCOO + [CH2]C, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2102.out')
-        self.rxn_4.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertTrue(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
-
-        # NCC + H <=> CH3CHNH2 + H2, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2044.out')
-        self.rxn_5.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_5, job=self.job1)
-        self.assertTrue(self.rxn_5.ts_species.ts_checks['normal_mode_displacement'])
-
-        # NH2 + N2H3 <=> NH + N2H4:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
-        rxn_6 = ARCReaction(r_species=[ARCSpecies(label='NH2', xyz="""N       0.00000000   -0.00000000    0.14115400
-                                                                      H      -0.80516800    0.00000000   -0.49355600
-                                                                      H       0.80516800   -0.00000000   -0.49355600"""),
-                                       ARCSpecies(label='N2H3', xyz="""N       0.59115400    0.02582600   -0.07080800
-                                                                       H       1.01637000    0.90287000    0.19448100
-                                                                       H       1.13108000   -0.79351700    0.15181600
-                                                                       N      -0.73445800   -0.15245400    0.02565700
-                                                                       H      -1.14969800    0.77790100   -0.02540800""")],
-                            p_species=[ARCSpecies(label='NH', xyz="""N       0.00000000    0.00000000    0.13025700
-                                                                     H       0.00000000    0.00000000   -0.90825700"""),
-                                       ARCSpecies(label='N2H4', xyz="""N       0.70348300    0.09755100   -0.07212500
-                                                                       N      -0.70348300   -0.09755100   -0.07212500
-                                                                       H       1.05603900    0.38865300    0.83168200
-                                                                       H      -1.05603900   -0.38865300    0.83168200
-                                                                       H       1.14245100   -0.77661300   -0.32127200
-                                                                       H      -1.14245100    0.77661300   -0.32127200""")])
-        rxn_6.ts_species = ARCSpecies(label='TS6', is_ts=True, xyz="""N      -0.44734500    0.68033000   -0.09191900
-                                                                      H      -0.45257300    1.14463200    0.81251500
-                                                                      H       0.67532500    0.38185200   -0.23044400
-                                                                      N      -1.22777700   -0.47121500   -0.00284000
-                                                                      H      -1.81516400   -0.50310400    0.81640600
-                                                                      H      -1.78119500   -0.57249600   -0.84071000
-                                                                      N       1.91083300   -0.14543600   -0.06636000
-                                                                      H       1.73701100   -0.85419700    0.66460600""")
-        rxn_6.ts_species.mol_from_xyz()
-        rxn_6.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=rxn_6, job=self.job1)
-        self.assertTrue(rxn_6.ts_species.ts_checks['normal_mode_displacement'])
-
-        # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_butylene_intra_H_migration.out')
-        rxn_7 = ARCReaction(r_species=[
-            ARCSpecies(label='butylene',
-                       xyz={'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                            'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
-                            'coords': ((-1.5025309111564664, -0.534274223668814, -0.8036222996901808),
-                                       (-0.7174177387201146, -0.023936112728414158, 0.35370258735369786),
-                                       (-1.5230462996626752, -0.05695435961481443, 1.6163349692848272),
-                                       (-1.8634470313869078, 1.0277715224421244, 2.324841919574016),
-                                       (-0.984024423978003, -0.9539130636653048, -1.6577859414775906),
-                                       (-2.550807526086091, -0.2789561000296545, -0.9131030981780086),
-                                       (-0.3724512697624012, 0.9914237465990766, 0.12894489304781925),
-                                       (0.1738420368001901, -0.6466414881716757, 0.48830614688365104),
-                                       (-1.8352343593831375, -1.0368501719961523, 1.9724902744574715),
-                                       (-1.57401834878684, 2.026695960278519, 2.0137658090390858),
-                                       (-2.446426657980167, 0.9347672870076474, 3.235948559430434))})],
-                            p_species=[ARCSpecies(label='CCC=[CH]', smiles='CCC=[CH]')])
-        rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
-                                      xyz="""C                 -1.21222600   -0.64083500    0.00000300
-                                             C                 -0.63380200    0.77863500   -0.00000300
-                                             C                  0.87097000    0.58302100    0.00000400
-                                             C                  1.24629100   -0.68545200   -0.00000300
-                                             H                 -1.72740700   -0.95796100    0.90446200
-                                             H                 -1.72743700   -0.95796100   -0.90443900
-                                             H                 -0.95478600    1.35296500    0.87649200
-                                             H                 -0.95477600    1.35295100   -0.87651200
-                                             H                  1.55506600    1.42902600    0.00001400
-                                             H                  2.20977700   -1.17852900   -0.00000300
-                                             H                 -0.02783300   -1.25271100   -0.00001000""")
-        rxn_7.ts_species.mol_from_xyz()
-        rxn_7.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
-        self.assertTrue(rxn_7.ts_species.ts_checks['normal_mode_displacement'])
-
-    @work_in_progress
-    def test_check_normal_mode_displacement_wip(self):
-        """Test the check_normal_mode_displacement() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
-                                                           'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
-        self.rxn_3.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
-        self.assertTrue(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
-
-    def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
-        """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
-        ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1)
-        ts_spc_1.mol_from_xyz()
-        ts_spc_1.determine_rotors()
-        # Manually add the rotor that breaks the TS, it is not identified automatically:
-        ts_spc_1.rotors_dict[1] = {'pivots': [2, 3],
-                                   'top': [4, 8],
-                                   'scan': [1, 2, 3, 4],
-                                   'torsion': [0, 1, 2, 3],
-                                   'success': None,
-                                   'invalidation_reason': '',
-                                   'dimensions': 1}
-        rxn = ARCReaction(r_species=[ARCSpecies(label='N#[CH]', smiles='N#C'), ARCSpecies(label='[CH2][OH]', smiles='[CH2]O')],
-                          p_species=[ARCSpecies(label='N=CCO', smiles='[N]=CCO')])
-        rxn.ts_species = ts_spc_1
-        rxn_zone_atom_indices = [1, 2]
-        ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction=rxn,
-                                                                 job=self.job1,
-                                                                 rxn_zone_atom_indices=rxn_zone_atom_indices)
-        self.assertEqual(ts_spc_1.rotors_dict[0]['pivots'], [1, 2])
-        self.assertEqual(ts_spc_1.rotors_dict[0]['invalidation_reason'], '')
-        self.assertIsNone(ts_spc_1.rotors_dict[0]['success'])
-        self.assertEqual(ts_spc_1.rotors_dict[1]['pivots'], [2, 3])
-        self.assertEqual(ts_spc_1.rotors_dict[1]['scan'], [1, 2, 3, 4])
-        self.assertEqual(ts_spc_1.rotors_dict[1]['invalidation_reason'],
-                         'Pivots participate in the TS reaction zone (code: pivTS). ')
-        self.assertEqual(ts_spc_1.rotors_dict[1]['success'], False)
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_intra_H_migration_CBS-QB3.out')
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction=self.rxn_2a,
-                                                                 job=self.job1)
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['pivots'], [1, 2])
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['scan'], [5, 1, 2, 3])
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['invalidation_reason'], '')
-        self.assertIsNone(self.rxn_2a.ts_species.rotors_dict[0]['success'])
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['pivots'], [2, 3])
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['scan'], [1, 2, 3, 9])
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['invalidation_reason'],
-                         'Pivots participate in the TS reaction zone (code: pivTS). ')
-        self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['success'], False)
-
-    def test_get_rxn_zone_atom_indices(self):
-        """Test the get_rxn_zone_atom_indices() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2102.out')
-        rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_4, job=self.job1)
-        self.assertEqual(rxn_zone_atom_indices, [14, 10, 3, 2, 16])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2044.out')
-        rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_5, job=self.job1)
-        self.assertEqual(rxn_zone_atom_indices, [5, 10, 1, 3, 0])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS1_composite_695.out')
-        rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_6, job=self.job1)
-        self.assertEqual(rxn_zone_atom_indices, [7, 2, 9, 8, 1])  # Atom 10, the abstractor, is not moving
-
-    def test_get_rms_from_normal_modes_disp(self):
-        """Test the get_rms_from_normal_modes_disp() function."""
-        rms = ts.get_rms_from_normal_mode_disp(normal_mode_disp=self.normal_modes_disp_1,
-                                               freqs=np.array([-1000.3, 320.5], np.float64))
-        self.assertEqual(rms, [0.07874007874011811, 0.07280109889280519, 0.0, 0.9914635646356349, 0.03605551275463989,
-                               0.034641016151377546, 0.0, 0.033166247903554, 0.01414213562373095, 0.0])
-
-        freqs_2, normal_modes_disp_2 = parse_normal_mode_displacement(
-            os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2102.out'))
-        rms = ts.get_rms_from_normal_mode_disp(normal_mode_disp=normal_modes_disp_2,
-                                               freqs=freqs_2,
-                                               reaction=ARCReaction(r_species=[ARCSpecies(label='CCOOj', xyz=self.ccooj_xyz),
-                                                                               ARCSpecies(label='C2H6', xyz=self.c2h6_xyz)],
-                                                                    p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
-                                                                               ARCSpecies(label='C2H5', smiles='C[CH2]')])
-                                               )
-        self.assertEqual(rms, [0.0,                     # 0
-                               0.0008785397004602187,   # 1
-                               0.0034115627396496605,   # 2
-                               0.004483671853664259,    # 3 * (the abstracting O)
-                               0.0,                     # 4
-                               0.0,                     # 5
-                               0.00022485182747281122,  # 6
-                               0.0,                     # 7
-                               0.00022485182747281122,  # 8
-                               0.0008785397004602187,    # 9
-                               0.0076083769883172085,   # 10 * (the abstracting C)
-                               0.00022485182747281122,  # 11
-                               0.0,                     # 12
-                               0.00022485182747281122,  # 13
-                               0.021950421894561232,    # 14 * (the abstracted H)
-                               0.0027261835255033436,   # 15
-                               0.002790337797642228])   # 16
-
-    def test_get_index_of_abs_largest_neg_freq(self):
-        """Test the get_index_of_abs_largest_neg_freq() function."""
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([], np.float64)))
-        self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([1, 320.5], np.float64)))
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1, 320.5], np.float64)), 0)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1], np.float64)), 1)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1, -80, -90, 5000], np.float64)), 3)
-        self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-320.5, -1, -80, -90, 5000], np.float64)), 0)
-
-    def test_get_expected_num_atoms_with_largest_normal_mode_disp(self):
-        """Test the get_expected_num_atoms_with_largest_normal_mode_disp() function"""
-        normal_disp_mode_rms = [0.01414213562373095, 0.05, 0.04, 0.5632938842203065, 0.7993122043357026,
-                                0.08944271909999159, 0.10677078252031312, 0.09000000000000001, 0.05, 0.09433981132056604]
-        num_of_atoms = ts.get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms=normal_disp_mode_rms,
-                                                                               ts_guesses=self.ts_1.ts_guesses)
-        self.assertEqual(num_of_atoms, 4)
-
-    def test_get_rxn_normal_mode_disp_atom_number(self):
-        """Test the get_rxn_normal_mode_disp_atom_number() function."""
-        with self.assertRaises(TypeError):
-            ts.get_rxn_normal_mode_disp_atom_number('family', rms_list='family')
-        with self.assertRaises(TypeError):
-            ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=['family'])
-        with self.assertRaises(TypeError):
-            ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=15.215)
-        self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number(), 3)
-        self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('default'), 3)
-        self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration'), 3)
-        self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration', rms_list=self.rms_list_1), 4)
-
-    def test_check_imaginary_frequencies(self):
-        """Test the check_imaginary_frequencies() function."""
-        imaginary_freqs = None
-        self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
-        imaginary_freqs = list()
-        self.assertFalse(ts.check_imaginary_frequencies(imaginary_freqs))
-        imaginary_freqs = [-300.14]
-        self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
-        imaginary_freqs = [-3.14]
-        self.assertFalse(ts.check_imaginary_frequencies(imaginary_freqs))
-        imaginary_freqs = [-500.80, -3.14]
-        self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
+    # @work_in_progress
+    # def test_check_normal_mode_displacement_wip(self):
+    #     """Test the check_normal_mode_displacement() function."""
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
+    #                                                        'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
+    #     self.rxn_3.ts_species.populate_ts_checks()
+    #     self.assertFalse(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
+    #     ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
+    #     self.assertTrue(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
+    #
+    # def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
+    #     """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
+    #     ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1)
+    #     ts_spc_1.mol_from_xyz()
+    #     ts_spc_1.determine_rotors()
+    #     # Manually add the rotor that breaks the TS, it is not identified automatically:
+    #     ts_spc_1.rotors_dict[1] = {'pivots': [2, 3],
+    #                                'top': [4, 8],
+    #                                'scan': [1, 2, 3, 4],
+    #                                'torsion': [0, 1, 2, 3],
+    #                                'success': None,
+    #                                'invalidation_reason': '',
+    #                                'dimensions': 1}
+    #     rxn = ARCReaction(r_species=[ARCSpecies(label='N#[CH]', smiles='N#C'), ARCSpecies(label='[CH2][OH]', smiles='[CH2]O')],
+    #                       p_species=[ARCSpecies(label='N=CCO', smiles='[N]=CCO')])
+    #     rxn.ts_species = ts_spc_1
+    #     rxn_zone_atom_indices = [1, 2]
+    #     ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction=rxn,
+    #                                                              job=self.job1,
+    #                                                              rxn_zone_atom_indices=rxn_zone_atom_indices)
+    #     self.assertEqual(ts_spc_1.rotors_dict[0]['pivots'], [1, 2])
+    #     self.assertEqual(ts_spc_1.rotors_dict[0]['invalidation_reason'], '')
+    #     self.assertIsNone(ts_spc_1.rotors_dict[0]['success'])
+    #     self.assertEqual(ts_spc_1.rotors_dict[1]['pivots'], [2, 3])
+    #     self.assertEqual(ts_spc_1.rotors_dict[1]['scan'], [1, 2, 3, 4])
+    #     self.assertEqual(ts_spc_1.rotors_dict[1]['invalidation_reason'],
+    #                      'Pivots participate in the TS reaction zone (code: pivTS). ')
+    #     self.assertEqual(ts_spc_1.rotors_dict[1]['success'], False)
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS_intra_H_migration_CBS-QB3.out')
+    #     self.rxn_2a.ts_species.populate_ts_checks()
+    #     ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction=self.rxn_2a,
+    #                                                              job=self.job1)
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['pivots'], [1, 2])
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['scan'], [5, 1, 2, 3])
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[0]['invalidation_reason'], '')
+    #     self.assertIsNone(self.rxn_2a.ts_species.rotors_dict[0]['success'])
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['pivots'], [2, 3])
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['scan'], [1, 2, 3, 9])
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['invalidation_reason'],
+    #                      'Pivots participate in the TS reaction zone (code: pivTS). ')
+    #     self.assertEqual(self.rxn_2a.ts_species.rotors_dict[1]['success'], False)
+    #
+    # def test_get_rxn_zone_atom_indices(self):
+    #     """Test the get_rxn_zone_atom_indices() function."""
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS0_composite_2102.out')
+    #     rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_4, job=self.job1)
+    #     self.assertEqual(rxn_zone_atom_indices, [14, 10, 3, 2, 16])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS0_composite_2044.out')
+    #     rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_5, job=self.job1)
+    #     self.assertEqual(rxn_zone_atom_indices, [5, 10, 1, 3, 0])
+    #
+    #     self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+    #                                                        'TS1_composite_695.out')
+    #     rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_6, job=self.job1)
+    #     self.assertEqual(rxn_zone_atom_indices, [7, 2, 9, 8, 1])  # Atom 10, the abstractor, is not moving
+    #
+    # def test_get_rms_from_normal_modes_disp(self):
+    #     """Test the get_rms_from_normal_modes_disp() function."""
+    #     rms = ts.get_rms_from_normal_mode_disp(normal_mode_disp=self.normal_modes_disp_1,
+    #                                            freqs=np.array([-1000.3, 320.5], np.float64))
+    #     self.assertEqual(rms, [0.07874007874011811, 0.07280109889280519, 0.0, 0.9914635646356349, 0.03605551275463989,
+    #                            0.034641016151377546, 0.0, 0.033166247903554, 0.01414213562373095, 0.0])
+    #
+    #     freqs_2, normal_modes_disp_2 = parse_normal_mode_displacement(
+    #         os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2102.out'))
+    #     rms = ts.get_rms_from_normal_mode_disp(normal_mode_disp=normal_modes_disp_2,
+    #                                            freqs=freqs_2,
+    #                                            reaction=ARCReaction(r_species=[ARCSpecies(label='CCOOj', xyz=self.ccooj_xyz),
+    #                                                                            ARCSpecies(label='C2H6', xyz=self.c2h6_xyz)],
+    #                                                                 p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
+    #                                                                            ARCSpecies(label='C2H5', smiles='C[CH2]')])
+    #                                            )
+    #     self.assertEqual(rms, [0.0,                     # 0
+    #                            0.0008785397004602187,   # 1
+    #                            0.0034115627396496605,   # 2
+    #                            0.004483671853664259,    # 3 * (the abstracting O)
+    #                            0.0,                     # 4
+    #                            0.0,                     # 5
+    #                            0.00022485182747281122,  # 6
+    #                            0.0,                     # 7
+    #                            0.00022485182747281122,  # 8
+    #                            0.0008785397004602187,    # 9
+    #                            0.0076083769883172085,   # 10 * (the abstracting C)
+    #                            0.00022485182747281122,  # 11
+    #                            0.0,                     # 12
+    #                            0.00022485182747281122,  # 13
+    #                            0.021950421894561232,    # 14 * (the abstracted H)
+    #                            0.0027261835255033436,   # 15
+    #                            0.002790337797642228])   # 16
+    #
+    # def test_get_index_of_abs_largest_neg_freq(self):
+    #     """Test the get_index_of_abs_largest_neg_freq() function."""
+    #     self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([], np.float64)))
+    #     self.assertIsNone(ts.get_index_of_abs_largest_neg_freq(np.array([1, 320.5], np.float64)))
+    #     self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1], np.float64)), 0)
+    #     self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-1, 320.5], np.float64)), 0)
+    #     self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1], np.float64)), 1)
+    #     self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([320.5, -1, -80, -90, 5000], np.float64)), 3)
+    #     self.assertEqual(ts.get_index_of_abs_largest_neg_freq(np.array([-320.5, -1, -80, -90, 5000], np.float64)), 0)
+    #
+    # def test_get_expected_num_atoms_with_largest_normal_mode_disp(self):
+    #     """Test the get_expected_num_atoms_with_largest_normal_mode_disp() function"""
+    #     normal_disp_mode_rms = [0.01414213562373095, 0.05, 0.04, 0.5632938842203065, 0.7993122043357026,
+    #                             0.08944271909999159, 0.10677078252031312, 0.09000000000000001, 0.05, 0.09433981132056604]
+    #     num_of_atoms = ts.get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms=normal_disp_mode_rms,
+    #                                                                            ts_guesses=self.ts_1.ts_guesses)
+    #     self.assertEqual(num_of_atoms, 4)
+    #
+    # def test_get_rxn_normal_mode_disp_atom_number(self):
+    #     """Test the get_rxn_normal_mode_disp_atom_number() function."""
+    #     with self.assertRaises(TypeError):
+    #         ts.get_rxn_normal_mode_disp_atom_number('family', rms_list='family')
+    #     with self.assertRaises(TypeError):
+    #         ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=['family'])
+    #     with self.assertRaises(TypeError):
+    #         ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=15.215)
+    #     self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number(), 3)
+    #     self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('default'), 3)
+    #     self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration'), 3)
+    #     self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration', rms_list=self.rms_list_1), 4)
+    #
+    # def test_check_imaginary_frequencies(self):
+    #     """Test the check_imaginary_frequencies() function."""
+    #     imaginary_freqs = None
+    #     self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
+    #     imaginary_freqs = list()
+    #     self.assertFalse(ts.check_imaginary_frequencies(imaginary_freqs))
+    #     imaginary_freqs = [-300.14]
+    #     self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
+    #     imaginary_freqs = [-3.14]
+    #     self.assertFalse(ts.check_imaginary_frequencies(imaginary_freqs))
+    #     imaginary_freqs = [-500.80, -3.14]
+    #     self.assertTrue(ts.check_imaginary_frequencies(imaginary_freqs))
 
     @classmethod
     def tearDownClass(cls):

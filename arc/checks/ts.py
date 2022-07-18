@@ -14,7 +14,6 @@ from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
                         get_logger,
-                        get_bonds_from_dmat,
                         read_yaml_file,
                         sum_list_entries,
                         )
@@ -239,23 +238,12 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     if not len(normal_modes_disp):
         return
     largest_neg_freq_idx = get_index_of_abs_largest_neg_freq(freqs)
-    bond_lone_hs = any(len(spc.mol.atoms) == 2 and spc.mol.atoms[0].element.symbol == 'H'
-                       and spc.mol.atoms[0].element.symbol == 'H' for spc in reaction.r_species + reaction.p_species)
-    # bond_lone_hs = False
     xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
 
     done = False
     for amplitude in amplitudes:
         xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[largest_neg_freq_idx], amplitude=amplitude)
         dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-        dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
-                                           elements=xyz_1['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
-        dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
-                                           elements=xyz_2['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
         got_expected_changing_bonds = False
         for i, rmg_reaction in enumerate(rmg_reactions):
             r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
@@ -263,15 +251,15 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
             if r_label_dict is None:
                 continue
             expected_breaking_bonds, expected_forming_bonds = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
-            if expected_breaking_bonds is None or expected_forming_bonds is None:
+            if expected_breaking_bonds is None and expected_forming_bonds is None:
                 continue
             got_expected_changing_bonds = True
-            breaking = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_breaking_bonds]
-            forming = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_forming_bonds]
-            if len(breaking) and len(forming) \
-                    and not any(entry is None for entry in breaking) and not any(entry is None for entry in forming) \
-                    and all(entry == breaking[0] for entry in breaking) and all(entry == forming[0] for entry in forming) \
-                    and breaking[0] != forming[0]:
+            if check_bond_changes(expected_breaking_bonds,
+                                  expected_forming_bonds,
+                                  dmat_1,
+                                  dmat_2,
+                                  reaction,
+                                  ):
                 reaction.ts_species.ts_checks['normal_mode_displacement'] = True
                 done = True
                 break
@@ -280,16 +268,6 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                                                          'breaking/forming bonds due to a missing RMG template; '
             reaction.ts_species.ts_checks['normal_mode_displacement'] = True
             break
-        if not len(rmg_reactions):
-            # Just check that some bonds break/form, and that this is not a torsional saddle point.
-            warning = f'Cannot check normal mode displacement for reaction {reaction} since a corresponding ' \
-                      f'RMG template could not be generated'
-            logger.warning(warning)
-            reaction.ts_species.ts_checks['warnings'] += warning + '; '
-            if any(bond not in dmat_bonds_2 for bond in dmat_bonds_1) \
-                    or any(bond not in dmat_bonds_1 for bond in dmat_bonds_2):
-                reaction.ts_species.ts_checks['normal_mode_displacement'] = True
-                break
         if done:
             break
 
@@ -319,7 +297,7 @@ def check_bond_changes(expected_breaking_bonds: Optional[List[Tuple[int, int]]],
     direction_1, direction_2 = list(), list()
     for expected_bonds, direction in zip([expected_breaking_bonds, expected_forming_bonds], [direction_1, direction_2]):
         if expected_bonds is not None:
-            for bond in expected_breaking_bonds:
+            for bond in expected_bonds:
                 d_1 = dmat_1[bond[0]][bond[1]]
                 d_2 = dmat_2[bond[0]][bond[1]]
                 direction.append('breaks' if d_1 < d_2 else 'forms' if d_1 > d_2 else None)
@@ -347,6 +325,8 @@ def do_other_bonds_change_more(expected_breaking_bonds: Optional[List[Tuple[int,
     """
     Check if any bonds which are not in the list of expected modified bonds
     change in length significantly more than the expected modified bonds.
+    Since an atom that forms a bond with atom A could also get closer to atom B which is next to atom A,
+    the dmat diff (the change in bond length) is normalized by the bond distance, 0.5 * (dmat_1[i][j] + dmat_2[i][j]).
 
     Args:
         expected_breaking_bonds (Optional[List[Tuple[int, int]]]): The expected breaking bonds from the RMG reaction template.
@@ -370,11 +350,11 @@ def do_other_bonds_change_more(expected_breaking_bonds: Optional[List[Tuple[int,
     diff = dmat_2 - dmat_1
     for i in range(len(diff)):
         for j in range(len(diff)):
-            diff[i][j] = float(abs(diff[i][j])) * ((masses[i] * masses[j]) / (masses[i] + masses[j])) ** 0.55
+            diff[i][j] = abs(diff[i][j]) * (((masses[i] * masses[j]) / (masses[i] + masses[j])) ** 0.55) / 0.5 * (dmat_1[i][j] + dmat_2[i][j])
     max_bond_diff = max([diff[bond[0]][bond[1]] for bond in expected_changing_bonds]) if len(expected_changing_bonds) else 0
     for i in range(len(diff)):
         for j in range(len(diff)):
-            if i < j and diff[i][j] > max_bond_diff * factor:
+            if i < j and diff[i][j] / 0.5 * (dmat_1[i][j] + dmat_2[i][j]) > max_bond_diff * factor:
                 return True
     return False
 

@@ -36,7 +36,8 @@ class TestScheduler(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
-        cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        cls.project_directory_1 = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
+        cls.project_directory_2 = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage7')
         cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
         cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz3 = """C       1.11424367   -0.01231165   -0.11493630
@@ -49,15 +50,15 @@ H      -1.82570782    0.42754384   -0.56130718"""
         cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
                                species=[cls.spc1], xyz=xyz2, job_type='conformers',
                                conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=101)
+                               project_directory=cls.project_directory_1, job_num=101)
         cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
                                species=[cls.spc1], xyz=xyz2, job_type='conformers',
                                conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=102)
+                               project_directory=cls.project_directory_1, job_num=102)
         cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
                                species=[cls.spc2], job_type='freq',
                                level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
-                               project_directory=cls.project_directory, job_num=103)
+                               project_directory=cls.project_directory_1, job_num=103)
         cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
@@ -78,11 +79,19 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                scan_level=Level(repr=default_levels_of_theory['scan']),
                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
                                rmg_database=cls.rmg_database,
-                               project_directory=cls.project_directory,
+                               project_directory=cls.project_directory_1,
                                testing=True,
                                job_types=cls.job_types1,
                                orbitals_level=default_levels_of_theory['orbitals'],
                                adaptive_levels=None,
+                               )
+        cls.sched2 = Scheduler(project='project_test', ess_settings=cls.ess_settings,
+                               species_list=list(),
+                               composite_method=Level('CBS-QB3'),
+                               rmg_database=cls.rmg_database,
+                               project_directory=cls.project_directory_2,
+                               testing=True,
+                               job_types=cls.job_types1,
                                )
 
     def test_conformers(self):
@@ -179,7 +188,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                            scan_level=default_levels_of_theory['scan'],
                            ts_guess_level=default_levels_of_theory['ts_guesses'],
                            rmg_database=self.rmg_database,
-                           project_directory=self.project_directory,
+                           project_directory=self.project_directory_1,
                            testing=True, job_types=self.job_types1,
                            orbitals_level=default_levels_of_theory['orbitals'],
                            adaptive_levels=adaptive_levels)
@@ -255,7 +264,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(self.sched1._does_output_dict_contain_info())
 
     def test_non_rotor(self):
-        """Test that a 180 degree angle on either side of a torsion is not considered as a rotor."""
+        """Test that a 180-degree angle on either side of a torsion is not considered as a rotor."""
         self.sched1.species_dict['CtripCO'].rotors_dict = {
             0: {'torsion': [1, 2, 3, 4], 'top': [3, 5], 'scan': [1, 2, 3, 5], 'number_of_running_jobs': 0,
                 'success': None, 'invalidation_reason': '', 'times_dihedral_set': 0, 'trsh_methods': [], 'scan_path': '',
@@ -641,6 +650,14 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(rxn.ts_species.ts_checks,
                          {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'normal_mode_displacement': True, 'warnings': ''})
 
+    # def test_generate_final_ts_guess_report(self):
+    #     """Test the generate_final_ts_guess_report() method."""
+    #     species_dict =
+    #
+    #     self.sched2.species_dict = {}
+
+
+
     def test_species_has_geo_sp_freq(self):
         """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
         for property_, species_has_property in zip(['geo', 'sp', 'freq'], [species_has_geo, species_has_sp, species_has_freq]):
@@ -659,7 +676,10 @@ H      -1.82570782    0.42754384   -0.56130718"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
+        projects = ['arc_project_for_testing_delete_after_usage3',
+                    'arc_project_for_testing_delete_after_usage6',
+                    'arc_project_for_testing_delete_after_usage7',
+                    ]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
