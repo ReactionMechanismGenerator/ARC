@@ -343,8 +343,12 @@ def determine_ess_status(output_path: str,
                 if 'molpro calculation terminated' in line.lower() \
                         or 'variable memory released' in line.lower():
                     return 'done', list(), '', ''
-                elif 'No convergence' in line:
+                elif 'No convergence' in line and '?No convergence in rhfpr' not in line:
                     keywords = ['Unconverged']
+                    error = 'Unconverged'
+                    break
+                elif 'error exit can be avoided using the IGNORE_ERROR option on the ORBITAL directive' in line:
+                    keywords = ['IGNORE_ERROR in the ORBITAL directive']
                     error = 'Unconverged'
                     break
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
