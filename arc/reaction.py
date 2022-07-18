@@ -4,6 +4,7 @@ A module for representing a reaction.
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+from arkane.common import get_element_mass
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -894,6 +895,19 @@ class ARCReaction(object):
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
+
+    def get_element_mass(self) -> List[float]:
+        """
+        Get the mass of all elements of a reaction. Uses the ato order of the reactants.
+
+        Returns:
+            List[float]: The RMS of the normal mode displacements.
+        """
+        masses = list()
+        for reactant in self.r_species:
+            for atom in reactant.mol.atoms:
+                masses.append(get_element_mass(atom.element.symbol)[0])
+        return masses
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
