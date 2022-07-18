@@ -27,6 +27,7 @@ import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 import rmgpy
+from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
 from rmgpy.molecule.atomtype import ATOMTYPES
 from rmgpy.molecule.element import get_element
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
@@ -39,6 +40,7 @@ from arc.imports import home, settings
 
 if TYPE_CHECKING:
     from rmgpy.reaction import Reaction
+    from rmgpy.species import Species
     from arc.reaction import ARCReaction
 
 
@@ -1449,6 +1451,37 @@ def rmg_mol_from_dict_repr(representation: dict,
         mol.identify_ring_membership()
         mol.update_connectivity_values()
     return mol
+
+
+def generate_resonance_structures(object_: Union['Species', Molecule],
+                                  keep_isomorphic: bool = False,
+                                  filter_structures: bool = True,
+                                  save_order: bool = True,
+                                  ) -> Optional[List[Molecule]]:
+    """
+    Safely generate resonance structures for either an RMG Molecule or an RMG Species object instances.
+
+    Args:
+        object_ (Species, Molecule): The object to generate resonance structures for.
+        keep_isomorphic (bool, optional): Whether to keep isomorphic isomers.
+        filter_structures (bool, optional): Whether to filter resonance structures.
+        save_order (bool, optional): Whether to make sure atom order is preserved.
+
+    Returns:
+        Optional[List[Molecule]]: If a ``Molecule`` object instance was given, the function returns a list of resonance
+                                  structures (each is a ``Molecule`` object instance). If a ``Species`` object instance
+                                  is given, the resonance structures are stored within the given object
+                                  (in a .molecule attribute), and the function returns ``None``.
+    """
+    result = None
+    try:
+        result = object_.generate_resonance_structures(keep_isomorphic=keep_isomorphic,
+                                                       filter_structures=filter_structures,
+                                                       save_order=save_order,
+                                                       )
+    except (AtomTypeError, ILPSolutionError, ResonanceError, TypeError, ValueError):
+        pass
+    return result
 
 
 def calc_rmsd(x: Union[list, np.array],

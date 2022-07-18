@@ -21,7 +21,13 @@ from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import almost_equal_lists, calc_rmsd, get_atom_radius, get_logger, is_str_float
+from arc.common import (almost_equal_lists,
+                        calc_rmsd,
+                        get_atom_radius,
+                        get_logger,
+                        generate_resonance_structures,
+                        is_str_float,
+                        )
 from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.xyz_to_smiles import xyz_to_smiles
@@ -1449,7 +1455,7 @@ def set_radicals_by_map(mol, radical_map):
         atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
 
-def order_atoms_in_mol_list(ref_mol, mol_list):
+def order_atoms_in_mol_list(ref_mol, mol_list) -> bool:
     """
     Order the atoms in all molecules of ``mol_list`` by the atom order in ``ref_mol``.
 
@@ -1457,12 +1463,11 @@ def order_atoms_in_mol_list(ref_mol, mol_list):
         ref_mol (Molecule): The reference Molecule object.
         mol_list (list): Entries are Molecule objects whose atoms will be reordered according to the reference.
 
+    Raises:
+        TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
+
     Returns:
         bool: Whether the reordering was successful, ``True`` if it was.
-
-    Raises:
-        SanitizationError: If atoms could not be re-ordered.
-        TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
     """
     if not isinstance(ref_mol, Molecule):
         raise TypeError(f'expected mol to be a Molecule instance, got {ref_mol} which is a {type(ref_mol)}.')
@@ -1753,20 +1758,8 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
     spc2 = Species(molecule=[mol2_copy])
 
     if not convert_to_single_bonds:
-        try:
-            spc1.generate_resonance_structures(keep_isomorphic=False,
-                                               filter_structures=filter_structures,
-                                               save_order=True,
-                                               )
-        except (AtomTypeError, ValueError):
-            pass
-        try:
-            spc2.generate_resonance_structures(keep_isomorphic=False,
-                                               filter_structures=filter_structures,
-                                               save_order=True,
-                                               )
-        except (AtomTypeError, ValueError):
-            pass
+        generate_resonance_structures(spc1, filter_structures=filter_structures)
+        generate_resonance_structures(spc2, filter_structures=filter_structures)
 
     for molecule1 in spc1.molecule:
         for molecule2 in spc2.molecule:

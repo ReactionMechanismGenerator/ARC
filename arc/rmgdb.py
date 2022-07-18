@@ -11,7 +11,7 @@ from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
 from rmgpy.reaction import same_species_lists, Reaction
 
-from arc.common import get_logger
+from arc.common import get_logger, generate_resonance_structures
 from arc.exceptions import InputError
 
 if TYPE_CHECKING:
@@ -201,7 +201,7 @@ def determine_reaction_family(rmgdb: RMGDatabase,
         - Whether the family is its own reverse. ``True`` if it is.
     """
     for rmg_spc in reaction.reactants + reaction.products:
-        rmg_spc.generate_resonance_structures(keep_isomorphic=False, filter_structures=True, save_order=True)
+        generate_resonance_structures(rmg_spc)
     fam_list = loop_families(rmgdb=rmgdb, reaction=reaction)
     families = [fam_l[0] for fam_l in fam_list]
     if len(set(families)) == 1:
@@ -229,7 +229,7 @@ def loop_families(rmgdb: RMGDatabase,
     """
     reaction = reaction.copy()  # Use a copy to avoid changing atom order in the molecules by RMG.
     for spc in reaction.reactants + reaction.products:
-        spc.generate_resonance_structures(save_order=True)
+        generate_resonance_structures(spc)
     fam_list = list()
     for family in rmgdb.kinetics.families.values():
         family.save_order = True

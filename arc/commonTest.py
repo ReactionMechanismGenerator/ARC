@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from rmgpy.molecule.molecule import Molecule
+from rmgpy.species import Species
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
@@ -1072,6 +1073,21 @@ class TestCommon(unittest.TestCase):
         representation = common.rmg_mol_to_dict_repr(mol)
         new_mol = common.rmg_mol_from_dict_repr(representation, is_ts=False)
         self.assertEqual(new_mol.to_smiles(), 'CC')
+
+    def test_generate_resonance_structures(self):
+        """Test the generate_resonance_structures() function."""
+        mol = Molecule(smiles='[N-]=[N+]=O')
+        mol_list = common.generate_resonance_structures(mol)
+        self.assertEqual(len(mol_list), 2)
+        self.assertIsInstance(mol_list[0], Molecule)
+        self.assertIsInstance(mol_list[1], Molecule)
+
+        spc = Species(smiles='[N-]=[N+]=O')
+        result = common.generate_resonance_structures(spc)
+        self.assertIsNone(result)
+        self.assertEqual(len(spc.molecule), 2)
+        self.assertIsInstance(spc.molecule[0], Molecule)
+        self.assertIsInstance(spc.molecule[1], Molecule)
 
     def test_calc_rmsd(self):
         """Test compute the root-mean-square deviation between two matrices."""
