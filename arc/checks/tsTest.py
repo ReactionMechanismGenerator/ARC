@@ -291,23 +291,39 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         ts.check_ts_energy(reaction=rxn1)
         self.assertFalse(rxn1.ts_species.ts_checks['e_elect'])
 
-    def test_determine_changing_bond(self):
-        """Test the determine_changing_bond() function."""
-        dmat_2 = np.array([[0, 1, 2],
+    def test_check_bond_changes(self):
+        """Test the check_bond_changes() function."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
+                          p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
+        dmat_1 = np.array([[0, 1, 2],
                            [1, 0, 5],
-                           [2, 5, 0]])
-        dmat_bonds_1 = ts.get_bonds_from_dmat(dmat=dmat_2, elements=['C', 'C', 'H'], tolerance=1.5)
-        dmat_bonds_2 = ts.get_bonds_from_dmat(dmat=dmat_2, elements=['C', 'C', 'H'], tolerance=1.5)
-        change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_1, dmat_bonds_2=dmat_bonds_2)
-        self.assertIsNone(change)
-        dmat_1 = np.array([[0, 5, 2],
-                           [5, 0, 5],
-                           [2, 5, 0]])
-        dmat_bonds_1 = ts.get_bonds_from_dmat(dmat=dmat_1, elements=['C', 'C', 'H'], tolerance=1.5)
-        change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_1, dmat_bonds_2=dmat_bonds_2)
-        self.assertEqual(change, 'forming')
-        change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_2, dmat_bonds_2=dmat_bonds_1)
-        self.assertEqual(change, 'breaking')
+                           [2, 5, 0]], np.float64)
+        expected_breaking_bonds, expected_forming_bonds = None, None
+        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_1, rxn))
+
+        dmat_2 = np.array([[0, 1, 3],
+                           [1, 0, 5],
+                           [3, 5, 0]], np.float64)
+        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], None
+        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+
+        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_2, dmat_1, rxn))
+
+        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(0, 2)]
+        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+
+        expected_breaking_bonds, expected_forming_bonds = [(0, 1)], None
+        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+
+        expected_breaking_bonds, expected_forming_bonds = [(0, 1)], [(0, 2)]
+        self.assertFalse(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+
+        dmat_2 = np.array([[0, 1, 3],
+                           [1, 0, 4],
+                           [3, 4, 0]], np.float64)
+        expected_breaking_bonds, expected_forming_bonds = [(0, 2)], [(1, 2)]
+        self.assertTrue(ts.check_bond_changes(expected_breaking_bonds, expected_forming_bonds, dmat_1, dmat_2, rxn))
+
 
     def test_check_rxn_e0(self):
         """Test the check_rxn_e0() function."""
