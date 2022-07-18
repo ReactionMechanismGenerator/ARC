@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import rmgpy.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import is_linear
-from rmgpy.exceptions import AtomTypeError, ILPSolutionError, InvalidAdjacencyListError, ResonanceError
+from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError
 from rmgpy.molecule.molecule import Atom, Molecule
 from rmgpy.molecule.resonance import generate_kekule_structure
 from rmgpy.reaction import Reaction
@@ -24,6 +24,7 @@ from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_logger,
                         get_single_bond_length,
+                        generate_resonance_structures,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
@@ -901,13 +902,8 @@ class ARCSpecies(object):
             if not self.is_ts:
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.reactive = True
-                try:
-                    self.mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
-                                                                           filter_structures=True,
-                                                                           save_order=True,
-                                                                           )
-                except (AtomTypeError, ValueError, ILPSolutionError, ResonanceError) as e:
-                    logger.warning(f'Could not generate resonance structures for species {self.label}. Got: {e}')
+                self.mol_list = generate_resonance_structures(mol_copy)
+                if self.mol_list is None:
                     self.mol_list = [self.mol]
             else:
                 self.mol_list = [self.mol]

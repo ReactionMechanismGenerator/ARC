@@ -49,7 +49,6 @@ from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import rmgpy.molecule.group as gr
-from rmgpy.exceptions import ILPSolutionError, ResonanceError
 from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
@@ -57,6 +56,7 @@ from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMEN
 from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_single_bond_length,
+                        generate_resonance_structures,
                         logger,
                         )
 from arc.exceptions import ConformerError, InputError
@@ -176,18 +176,15 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                 return [CHEAT_SHEET[smiles]], [CHEAT_SHEET[smiles]]
             return [CHEAT_SHEET[smiles]]
     if isinstance(mol_list, Molecule):
-        # try generating resonance structures, but strictly keep atom order
+        # Try generating resonance structures, but strictly keep atom order.
         success = False
         mol_copy = mol_list.copy(deep=True)
         mol_copy.reactive = True
+        new_mol_list = generate_resonance_structures(mol_copy)
         try:
-            new_mol_list = mol_copy.generate_resonance_structures(keep_isomorphic=False,
-                                                                  filter_structures=True,
-                                                                  save_order=True,
-                                                                  )
             success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
-        except (ValueError, ILPSolutionError, ResonanceError) as e:
-            logger.warning(f'Could not generate resonance structures for species {label}. Got: {e}')
+        except TypeError:
+            pass
         if success:
             mol_list = new_mol_list
         else:

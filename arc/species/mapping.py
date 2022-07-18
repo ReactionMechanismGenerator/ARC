@@ -21,7 +21,7 @@ from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import convert_list_index_0_to_1, extremum_list, logger
+from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger
 from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
@@ -522,8 +522,8 @@ def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReact
     if not hasattr(rmg_reaction, 'labeled_atoms') or not rmg_reaction.labeled_atoms:
         return None, None
 
-    for mol in rmg_reaction.reactants + rmg_reaction.products:
-        mol.generate_resonance_structures(save_order=True)
+    for spc in rmg_reaction.reactants + rmg_reaction.products:
+        generate_resonance_structures(spc)
 
     r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction)
 
@@ -584,9 +584,9 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
                 if not isinstance(rmg_spc, Species):
                     raise ValueError(f'Expected an RMG object instances of Molecule or Species, '
                                      f'got {rmg_obj} which is a {type(rmg_obj)}.')
-                rmg_spc.generate_resonance_structures(save_order=True)
+                generate_resonance_structures(rmg_spc)
                 rmg_spc_based_on_arc_spc = Species(molecule=arc_spc.mol_list)
-                rmg_spc_based_on_arc_spc.generate_resonance_structures(save_order=True)
+                generate_resonance_structures(rmg_spc_based_on_arc_spc)
                 if rmg_spc.is_isomorphic(rmg_spc_based_on_arc_spc, save_order=True):
                     if i in spc_map.keys() and concatenate:
                         spc_map[i].append(j)
