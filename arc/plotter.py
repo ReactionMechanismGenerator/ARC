@@ -258,14 +258,25 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
                          f'got {species} which is a {type(species)}')
     if not species.is_ts:
         raise ValueError('The species must be a TS (got species.is_ts = False)')
+    dirname = os.path.dirname(path) if path.endswith('.png') else path
+    if not os.path.isdir(dirname):
+        os.makedirs(dirname)
     if os.path.isdir(path):
         path = os.path.join(path, 'ts_guesses.png')
+    if os.path.isfile(path):
+        os.remove(path)
 
-    results = list()  # entries are tuples of (method, electronic energy, imaginary frequency)
-    for tsg in species.ts_guesses:
-        if tsg.energy is not None:
-            results.append((tsg.method, tsg.energy, tsg.imaginary_freqs))
+    results, map_tsg_to_results = list(), dict()
+    number_of_cluster_wo_energy = 0
+    for i, cluster in enumerate(species.ts_guesses):
+        if cluster.energy is not None:
+            results.append((cluster.method, cluster.energy, cluster.imaginary_freqs, cluster.index))
+            map_tsg_to_results[cluster.index] = i - number_of_cluster_wo_energy
+        else:
+            number_of_cluster_wo_energy += 1
     ts_results = sorted(results, key=lambda x: x[1], reverse=False)
+    energy_sorting_map = list(range(len(ts_results)))
+    energy_sorting_map = sort_two_lists_by_the_first([r[1] for r in results], energy_sorting_map)[1]
     x = np.arange(len(ts_results))  # the label locations
     width = 0.45  # the width of the bars
     y = [x[1] for x in ts_results]  # electronic energies
@@ -273,9 +284,10 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
         fig, ax = plt.subplots(figsize=(10, 4), dpi=120)
         rects = ax.bar(x - width / 2, y, width)
         auto_label(rects, ts_results, ax)
+        chosen_ts = species.chosen_ts
         if not species.ts_guesses_exhausted:
-            rects[len(species.chosen_ts_list) - 1].set_color('r')
-        ax.set_ylim(0, max(y) * 1.2)
+            rects[energy_sorting_map.index(map_tsg_to_results[chosen_ts])].set_color('r')
+        ax.set_ylim(0, (max(y) or 1) * 1.2)
         ax.set_ylabel(r'Electronic energy, kJ/mol')
         ax.set_title(species.rxn_label)
         ax.set_xticks([])
