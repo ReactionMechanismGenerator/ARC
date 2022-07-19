@@ -288,6 +288,9 @@ class MolproAdapter(JobAdapter):
             # Todo: Automatically go with directed scans instead of ess scan
             pass
 
+        if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh']:
+            keywords.append('ORBITAL,IGNORE_ERROR')
+
         if 'mrci' in self.level.method:
             if self.species[0].occ > 16:
                 raise JobError(f'Will not execute an MRCI calculation with more than 16 occupied orbitals '
