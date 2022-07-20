@@ -21,9 +21,8 @@ from arc.job.adapters.common import (check_argument_consistency,
                                      update_input_dict_with_args,
                                      which)
 from arc.job.factory import register_job_adapter
-from arc.job.local import execute_command, submit_job
+from arc.job.local import execute_command
 from arc.level import Level
-from arc.job.ssh import SSHClient
 from arc.species.converter import xyz_to_str
 
 if TYPE_CHECKING:
@@ -374,14 +373,7 @@ class Psi4Adapter(JobAdapter):
         """
         Execute a job to the server's queue.
         """
-        self._log_job_execution()
-        # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
-        if self.server != 'local':
-            with SSHClient(self.server) as ssh:
-                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
-        else:
-            # submit to the local queue
-            self.job_status[0], self.job_id = submit_job(path=self.local_path)
+        self.legacy_queue_execution()
 
 
 register_job_adapter('psi4', Psi4Adapter)
