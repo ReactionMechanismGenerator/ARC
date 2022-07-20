@@ -30,6 +30,7 @@ from arc.job.local import (change_mode,
                            delete_job,
                            get_last_modified_time,
                            rename_output,
+                           submit_job,
                            )
 from arc.job.trsh import trsh_job_on_server
 from arc.job.ssh import SSHClient
@@ -284,6 +285,20 @@ class JobAdapter(ABC):
         Execute a job to the server's queue.
         """
         pass
+
+    def legacy_queue_execution(self):
+        """
+        Execute a job to the server's queue.
+        The server could be either "local" or remote.
+        """
+        self._log_job_execution()
+        # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+        else:
+            # submit to the local queue
+            self.job_status[0], self.job_id = submit_job(path=self.local_path)
 
     def set_job_shell_file_to_upload(self) -> dict:
         """
