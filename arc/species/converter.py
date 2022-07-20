@@ -855,7 +855,7 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
     Args:
         zmat (dict): The Z Matrix to convert.
         zmat_format (str, optional): The requested format to output (varies by ESS).
-                                     Allowed values are: 'gaussian', 'qchem', 'molpro', 'orca', or 'psi4'.
+                                     Allowed values are: 'gaussian', 'qchem', 'molpro', 'orca', 'cfour', or 'psi4'.
                                      The default format is 'gaussian'.
         consolidate (bool): Whether to return a consolidated zmat (geometry optimization will be more efficient).
 
@@ -872,8 +872,9 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
                              f'{list(zmat.keys())}.')
     if zmat_format == 'terachem':
         raise ConverterError('TeraChem does not accept a zmat as input (it has its own internal conversions).')
-    if zmat_format not in ['gaussian', 'qchem', 'molpro', 'orca', 'psi4']:
-        raise ConverterError(f'zmat_format must be either gaussian, qchem, molpro, orca, or psi4, got: {zmat_format}.')
+    if zmat_format not in ['gaussian', 'qchem', 'molpro', 'orca', 'psi4', 'cfour']:
+        raise ConverterError(f'zmat_format must be either gaussian, qchem, molpro, orca, cfour, or psi4, '
+                             f'got: {zmat_format}.')
     if zmat_format == 'orca':
         # replace dummy atom symbols
         symbols = list()
@@ -886,7 +887,7 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
         # parametarized internal coordinates are hence not supported
         consolidate = False
     separator = ',' if zmat_format in ['molpro'] else ''
-    var_separator = '=' if zmat_format in ['gaussian', 'molpro', 'qchem', 'psi4'] else ' '
+    var_separator = '=' if zmat_format in ['gaussian', 'molpro', 'qchem', 'psi4', 'cfour'] else ' '
     zmat_str, variables_str, variables = '', '', list()
     type_indices = {'R': 1, 'A': 1, 'D': 1}  # consolidation counters
     variables_dict = dict()  # keys are coord (e.g., 'R_2|4_0|0'), values are vars (e.g., 'R1')
@@ -928,7 +929,7 @@ def zmat_to_str(zmat, zmat_format='gaussian', consolidate=True):
     if zmat_format in ['gaussian']:
         variables_str = ''.join(sorted(variables))
         result = f'{zmat_str}Variables:\n{variables_str}' if consolidate else zmat_str
-    elif zmat_format in ['qchem', 'psi4', 'orca']:
+    elif zmat_format in ['qchem', 'psi4', 'orca', 'cfour']:
         variables_str = ''.join(sorted(variables))
         result = f'{zmat_str}\n{variables_str}' if consolidate else zmat_str
     elif zmat_format in ['molpro']:
