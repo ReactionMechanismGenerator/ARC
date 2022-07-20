@@ -284,9 +284,8 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
         fig, ax = plt.subplots(figsize=(10, 4), dpi=120)
         rects = ax.bar(x - width / 2, y, width)
         auto_label(rects, ts_results, ax)
-        chosen_ts = species.chosen_ts
-        if not species.ts_guesses_exhausted:
-            rects[energy_sorting_map.index(map_tsg_to_results[chosen_ts])].set_color('r')
+        if species.chosen_ts is not None and not species.ts_guesses_exhausted:
+            rects[energy_sorting_map.index(map_tsg_to_results[species.chosen_ts])].set_color('r')
         ax.set_ylim(0, (max(y) or 1) * 1.2)
         ax.set_ylabel(r'Electronic energy, kJ/mol')
         ax.set_title(species.rxn_label)
