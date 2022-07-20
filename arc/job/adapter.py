@@ -358,7 +358,7 @@ class JobAdapter(ABC):
                 if len(self.species) > 1:
                     self.iterate_by.append('species')
                 if job_type == 'conformers':
-                    if self.species is not None and sum(len(species.conformers) for species in self.species) > 10:
+                    if self.species is not None and sum(len(species.conformers) for species in self.species) > 100:
                         self.iterate_by.append('conformers')
                         self.number_of_processes += sum([len(species.conformers) for species in self.species])
                 for species in self.species:
