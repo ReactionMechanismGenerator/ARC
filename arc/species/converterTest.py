@@ -2086,6 +2086,9 @@ R9=1.4305
         zmat_str = converter.zmat_to_str(zmat1, zmat_format='qchem', consolidate=True)
         self.assertEqual(zmat_str, expected_zmat_str_16)
 
+        zmat_str = converter.zmat_to_str(zmat1, zmat_format='cfour', consolidate=True)
+        self.assertEqual(zmat_str, expected_zmat_str_16)
+
         zmat_str = converter.zmat_to_str(zmat1, zmat_format='psi4', consolidate=True)
         self.assertEqual(zmat_str, expected_zmat_str_16)
 
