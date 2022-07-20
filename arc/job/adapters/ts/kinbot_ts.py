@@ -279,13 +279,6 @@ class KinBotAdapter(JobAdapter):
         """
         pass
 
-    def parse_tsg(self):
-        """
-        Parse the coordinates from a completed tsg job.
-        Store in rxn.ts_species.ts_guesses as a TSGuess object instance.
-        """
-        pass
-
     def execute_incore(self):
         """
         Execute a job incore.
