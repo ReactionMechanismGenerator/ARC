@@ -258,7 +258,7 @@ H      -1.22610851    0.40421362    1.35170355"""
             label='', conformers=confs, torsions=torsions, tops=tops, mol_list=[spc1.mol], plot_path=None,
             combination_threshold=10, force_field='MMFF94s', max_combination_iterations=25)
 
-        self.assertEqual(len(new_conformers), 6)
+        self.assertEqual(len(new_conformers), 9)
         self.assertEqual(symmetries, {(2, 3, 1, 12): 1, (4, 2, 3, 1): 1, (9, 4, 2, 3): 3})
 
         expected_new_conformers = [{'index': 3,
