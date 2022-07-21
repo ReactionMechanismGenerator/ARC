@@ -801,6 +801,27 @@ def get_extremum_index(lst: list,
     return extremum_index
 
 
+def sum_list_entries(lst: List[Union[int, float]],
+                     multipliers: Optional[List[Union[int, float]]] = None,
+                     ) -> Optional[float]:
+    """
+    Sum all entries in a list. If any entry is ``None``, return ``None``.
+    If ``multipliers`` is given, multiply each entry in ``lst`` by the respective multiplier entry.
+
+    Args:
+        lst (list): The list to process.
+        multipliers (list, optional): A list of multipliers.
+
+    Returns:
+        Optional[float]: The result.
+    """
+    if any(entry is None or not isinstance(entry, (int, float)) for entry in lst):
+        return None
+    if multipliers is None:
+        return sum(lst)
+    return float(np.dot(lst, multipliers + [1] * (len(lst) - len(multipliers))))
+
+
 def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
                                 list2: List[Union[float, int, None]],
                                 ) -> Tuple[List[Union[float, int]], List[Union[float, int]]]:
