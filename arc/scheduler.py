@@ -537,6 +537,9 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
                             self.end_job(job=job, label=label, job_name=job_name)
+                            if hasattr(job, 'yml_out_path'):
+                                for rxn in job.reactions:
+                                    rxn.ts_species.process_completed_tsg_queue_jobs(yml_path=job.yml_out_path)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
