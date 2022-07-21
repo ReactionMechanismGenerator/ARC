@@ -548,16 +548,9 @@ class Level(object):
             self.compatible_ess = list()
             ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
             ess_methods = {ess: [method.lower() for method in methods] for ess, methods in ess_methods.items()}
-            if self.method in ess_methods['gaussian']:
-                self.compatible_ess.append('gaussian')
-            if self.method in ess_methods['orca']:
-                self.compatible_ess.append('orca')
-            if self.method in ess_methods['qchem']:
-                self.compatible_ess.append('qchem')
-            if self.method in ess_methods['terachem']:
-                self.compatible_ess.append('terachem')
-            if self.method in ess_methods['molpro']:
-                self.compatible_ess.append('molpro')
+            for ess in supported_ess:
+                if ess in ess_methods and self.method in ess_methods[ess]:
+                    self.compatible_ess.append(ess)
 
 
 def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
