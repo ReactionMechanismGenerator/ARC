@@ -117,7 +117,16 @@ molpro:  # see https://www.molpro.net/info/release/doc/manual/node261.html for m
   - MRCI-F12
   - CISD
   - QCISD
-  - VPT2'
+  - VPT2
+  - CC2
+  - ADC(2)
+  - LT-DF-LCC2
+  - LT-DF-LADC(2)
+  - CCS
+  - CCSD
+  - CCSD(T)
+  - CCSDT
+  - CCSDT(Q)
 terachem:  # see http://www.petachem.com/doc/userguide.pdf for more info on terachem methods
   - rhf
   - svwn
@@ -151,3 +160,36 @@ xtb:
   - gfn2
 torchani:
   - torchani
+cfour:   # see http://slater.chemie.uni-mainz.de/cfour/index.php?n=Main.QuantumChemicalMethodInput
+  - MP2
+  - MP3
+  - SDQ-MP4
+  - MP4
+  - CID
+  - CISD
+  - QCISD
+  - QCISD(T)
+  - CCD
+  - CCSD
+  - CCSDT
+  - CCSDTQ
+  - CCSD+T(CCSD)
+  - CCSD(T)
+  - CCSDT-1
+  - CCSDT-1b
+  - CCSDT-2
+  - CCSDT-3
+  - CCSDT-4
+  - CC2
+  - CC3
+  - LCCD
+  - LCCSD
+  - UCC(4)
+  - B-CCD
+  - FCI
+  - CCSDTQP
+  - CCSDTQPH
+  - CCSDT(Q)
+  - CCSDT(Q)_A
+  - CCSDT(Q)_B
+  - CC4
