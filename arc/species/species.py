@@ -361,8 +361,6 @@ class ARCSpecies(object):
             self.consider_all_diastereomers = consider_all_diastereomers
             self.zmat = None
             self.preserve_param_in_scan = preserve_param_in_scan
-            if self.bdes is not None and not isinstance(self.bdes, list):
-                raise SpeciesError(f'The .bdes argument must be a list, got {self.bdes} which is a {type(self.bdes)}')
             self.rxn_label = rxn_label
             self.rxn_index = rxn_index
             self.successful_methods = list()
@@ -486,6 +484,15 @@ class ARCSpecies(object):
         for key in self.directed_rotors.keys():
             if key not in allowed_keys:
                 raise SpeciesError(f'Allowed keys for directed_rotors are {allowed_keys}. Got {key} for {self.label}')
+        if self.bdes is not None:
+            if not isinstance(self.bdes, list):
+                raise SpeciesError(f'The .bdes argument (of {self.label}) must be a list, '
+                                   f'got {self.bdes} which is a {type(self.bdes)}')
+            for bde in self.bdes:
+                if not bde == 'all_h' and not (isinstance(bde, (list, tuple)) and len(bde) == 2
+                                               and all(b and isinstance(b, int) for b in bde)):
+                    raise SpeciesError(f'Something is wrong with the .bdes attribute of {label}. '
+                                       f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
         if self.mol is not None and self.mol_list is None:
             self.set_mol_list()
