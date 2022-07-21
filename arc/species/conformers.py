@@ -1400,7 +1400,7 @@ def read_rdkit_embedded_conformer_i(rd_mol, i, rd_index_map=None):
 
 
 def rdkit_force_field(label: str,
-                      rd_mol: RDMol,
+                      rd_mol: Optional[RDMol],
                       mol: Optional[Molecule] = None,
                       num_confs: Optional[int] = None,
                       force_field: str = 'MMFF94s',
@@ -1428,6 +1428,8 @@ def rdkit_force_field(label: str,
             - Entries are float numbers representing the energies.
     """
     xyzs, energies = list(), list()
+    if rd_mol is None:
+        return xyzs, energies
     for i in range(rd_mol.GetNumConformers()):
         if optimize:
             v, j = 1, 0
