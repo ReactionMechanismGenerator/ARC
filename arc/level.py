@@ -523,12 +523,12 @@ class Level(object):
                         self.software = ess.lower()
 
         if self.software is None:
-            preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
+            preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem', 'cfour']
 
             if self.method_type in ['force_field', 'semiempirical']:
                 preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
             elif self.method_type in ['wavefunction']:
-                preferred_ess_order = ['molpro', 'gaussian', 'orca', 'qchem']
+                preferred_ess_order = ['molpro', 'gaussian', 'orca', 'cfour', 'qchem']
             elif self.method_type in ['composite']:
                 preferred_ess_order = ['gaussian']
             elif self.method_type in ['dft']:
