@@ -352,7 +352,7 @@ class JobAdapter(ABC):
             #   - Check that the HDF5 file is available, else raise an error.
             #   - Submit ARC workers with the HDF5 file.
             self.execute_queue()  # This is temporary until pipe is fully functional.
-        if not self.restrarted:
+        if not self.restarted:
             self._write_initiated_job_to_csv_file()
 
     def determine_job_array_parameters(self):
