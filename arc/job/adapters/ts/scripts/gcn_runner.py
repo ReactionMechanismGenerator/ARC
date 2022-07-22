@@ -25,7 +25,8 @@ def run_gcn(input_dict: dict):
     ts_species = ARCSpecies(species_dict=input_dict['ts_species'])
     ts_fwd_path = os.path.join(input_dict['local_path'], "TS_fwd.xyz")
     ts_rev_path = os.path.join(input_dict['local_path'], "TS_rev.xyz")
-    for _ in range(input_dict['repetitions']):
+    for i in range(input_dict['repetitions']):
+        print(f'Running GCN, iteration {i}')
         run_subprocess_locally(direction='F',
                                reactant_path=input_dict['reactant_path'],
                                product_path=input_dict['product_path'],
