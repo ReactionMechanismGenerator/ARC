@@ -162,7 +162,7 @@ echo "Current directory : $(pwd)"
 echo "============================================================"
 
 conda activate arc_env
-python gcn_runner.py --yml_in_path input.yml
+python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
 
 """,
     },
