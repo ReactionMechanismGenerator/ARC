@@ -45,6 +45,7 @@ def main(r_sdf_path: Optional[str] = None,
         p_sdf_path (str, optional): A path to the product .sdf file.
         ts_xyz_path (str, optional): A path to the output TS .xyz file.
     """
+    print('Running GCN script')
     if any(arg is None for arg in [r_sdf_path, p_sdf_path, ts_xyz_path]):
         # Parse command-line arguments
         args = parse_command_line_arguments()
