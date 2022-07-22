@@ -413,6 +413,7 @@ def determine_ess_status(output_path: str,
             error = error if error else 'TeraChem job terminated for an unknown reason.'
             keywords = keywords if keywords else ['Unknown']
             return 'errored', keywords, error, line
+
     return '', list(), '', ''
 
 
