@@ -227,6 +227,8 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
         job (JobAdapter): The frequency job object instance.
         amplitudes (Union[float, List[float]], optional): The factor(s) multiplication for the displacement.
     """
+    reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+    return
     if job is None:
         return
     if reaction.family is None:
