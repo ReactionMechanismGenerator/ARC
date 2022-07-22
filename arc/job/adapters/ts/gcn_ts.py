@@ -37,7 +37,6 @@ if TYPE_CHECKING:
 servers, submit_filenames, TS_GCN_PYTHON = settings['servers'], settings['submit_filenames'], settings['TS_GCN_PYTHON']
 
 DIHEDRAL_INCREMENT = 10
-GCN_RUNNER_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_runner.py')
 GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
 
 logger = get_logger()
@@ -224,9 +223,6 @@ class GCNAdapter(JobAdapter):
             self.files_to_upload.append(job_sh_dict)
         # 1.5 YAML input file
         self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
-        # 1.6 Python script
-        self.files_to_upload.append(self.get_file_property_dictionary(file_name='gcn_runner.py',
-                                                                      local=GCN_RUNNER_PATH))
         # 2. ** Download **
         # 2.1. HDF5 file
         if self.iterate_by and os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
@@ -301,10 +297,6 @@ class GCNAdapter(JobAdapter):
                           }
             save_yaml_file(path=self.yml_in_path, content=input_dict)
             self.legacy_queue_execution()
-            # todo: add a parser to Scheduler using the funcs below
-            # add test to all functions here
-            # test live on Atlas
-            # Docs: to runs GCN in queue, need ARC to be installed correctly on the server
         elif exe_type == 'incore':
             for _ in range(self.repetitions):
                 run_subprocess_locally(direction='F',
