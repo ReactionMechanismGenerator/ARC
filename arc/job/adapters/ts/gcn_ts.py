@@ -255,16 +255,16 @@ class GCNAdapter(JobAdapter):
         Execute a job incore.
         """
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
-        self.execute(exe_type='incore')
+        self.execute_gcn(exe_type='incore')
         self.final_time = datetime.datetime.now()
 
     def execute_queue(self):
         """
         Execute a job to the server's queue.
         """
-        self.execute(exe_type='queue')
+        self.execute_gcn(exe_type='queue')
 
-    def execute(self, exe_type: str = 'incore'):
+    def execute_gcn(self, exe_type: str = 'incore'):
         """
         Execute a job either incore or to the queue.
 
