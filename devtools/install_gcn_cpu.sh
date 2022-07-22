@@ -20,6 +20,8 @@ echo $PYTHONPATH
 echo "Creating the GCN-cpu environment..."
 source ~/.bashrc
 bash devtools/create_env_cpu.sh
+conda activate ts_gcn
+conda env update -f devtools/cpu_environment.yml
 
 # Restore the original directory
 cd ../ARC || exit
