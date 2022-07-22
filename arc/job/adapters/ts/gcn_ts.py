@@ -295,6 +295,7 @@ class GCNAdapter(JobAdapter):
                           'repetitions': self.repetitions,
                           'ts_species': rxn.ts_species.as_dict(),
                           }
+            logger.info(f'self.yml_in_path: {self.yml_in_path}')
             save_yaml_file(path=self.yml_in_path, content=input_dict)
             self.legacy_queue_execution()
         elif exe_type == 'incore':
