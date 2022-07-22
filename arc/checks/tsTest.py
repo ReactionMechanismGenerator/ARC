@@ -12,7 +12,7 @@ import shutil
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, almost_equal_lists
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser import parse_normal_mode_displacement
@@ -350,7 +350,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                    sp_level=Level(repr='uhf/3-21g'),
                                    freq_scale_factor=1.0,
                                    )
-        self.assertTrue(check_e0)
+        self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
@@ -593,23 +593,23 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                                                     p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
                                                                                ARCSpecies(label='C2H5', smiles='C[CH2]')])
                                                )
-        self.assertEqual(rms, [0.0,                     # 0
-                               0.0008785397004602187,   # 1
-                               0.0034115627396496605,   # 2
-                               0.004483671853664259,    # 3 * (the abstracting O)
-                               0.0,                     # 4
-                               0.0,                     # 5
-                               0.00022485182747281122,  # 6
-                               0.0,                     # 7
-                               0.00022485182747281122,  # 8
-                               0.0008785397004602187,    # 9
-                               0.0076083769883172085,   # 10 * (the abstracting C)
-                               0.00022485182747281122,  # 11
-                               0.0,                     # 12
-                               0.00022485182747281122,  # 13
-                               0.021950421894561232,    # 14 * (the abstracted H)
-                               0.0027261835255033436,   # 15
-                               0.002790337797642228])   # 16
+        self.assertTrue(almost_equal_lists(rms, [0.0,                    # 0
+                                                 0.039223801763523365,   # 1
+                                                 0.15236541607924428,    # 2
+                                                 0.20024738798047312,    # 3 * (the abstracting O)
+                                                 0.0,                    # 4
+                                                 0.0,                    # 5
+                                                 0.010042962189013961,   # 6
+                                                 0.0,                    # 7
+                                                 0.010042962189013961,   # 8
+                                                 0.039223801763523365,   # 9
+                                                 0.33968808760216107,    # 10 * (the abstracting C)
+                                                 0.010042962189013961,   # 11
+                                                 0.0,                    # 12
+                                                 0.010042962189013961,   # 13
+                                                 0.9804112316882941,     # 14 * (the abstracted H)
+                                                 0.12176444538905733,    # 15
+                                                 0.12462988320468919]))  # 16
 
     def test_get_index_of_abs_largest_neg_freq(self):
         """Test the get_index_of_abs_largest_neg_freq() function."""

@@ -8,6 +8,7 @@ from typing import Optional, Type
 
 from rmgpy.species import Species
 
+import arkane.encorr.data as data
 import arkane.input
 from arkane.input import (reaction as arkane_reaction,
                           species as arkane_input_species,
@@ -64,8 +65,8 @@ class ArkaneAdapter(StatmechAdapter):
                  bac_type: Optional[str],
                  sp_level: Optional[Level] = None,
                  freq_scale_factor: float = 1.0,
-                 species: Type[ARCSpecies] = None,
-                 reaction: Type[ARCReaction] = None,
+                 species: ARCSpecies = None,
+                 reaction: ARCReaction = None,
                  species_dict: dict = None,
                  T_min: tuple = None,
                  T_max: tuple = None,
@@ -131,7 +132,7 @@ class ArkaneAdapter(StatmechAdapter):
                 raise ValueError('Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
-            raise InputError('Cannot not compute thermo without a species object.')
+            raise InputError('Cannot compute thermo without a species object.')
 
         arkane_output_path = self.generate_arkane_species_file(species=self.species,
                                                                bac_type=self.bac_type,
@@ -171,6 +172,7 @@ class ArkaneAdapter(StatmechAdapter):
     def compute_high_p_rate_coefficient(self,
                                         skip_rotors: bool = False,
                                         estimate_dh_rxn: bool = False,
+                                        require_ts_convergence: bool = True,
                                         verbose: bool = True,
                                         ) -> None:
         """
@@ -182,11 +184,12 @@ class ArkaneAdapter(StatmechAdapter):
             estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
                                               Useful for checking that the reaction could in principle be computed even
                                               when thermodynamic properties of reactants and products were still not computed.
+            require_ts_convergence (bool, optional): Whether to attempt computing a rate only for converged TS species.
             verbose (bool, optional): Whether to log messages. Default: ``True``.
         """
         arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
         ts_species = self.species_dict[self.reaction.ts_label]
-        if self.output_dict[ts_species.label]['convergence']:
+        if self.output_dict[ts_species.label]['convergence'] or not require_ts_convergence:
             success = True
             arkane_output_path = self.generate_arkane_species_file(species=ts_species,
                                                                    bac_type=None,
@@ -198,7 +201,8 @@ class ArkaneAdapter(StatmechAdapter):
                                                  arkane_output_path=arkane_output_path,
                                                  bac_type=None,
                                                  sp_level=self.sp_level,
-                                                 plot=False)
+                                                 plot=False,
+                                                 )
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
@@ -208,10 +212,10 @@ class ArkaneAdapter(StatmechAdapter):
                          checks=['energy', 'freq'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
-                if not ts_passed_all_checks(species=self.reaction.ts_species,
-                                            exemptions=['warnings', 'IRC', 'E0'],
-                                            verbose=True,
-                                            ):
+                if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
+                                                                       exemptions=['warnings', 'IRC', 'E0'],
+                                                                       verbose=True,
+                                                                       ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     return None
@@ -243,8 +247,12 @@ class ArkaneAdapter(StatmechAdapter):
                                              products=product_labels,
                                              transitionState=self.reaction.ts_label,
                                              tunneling='Eckart')
-                kinetics_job = KineticsJob(reaction=arkane_rxn, Tmin=self.T_min, Tmax=self.T_max, Tcount=self.T_count,
-                                           three_params=self.three_params)
+                kinetics_job = KineticsJob(reaction=arkane_rxn,
+                                           Tmin=self.T_min,
+                                           Tmax=self.T_max,
+                                           Tcount=self.T_count,
+                                           three_params=self.three_params,
+                                           )
                 if verbose:
                     if self.three_params:
                         msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
@@ -304,7 +312,7 @@ class ArkaneAdapter(StatmechAdapter):
         stat_mech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
         if bac_type is not None:
             stat_mech_job.bondEnergyCorrectionType = bac_type
-        if sp_level is None:
+        if sp_level is None or not self.arkane_has_en_corr():
             # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
             stat_mech_job.applyAtomEnergyCorrections = False
         else:
@@ -487,6 +495,29 @@ class ArkaneAdapter(StatmechAdapter):
             species.arkane_file = None
 
         return arkane_output_path
+
+    def arkane_has_en_corr(self):
+        """
+        Check whether Arkane has atomic energy corrections (AEC) for the sp_level.
+
+        Returns:
+            bool: Whether Arkane has the respective AEC values.
+        """
+        arkane_energy_level = self.sp_level.to_arkane_level_of_theory()
+        arkane_energy_level = getattr(arkane_energy_level, 'energy', arkane_energy_level)
+        try:
+            atom_energies = data.atom_energies[arkane_energy_level]
+        except KeyError:
+            try:
+                atom_energies = data.atom_energies[arkane_energy_level.simple()]
+            except KeyError:
+                return False
+        if (self.reaction is not None
+            and any(symbol not in atom_energies for symbol in self.reaction.ts_species.get_xyz()['symbols'])) \
+                or (self.species is not None
+                    and any(symbol not in atom_energies for symbol in self.species.get_xyz()['symbols'])):
+            return False
+        return True
 
 
 def clean_output_directory(species_path: str,

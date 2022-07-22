@@ -106,9 +106,8 @@ class TestARC(unittest.TestCase):
                                         'method_type': 'dft',
                                         'software': 'gaussian'},
                          'freq_scale_factor': 0.967,
-                         'irc_level': {'basis': 'def2tzvp',
-                                       'compatible_ess': ['gaussian', 'terachem'],
-                                       'method': 'wb97xd',
+                         'irc_level': {'basis': '6-311+g(3df,2p)',
+                                       'method': 'b3lyp',
                                        'method_type': 'dft',
                                        'software': 'gaussian'},
                          'job_memory': 14,
@@ -349,6 +348,7 @@ class TestARC(unittest.TestCase):
         arc12 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True}, compute_thermo=False)
         self.assertIsNone(arc12.scan_level)
+        self.assertEqual(arc12.freq_level.simple(), 'b3lyp/sto-3g')
         self.assertEqual(arc12.orbitals_level.simple(), 'wb97x-d3/def2tzvp')
 
         # Test using specified scan level

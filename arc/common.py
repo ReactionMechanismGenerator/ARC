@@ -801,6 +801,27 @@ def get_extremum_index(lst: list,
     return extremum_index
 
 
+def sum_list_entries(lst: List[Union[int, float]],
+                     multipliers: Optional[List[Union[int, float]]] = None,
+                     ) -> Optional[float]:
+    """
+    Sum all entries in a list. If any entry is ``None``, return ``None``.
+    If ``multipliers`` is given, multiply each entry in ``lst`` by the respective multiplier entry.
+
+    Args:
+        lst (list): The list to process.
+        multipliers (list, optional): A list of multipliers.
+
+    Returns:
+        Optional[float]: The result.
+    """
+    if any(entry is None or not isinstance(entry, (int, float)) for entry in lst):
+        return None
+    if multipliers is None:
+        return sum(lst)
+    return float(np.dot(lst, multipliers + [1] * (len(lst) - len(multipliers))))
+
+
 def sort_two_lists_by_the_first(list1: List[Union[float, int, None]],
                                 list2: List[Union[float, int, None]],
                                 ) -> Tuple[List[Union[float, int]], List[Union[float, int]]]:
@@ -912,7 +933,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
         return False
     for entry1, entry2 in zip(iter1, iter2):
         if isinstance(entry1, (list, tuple, np.ndarray)) and isinstance(entry2, (list, tuple, np.ndarray)):
-            return almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol)
+            if not almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol):
+                return False
         else:
             if isinstance(entry1, (int, float)) and isinstance(entry2, (int, float)):
                 if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
@@ -1224,6 +1246,24 @@ def get_ordered_intersection_of_two_lists(l1: list,
         l3 = [v for v in l3 if v not in lookup and lookup.add(v) is None]
 
     return l3
+
+
+def is_angle_linear(angle: float,
+                    tolerance: float = 0.9,
+                    ) -> bool:
+    """
+    Check whether an angle is close to 180 or 0 degrees.
+
+    Args:
+        angle (float): The angle in degrees.
+        tolerance (float): The tolerance to consider.
+
+    Returns:
+        bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
+    """
+    if 180 - tolerance < angle <= 180 or 0 <= angle < tolerance:
+        return True
+    return False
 
 
 def get_angle_in_180_range(angle: float,

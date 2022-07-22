@@ -1417,21 +1417,6 @@ class TestZMat(unittest.TestCase):
         self.assertTrue(zmat.is_dummy(z, zmat_index=2))
         self.assertFalse(zmat.is_dummy(z, zmat_index=3))
 
-    def test_is_angle_linear(self):
-        """Test whether an angle is close to 180 or 0 degrees"""
-        angle = 180.0
-        self.assertTrue(zmat.is_angle_linear(angle))
-        angle = 179.8
-        self.assertTrue(zmat.is_angle_linear(angle))
-        angle = 0.01
-        self.assertTrue(zmat.is_angle_linear(angle))
-        angle = 0.9
-        self.assertFalse(zmat.is_angle_linear(angle))
-        angle = 150.0
-        self.assertFalse(zmat.is_angle_linear(angle))
-        angle = 3.0
-        self.assertTrue(zmat.is_angle_linear(angle=angle, tolerance=5.0))
-
     def test_compare_zmats(self):
         """Test zmats comparison"""
         # a simple case of two identical H2 zmats

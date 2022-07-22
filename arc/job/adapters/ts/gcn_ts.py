@@ -150,7 +150,7 @@ class GCNAdapter(JobAdapter):
         self.conformer = conformer
         self.constraints = constraints or list()
         self.cpu_cores = cpu_cores
-        self.dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
+        self.repetitions = int(dihedral_increment or DIHEDRAL_INCREMENT)
         self.dihedrals = dihedrals
         self.directed_scan_type = directed_scan_type
         self.ess_settings = ess_settings
@@ -178,7 +178,6 @@ class GCNAdapter(JobAdapter):
         self.tsg = tsg
         self.xyz = xyz
         self.times_rerun = times_rerun
-        self.repetitions = int(dihedral_increment)
 
         self.species_label = self.reactions[0].ts_species.label if self.reactions[0].ts_species is not None \
             else f'TS_{self.job_num}'  # The ts_species attribute should be initialized in a normal ARC run

@@ -12,7 +12,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, almost_equal_lists
 from arc.exceptions import ReactionError
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
@@ -514,6 +514,14 @@ class TestARCReaction(unittest.TestCase):
                             r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='HO2', smiles='O[O]')],
                             p_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='OH', smiles='[OH]')])
         self.assertEqual(rxn_4.multiplicity, 1)
+
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
+                                       ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
 
     def test_check_atom_balance(self):
         """Test the Reaction check_atom_balance method"""
@@ -1632,6 +1640,54 @@ H       1.12853146   -0.86793870    0.06973060"""
                             p_species=[ARCSpecies(label='C3_2', smiles='C[CH]C')])
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
+
+    def tests_white_space_in_reaction_label(self):
+        """Test that an extra white space in the reaction label does not confuse ARC."""
+        hno = ARCSpecies(label='HNO', smiles='N=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        no = ARCSpecies(label='NO', smiles='[N]=O')
+        nh2oh = ARCSpecies(label='NH2OH', smiles='NO')
+        rxn_1 = ARCReaction(label='HNO + H2NO <=> NO + NH2OH ',
+                            r_species=[hno, h2no], p_species=[no, nh2oh],
+                            )
+        self.assertEqual(rxn_1.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_1.products, ['NH2OH', 'NO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'HNO + H2NO <=> NO + NH2OH '},
+                            species_list=[hno, h2no, no, nh2oh],
+                            )
+        self.assertEqual(rxn_2.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_2.products, ['NH2OH', 'NO'])
+
+    def tests_special_characters_in_reaction_label(self):
+        """Test that the respective species objects can be identified from a reaction label with a special character."""
+        no2 = ARCSpecies(label='NO2', smiles='[O]N=O')
+        nh3o = ARCSpecies(label='[O-][NH3+]', smiles='[O-][NH3+]')
+        hono = ARCSpecies(label='HONO', smiles='ON=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        rxn_1 = ARCReaction(label='NO2 + [O-][NH3+] <=> HONO + H2NO',
+                            r_species=[no2, nh3o], p_species=[hono, h2no],
+                            )
+        self.assertEqual(rxn_1.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_1.products, ['H2NO', 'HONO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'NO2 + [O-][NH3+] <=> HONO + H2NO'},
+                            species_list=[no2, nh3o, hono, h2no],
+                            )
+        self.assertEqual(rxn_2.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_2.products, ['H2NO', 'HONO'])
+
+    def test_get_element_masses(self):
+        """Test the get_element_masses() method."""
+        self.assertTrue(almost_equal_lists(self.rxn1.get_element_mass(),
+                                           [12.0, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn2.get_element_mass(),
+                                           [12.0, 12.0, 1.00782503224, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn3.get_element_mass(),
+                                           [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 1.00782503224, 1.00782503224]))
 
 
 def check_atom_map(rxn: ARCReaction) -> bool:

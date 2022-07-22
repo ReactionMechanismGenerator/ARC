@@ -16,6 +16,7 @@ from arc.common import (ARC_PATH,
                         get_logger,
                         get_bonds_from_dmat,
                         read_yaml_file,
+                        sum_list_entries,
                         )
 from arc.imports import settings
 from arc.species.converter import displace_xyz, xyz_to_dmat
@@ -125,7 +126,8 @@ def check_ts_energy(reaction: 'ARCReaction',
             ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
             p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
             logger.info(
-                f'\nReaction {reaction.label} (TS {reaction.ts_label}) has the following path electronic energy:\n'
+                f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
+                f'has the following path electronic energy:\n'
                 f'Reactants: {r_text}\n'
                 f'TS: {ts_text}\n'
                 f'Products: {p_text}')
@@ -141,13 +143,14 @@ def check_ts_energy(reaction: 'ARCReaction',
                 logger.error(f'TS of reaction {reaction.label} has a lower electronic energy value than expected.')
                 reaction.ts_species.ts_checks['e_elect'] = False
                 return
-    # We don't have any params (they are all ``None``)
+    # We don't have any params (some are ``None``)
     if verbose:
         logger.info('\n')
-        logger.error(f"Could not get electronic energy of all species in reaction {reaction.label}. Cannot check TS.\n")
+        logger.warning(f"Could not get electronic energy for all species in reaction {reaction.label}.\n")
     # We don't really know.
     reaction.ts_species.ts_checks['e_elect'] = None
-    reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
+    if 'Could not determine TS e_elect relative to the wells; ' not in reaction.ts_species.ts_checks['warnings']:
+        reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
 
 def check_rxn_e0(reaction: 'ARCReaction',
@@ -174,14 +177,14 @@ def check_rxn_e0(reaction: 'ARCReaction',
         Optional[bool]: Whether the test failed and the scheduler should switch to a different TS guess,
                         ``None`` if the test couldn't be performed.
     """
-    for spc_label in reaction.reactants + reaction.products + [reaction.ts_label]:
-        folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
-        freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-        if not os.path.isfile(freq_path) and not species_dict[spc_label].is_monoatomic():
+    for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
+        folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
+        freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
+        if not spc.yml_path and not os.path.isfile(freq_path) and not species_dict[spc.label].is_monoatomic():
             return None
     considered_labels = list()
     rxn_copy = reaction.copy()
-    for species in rxn_copy.r_species + rxn_copy.p_species:
+    for species in rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]:
         if species.label in considered_labels:
             continue
         considered_labels.append(species.label)
@@ -197,23 +200,12 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
-                                        output_directory=os.path.join(project_directory, 'output'),
-                                        output_dict=output,
-                                        bac_type=None,
-                                        sp_level=sp_level,
-                                        freq_scale_factor=freq_scale_factor,
-                                        reaction=rxn_copy,
-                                        species_dict=species_dict,
-                                        T_min=(500, 'K'),
-                                        T_max=(1000, 'K'),
-                                        T_count=6,
-                                        )
-    statmech_adapter.compute_high_p_rate_coefficient(skip_rotors=True,
-                                                     estimate_dh_rxn=True,
-                                                     verbose=True,
-                                                     )
-    if rxn_copy.kinetics is None:
+    r_e0 = sum_list_entries([r.e0 for r in rxn_copy.r_species],
+                            multipliers=[rxn_copy.get_species_count(species=r, well=0) for r in rxn_copy.r_species])
+    p_e0 = sum_list_entries([p.e0 for p in rxn_copy.p_species],
+                            multipliers=[rxn_copy.get_species_count(species=p, well=1) for p in rxn_copy.p_species])
+    if any(e0 is None for e0 in [r_e0, p_e0, rxn_copy.ts_species.e0]) \
+            or r_e0 >= rxn_copy.ts_species.e0 or p_e0 >= rxn_copy.ts_species.e0:
         reaction.ts_species.ts_checks['E0'] = False
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
@@ -386,7 +378,7 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
                                   ) -> List[float]:
     """
     Get the root mean squares of the normal mode displacements.
-    Use atom mass weights if `reaction` is given.
+    Use atom mass weights if ``reaction`` is given.
 
     Args:
         normal_mode_disp (np.ndarray): The normal mode displacement array.
@@ -396,15 +388,10 @@ def get_rms_from_normal_mode_disp(normal_mode_disp: np.ndarray,
     Returns:
         List[float]: The RMS of the normal mode displacements.
     """
-    rms, masses = list(), list()
     mode_index = get_index_of_abs_largest_neg_freq(freqs)
     nmd = normal_mode_disp[mode_index]
-    if reaction is not None:
-        for reactant in reaction.r_species:
-            for atom in reactant.mol.atoms:
-                masses.append(atom.element.mass)
-    else:
-        masses = [1] * len(nmd)
+    masses = reaction.get_element_mass() if reaction is not None else [1] * len(nmd)
+    rms = list()
     for i, entry in enumerate(nmd):
         rms.append(((entry[0] ** 2 + entry[1] ** 2 + entry[2] ** 2) ** 0.5) * masses[i] ** 0.55)
     return rms

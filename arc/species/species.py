@@ -6,6 +6,7 @@ If the species is a transition state (TS), its ``ts_guesses`` attribute will hav
 import datetime
 import numpy as np
 import os
+from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
 import rmgpy.molecule.element as elements
@@ -19,12 +20,14 @@ from rmgpy.species import Species
 from rmgpy.statmech import NonlinearRotor, LinearRotor
 from rmgpy.transport import TransportData
 
-from arc.common import (convert_list_index_0_to_1,
+from arc.common import (almost_equal_coords,
+                        convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
                         get_logger,
                         get_single_bond_length,
                         generate_resonance_structures,
+                        is_angle_linear,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
@@ -42,6 +45,7 @@ from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
                                    check_zmat_dict,
+                                   compare_confs,
                                    get_xyz_radius,
                                    modify_coords,
                                    molecules_from_xyz,
@@ -53,7 +57,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str,
                                    )
-from arc.species.vectors import calculate_distance, calculate_dihedral_angle
+from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
 
@@ -330,7 +334,7 @@ class ARCSpecies(object):
         self.run_time = run_time
         self.checkfile = checkfile
         self.transport_data = TransportData()
-        self.yml_path = None
+        self.yml_path = yml_path
         self.fragments = fragments
         self.original_label = None
         self.chosen_ts = None
@@ -1286,6 +1290,10 @@ class ARCSpecies(object):
             raise ValueError('Cannot set dihedral without xyz')
         if deg_increment is not None:
             deg_abs = calculate_dihedral_angle(coords=xyz, torsion=torsion) + deg_increment
+        if is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[:3], index=0)) \
+                or is_angle_linear(calculate_angle(coords=xyz, atoms=torsion[1:], index=0)):
+            logger.warning(f'Cannot change a dihedral that contains a linear segment. Got torsion:{torsion}, xyz:\n{xyz}')
+            return None
         mol = self.mol
         if mol is None:
             mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
@@ -1422,8 +1430,29 @@ class ARCSpecies(object):
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
                 for unsuccessful_method in self.unsuccessful_methods:
                     self.ts_report += unsuccessful_method + ','
-            self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
-                              f'optimization: {self.chosen_ts_method}\n'
+            if not self.ts_guesses_exhausted:
+                self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
+                                  f'optimization: {self.chosen_ts_method}\n'
+
+    def cluster_tsgs(self):
+        """
+        Cluster TSGuesses.
+        """
+        if not self.is_ts or not len(self.ts_guesses):
+            return None
+        cluster_tsgs = list()
+        for tsg in self.ts_guesses:
+            for cluster_tsg in cluster_tsgs:
+                if cluster_tsg.almost_equal_tsgs(tsg):
+                    cluster_tsg.cluster.append(tsg.index)
+                    if tsg.method not in cluster_tsg.method:
+                        cluster_tsg.method += f' + {tsg.method}'
+                        cluster_tsg.execution_time += f' + {tsg.execution_time}'
+                    break
+            else:
+                tsg.cluster = [tsg.index]
+                cluster_tsgs.append(tsg)
+        self.ts_guesses = cluster_tsgs
 
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
@@ -1538,7 +1567,9 @@ class ARCSpecies(object):
                 for xyz, energy in zip(xyzs, energies):
                     self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
                                                    xyz=remove_dummies(xyz),
-                                                   energy=energy))
+                                                   energy=energy,
+                                                   success=True,
+                                                   ))
                     # user guesses are always successful in generating a *guess*:
                     self.ts_guesses[tsg_index].success = True
                     tsg_index += 1
@@ -1933,6 +1964,7 @@ class TSGuess(object):
         successful_irc (bool): Whether the IRS run(s) identified this to be the correct TS by isomorphism of the wells.
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
+        cluster (List[int]): Indices of TSGuess object instances clustered together.
     """
 
     def __init__(self,
@@ -1950,6 +1982,7 @@ class TSGuess(object):
                  arc_reaction: Optional = None,
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
+                 cluster: Optional[List[int]] = None,
                  ):
 
         if ts_dict is not None:
@@ -1969,6 +2002,7 @@ class TSGuess(object):
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
+            self.cluster = cluster
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -1983,13 +2017,35 @@ class TSGuess(object):
             self.successful_normal_mode = None
             self.errors = ''
 
-    def as_dict(self) -> dict:
-        """A helper function for dumping this object as a dictionary in a YAML file for restarting ARC"""
+    def __str__(self) -> str:
+        """Return a string representation of the object"""
+        str_representation = 'TSGuess('
+        str_representation += f'index={self.index}, '
+        str_representation += f'method="{self.method}", '
+        str_representation += f'method_index={self.method_index}, '
+        str_representation += f'method_direction="{self.method_direction}", '
+        if self.cluster is not None:
+            str_representation += f'cluster="{self.cluster}", '
+        str_representation += f'success={self.success})'
+        return str_representation
+
+    def as_dict(self, for_report: bool = False) -> dict:
+        """
+        A helper function for dumping this object as a dictionary.
+
+        Args:
+            for_report (bool, optional): Whether to generate a concise dictionary representation
+                                         for the final_ts_guess_report.
+
+        Returns:
+            dict: The dictionary representation.
+        """
         ts_dict = dict()
-        ts_dict['t0'] = str(self.t0.isoformat()) if isinstance(self.t0, datetime.datetime) else self.t0
         ts_dict['method'] = self.method
         ts_dict['method_index'] = self.method_index
         ts_dict['method_direction'] = self.method_direction
+        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
+            else self.execution_time
         ts_dict['success'] = self.success
         ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
@@ -1997,22 +2053,24 @@ class TSGuess(object):
         ts_dict['conformer_index'] = self.conformer_index
         ts_dict['successful_irc'] = self.successful_irc
         ts_dict['successful_normal_mode'] = self.successful_normal_mode
-        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
-            else self.execution_time
-        if self.initial_xyz:
+        if self.initial_xyz or for_report:
             ts_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
-        if self.opt_xyz:
+        if self.opt_xyz or for_report:
             ts_dict['opt_xyz'] = xyz_to_str(self.opt_xyz)
-        if self.family is not None:
-            ts_dict['family'] = self.family
-        if self.rmg_reaction is not None:
-            rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
-                                                   for spc in self.rmg_reaction.reactants]),
-                                       ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
-                                                   for spc in self.rmg_reaction.products])])
-            ts_dict['rmg_reaction'] = rxn_string
-        if self.errors:
-            ts_dict['errors'] = self.errors
+        if not for_report:
+            ts_dict['t0'] = str(self.t0.isoformat()) if isinstance(self.t0, datetime.datetime) else self.t0
+            if self.cluster is not None:
+                ts_dict['cluster'] = self.cluster
+            if self.family is not None:
+                ts_dict['family'] = self.family
+            if self.rmg_reaction is not None:
+                rxn_string = ' <=> '.join([' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                       for spc in self.rmg_reaction.reactants]),
+                                           ' + '.join([spc.molecule[0].copy(deep=True).to_smiles()
+                                                       for spc in self.rmg_reaction.products])])
+                ts_dict['rmg_reaction'] = rxn_string
+            if self.errors:
+                ts_dict['errors'] = self.errors
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2027,6 +2085,7 @@ class TSGuess(object):
         self.opt_xyz = ts_dict['opt_xyz'] if 'opt_xyz' in ts_dict else None
         self.success = ts_dict['success'] if 'success' in ts_dict else None
         self.energy = ts_dict['energy'] if 'energy' in ts_dict else None
+        self.cluster = ts_dict['cluster'] if 'cluster' in ts_dict else None
         self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
@@ -2091,6 +2150,48 @@ class TSGuess(object):
             if isinstance(xyz, str):
                 xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
             self.initial_xyz = check_xyz_dict(xyz)
+
+    def get_xyz(self,
+                return_format: str = 'dict',
+                ) -> Optional[Union[dict, str]]:
+        """
+        Get the highest quality xyz the TSGuess has.
+        Returns ``None`` if no xyz can be retrieved.
+
+        Args:
+            return_format (str, optional): Whether to output a 'dict' or a 'str' representation of the respective xyz.
+
+        Return:
+             Optional[Union[dict, str]]: The xyz coordinates in the requested representation.
+        """
+        xyz = self.opt_xyz or self.initial_xyz
+        if return_format == 'str':
+            xyz = xyz_to_str(xyz)
+        return xyz
+
+    def almost_equal_tsgs(self, other: 'TSGuess') -> bool:
+        """
+        Determine whether two TSGuess object instances represent the same geometry.
+
+        Args:
+            other (TSGuess): The other TSGuess object instance to compare to.
+
+        Returns:
+            bool: Whether the two TSGuess object instances represent the same geometry.
+        """
+        if self.success != other.success or \
+                (self.energy is not None and other.energy is not None
+                 and not isclose(self.energy, other.energy, abs_tol=0.1)) or \
+                (self.imaginary_freqs is not None and other.imaginary_freqs is not None
+                 and (len(self.imaginary_freqs) != len(other.imaginary_freqs)
+                      or len(self.imaginary_freqs) == len(other.imaginary_freqs)
+                      and any([not isclose(freq_1, freq_2, abs_tol=0.1)
+                               for freq_1, freq_2 in zip(self.imaginary_freqs, other.imaginary_freqs)]))):
+            return False
+        if almost_equal_coords(xyz1=self.get_xyz(), xyz2=other.get_xyz()) \
+                or compare_confs(xyz1=self.get_xyz(), xyz2=other.get_xyz(), rmsd_score=False):
+            return True
+        return False
 
     def tic(self):
         """

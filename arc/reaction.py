@@ -4,6 +4,7 @@ A module for representing a reaction.
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+from arkane.common import get_element_mass
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -40,10 +41,10 @@ class ARCReaction(object):
     Args:
         label (str, optional): The reaction's label in the format `r1 + r2 <=> p1 + p2`
                                (or unimolecular on either side, as appropriate).
-        reactants (list, optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        products (list, optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (list, optional): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (list, optional): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (List[str], optional): A list of reactant *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        products (List[str], optional): A list of product *labels* corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (List[ARCSpecies], optional): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (List[ARCSpecies], optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
@@ -61,10 +62,10 @@ class ARCReaction(object):
                      (or unimolecular on either side, as appropriate).
         family (KineticsFamily): The RMG kinetic family, if applicable.
         family_own_reverse (bool): Whether the RMG family is its own reverse.
-        reactants (list): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
-        products (list): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
-        r_species (list): A list of reactants :ref:`ARCSpecies <species>` objects.
-        p_species (list): A list of products :ref:`ARCSpecies <species>` objects.
+        reactants (List[str]): A list of reactants labels corresponding to an :ref:`ARCSpecies <species>`.
+        products (List[str]): A list of products labels corresponding to an :ref:`ARCSpecies <species>`.
+        r_species (List[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
+        p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
         dh_rxn298 (float): The heat of reaction at 298K.
         kinetics (Arrhenius): The high pressure limit rate coefficient calculated by ARC.
@@ -362,18 +363,23 @@ class ARCReaction(object):
                     self.products = products.split(self.plus)
                 else:
                     self.products = [products]
+                self.reactants = [reactant.strip() for reactant in self.reactants]
+                self.products = [product.strip() for product in self.products]
                 if species_list is not None:
                     if len(self.reactants) and len(self.products):
                         labels = [spc.label for spc in species_list]
+                        original_labels = [spc.original_label for spc in species_list]
                         for spc_label in self.reactants + self.products:
-                            if spc_label not in labels:
+                            if spc_label not in labels + original_labels:
                                 raise ValueError(f'The species {spc_label} appears in the reaction label\n'
                                                  f'{self.label}\n'
                                                  f'Yet no species with a corresponding label was defined in ARC.')
                     if not len(self.r_species) and len(self.reactants):
-                        self.r_species = [spc for spc in species_list if spc.label in self.reactants]
+                        self.r_species = [spc for spc in species_list if spc.label in self.reactants
+                                          or spc.original_label in self.reactants]
                     if not len(self.p_species) and len(self.products):
-                        self.p_species = [spc for spc in species_list if spc.label in self.products]
+                        self.p_species = [spc for spc in species_list if spc.label in self.products
+                                          or spc.original_label in self.products]
             elif self.rmg_reaction is not None:
                 self.reactants = [r.label for r in self.rmg_reaction.reactants]
                 self.products = [p.label for p in self.rmg_reaction.products]
@@ -764,7 +770,7 @@ class ARCReaction(object):
 
     def get_expected_changing_bonds(self,
                                     r_label_dict: Dict[str, int],
-                                    ) -> Tuple[Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]]]:
+                                    ) -> Tuple[Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
         """
         Get the expected forming and breaking bonds from the RMG reaction template.
 
@@ -773,7 +779,7 @@ class ARCReaction(object):
                                            of atoms in a TemplateReaction.
 
         Returns:
-            Tuple[List[Tuple[int, ...]], List[Tuple[int, ...]]]:
+            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
         if self.family is None:
@@ -889,6 +895,19 @@ class ARCReaction(object):
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict
+
+    def get_element_mass(self) -> List[float]:
+        """
+        Get the mass of all elements of a reaction. Uses the ato order of the reactants.
+
+        Returns:
+            List[float]: The RMS of the normal mode displacements.
+        """
+        masses = list()
+        for reactant in self.r_species:
+            for atom in reactant.mol.atoms:
+                masses.append(get_element_mass(atom.element.symbol)[0])
+        return masses
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:

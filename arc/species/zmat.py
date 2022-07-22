@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from rmgpy.molecule.molecule import Molecule
 
-from arc.common import get_logger, key_by_val, determine_top_group_indices
+from arc.common import get_logger, is_angle_linear, key_by_val, determine_top_group_indices
 from arc.exceptions import ZMatError
 from arc.species.vectors import calculate_distance, calculate_angle, calculate_dihedral_angle, get_vector_length
 
@@ -247,7 +247,7 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
                 if len(top) >= 2:
                     # Calculate the angle formed with the index_atom.
                     angle = calculate_angle(coords=xyz['coords'], atoms=[atom_index] + top[-2:], index=0, units='degs')
-                    if not is_angle_linear(angle):
+                    if not is_angle_linear(angle, tolerance=TOL_180):
                         linear = False
                         if len(top) >= 3:
                             # If it's not linear and there are 3 or more atoms, we have all the info that we need.
@@ -390,7 +390,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                             b_neighbors = connectivity[atom_b]
                             atom_a = b_neighbors[0] if b_neighbors[0] != atom_c else b_neighbors[1]
                             angle = calculate_angle(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                            if is_angle_linear(angle):
+                            if is_angle_linear(angle, tolerance=TOL_180):
                                 # A -- B -- C is linear, change indices and test angle E -- A -- B instead.
                                 atom_c = atom_b
                                 atom_b = atom_a
@@ -431,7 +431,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                             and (j in list(zmat['map'].keys()) and not is_dummy(zmat, j)
                                  or j not in list(zmat['map'].keys())):
                         angle = calculate_angle(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                        if is_angle_linear(angle):
+                        if is_angle_linear(angle, tolerance=TOL_180):
                             # A -- B -- C is linear, change indices and test angle E -- A -- B.
                             atom_b = atom_a
                         elif zmat_index not in a_atoms:
@@ -528,7 +528,7 @@ def determine_d_atoms(zmat: Dict[str, Union[dict, tuple]],
                 if i not in d_atoms and i in list(zmat['map'].keys()):
                     angle = calculate_angle(coords=coords, atoms=[zmat['map'][z_index]
                                                                   for z_index in d_atoms[1:] + [i]])
-                    if not is_angle_linear(angle):
+                    if not is_angle_linear(angle, tolerance=TOL_180):
                         d_atoms.append(i)
                         break
         if len(set(d_atoms)) != 4:
@@ -562,7 +562,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
     for i in reversed(range(n)):
         if i not in d_atoms and i in list(zmat['map'].keys()) and (i >= len(zmat['symbols']) or not is_dummy(zmat, i)):
             angle = calculate_angle(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
-            if not is_angle_linear(angle):
+            if not is_angle_linear(angle, tolerance=TOL_180):
                 d_atoms.append(i)
                 break
     if len(d_atoms) < 4:
@@ -570,7 +570,7 @@ def determine_d_atoms_without_connectivity(zmat: dict,
         for i in reversed(range(n)):
             if i not in d_atoms and i in list(zmat['map'].keys()):
                 angle = calculate_angle(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
-                if not is_angle_linear(angle):
+                if not is_angle_linear(angle, tolerance=TOL_180):
                     d_atoms.append(i)
                     break
     return d_atoms
@@ -624,7 +624,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                 atom_a, atom_b, atom_c = atom, zmat['map'][d_atoms[2]], zmat['map'][d_atoms[1]]
                 while i < len(list(connectivity.keys())):
                     angle = calculate_angle(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                    if is_angle_linear(angle):
+                    if is_angle_linear(angle, tolerance=TOL_180):
                         num_of_neighbors = len(list(connectivity[atom_a]))
                         if num_of_neighbors == 1:
                             # Atom A is only connected to B, use the dummy atom on atom B as atom A.
@@ -640,7 +640,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                             atom_e = a_neighbors[0] if a_neighbors[0] != atom_b else a_neighbors[1]
                             if atom_e in list(zmat['map'].values()):
                                 angle = calculate_angle(coords=coords, atoms=[atom_e, atom_b, atom_c])
-                                if is_angle_linear(angle):
+                                if is_angle_linear(angle, tolerance=TOL_180):
                                     # E -- B -- C is linear, change indices and test angle F -- B -- C.
                                     atom_a = atom_e
                                 elif key_by_val(zmat['map'], atom_e) not in d_atoms:
@@ -652,7 +652,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
                             for a_neighbor in connectivity[atom_a]:
                                 if a_neighbor != atom_b:
                                     angle = calculate_angle(coords=coords, atoms=[a_neighbor, atom_b, atom_c])
-                                    if not is_angle_linear(angle) \
+                                    if not is_angle_linear(angle, tolerance=TOL_180) \
                                             and a_neighbor in list(zmat['map'].values()) \
                                             and key_by_val(zmat['map'], a_neighbor) not in d_atoms:
                                         # E -- B -- C is not linear, use atom E (a_neighbor).
@@ -676,7 +676,7 @@ def determine_d_atoms_from_connectivity(zmat: dict,
             and connectivity[atom_index][2] not in [zmat['map'][d_atom] for d_atom in d_atoms[1:]]:
         angle = calculate_angle(coords=coords, atoms=[zmat['map'][d_atom] for d_atom in d_atoms[1:]]
                                                      + [connectivity[atom_index][2]])
-        if not is_angle_linear(angle) \
+        if not is_angle_linear(angle, tolerance=TOL_180) \
                 and connectivity[atom_index][2] in list(zmat['map'].values()) \
                 and key_by_val(zmat['map'], connectivity[atom_index][2]) not in d_atoms:
             d_atoms.append(key_by_val(zmat['map'], connectivity[atom_index][2]))
@@ -783,7 +783,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
         added_dummy = False
         if a_atoms is not None and all([not re.match(r'X\d', str(zmat['map'][atom])) for atom in a_atoms[1:]]):
             angle = calculate_angle(coords=coords, atoms=[atom_index] + [zmat['map'][atom] for atom in a_atoms[1:]])
-            if is_angle_linear(angle):
+            if is_angle_linear(angle, tolerance=TOL_180):
                 # The angle is too close to 180 (or 0) degrees, add a dummy atom.
                 zmat, coords, n, r_atoms, a_atoms, specific_last_d_atom = \
                     add_dummy_atom(zmat, xyz, coords, connectivity, r_atoms, a_atoms, n, atom_index)
@@ -1268,25 +1268,6 @@ def is_dummy(zmat: dict,
     if len(zmat['symbols']) <= zmat_index:
         raise ZMatError(f'index {zmat_index} is invalid for a zmat with only {len(zmat["symbols"])} atoms')
     return zmat['symbols'][zmat_index] == 'X'
-
-
-def is_angle_linear(angle: float,
-                    tolerance: Optional[float] = None,
-                    ) -> bool:
-    """
-    Check whether an angle is close to 180 or 0 degrees.
-
-    Args:
-        angle (float): The angle in degrees.
-        tolerance (float): The tolerance to consider.
-
-    Returns:
-        bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
-    """
-    tol = tolerance or TOL_180
-    if 180 - tol < angle <= 180 or 0 <= angle < tol:
-        return True
-    return False
 
 
 def get_atom_connectivity_from_mol(mol: Molecule,

@@ -244,7 +244,7 @@ def determine_ess_status(output_path: str,
                                 # e.g., Please increase MaxCore to more than: 289 MB
                                 estimated_mem = float(info.split()[-2]) + 500
                             except ValueError:
-                                error = 'Insufficient Orca job memory. ARC will estimate the amount of memory required.'
+                                error = 'Insufficient job memory.'
                                 keywords.append('Memory')
                                 break
                             keywords.append('Memory')
@@ -271,8 +271,7 @@ def determine_ess_status(output_path: str,
                                     except ValueError:
                                         # e.g., Please increase MaxCore
                                         # In old Orca versions, there is no indication on the minimum memory requirement
-                                        error = 'Insufficient Orca job memory. ARC will estimate the amount of ' \
-                                                'memory required.'
+                                        error = 'Insufficient job memory.'
                                         break
                                     estimated_mem_list.append(estimated_mem)
                             if estimated_mem_list:

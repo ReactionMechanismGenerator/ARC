@@ -306,7 +306,31 @@ class TestCommon(unittest.TestCase):
         extremum_index = common.get_extremum_index(lst, skip_values=[0])
         self.assertEqual(extremum_index, 0)
 
+    def test_sum_list_entries(self):
+        """Test the sum_list_entries() function."""
+        lst = list()
+        self.assertEqual(common.sum_list_entries(lst), 0)
+
+        lst = [1]
+        self.assertEqual(common.sum_list_entries(lst), 1)
+
+        lst = [-5.26, 7.8]
+        self.assertEqual(common.sum_list_entries(lst), 2.54)
+
+        lst = [-5.26, 7.8, None]
+        self.assertEqual(common.sum_list_entries(lst), None)
+
+        lst = [-5.26, 7.8, 'string']
+        self.assertEqual(common.sum_list_entries(lst), None)
+
+        lst = [-2, 6]
+        self.assertEqual(common.sum_list_entries(lst, multipliers=[2, 1.5]), 5.0)
+
+        lst = [-2, 6, 1]
+        self.assertEqual(common.sum_list_entries(lst, multipliers=[2, 1.5]), 6.0)
+
     def test_key_by_val(self):
+        """Test the key_by_val() function."""
         d = {1: 5, 2: 8}
         self.assertEqual(common.key_by_val(d, 8), 2)
 
@@ -326,6 +350,40 @@ class TestCommon(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             common.key_by_val(d, 10)
+
+    def test_almost_equal_lists(self):
+        """Test the almost_equal_lists() function."""
+        l1 = [0]
+        l2 = [0]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1, l2 = [0.0000000001], [0]
+        l1, l2 = [0.0000000001], [0]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1 = [[1, 2.0000000005], [3, 5]]
+        l2 = [[1, 2],            [3, 5.00000001]]
+        self.assertTrue(common.almost_equal_lists(l1, l2))
+
+        l1 = [[1, 2.005], [3, 5]]
+        l2 = [[1, 2],     [3, 5.01]]
+        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, 6], [3, 5]]
+        l2 = [[1, 2], [3, 5.01]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, 2], [3, 5],    [4, 8]]
+        l2 = [[1, 2], [3, 5.01], [4, 500]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
+        l2 = [[1, [2, 10, (8, 9.9)]],    [3, 5]]
+        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+
+        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
+        l2 = [[1, [2, 10, (8, 999.9)]],  [3, 5]]
+        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
@@ -875,6 +933,15 @@ class TestCommon(unittest.TestCase):
         l1 = [1, 2, 3, 3, 5, 6]
         l2 = [7]
         self.assertEqual(common.get_ordered_intersection_of_two_lists(l1, l2), list())
+
+    def test_is_angle_linear(self):
+        """Test whether an angle is close to 180 or 0 degrees"""
+        self.assertTrue(common.is_angle_linear(180.0))
+        self.assertTrue(common.is_angle_linear(179.8))
+        self.assertTrue(common.is_angle_linear(0.01))
+        self.assertFalse(common.is_angle_linear(0.9))
+        self.assertFalse(common.is_angle_linear(150.0))
+        self.assertTrue(common.is_angle_linear(angle=3.0, tolerance=5.0))
 
     def test_get_angle_in_180_range(self):
         """Test the getting a corresponding angle in the -180 to +180 range"""

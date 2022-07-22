@@ -63,6 +63,7 @@ class JobEnum(str, Enum):
             - rdkit
             - terachem
             - torchani
+            - AIMNet (https://github.com/aiqm/aimnet)
             - turbomol
             - xtb
         - TS search:
@@ -846,24 +847,30 @@ class JobAdapter(ABC):
                 self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
             except IOError:
                 logger.error(f'Got an IOError when trying to download output file for job {self.job_name}.')
-                content = self._get_additional_job_info()
-                if content:
-                    self.additional_job_info = content.lower()
-                    logger.info(f'Got the following information from the server:\n{content}')
-                    for line in content.splitlines():
-                        # Example:
-                        # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
-                        if 'cancelled' in line.lower() and 'due to time limit' in line.lower():
-                            logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
-                                           f'Got: {line}')
-                            new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
-                            logger.warning(f'Setting max job time to {new_max_job_time} (was {self.max_job_time})')
-                            self.max_job_time = new_max_job_time
-                            self.job_status[1]['status'] = 'errored'
-                            self.job_status[1]['keywords'] = ['ServerTimeLimit']
-                            self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
-                                                          'time limit.'
-                            self.job_status[1]['line'] = ''
+            self._get_additional_job_info()
+            if self.additional_job_info:
+                logger.debug(f'Got the following information from the server:\n{self.additional_job_info}')
+                for line in self.additional_job_info.splitlines():
+                    # Example:
+                    # slurmstepd: *** JOB 7752164 CANCELLED AT 2019-03-27T00:30:50 DUE TO TIME LIMIT on node096 ***
+                    if 'cancelled' in line and 'due to time limit' in line:
+                        logger.warning(f'Looks like the job was cancelled on {self.server} due to time limit. '
+                                       f'Got: {line}')
+                        new_max_job_time = self.max_job_time - 24 if self.max_job_time > 25 else 1
+                        logger.warning(f'Setting max job time to {new_max_job_time} (was {self.max_job_time})')
+                        self.max_job_time = new_max_job_time
+                        self.job_status[1]['status'] = 'errored'
+                        self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                        self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
+                                                      'time limit.'
+                        self.job_status[1]['line'] = line
+                        break
+                    if 'memory exceeded' in line:
+                        self.job_status[1]['status'] = 'errored'
+                        self.job_status[1]['keywords'] = ['Memory']
+                        self.job_status[1]['error'] = 'Insufficient job memory.'
+                        self.job_status[1]['line'] = line
+                        break
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
 
@@ -907,9 +914,10 @@ class JobAdapter(ABC):
                     content += '\n'
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
-        return content
+        if content:
+            self.additional_job_info = content.lower()
 
-    def _check_job_server_status(self):
+    def _check_job_server_status(self) -> str:
         """
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
         """

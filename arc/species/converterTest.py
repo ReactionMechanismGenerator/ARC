@@ -4579,12 +4579,12 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         ch4_3 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
                  'isotopes': (12, 1, 1, 1, 1),
                  'coords': ((0.0, 0.0, 0.0),
-                            (0.6309, 0.6300326, 0.6300326),
+                            (0.81, 0.6300326, 0.6300326),
                             (-0.6300326, -0.6300326, 0.6300326),
                             (-0.6300326, 0.6300326, -0.6300326),
                             (0.6300326, -0.6300326, -0.6300326))}
         self.assertFalse(converter.compare_confs(ch4_1, ch4_3))
-        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_3, rmsd_score=True), 0.00044803, 5)
+        self.assertAlmostEqual(converter.compare_confs(ch4_1, ch4_3, rmsd_score=True), 0.0973755, 5)
 
         occco_1 = {'symbols': ('O', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                    'isotopes': (16, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1),
