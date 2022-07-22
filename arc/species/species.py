@@ -1463,7 +1463,7 @@ class ARCSpecies(object):
             yml_path (str): The path to the output YAML file.
         """
         if not isinstance(yml_path, str) or not os.path.isfile(yml_path):
-            return
+            return None
         tsg_list = read_yaml_file(yml_path)
         if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
             return None
