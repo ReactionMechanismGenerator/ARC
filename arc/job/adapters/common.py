@@ -167,10 +167,9 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.job_status = job_status \
         or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
-    obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level  # todo: see that ts adapters take that well what is level there, is it None?
+    obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level
     obj.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
     obj.number_of_processes = 0
-    obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
     obj.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
     obj.remote_path = None
     obj.restarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
@@ -183,6 +182,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.testing = testing
     obj.times_rerun = times_rerun
     obj.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+    obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
     obj.tsg = tsg
     obj.workers = None
     obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
