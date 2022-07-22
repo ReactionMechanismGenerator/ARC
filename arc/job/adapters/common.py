@@ -190,8 +190,10 @@ def _initialize_adapter(obj: 'JobAdapter',
         obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
         if 'server' in obj.args['trsh']:
             obj.server = obj.args['trsh']['server']
-        obj.server = obj.ess_settings[obj.job_adapter][0] if isinstance(obj.ess_settings[obj.job_adapter], list) \
-            else obj.ess_settings[obj.job_adapter]
+        elif isinstance(obj.ess_settings[obj.job_adapter], list):
+            obj.server = obj.ess_settings[obj.job_adapter][0]
+        else:
+            obj.server = obj.ess_settings[obj.job_adapter]
         obj.set_cpu_and_mem()
         obj.determine_job_array_parameters()
 
