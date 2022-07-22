@@ -1083,7 +1083,7 @@ class JobAdapter(ABC):
         if source not in ['path', 'input_files']:
             raise ValueError(f'The source argument must be either "path" or "input_files", got {source}.')
         local = local or os.path.join(self.local_path, file_name)
-        remote = remote or os.path.join(self.remote_path, file_name)
+        remote = remote or os.path.join(self.remote_path, file_name) if self.remote_path is not None else None
         return {'file_name': file_name,
                 'local': local,
                 'remote': remote,
