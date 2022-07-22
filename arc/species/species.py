@@ -1470,6 +1470,8 @@ class ARCSpecies(object):
         tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
         for tsg in tsgs:
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
+                if tsg.index is None:
+                    tsg.index = len(self.ts_guesses)
                 self.ts_guesses.append(tsg)
         self.cluster_tsgs()
 
