@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import get_logger
 from arc.imports import settings
+from arc.level import Level
 
 if TYPE_CHECKING:
     import datetime
-    from arc.level import Level
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
