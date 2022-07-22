@@ -195,8 +195,8 @@ def _initialize_adapter(obj: 'JobAdapter',
         obj.set_cpu_and_mem()
         obj.determine_job_array_parameters()
 
-    print(obj.args)
-    obj.scan_res = obj.args['trsh']['scan_res'] if obj.args and 'scan_res' in obj.args['trsh'] else rotor_scan_resolution
+    obj.scan_res = obj.args['trsh']['scan_res'] \
+        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
 
     if obj.species is not None:
         obj.charge = obj.species[0].charge
