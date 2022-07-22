@@ -271,6 +271,7 @@ class GCNAdapter(JobAdapter):
         Args:
             exe_type (str, optional): Whether to execute 'incore' or 'queue'.
         """
+        logger.info(f'in execute, exe_type = {exe_type}')
         self._log_job_execution()
         rxn = self.reactions[0]
         if not rxn.is_isomerization():
@@ -285,8 +286,9 @@ class GCNAdapter(JobAdapter):
                         reactant_path=self.reactant_path,
                         product_path=self.product_path,
                         )
-
+        logger.info('where?????')
         if exe_type == 'queue':
+            logger.info('in Q')
             input_dict = {'reactant_path': self.reactant_path,
                           'product_path': self.product_path,
                           'local_path': self.local_path,
