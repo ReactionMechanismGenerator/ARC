@@ -181,6 +181,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.tsg = tsg
     obj.workers = None
     obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    obj.yml_out_path = None
 
     if obj.job_num is None or obj.job_name is None or obj.job_server_name:
         obj._set_job_number()
