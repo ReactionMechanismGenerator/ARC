@@ -141,7 +141,7 @@ class AutoTSTAdapter(JobAdapter):
             raise ValueError('Cannot execute AutoTST without ARCReaction object(s).')
 
         _initialize_adapter(obj=self,
-                            is_ts=False,
+                            is_ts=True,
                             project=project,
                             project_directory=project_directory,
                             job_type=job_type,

@@ -148,7 +148,7 @@ class HeuristicsAdapter(JobAdapter):
             raise ValueError(f'dihedral_increment should be between 0 to 360, got: {dihedral_increment}')
 
         _initialize_adapter(obj=self,
-                            is_ts=False,
+                            is_ts=True,
                             project=project,
                             project_directory=project_directory,
                             job_type=job_type,
