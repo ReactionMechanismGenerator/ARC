@@ -304,7 +304,7 @@ def update_input_dict_with_args(args: dict,
 
 
 def set_job_args(args: Optional[dict],
-                 level: 'Level',
+                 level: Optional['Level'],
                  job_name: str,
                  ) -> dict:
     """
@@ -323,11 +323,10 @@ def set_job_args(args: Optional[dict],
             and level.args and any(val for val in level.args.values()):
         logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
                        f'{pformat(level.args)}')
-    elif not args:
+    elif not args and level is not None:
         args = level.args
-    # Add missing keywords to args.
     for key in ['keyword', 'block', 'trsh']:
-        if key not in args:
+        if key not in args.keys():
             args[key] = dict()
     return args
 
