@@ -42,6 +42,7 @@ def run_gcn(input_dict: dict):
                                ts_species=ts_species,
                                )
     tsgs = [tsg.as_dict() for tsg in ts_species.ts_guesses if 'gcn' in tsg.method.lower()]
+    print(f"yml_out_path: {input_dict['yml_out_path']}")
     save_yaml_file(path=input_dict['yml_out_path'], content=tsgs)
 
 
