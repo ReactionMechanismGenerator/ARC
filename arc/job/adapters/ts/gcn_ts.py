@@ -378,6 +378,7 @@ def run_subprocess_locally(direction: str,
                 f'--p_sdf_path {reactant_path} '
                 f'--ts_xyz_path {ts_path}']
     command = '; '.join(commands)
+    print(command)
     output = subprocess.run(command, shell=True, executable='/bin/bash')
     if output.returncode:
         logger.warning(f'GCN subprocess ran in the reverse direction did not '
