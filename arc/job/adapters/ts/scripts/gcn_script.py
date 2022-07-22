@@ -56,7 +56,7 @@ def main(r_sdf_path: Optional[str] = None,
     # read in sdf files for reactant and product of the atom-mapped reaction
     r_mols = Chem.SDMolSupplier(r_sdf_path, removeHs=False, sanitize=True)
     p_mols = Chem.SDMolSupplier(p_sdf_path, removeHs=False, sanitize=True)
-
+    print(f'ts path: {ts_xyz_path}')
     try:
         inference(r_mols, p_mols, ts_xyz_path)
     except Exception:
