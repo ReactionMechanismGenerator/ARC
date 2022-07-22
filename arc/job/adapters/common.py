@@ -3,6 +3,7 @@ This module contains functions which are shared across multiple Job modules.
 As such, it should not import any other ARC modules to avoid circular imports.
 """
 
+import datetime
 import os
 import shutil
 import sys
@@ -15,7 +16,6 @@ from arc.imports import settings
 from arc.level import Level
 
 if TYPE_CHECKING:
-    import datetime
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
