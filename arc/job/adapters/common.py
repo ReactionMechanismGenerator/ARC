@@ -128,10 +128,6 @@ def _initialize_adapter(obj: 'JobAdapter',
                              f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
         obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
         obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
-        obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
-    else:
-        obj.args = dict()
-        obj.scan_res = None
 
     obj.project = project
     obj.project_directory = project_directory
@@ -191,15 +187,15 @@ def _initialize_adapter(obj: 'JobAdapter',
         obj._set_job_number()
 
     if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
+        if 'server' in obj.args['trsh']:
+            obj.server = obj.args['trsh']['server']
         obj.server = obj.ess_settings[obj.job_adapter][0] if isinstance(obj.ess_settings[obj.job_adapter], list) \
             else obj.ess_settings[obj.job_adapter]
         obj.set_cpu_and_mem()
         obj.determine_job_array_parameters()
 
-    if obj.args:
-        obj.scan_res = obj.args['trsh']['scan_res'] if 'scan_res' in obj.args['trsh'] else rotor_scan_resolution
-        if 'server' in obj.args['trsh']:
-            obj.server = obj.args['trsh']['server']
+    obj.scan_res = obj.args['trsh']['scan_res'] if obj and 'scan_res' in obj.args['trsh'] else rotor_scan_resolution
 
     if obj.species is not None:
         obj.charge = obj.species[0].charge
