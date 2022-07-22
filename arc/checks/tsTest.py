@@ -12,7 +12,7 @@ import shutil
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH, almost_equal_lists
+from arc.common import ARC_PATH
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser import parse_normal_mode_displacement
@@ -291,8 +291,10 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         ts.check_ts_energy(reaction=rxn1)
         self.assertFalse(rxn1.ts_species.ts_checks['e_elect'])
 
-    def test_determine_changing_bond(self):
-        """Test the determine_changing_bond() function."""
+    def test_check_bond_changes(self):
+        """Test the check_bond_changes() function."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='O2', smiles='[O][O]')],
+                          p_species=[ARCSpecies(label='HO2', smiles='O[O]')])
         dmat_1 = np.array([[0, 1, 2],
                            [1, 0, 5],
                            [2, 5, 0]], np.float64)
@@ -390,7 +392,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_intra_H_migration_CBS-QB3.out')
         self.rxn_2a.determine_family(rmg_database=self.rmgdb)
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
+        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)  # no RMG reaction was between atoms 1-6 and 2-6 (2-7 and 3-7 1-indexed)...
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
         self.rxn_2a.ts_species.populate_ts_checks()
 
@@ -399,6 +401,8 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         ts.check_normal_mode_displacement(reaction=self.rxn_2b, job=self.job1)
         self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
 
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
+                                                           'TS_intra_H_migration_CBS-QB3.out')
         # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_1.out')  # A wrong TS.
@@ -537,6 +541,25 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
         self.assertTrue(rxn_7.ts_species.ts_checks['normal_mode_displacement'])
 
+    def test_check_normal_mode_displacement2(self):
+        # N2H4 + NNH <=> N2H3 + N2H2 H_Abstraction:
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NNH+N2H4.out')
+        rxn_8 = ARCReaction(r_species=[ARCSpecies(label='NNH', xyz="""N      -0.14331683    0.42940752    0.00000000
+                                                                      N       1.05366347   -0.17738912    0.00000000
+                                                                      H      -0.91034663   -0.25201839    0.00000000"""),
+                                       ARCSpecies(label='N2H4', xyz="""N      -0.66155503   -0.06221550   -0.27970796
+                                                                       N       0.66268200    0.01399364    0.28358234
+                                                                       H      -1.21902191    0.75887299   -0.01910485
+                                                                       H      -1.18128002   -0.85616698    0.11067217
+                                                                       H       1.18240629    0.80794665   -0.10679560
+                                                                       H       1.22014947   -0.80709360    0.02297653""")],
+                            p_species=[ARCSpecies(label='N2H3', smiles='N[NH]'), ARCSpecies(label='N2H2', smiles='N=N')])
+        rxn_8.ts_species = ARCSpecies(label='TS8', is_ts=True, xyz=self.job1.local_path_to_output_file)
+        rxn_8.ts_species.mol_from_xyz()
+        rxn_8.ts_species.populate_ts_checks()
+        ts.check_normal_mode_displacement(reaction=rxn_8, job=self.job1)
+        self.assertTrue(rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+
     @work_in_progress
     def test_check_normal_mode_displacement_wip(self):
         """Test the check_normal_mode_displacement() function."""
@@ -624,23 +647,23 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                                                     p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
                                                                                ARCSpecies(label='C2H5', smiles='C[CH2]')])
                                                )
-        self.assertTrue(almost_equal_lists(rms, [0.0,                    # 0
-                                                 0.039223801763523365,   # 1
-                                                 0.15236541607924428,    # 2
-                                                 0.20024738798047312,    # 3 * (the abstracting O)
-                                                 0.0,                    # 4
-                                                 0.0,                    # 5
-                                                 0.010042962189013961,   # 6
-                                                 0.0,                    # 7
-                                                 0.010042962189013961,   # 8
-                                                 0.039223801763523365,   # 9
-                                                 0.33968808760216107,    # 10 * (the abstracting C)
-                                                 0.010042962189013961,   # 11
-                                                 0.0,                    # 12
-                                                 0.010042962189013961,   # 13
-                                                 0.9804112316882941,     # 14 * (the abstracted H)
-                                                 0.12176444538905733,    # 15
-                                                 0.12462988320468919]))  # 16
+        self.assertEqual(rms, [0.0,                     # 0
+                               0.0008785397004602187,   # 1
+                               0.0034115627396496605,   # 2
+                               0.004483671853664259,    # 3 * (the abstracting O)
+                               0.0,                     # 4
+                               0.0,                     # 5
+                               0.00022485182747281122,  # 6
+                               0.0,                     # 7
+                               0.00022485182747281122,  # 8
+                               0.0008785397004602187,    # 9
+                               0.0076083769883172085,   # 10 * (the abstracting C)
+                               0.00022485182747281122,  # 11
+                               0.0,                     # 12
+                               0.00022485182747281122,  # 13
+                               0.021950421894561232,    # 14 * (the abstracted H)
+                               0.0027261835255033436,   # 15
+                               0.002790337797642228])   # 16
 
     def test_get_index_of_abs_largest_neg_freq(self):
         """Test the get_index_of_abs_largest_neg_freq() function."""
