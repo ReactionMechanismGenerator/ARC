@@ -14,7 +14,7 @@ from rmgpy.reaction import Reaction
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter, check_argument_consistency
+from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data

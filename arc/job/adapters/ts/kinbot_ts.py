@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import almost_equal_coords, get_logger
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter, check_argument_consistency
+from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data, xyz_to_kinbot_list

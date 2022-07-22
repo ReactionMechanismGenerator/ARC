@@ -17,7 +17,7 @@ from rdkit import Chem
 from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter, check_argument_consistency
+from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import rdkit_conf_from_mol, str_to_xyz

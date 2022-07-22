@@ -16,9 +16,7 @@ from arc.exceptions import JobError
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (_initialize_adapter,
-                                     check_argument_consistency,
                                      is_restricted,
-                                     set_job_args,
                                      update_input_dict_with_args,
                                      which,
                                      )

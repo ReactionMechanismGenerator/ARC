@@ -30,7 +30,7 @@ from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import _initialize_adapter, check_argument_consistency, ts_adapters_by_rmg_family
+from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import compare_zmats, zmat_from_xyz, zmat_to_xyz
