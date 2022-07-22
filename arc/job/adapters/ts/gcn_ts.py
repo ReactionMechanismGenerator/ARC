@@ -37,7 +37,8 @@ if TYPE_CHECKING:
 servers, submit_filenames, TS_GCN_PYTHON = settings['servers'], settings['submit_filenames'], settings['TS_GCN_PYTHON']
 
 DIHEDRAL_INCREMENT = 10
-GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
+#GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
+GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'ipython', 'gcn_script.py')
 
 logger = get_logger()
 
