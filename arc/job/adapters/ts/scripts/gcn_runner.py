@@ -11,7 +11,7 @@ import argparse
 import os
 
 from arc.common import read_yaml_file, save_yaml_file
-from arc.job.adapters.ts.gcn_ts import run_subprocess_locally
+from arc.job.adapters.ts import run_subprocess_locally
 from arc.species.species import ARCSpecies
 
 
