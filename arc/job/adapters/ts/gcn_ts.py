@@ -37,8 +37,7 @@ if TYPE_CHECKING:
 servers, submit_filenames, TS_GCN_PYTHON = settings['servers'], settings['submit_filenames'], settings['TS_GCN_PYTHON']
 
 DIHEDRAL_INCREMENT = 10
-#GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
-GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'ipython', 'gcn_script.py')
+GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
 
 logger = get_logger()
 
@@ -208,13 +207,6 @@ class GCNAdapter(JobAdapter):
             self.write_submit_script()
             self.files_to_upload.append(self.get_file_property_dictionary(
                 file_name=submit_filenames[servers[self.server]['cluster_soft']]))
-        # 1.2. GCN script
-        if not self.iterate_by:
-            self.write_input_file()
-            self.files_to_upload.append(self.get_file_property_dictionary(file_name='gcn_script.py',
-                                                                          local=GCN_SCRIPT_PATH,
-                                                                          make_x=True,
-                                                                          ))
         # 1.3. HDF5 file
         elif os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
             self.files_to_upload.append(self.get_file_property_dictionary(file_name='data.hdf5'))
@@ -272,7 +264,6 @@ class GCNAdapter(JobAdapter):
         Args:
             exe_type (str, optional): Whether to execute 'incore' or 'queue'.
         """
-        logger.info(f'in execute, exe_type = {exe_type}')
         self._log_job_execution()
         rxn = self.reactions[0]
         if not rxn.is_isomerization():
@@ -287,18 +278,13 @@ class GCNAdapter(JobAdapter):
                         reactant_path=self.reactant_path,
                         product_path=self.product_path,
                         )
-        logger.info('where?????')
         if exe_type == 'queue':
-            logger.info('in Q')
             input_dict = {'reactant_path': self.reactant_path,
                           'product_path': self.product_path,
                           'local_path': self.local_path,
                           'yml_out_path': self.yml_out_path,
-                          'gcn_script_path': GCN_SCRIPT_PATH,
                           'repetitions': self.repetitions,
-                          'ts_species': rxn.ts_species.as_dict(),
                           }
-            logger.info(f'self.yml_in_path: {self.yml_in_path}')
             save_yaml_file(path=self.yml_in_path, content=input_dict)
             self.legacy_queue_execution()
         elif exe_type == 'incore':
@@ -367,7 +353,7 @@ def run_subprocess_locally(direction: str,
         ts_species (ARCSpecies): The TS ``ARCSpecies`` object instance.
     """
     ts_xyz = None
-    tsg = TSGuess(method=f'GCN',
+    tsg = TSGuess(method='GCN',
                   method_direction=direction,
                   index=len(ts_species.ts_guesses),
                   )
