@@ -121,13 +121,10 @@ def _initialize_adapter(obj: 'JobAdapter',
     """
     A common Job adapter initializer function.
     """
-    if not is_ts:
-        if any(arg is None for arg in [job_type, level, project, project_directory]):
-            raise ValueError(f'All of the following arguments must be given:\n'
-                             f'job_type, level, project, project_directory\n'
-                             f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
-        obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
-        obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
+    if not is_ts and any(arg is None for arg in [job_type, level, project, project_directory]):
+        raise ValueError(f'All of the following arguments must be given:\n'
+                         f'job_type, level, project, project_directory\n'
+                         f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
 
     obj.project = project
     obj.project_directory = project_directory
@@ -162,6 +159,8 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.job_server_name = job_server_name
     obj.job_status = job_status \
         or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+    obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
+    obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
     obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level
     obj.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
