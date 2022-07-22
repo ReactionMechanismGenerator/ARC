@@ -77,7 +77,7 @@ all_families_ts_adapters = []
 
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4']
+default_incore_adapters = ['autotst', 'heuristics', 'kinbot', 'psi4']
 
 
 def _initialize_adapter(obj: 'JobAdapter',
