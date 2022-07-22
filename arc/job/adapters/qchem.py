@@ -13,11 +13,11 @@ from mako.template import Template
 from arc.common import get_logger, torsions_to_scans
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import (check_argument_consistency,
+from arc.job.adapters.common import (_initialize_adapter,
                                      is_restricted,
-                                     set_job_args,
                                      update_input_dict_with_args,
-                                     which)
+                                     which,
+                                     )
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command
 from arc.level import Level
@@ -145,6 +145,7 @@ class QChemAdapter(JobAdapter):
                  xyz: Optional[dict] = None,
                  ):
 
+        self.incore_capacity = 1
         self.job_adapter = 'qchem'
         self.execution_type = execution_type or 'queue'
         self.command = 'qchem'
@@ -153,93 +154,44 @@ class QChemAdapter(JobAdapter):
         if species is None:
             raise ValueError('Cannot execute QChem without an ARCSpecies object.')
 
-        # Todo: add an incore execution of cont opt scan directed by ARC
-
-        if any(arg is None for arg in [job_type, level]):
-            raise ValueError(f'All of the following arguments must be given:\n'
-                             f'job_type, level, project, project_directory\n'
-                             f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
-
-        self.project = project
-        self.project_directory = project_directory
-        if self.project_directory and not os.path.isdir(self.project_directory):
-            os.makedirs(self.project_directory)
-        self.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
-        self.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
-        self.args = args or dict()
-        self.bath_gas = bath_gas
-        self.checkfile = checkfile
-        self.conformer = conformer
-        self.constraints = constraints or list()
-        self.cpu_cores = cpu_cores
-        self.dihedral_increment = dihedral_increment
-        self.dihedrals = dihedrals
-        self.directed_scan_type = directed_scan_type
-        self.ess_settings = ess_settings or global_ess_settings
-        self.ess_trsh_methods = ess_trsh_methods or list()
-        self.fine = fine
-        self.initial_time = datetime.datetime.strptime(initial_time.split('.')[0], '%Y-%m-%d %H:%M:%S') \
-            if isinstance(initial_time, str) else initial_time
-        self.irc_direction = irc_direction
-        self.job_id = job_id
-        self.job_memory_gb = job_memory_gb
-        self.job_name = job_name
-        self.job_num = job_num
-        self.job_server_name = job_server_name
-        self.job_status = job_status \
-            or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
-        # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
-        self.level = Level(repr=level) if not isinstance(level, Level) else level
-        self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
-        self.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
-        self.rotor_index = rotor_index
-        self.server = server
-        self.server_nodes = server_nodes or list()
-        self.species = [species] if species is not None and not isinstance(species, list) else species
-        self.testing = testing
-        self.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
-        self.pivots = [[tor[1] + 1, tor[2] + 1] for tor in self.torsions] if self.torsions is not None else None
-        self.tsg = tsg
-        self.xyz = xyz or self.species[0].get_xyz()
-        self.times_rerun = times_rerun
-
-        if self.job_num is None or self.job_name is None or self.job_server_name:
-            self._set_job_number()
-
-        self.args = set_job_args(args=self.args, level=self.level, job_name=self.job_name)
-
-        self.final_time = None
-        self.run_time = None
-        self.charge = self.species[0].charge
-        self.multiplicity = self.species[0].multiplicity
-        self.is_ts = self.species[0].is_ts
-        self.scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
-
-        self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'] \
-            else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
-            else self.ess_settings[self.job_adapter]
-        self.species_label = self.species[0].label
-        if len(self.species) > 1:
-            self.species_label += f'_and_{len(self.species) - 1}_others'
-
-        self.cpu_cores, self.input_file_memory, self.submit_script_memory = None, None, None
-        self.set_cpu_and_mem()
-        self.set_file_paths()
-
-        self.workers = None
-        self.iterate_by = list()
-        self.number_of_processes = 0
-        self.incore_capacity = 1
-        self.determine_job_array_parameters()  # Writes the local HDF5 file if needed.
-
-        self.files_to_upload = list()
-        self.files_to_download = list()
-        self.set_files()  # Set the actual files (and write them if relevant).
-
-        self.restrarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
-        self.additional_job_info = None
-
-        check_argument_consistency(self)
+        _initialize_adapter(obj=self,
+                            is_ts=False,
+                            project=project,
+                            project_directory=project_directory,
+                            job_type=job_type,
+                            args=args,
+                            bath_gas=bath_gas,
+                            checkfile=checkfile,
+                            conformer=conformer,
+                            constraints=constraints,
+                            cpu_cores=cpu_cores,
+                            dihedral_increment=dihedral_increment,
+                            dihedrals=dihedrals,
+                            directed_scan_type=directed_scan_type,
+                            ess_settings=ess_settings,
+                            ess_trsh_methods=ess_trsh_methods,
+                            fine=fine,
+                            initial_time=initial_time,
+                            irc_direction=irc_direction,
+                            job_id=job_id,
+                            job_memory_gb=job_memory_gb,
+                            job_name=job_name,
+                            job_num=job_num,
+                            job_server_name=job_server_name,
+                            job_status=job_status,
+                            level=level,
+                            max_job_time=max_job_time,
+                            reactions=reactions,
+                            rotor_index=rotor_index,
+                            server=server,
+                            server_nodes=server_nodes,
+                            species=species,
+                            testing=testing,
+                            times_rerun=times_rerun,
+                            torsions=torsions,
+                            tsg=tsg,
+                            xyz=xyz,
+                            )
 
     def write_input_file(self) -> None:
         """
