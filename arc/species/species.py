@@ -28,6 +28,7 @@ from arc.common import (almost_equal_coords,
                         get_single_bond_length,
                         generate_resonance_structures,
                         is_angle_linear,
+                        read_yaml_file,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
@@ -1453,6 +1454,26 @@ class ARCSpecies(object):
                 tsg.cluster = [tsg.index]
                 cluster_tsgs.append(tsg)
         self.ts_guesses = cluster_tsgs
+
+    def process_completed_tsg_queue_jobs(self, yml_path: str):
+        """
+        Process YAML files which are the output of running a TS guess job in the queue.
+
+        Args:
+            yml_path (str): The path to the output YAML file.
+        """
+        if not isinstance(yml_path, str) or not os.path.isfile(yml_path):
+            return None
+        tsg_list = read_yaml_file(yml_path)
+        if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
+            return None
+        tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
+        for tsg in tsgs:
+            if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
+                if tsg.index is None:
+                    tsg.index = len(self.ts_guesses)
+                self.ts_guesses.append(tsg)
+        self.cluster_tsgs()
 
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
