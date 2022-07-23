@@ -3,20 +3,27 @@ This module contains functions which are shared across multiple Job modules.
 As such, it should not import any other ARC modules to avoid circular imports.
 """
 
+import datetime
 import os
 import shutil
 import sys
 
 from pprint import pformat
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import get_logger
+from arc.imports import settings
+from arc.level import Level
 
 if TYPE_CHECKING:
-    from arc.level import Level
     from arc.job.adapter import JobAdapter
+    from arc.reaction import ARCReaction
+    from arc.species import ARCSpecies
 
 logger = get_logger()
+
+default_job_settings, global_ess_settings, rotor_scan_resolution = \
+    settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
 
 ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
@@ -71,6 +78,152 @@ all_families_ts_adapters = []
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
 default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4']
+
+
+def _initialize_adapter(obj: 'JobAdapter',
+                        is_ts: bool,
+                        project: str,
+                        project_directory: str,
+                        job_type: Union[List[str], str],
+                        args: Optional[dict] = None,
+                        bath_gas: Optional[str] = None,
+                        checkfile: Optional[str] = None,
+                        conformer: Optional[int] = None,
+                        constraints: Optional[List[Tuple[List[int], float]]] = None,
+                        cpu_cores: Optional[str] = None,
+                        dihedral_increment: Optional[float] = None,
+                        dihedrals: Optional[List[float]] = None,
+                        directed_scan_type: Optional[str] = None,
+                        ess_settings: Optional[dict] = None,
+                        ess_trsh_methods: Optional[List[str]] = None,
+                        fine: bool = False,
+                        initial_time: Optional[Union['datetime.datetime', str]] = None,
+                        irc_direction: Optional[str] = None,
+                        job_id: Optional[int] = None,
+                        job_memory_gb: float = 14.0,
+                        job_name: Optional[str] = None,
+                        job_num: Optional[int] = None,
+                        job_server_name: Optional[str] = None,
+                        job_status: Optional[List[Union[dict, str]]] = None,
+                        level: Optional[Level] = None,
+                        max_job_time: Optional[float] = None,
+                        reactions: Optional[List['ARCReaction']] = None,
+                        rotor_index: Optional[int] = None,
+                        server: Optional[str] = None,
+                        server_nodes: Optional[list] = None,
+                        species: Optional[List['ARCSpecies']] = None,
+                        testing: bool = False,
+                        times_rerun: int = 0,
+                        torsions: Optional[List[List[int]]] = None,
+                        tsg: Optional[int] = None,
+                        xyz: Optional[dict] = None,
+                        ):
+    """
+    A common Job adapter initializer function.
+    """
+    if not is_ts and any(arg is None for arg in [job_type, level, project, project_directory]):
+        raise ValueError(f'All of the following arguments must be given:\n'
+                         f'job_type, level, project, project_directory\n'
+                         f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
+
+    obj.project = project
+    obj.project_directory = project_directory
+    if obj.project_directory and not os.path.isdir(obj.project_directory):
+        os.makedirs(obj.project_directory)
+
+    obj.additional_job_info = None
+    obj.args = args or dict()
+    obj.bath_gas = bath_gas
+    obj.checkfile = checkfile
+    obj.conformer = conformer
+    obj.constraints = constraints or list()
+    obj.cpu_cores = cpu_cores
+    obj.dihedral_increment = dihedral_increment
+    obj.dihedrals = dihedrals
+    obj.directed_scan_type = directed_scan_type
+    obj.ess_settings = ess_settings or global_ess_settings
+    obj.ess_trsh_methods = ess_trsh_methods or list()
+    obj.files_to_download = list()
+    obj.files_to_upload = list()
+    obj.final_time = None
+    obj.fine = fine
+    obj.initial_time = datetime.datetime.strptime(initial_time.split('.')[0], '%Y-%m-%d %H:%M:%S') \
+        if isinstance(initial_time, str) else initial_time
+    obj.input_file_memory = None
+    obj.irc_direction = irc_direction
+    obj.iterate_by = list()
+    obj.job_id = job_id
+    obj.job_memory_gb = job_memory_gb
+    obj.job_name = job_name
+    obj.job_num = job_num
+    obj.job_server_name = job_server_name
+    obj.job_status = job_status \
+        or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+    obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
+    obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
+    # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
+    obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level
+    obj.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
+    obj.number_of_processes = 0
+    obj.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
+    obj.remote_path = None
+    obj.restarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
+    obj.rotor_index = rotor_index
+    obj.run_time = None
+    obj.server = server
+    obj.server_nodes = server_nodes or list()
+    obj.species = [species] if species is not None and not isinstance(species, list) else species
+    obj.submit_script_memory = None
+    obj.testing = testing
+    obj.times_rerun = times_rerun
+    obj.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
+    obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
+    obj.tsg = tsg
+    obj.workers = None
+    obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    obj.yml_out_path = None
+
+    if obj.job_num is None or obj.job_name is None or obj.job_server_name:
+        obj._set_job_number()
+
+    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
+        if 'server' in obj.args['trsh']:
+            obj.server = obj.args['trsh']['server']
+        elif isinstance(obj.ess_settings[obj.job_adapter], list):
+            obj.server = obj.ess_settings[obj.job_adapter][0]
+        else:
+            obj.server = obj.ess_settings[obj.job_adapter]
+        obj.set_cpu_and_mem()
+        obj.determine_job_array_parameters()
+
+    obj.scan_res = obj.args['trsh']['scan_res'] \
+        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
+
+    if obj.species is not None:
+        obj.charge = obj.species[0].charge
+        obj.multiplicity = obj.species[0].multiplicity
+        obj.is_ts = obj.species[0].is_ts
+        obj.species_label = obj.species[0].label
+        if len(obj.species) > 1:
+            obj.species_label += f'_and_{len(obj.species) - 1}_others'
+    elif obj.reactions is not None:
+        obj.charge = obj.reactions[0].charge
+        obj.multiplicity = obj.reactions[0].multiplicity
+        obj.is_ts = True
+        obj.species_label = obj.reactions[0].ts_species.label if obj.reactions[0].ts_species is not None \
+            else f'TS_{obj.job_num}'
+        if len(obj.reactions) > 1:
+            obj.species_label += f'_and_{len(obj.reactions) - 1}_others'
+    else:
+        obj.charge = None
+        obj.multiplicity = None
+        obj.is_ts = None
+        obj.species_label = None
+
+    obj.set_file_paths()
+    obj.set_files()
+    check_argument_consistency(obj)
 
 
 def is_restricted(obj) -> bool:

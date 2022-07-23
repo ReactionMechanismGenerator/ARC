@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc.common import almost_equal_coords, get_logger
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import check_argument_consistency
+from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data, xyz_to_kinbot_list
@@ -129,10 +129,12 @@ class KinBotAdapter(JobAdapter):
                  xyz: Optional[dict] = None,
                  ):
 
+        self.incore_capacity = 20
         self.job_adapter = 'kinbot'
         self.execution_type = execution_type or 'incore'
         self.command = None  # KinBot does not have an executable file, just an API.
         self.url = 'https://github.com/zadorlab/KinBot'
+
         self.family_map = {'1+2_Cycloaddition': ['r12_cycloaddition'],
                            '1,2_Insertion_CO': ['r12_insertion_R'],
                            '1,2_Insertion_carbene': ['r12_insertion_R'],
@@ -170,79 +172,44 @@ class KinBotAdapter(JobAdapter):
         if reactions is None:
             raise ValueError('Cannot execute KinBot without ARCReaction object(s).')
 
-        self.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
-        self.job_type = job_type
-        self.project = project
-        self.project_directory = project_directory
-        if self.project_directory and not os.path.isdir(self.project_directory):
-            os.makedirs(self.project_directory)
-        self.args = args or dict()
-        self.bath_gas = bath_gas
-        self.checkfile = checkfile
-        self.conformer = conformer
-        self.constraints = constraints or list()
-        self.cpu_cores = cpu_cores
-        self.dihedral_increment = dihedral_increment
-        self.dihedrals = dihedrals
-        self.directed_scan_type = directed_scan_type
-        self.ess_settings = ess_settings
-        self.ess_trsh_methods = ess_trsh_methods or list()
-        self.fine = fine
-        self.initial_time = datetime.datetime.strptime(initial_time.split('.')[0], '%Y-%m-%d %H:%M:%S') \
-            if isinstance(initial_time, str) else initial_time
-        self.irc_direction = irc_direction
-        self.job_id = job_id
-        self.job_memory_gb = job_memory_gb
-        self.job_name = job_name
-        self.job_num = job_num
-        self.job_server_name = job_server_name
-        self.job_status = job_status \
-            or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
-        self.level = level
-        self.max_job_time = max_job_time
-        self.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
-        self.rotor_index = rotor_index
-        self.server = server
-        self.server_nodes = server_nodes or list()
-        self.species = [species] if species is not None and not isinstance(species, list) else species
-        self.testing = testing
-        self.torsions = torsions
-        self.tsg = tsg
-        self.xyz = xyz
-        self.times_rerun = times_rerun
-
-        self.species_label = self.reactions[0].ts_species.label if self.reactions[0].ts_species is not None \
-            else f'TS_{self.job_num}'  # The ts_species attribute should be initialized in a normal ARC run
-        if len(self.reactions) > 1:
-            self.species_label += f'_and_{len(self.reactions) - 1}_others'
-
-        if self.job_num is None or self.job_name is None or self.job_server_name:
-            self._set_job_number()
-
-        self.args = dict()
-
-        self.final_time = None
-        self.run_time = None
-        self.charge = None
-        self.multiplicity = None
-        self.is_ts = True
-        self.scan_res = None
-        self.set_file_paths()
-
-        self.workers = None
-        self.iterate_by = list()
-        self.number_of_processes = 0
-        self.incore_capacity = 20
-        self.determine_job_array_parameters()  # Writes the local HDF5 file if needed.
-
-        self.files_to_upload = list()
-        self.files_to_download = list()
-        self.set_files()  # Set the actual files (and write them if relevant).
-
-        self.restrarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
-        self.additional_job_info = None
-
-        check_argument_consistency(self)
+        _initialize_adapter(obj=self,
+                            is_ts=True,
+                            project=project,
+                            project_directory=project_directory,
+                            job_type=job_type,
+                            args=args,
+                            bath_gas=bath_gas,
+                            checkfile=checkfile,
+                            conformer=conformer,
+                            constraints=constraints,
+                            cpu_cores=cpu_cores,
+                            dihedral_increment=dihedral_increment,
+                            dihedrals=dihedrals,
+                            directed_scan_type=directed_scan_type,
+                            ess_settings=ess_settings,
+                            ess_trsh_methods=ess_trsh_methods,
+                            fine=fine,
+                            initial_time=initial_time,
+                            irc_direction=irc_direction,
+                            job_id=job_id,
+                            job_memory_gb=job_memory_gb,
+                            job_name=job_name,
+                            job_num=job_num,
+                            job_server_name=job_server_name,
+                            job_status=job_status,
+                            level=level,
+                            max_job_time=max_job_time,
+                            reactions=reactions,
+                            rotor_index=rotor_index,
+                            server=server,
+                            server_nodes=server_nodes,
+                            species=species,
+                            testing=testing,
+                            times_rerun=times_rerun,
+                            torsions=torsions,
+                            tsg=tsg,
+                            xyz=xyz,
+                            )
 
     def write_input_file(self) -> None:
         """
