@@ -537,6 +537,9 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
                             self.end_job(job=job, label=label, job_name=job_name)
+                            if job.yml_out_path is not None:
+                                for rxn in job.reactions:
+                                    rxn.ts_species.process_completed_tsg_queue_jobs(yml_path=job.yml_out_path)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
@@ -877,7 +880,7 @@ class Scheduler(object):
 
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
-        if not os.path.exists(job.local_path_to_output_file) and not job.execution_type == 'incore':
+        if not os.path.exists(job.local_path_to_output_file) and not job.execution_type == 'incore' and job.yml_out_path is None:
             if 'restart_due_to_file_not_found' in job.ess_trsh_methods:
                 job.job_status[0] = 'errored'
                 job.job_status[1]['status'] = 'errored'
