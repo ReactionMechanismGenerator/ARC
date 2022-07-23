@@ -997,7 +997,7 @@ class JobAdapter(ABC):
         The renaming should happen automatically, this method functions to troubleshoot
         cases where renaming wasn't successful the first time.
         """
-        if not os.path.isfile(self.local_path_to_output_file):
+        if not os.path.isfile(self.local_path_to_output_file) and self.yml_out_path is None:
             rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
 
     def add_to_args(self,
