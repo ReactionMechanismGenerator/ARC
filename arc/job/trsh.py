@@ -414,6 +414,8 @@ def determine_ess_status(output_path: str,
             keywords = keywords if keywords else ['Unknown']
             return 'errored', keywords, error, line
 
+    return '', list(), '', ''
+
 
 def trsh_negative_freq(label: str,
                        log_file: str,
