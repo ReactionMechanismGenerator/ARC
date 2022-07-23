@@ -134,7 +134,7 @@ def check_ts_energy(reaction: 'ARCReaction',
 
         if all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
             # We have all params, we can make a quantitative decision.
-            if ts_e_elect > r_e_elect and ts_e_elect > p_e_elect:
+            if ts_e_elect > r_e_elect + 1.0 and ts_e_elect > p_e_elect + 1.0:
                 # TS is above both wells.
                 reaction.ts_species.ts_checks['e_elect'] = True
                 return
