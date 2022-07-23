@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from rdkit import Chem
 
-from arc.common import ARC_PATH, almost_equal_coords, get_logger
+from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import check_argument_consistency
@@ -34,10 +34,10 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
 
-
-TS_GCN_PYTHON = settings['TS_GCN_PYTHON']
+servers, submit_filenames, TS_GCN_PYTHON = settings['servers'], settings['submit_filenames'], settings['TS_GCN_PYTHON']
 
 DIHEDRAL_INCREMENT = 10
+GCN_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
 
 logger = get_logger()
 
@@ -232,7 +232,30 @@ class GCNAdapter(JobAdapter):
         from the respective entry in inputs.py
         If ``'make_x'`` is ``True``, the file will be made executable.
         """
-        pass
+        # 1. ** Upload **
+        # 1.1. submit file
+        if self.execution_type != 'incore':
+            # we need a submit file for single or array jobs (either submitted to local or via SSH)
+            self.write_submit_script()
+            self.files_to_upload.append(self.get_file_property_dictionary(
+                file_name=submit_filenames[servers[self.server]['cluster_soft']]))
+        # 1.3. HDF5 file
+        elif os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
+            self.files_to_upload.append(self.get_file_property_dictionary(file_name='data.hdf5'))
+        # 1.4 job.sh
+        job_sh_dict = self.set_job_shell_file_to_upload()  # Set optional job.sh files if relevant.
+        if job_sh_dict is not None:
+            self.files_to_upload.append(job_sh_dict)
+        # 1.5 YAML input file
+        self.files_to_upload.append(self.get_file_property_dictionary(file_name='input.yml'))
+        # 2. ** Download **
+        # 2.1. HDF5 file
+        if self.iterate_by and os.path.isfile(os.path.join(self.local_path, 'data.hdf5')):
+            self.files_to_download.append(self.get_file_property_dictionary(file_name='data.hdf5'))
+        else:
+            # 2.2. Results
+            self.files_to_download.append(self.get_file_property_dictionary(file_name='TS_fwd.xyz'))
+            self.files_to_download.append(self.get_file_property_dictionary(file_name='TS_rev.xyz'))
 
     def set_additional_file_paths(self) -> None:
         """
@@ -243,161 +266,75 @@ class GCNAdapter(JobAdapter):
         self.product_path = os.path.join(self.local_path, "product.sdf")
         self.ts_fwd_path = os.path.join(self.local_path, "TS_fwd.xyz")
         self.ts_rev_path = os.path.join(self.local_path, "TS_rev.xyz")
+        self.yml_in_path = os.path.join(self.local_path, "input.yml")
+        self.yml_out_path = os.path.join(self.local_path, "output.yml")
 
     def set_input_file_memory(self) -> None:
         """
         Set the input_file_memory attribute.
         """
-        pass
+        self.cpu_cores, self.job_memory_gb = 1, 1
 
     def execute_incore(self):
         """
         Execute a job incore.
         """
-        self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
-        self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
-        for rxn in self.reactions:
+        self.execute_gcn(exe_type='incore')
+        self.final_time = datetime.datetime.now()
 
-            if rxn.ts_species is None:
-                # Mainly used while testing, in an ARC run the TS species should already exist at this point.
-                rxn.ts_species = ARCSpecies(label=self.species_label,
-                                            is_ts=True,
-                                            charge=rxn.charge,
-                                            multiplicity=rxn.multiplicity,
-                                            )
+    def execute_queue(self):
+        """
+        Execute a job to the server's queue.
+        """
+        self.execute_gcn(exe_type='queue')
 
-            # Check that this is indeed an isomerization reaction, i.e., only one reactant and one product.
-            num_reactants = len(rxn.r_species)
-            num_products = len(rxn.p_species)
+    def execute_gcn(self, exe_type: str = 'incore'):
+        """
+        Execute a job either incore or to the queue.
 
-            if num_reactants > 1:
-                logger.error(f'Error while using GCN with reactants: {rxn.r_species}.\n'
-                             f'Isomerization reactions must have only 1 reactant.')
-            if num_products > 1:
-                logger.error(f'Error while using GCN with products: {rxn.p_species}.\n'
-                             f'Isomerization reactions must have only 1 product.')
-            if num_reactants > 1 or num_products > 1:
-                return None
-
-            # prepare run
-            reactant = rxn.r_species[0]
-            reactant_rdkit_mol = rdkit_conf_from_mol(reactant.mol, reactant.get_xyz())[1]
-
-            # GCN requires an atom-mapped reaction so map the product atoms onto the reactant atoms
-            mapped_product = rxn.get_single_mapped_product_xyz()
-            product_rdkit_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())[1]
-
-            # write input files for GCN to the TS project folder
-            w = Chem.SDWriter(self.reactant_path)
-            w.write(reactant_rdkit_mol)
-            w.close()
-
-            w = Chem.SDWriter(self.product_path)
-            w.write(product_rdkit_mol)
-            w.close()
-            script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'gcn_script.py')
-            command_0 = 'source ~/.bashrc'
-
+        Args:
+            exe_type (str, optional): Whether to execute 'incore' or 'queue'.
+        """
+        self._log_job_execution()
+        rxn = self.reactions[0]
+        if not rxn.is_isomerization():
+            return
+        if rxn.ts_species is None:
+            rxn.ts_species = ARCSpecies(label=self.species_label,
+                                        is_ts=True,
+                                        charge=rxn.charge,
+                                        multiplicity=rxn.multiplicity,
+                                        )
+        write_sdf_files(rxn=rxn,
+                        reactant_path=self.reactant_path,
+                        product_path=self.product_path,
+                        )
+        if exe_type == 'queue':
+            input_dict = {'reactant_path': self.reactant_path,
+                          'product_path': self.product_path,
+                          'local_path': self.local_path,
+                          'yml_out_path': self.yml_out_path,
+                          'repetitions': self.repetitions,
+                          }
+            save_yaml_file(path=self.yml_in_path, content=input_dict)
+            self.legacy_queue_execution()
+        elif exe_type == 'incore':
             for _ in range(self.repetitions):
-                # GCN is highly non-deterministic.
-
-                ts_xyz_fwd, ts_xyz_rev = None, None
-
-                # Run the GCN as a subprocess in the forward directions.
-                ts_guess_f = TSGuess(method=f'GCN',
-                                     method_direction='F',
-                                     index=len(rxn.ts_species.ts_guesses),
-                                     )
-                ts_guess_f.tic()
-
-                commands = [command_0]
-                commands.append(f'{TS_GCN_PYTHON} {script_path} '
-                                f'--r_sdf_path {self.reactant_path} '
-                                f'--p_sdf_path {self.product_path} '
-                                f'--ts_xyz_path {self.ts_fwd_path}')
-                command = '; '.join(commands)
-                output = subprocess.run(command, shell=True, executable='/bin/bash')
-                if output.returncode:
-                    logger.warning(f'GCN subprocess ran in the forward direction did not '
-                                   f'give a successful return code for {rxn}.\n'
-                                   f'Got return code: {output.returncode}\n'
-                                   f'stdout: {output.stdout}\n'
-                                   f'stderr: {output.stderr}')
-                elif os.path.isfile(self.ts_fwd_path):
-                    ts_xyz_fwd = str_to_xyz(self.ts_fwd_path)
-
-                ts_guess_f.tok()
-
-                unique = True
-                if ts_xyz_fwd is not None and not colliding_atoms(ts_xyz_fwd):
-                    for other_tsg in rxn.ts_species.ts_guesses:
-                        if other_tsg.success and almost_equal_coords(ts_xyz_fwd, other_tsg.initial_xyz):
-                            if 'gcn' not in other_tsg.method.lower():
-                                other_tsg.method += ' and GCN'
-                            unique = False
-                            break
-                    if unique:
-                        ts_guess_f.success = True
-                        ts_guess_f.process_xyz(ts_xyz_fwd)
-                        save_geo(xyz=ts_xyz_fwd,
-                                 path=self.local_path,
-                                 filename=f'GCN F {ts_guess_f.index}',
-                                 format_='xyz',
-                                 comment='GCN F',
-                                 )
-                else:
-                    ts_guess_f.success = False
-                if unique and ts_guess_f.success:
-                    rxn.ts_species.ts_guesses.append(ts_guess_f)
-
-                # run the GCN as a subprocess in the reverse directions
-                ts_guess_r = TSGuess(method=f'GCN',
-                                     method_direction='R',
-                                     index=len(rxn.ts_species.ts_guesses),
-                                     )
-                ts_guess_r.tic()
-
-                commands = [command_0]
-                commands.append(f'{TS_GCN_PYTHON} {script_path} '
-                                f'--r_sdf_path {self.product_path} '
-                                f'--p_sdf_path {self.reactant_path} '
-                                f'--ts_xyz_path {self.ts_rev_path}')
-                command = '; '.join(commands)
-                output = subprocess.run(command, shell=True, executable='/bin/bash')
-                if output.returncode:
-                    logger.warning(f'GCN subprocess ran in the reverse direction did not '
-                                   f'give a successful return code for {rxn}.\n'
-                                   f'Got return code: {output.returncode}\n'
-                                   f'stdout: {output.stdout}\n'
-                                   f'stderr: {output.stderr}')
-                elif os.path.isfile(self.ts_rev_path):
-                    ts_xyz_rev = str_to_xyz(self.ts_rev_path)
-
-                ts_guess_r.tok()
-
-                unique = True
-                if ts_xyz_rev is not None and not colliding_atoms(ts_xyz_rev):
-                    for other_tsg in rxn.ts_species.ts_guesses:
-                        if other_tsg.success and almost_equal_coords(ts_xyz_rev, other_tsg.initial_xyz):
-                            if 'gcn' not in other_tsg.method.lower():
-                                other_tsg.method += ' and GCN'
-                            unique = False
-                            break
-                    if unique:
-                        ts_guess_r.success = True
-                        ts_guess_r.process_xyz(ts_xyz_rev)
-                        save_geo(xyz=ts_xyz_rev,
-                                 path=self.local_path,
-                                 filename=f'GCN R {ts_guess_f.index}',
-                                 format_='xyz',
-                                 comment='GCN R',
-                                 )
-                else:
-                    ts_guess_r.success = False
-                if unique and ts_guess_r.success:
-                    rxn.ts_species.ts_guesses.append(ts_guess_r)
-
+                run_subprocess_locally(direction='F',
+                                       reactant_path=self.reactant_path,
+                                       product_path=self.product_path,
+                                       ts_path=self.ts_fwd_path,
+                                       local_path=self.local_path,
+                                       ts_species=rxn.ts_species,
+                                       )
+                run_subprocess_locally(direction='R',
+                                       reactant_path=self.product_path,
+                                       product_path=self.reactant_path,
+                                       ts_path=self.ts_rev_path,
+                                       local_path=self.local_path,
+                                       ts_species=rxn.ts_species,
+                                       )
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'gcn' in tsg.method])
                 if successes:
@@ -405,14 +342,115 @@ class GCNAdapter(JobAdapter):
                 else:
                     logger.info(f'GCN did not find any successful TS guesses for {rxn.label}.')
 
-        self.final_time = datetime.datetime.now()
 
-    def execute_queue(self):
-        """
-        (Execute a job to the server's queue.)
-        A single GCN job will always be executed incore.
-        """
-        self.execute_incore()
+def write_sdf_files(rxn: 'ARCReaction',
+                    reactant_path: str,
+                    product_path: str,
+                    ):
+    """
+    Write reactant and product SDF files using RDKit.
+
+    Args:
+        rxn (ARCReaction): The relevant reaction.
+        reactant_path (str): The path to the reactant SDF file.
+        product_path (str): The path to the product SDF file.
+    """
+    reactant_rdkit_mol = rdkit_conf_from_mol(rxn.r_species[0].mol, rxn.r_species[0].get_xyz())[1]
+    mapped_product = rxn.get_single_mapped_product_xyz()
+    product_rdkit_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())[1]
+    w = Chem.SDWriter(reactant_path)
+    w.write(reactant_rdkit_mol)
+    w.close()
+    w = Chem.SDWriter(product_path)
+    w.write(product_rdkit_mol)
+    w.close()
+
+
+def run_subprocess_locally(direction: str,
+                           reactant_path: str,
+                           product_path: str,
+                           ts_path: str,
+                           local_path: str,
+                           ts_species: ARCSpecies,
+                           ):
+    """
+    Run GCN incore using a subprocess.
+
+    Args:
+        direction (str): Either 'F' or 'R' for forward ort reverse directions, respectively.
+        reactant_path (str): The path to the reactant SDF file.
+        product_path (str): The path to the product SDF file.
+        ts_path (str): The path to the resulting TS guess file.
+        local_path (str): The local path to the job folder.
+        ts_species (ARCSpecies): The TS ``ARCSpecies`` object instance.
+    """
+    ts_xyz = None
+    tsg = TSGuess(method='GCN',
+                  method_direction=direction,
+                  index=len(ts_species.ts_guesses),
+                  )
+    tsg.tic()
+    commands = ['source ~/.bashrc',
+                f'{TS_GCN_PYTHON} {GCN_SCRIPT_PATH} '
+                f'--r_sdf_path {product_path} '
+                f'--p_sdf_path {reactant_path} '
+                f'--ts_xyz_path {ts_path}']
+    command = '; '.join(commands)
+    output = subprocess.run(command, shell=True, executable='/bin/bash')
+    if output.returncode:
+        logger.warning(f'GCN subprocess ran in the reverse direction did not '
+                       f'give a successful return code for {ts_species}.\n'
+                       f'Got return code: {output.returncode}\n'
+                       f'stdout: {output.stdout}\n'
+                       f'stderr: {output.stderr}')
+    elif os.path.isfile(ts_path):
+        ts_xyz = str_to_xyz(ts_path)
+    tsg.tok()
+    process_tsg(direction=direction,
+                ts_xyz=ts_xyz,
+                local_path=local_path,
+                ts_species=ts_species,
+                tsg=tsg,
+                )
+
+
+def process_tsg(direction: str,
+                ts_xyz: Optional[dict],
+                local_path: str,
+                ts_species: ARCSpecies,
+                tsg: TSGuess,
+                ):
+    """
+    Process a single TS guess created by GCN.
+
+    Args:
+        direction (str): Either 'F' or 'R' for forward ort reverse directions, respectively.
+        ts_xyz (dict): The TS coordinates.
+        local_path (str): The local path to the job folder.
+        ts_species (ARCSpecies): The TS ``ARCSpecies`` object instance.
+        tsg (TSGuess): The relevant ``TSGuess`` object instance.
+    """
+    unique = True
+    if ts_xyz is not None and not colliding_atoms(ts_xyz):
+        for other_tsg in ts_species.ts_guesses:
+            if other_tsg.success and almost_equal_coords(ts_xyz, other_tsg.initial_xyz):
+                if 'gcn' not in other_tsg.method.lower():
+                    other_tsg.method += ' and GCN'
+                unique = False
+                break
+        if unique:
+            tsg.success = True
+            tsg.process_xyz(ts_xyz)
+            save_geo(xyz=ts_xyz,
+                     path=local_path,
+                     filename=f'GCN {direction} {tsg.index}',
+                     format_='xyz',
+                     comment=f'GCN {direction}',
+                     )
+    else:
+        tsg.success = False
+    if unique and tsg.success:
+        ts_species.ts_guesses.append(tsg)
 
 
 register_job_adapter('gcn', GCNAdapter)
