@@ -212,13 +212,13 @@ class MolproAdapter(JobAdapter):
                     ]:
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
-        input_dict['basis'] = 'cc-pVDZ' if 'vdz' in self.args['trsh'] else self.level.basis or ''  # includes vdz trsh
+        input_dict['basis'] = 'cc-pVDZ' if 'vdz' in self.args['trsh'].values() else self.level.basis or ''  # includes vdz trsh
         input_dict['cabs'] = self.level.cabs or ''
         input_dict['charge'] = self.charge
         input_dict['label'] = self.species_label
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
-        input_dict['shift'] = self.args['trsh']['shift'] if 'shift' in self.args['trsh'] else ''
+        input_dict['shift'] = self.args['trsh']['shift'] if 'shift' in self.args['trsh'].keys() else ''
         input_dict['spin'] = self.multiplicity - 1
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
@@ -241,7 +241,7 @@ class MolproAdapter(JobAdapter):
             # Todo: Automatically go with directed scans instead of ess scan
             pass
 
-        if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh']:
+        if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh'].keys():
             keywords.append('ORBITAL,IGNORE_ERROR')
 
         if 'mrci' in self.level.method:

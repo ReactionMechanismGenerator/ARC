@@ -188,7 +188,7 @@ def _initialize_adapter(obj: 'JobAdapter',
 
     obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
 
-    if 'server' in obj.args['trsh']:
+    if 'server' in obj.args['trsh'].keys():
         obj.server = obj.args['trsh']['server']
     elif obj.job_adapter in obj.ess_settings.keys():
         if isinstance(obj.ess_settings[obj.job_adapter], list):

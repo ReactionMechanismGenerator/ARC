@@ -258,9 +258,9 @@ class Psi4Adapter(JobAdapter):
         self.charge = self.species[0].charge
         self.multiplicity = self.species[0].multiplicity
         self.is_ts = self.species[0].is_ts
-        self.scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
+        self.scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'].keys() else rotor_scan_resolution
 
-        self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'] \
+        self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'].keys() \
             else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
             else self.ess_settings[self.job_adapter]
         self.label = self.species[0].label

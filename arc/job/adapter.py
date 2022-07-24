@@ -1120,7 +1120,7 @@ class JobAdapter(ABC):
         if divmod(360, self.scan_res)[1]:
             raise ValueError(f'Got an illegal scan resolution of {self.scan_res}.')
 
-        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
+        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'].keys() else rotor_scan_resolution
 
         for rotor_dict in species.rotors_dict.values():
             directed_scan_type = rotor_dict['directed_scan_type']

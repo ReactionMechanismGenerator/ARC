@@ -750,7 +750,7 @@ class Scheduler(object):
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
         if trsh:
-            args['trsh'] = trsh
+            args['trsh'] = {'trsh': trsh}
         if shift:
             args['shift'] = shift
         if scan_trsh:

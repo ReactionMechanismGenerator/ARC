@@ -210,7 +210,7 @@ class QChemAdapter(JobAdapter):
         input_dict['charge'] = self.charge
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'] else ''
+        input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
         # In QChem the attribute is called "unrestricted", so the logic is in reverse than in other adapters
