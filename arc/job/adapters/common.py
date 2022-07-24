@@ -320,8 +320,8 @@ def set_job_args(args: Optional[dict],
         dict: The initialized job specific arguments.
     """
     # Ignore user-specified additional job arguments when troubleshooting.
-    if args and any(val for val in args.values()) \
-            and level.args and any(val for val in level.args.values()):
+    if args is not None and args and any(val for val in args.values()) \
+            and level is not None and level.args and any(val for val in level.args.values()):
         logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
                        f'{pformat(level.args)}')
     elif not args and level is not None:
