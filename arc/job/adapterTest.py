@@ -38,6 +38,7 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobEnum('psi4').value, 'psi4')
         self.assertEqual(JobEnum('qchem').value, 'qchem')
         self.assertEqual(JobEnum('terachem').value, 'terachem')
+        self.assertEqual(JobEnum('xtb').value, 'xtb')
         self.assertEqual(JobEnum('autotst').value, 'autotst')
         self.assertEqual(JobEnum('heuristics').value, 'heuristics')
         self.assertEqual(JobEnum('kinbot').value, 'kinbot')
