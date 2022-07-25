@@ -2602,7 +2602,11 @@ class Scheduler(object):
         if self.species_dict[label].rotors_dict[job.rotor_index]['dimensions'] == 1:
             # This is a 1D scan.
             # Read energy profile (in kJ/mol), it may be used in the troubleshooting.
-            energies, angles = parser.parse_1d_scan_energies(path=job.local_path_to_output_file)
+            energies, angles = parser.parse_1d_scan_energies(
+                path=job.local_path_to_output_file,
+                initial_angle=calculate_dihedral_angle(
+                    coords=self.species_dict[label].get_xyz(),
+                    torsion=self.species_dict[label].rotors_dict[job.rotor_index]['torsion']))
             self.species_dict[label].rotors_dict[job.rotor_index]['original_dihedrals'] = \
                 [calculate_dihedral_angle(coords=job.xyz, torsion=job.torsions[0], index=0, units='degs')]
             if energies is None:
