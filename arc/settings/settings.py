@@ -62,6 +62,7 @@ global_ess_settings = {
     'orca': 'local',
     'qchem': 'server1',
     'terachem': 'server1',
+    'xtb': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
@@ -92,6 +93,7 @@ levels_ess = {
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
     'terachem': ['pbe'],
+    'xtb': ['xtb'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -136,6 +138,7 @@ input_filenames = {'gaussian': 'input.gjf',
                    'orca': 'input.in',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
+                   'xtb': 'input.sh',
                    }
 
 output_filenames = {'gaussian': 'input.log',
@@ -145,6 +148,7 @@ output_filenames = {'gaussian': 'input.log',
                     'orca': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
+                    'xtb': 'output.out',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
