@@ -24,6 +24,9 @@ install-gcn-cpu:
 install-kinbot:
 	bash devtools/install_kinbot.sh
 
+install-xtb:
+	bash devtools/install_xtb.sh
+
 clean:
 	find -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf testing
