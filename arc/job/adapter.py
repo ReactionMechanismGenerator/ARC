@@ -286,6 +286,39 @@ class JobAdapter(ABC):
         """
         pass
 
+    def execute(self):
+        """
+        Execute a job.
+        The execution type could be 'incore', 'queue', or 'pipe'.
+
+        An 'incore' execution type assumes a single job (if more are given, only the first one will be executed),
+        and executes the job in the same CPU process as ARC (i.e., Python waits for the response).
+
+        A 'queue' execution type assumes a single job (if more are given, only the first one will be executed),
+        and submits that single job to the server queue. The server could be either remote (accessed via SSH) or local.
+
+        A 'pipe' execution type assumes an array of jobs and submits several ARC instances (workers)
+        with an HDF5 file that contains specific directions.
+        The output is returned within the HDF5 file.
+        The new ARC instance, representing a single worker, will run all of its jobs incore.
+        """
+        self.upload_files()
+        execution_type = JobExecutionTypeEnum(self.execution_type)
+        if execution_type == JobExecutionTypeEnum.incore:
+            self.job_status[0] = 'running'
+            self.execute_incore()
+            self.job_status[0] = 'done'
+            self.job_status[1]['status'] = 'done'
+        elif execution_type == JobExecutionTypeEnum.queue:
+            self.execute_queue()
+        elif execution_type == JobExecutionTypeEnum.pipe:
+            # Todo:
+            #   - Check that the HDF5 file is available, else raise an error.
+            #   - Submit ARC workers with the HDF5 file.
+            self.execute_queue()  # This is temporary until pipe is fully functional.
+        if not self.restarted:
+            self._write_initiated_job_to_csv_file()
+
     def legacy_queue_execution(self):
         """
         Execute a job to the server's queue.
@@ -321,39 +354,6 @@ class JobAdapter(ABC):
                 if self.server == 'local':
                     change_mode(mode='+x', file_name=file_name, path=self.local_path)
             return self.get_file_property_dictionary(file_name=file_name, make_x=True)
-
-    def execute(self):
-        """
-        Execute a job.
-        The execution type could be 'incore', 'queue', or 'pipe'.
-
-        An 'incore' execution type assumes a single job (if more are given, only the first one will be executed),
-        and executes the job in the same CPU process as ARC (i.e., Python waits for the response).
-
-        A 'queue' execution type assumes a single job (if more are given, only the first one will be executed),
-        and submits that single job to the server queue. The server could be either remote (accessed via SSH) or local.
-
-        A 'pipe' execution type assumes an array of jobs and submits several ARC instances (workers)
-        with an HDF5 file that contains specific directions.
-        The output is returned within the HDF5 file.
-        The new ARC instance, representing a single worker, will run all of its jobs incore.
-        """
-        self.upload_files()
-        execution_type = JobExecutionTypeEnum(self.execution_type)
-        if execution_type == JobExecutionTypeEnum.incore:
-            self.job_status[0] = 'running'
-            self.execute_incore()
-            self.job_status[0] = 'done'
-            self.job_status[1]['status'] = 'done'
-        elif execution_type == JobExecutionTypeEnum.queue:
-            self.execute_queue()
-        elif execution_type == JobExecutionTypeEnum.pipe:
-            # Todo:
-            #   - Check that the HDF5 file is available, else raise an error.
-            #   - Submit ARC workers with the HDF5 file.
-            self.execute_queue()  # This is temporary until pipe is fully functional.
-        if not self.restarted:
-            self._write_initiated_job_to_csv_file()
 
     def determine_job_array_parameters(self):
         """
