@@ -269,6 +269,37 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
 
+def xyz_to_turbomol_format(xyz_dict: dict,
+                           charge: Optional[int] = None,
+                           unpaired: Optional[int] = None,
+                           ) -> Optional[str]:
+    """
+    Get the respective Turbomole coordinates format.
+
+$eht charge=0 unpaired=0
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+        charge (int, optional): The net charge.
+        unpaired (int, optional): The number of unpaired electrons.
+
+    Returns:
+        str: The respective Turbomole coordinates.
+    """
+    if xyz_dict is None:
+        return None
+    xyz_dict = check_xyz_dict(xyz_dict)
+    coords_list = ['$coord angs']
+    for symbol, coord in zip(xyz_dict['symbols'], xyz_dict['coords']):
+        row = '{0:11.8f}{1:14.8f}{2:14.8f}'.format(*coord)
+        row += f'      {symbol.lower()}'
+        coords_list.append(row)
+    if charge is not None and unpaired is not None:
+        coords_list.append(f'$eht charge={charge} unpaired={unpaired}')
+    coords_list.append('$end\n')
+    return '\n'.join(coords_list)
+
+
 def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
     """
     Get the KinBot xyz format of a single running list of:
