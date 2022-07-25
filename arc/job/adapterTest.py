@@ -44,6 +44,7 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobEnum('kinbot').value, 'kinbot')
         self.assertEqual(JobEnum('gcn').value, 'gcn')
         self.assertEqual(JobEnum('user').value, 'user')
+        self.assertEqual(JobEnum('xtb_gsm').value, 'xtb_gsm')
         with self.assertRaises(ValueError):
             JobEnum('wrong')
 
