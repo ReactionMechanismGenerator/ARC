@@ -12,6 +12,11 @@ incore_commands = {
             'conda activate xtb_env',
             'bash input.sh',
             ],
+    'xtb_gsm': ['CONDA_BASE=$(conda info --base)',
+                'source $CONDA_BASE/etc/profile.d/conda.sh',
+                'conda activate xtb_env',
+                './gsm.orca',
+                ],
 }
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
@@ -196,6 +201,29 @@ export MKL_NUM_THREADS={cpus}
 export XTBPATH=$PWD  # Add here all paths were configuration and/or parameter files are stored.
 
 bash input.sh > output.out
+
+""",
+        'xtb_gsm': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+conda activate xtb_env
+
+./gsm.orca
 
 """,
     },
