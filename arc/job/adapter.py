@@ -95,6 +95,7 @@ class JobEnum(str, Enum):
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     user = 'user'  # user guesses
+    xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
 
 
 class JobTypeEnum(str, Enum):
