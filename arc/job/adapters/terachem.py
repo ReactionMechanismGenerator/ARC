@@ -350,7 +350,7 @@ class TeraChemAdapter(JobAdapter):
               raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
               )
         self._log_job_execution()
-        execute_command(incore_commands[self.server][self.job_adapter])
+        execute_command(incore_commands[self.job_adapter])
 
     def execute_queue(self):
         """
