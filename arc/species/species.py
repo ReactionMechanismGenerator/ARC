@@ -1442,6 +1442,8 @@ class ARCSpecies(object):
             return None
         cluster_tsgs = list()
         for tsg in self.ts_guesses:
+            tsg.initial_xyz = check_xyz_dict(tsg.initial_xyz)
+            tsg.opt_xyz = check_xyz_dict(tsg.opt_xyz)
             for cluster_tsg in cluster_tsgs:
                 if cluster_tsg.almost_equal_tsgs(tsg):
                     cluster_tsg.cluster.append(tsg.index)
