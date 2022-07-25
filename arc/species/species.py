@@ -2018,8 +2018,8 @@ class TSGuess(object):
             self.constraints = constraints
             self.t0 = t0
             self.execution_time = execution_time if execution_time is not None else execution_time
-            self.opt_xyz = None
-            self.initial_xyz = None
+            self._opt_xyz = None
+            self._initial_xyz = None
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
@@ -2049,6 +2049,26 @@ class TSGuess(object):
             str_representation += f'cluster="{self.cluster}", '
         str_representation += f'success={self.success})'
         return str_representation
+
+    @property
+    def initial_xyz(self):
+        """The initial coordinate guess"""
+        return self._initial_xyz
+
+    @initial_xyz.setter
+    def initial_xyz(self, value):
+        """Allow setting the initial coordinate guess"""
+        self._initial_xyz = check_xyz_dict(value)
+
+    @property
+    def opt_xyz(self):
+        """The optimized coordinates"""
+        return self._opt_xyz
+
+    @opt_xyz.setter
+    def opt_xyz(self, value):
+        """Allow setting the initial coordinate guess"""
+        self._opt_xyz = check_xyz_dict(value)
 
     def as_dict(self, for_report: bool = False) -> dict:
         """
