@@ -59,6 +59,7 @@ servers = {
 # An ordered list of servers indicates priority
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
+    'cfour': 'local',
     'gaussian': ['local', 'server2'],
     'gcn': 'local',
     'molpro': ['local', 'server2'],
@@ -71,7 +72,7 @@ global_ess_settings = {
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']
+supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'cfour']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot', 'xtb_gsm']
@@ -93,6 +94,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
+    'cfour': ['casscf'],
     'gaussian': ['apfd', 'b3lyp', 'm062x'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
     'qchem': ['m06-2x'],
@@ -138,7 +140,8 @@ t_max_format = {'OGE': 'hours',
                 'HTCondor': 'hours',
                 }
 
-input_filenames = {'gaussian': 'input.gjf',
+input_filenames = {'cfour': 'ZMAT',
+                   'gaussian': 'input.gjf',
                    'molpro': 'input.in',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
@@ -147,7 +150,8 @@ input_filenames = {'gaussian': 'input.gjf',
                    'xtb': 'input.sh',
                    }
 
-output_filenames = {'gaussian': 'input.log',
+output_filenames = {'cfour': 'output.out',
+                    'gaussian': 'input.log',
                     'gcn': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
