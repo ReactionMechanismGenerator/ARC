@@ -67,7 +67,8 @@ def check_ts(reaction: 'ARCReaction',
         check_ts_energy(reaction=reaction, verbose=verbose)
 
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
-        check_normal_mode_displacement(reaction, job=job)
+        reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+        # check_normal_mode_displacement(reaction, job=job)
 
     if 'rotors' in checks or (ts_passed_all_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
