@@ -3,11 +3,15 @@ Submit scripts and incore commands
 """
 
 # commands to execute ESS incore (without cluster software submission)
-# stored as a dictionary with server and software as primary and secondary keys
 incore_commands = {
-    'local': {
-        'gaussian': ['g16 < input.gjf > input.log', 'formchk check.chk check.fchk'],
-    },
+    'gaussian': ['g16 < input.gjf > input.log',
+                 'formchk check.chk check.fchk',
+                 ],
+    'xtb': ['CONDA_BASE=$(conda info --base)',
+            'source $CONDA_BASE/etc/profile.d/conda.sh',
+            'conda activate xtb_env',
+            'bash input.sh',
+            ],
 }
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
