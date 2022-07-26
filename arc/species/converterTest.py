@@ -726,7 +726,16 @@ H      3.654100    0.340300    0.057100"""
         self.assertEqual(xyz_t6, self.xyz6['Turbomole'])
         self.assertEqual(xyz_t6_eht, self.xyz6['Turbomole eht'])
 
-
+    def test_xyz_to_coords_and_element_numbers(self):
+        """Test the xyz_to_coords_and_element_numbers() function."""
+        coords, atom_nums = converter.xyz_to_coords_and_element_numbers(self.xyz1['dict'])
+        self.assertEqual(coords,
+                         [[0.0, 0.0, 0.0],
+                          [0.6300326, 0.6300326, 0.6300326],
+                          [-0.6300326, -0.6300326, 0.6300326],
+                          [-0.6300326, 0.6300326, -0.6300326],
+                          [0.6300326, -0.6300326, -0.6300326]])
+        self.assertEqual(atom_nums, [6, 1, 1, 1, 1])
 
     def test_xyz_to_dmat(self):
         """Test converting xyz to dmat"""
