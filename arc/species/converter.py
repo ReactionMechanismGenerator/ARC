@@ -300,6 +300,21 @@ $eht charge=0 unpaired=0
     return '\n'.join(coords_list)
 
 
+def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
+    """
+    Convert xyz to a coords list and an atomic number list.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        Tuple[list, list]: Coords and atomic numbers.
+    """
+    coords = xyz_to_coords_list(xyz)
+    z_list = [qcel.periodictable.to_Z(symbol) for symbol in xyz['symbols']]
+    return coords, z_list
+
+
 def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
     """
     Get the KinBot xyz format of a single running list of:
