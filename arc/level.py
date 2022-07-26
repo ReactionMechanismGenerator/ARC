@@ -285,10 +285,11 @@ class Level(object):
             args[key1.lower()] = dict()
             if isinstance(val1, dict):
                 for key2, val2 in val1.items():
-                    if not isinstance(val2, str):
-                        raise ValueError(f'All entries in the args argument must be strings.\n'
-                                         f'Got {val2} which is a {type(val2)} in {self.args}.')
-                    args[key1.lower()][key2.lower()] = val2.lower()
+                    new_val2 = str(val2) if isinstance(val2, (int, float)) else val2
+                    if not isinstance(new_val2, str):
+                        raise ValueError(f'All entries in the args argument must be str, int, or float types.\n'
+                                         f'Got {new_val2} which is a {type(new_val2)} in {self.args}.')
+                    args[key1.lower()][key2.lower()] = new_val2.lower()
             elif isinstance(val1, str):
                 args[key1.lower()]['general'] = val1.lower()
             elif isinstance(val1, (list, tuple)):
