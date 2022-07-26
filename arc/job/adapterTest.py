@@ -38,11 +38,14 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobEnum('psi4').value, 'psi4')
         self.assertEqual(JobEnum('qchem').value, 'qchem')
         self.assertEqual(JobEnum('terachem').value, 'terachem')
+        self.assertEqual(JobEnum('torchani').value, 'torchani')
+        self.assertEqual(JobEnum('xtb').value, 'xtb')
         self.assertEqual(JobEnum('autotst').value, 'autotst')
         self.assertEqual(JobEnum('heuristics').value, 'heuristics')
         self.assertEqual(JobEnum('kinbot').value, 'kinbot')
         self.assertEqual(JobEnum('gcn').value, 'gcn')
         self.assertEqual(JobEnum('user').value, 'user')
+        self.assertEqual(JobEnum('xtb_gsm').value, 'xtb_gsm')
         with self.assertRaises(ValueError):
             JobEnum('wrong')
 
