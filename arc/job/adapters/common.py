@@ -74,7 +74,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              }
 
 all_families_ts_adapters = []
-
+adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
 default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4']
@@ -121,10 +121,12 @@ def _initialize_adapter(obj: 'JobAdapter',
     """
     A common Job adapter initializer function.
     """
-    if not is_ts and any(arg is None for arg in [job_type, level, project, project_directory]):
+    if not is_ts and any(arg is None for arg in [job_type, project, project_directory]):
         raise ValueError(f'All of the following arguments must be given:\n'
                          f'job_type, level, project, project_directory\n'
                          f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
+    if not is_ts and obj.job_adapter not in adapters_that_do_not_require_a_level_arg and level is None:
+        raise ValueError(f'A `level` argument must be given')
 
     obj.project = project
     obj.project_directory = project_directory
