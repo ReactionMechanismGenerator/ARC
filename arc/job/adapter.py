@@ -309,10 +309,13 @@ class JobAdapter(ABC):
         self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
         if execution_type == JobExecutionTypeEnum.incore:
+            self.initial_time = datetime.datetime.now()
             self.job_status[0] = 'running'
             self.execute_incore()
             self.job_status[0] = 'done'
             self.job_status[1]['status'] = 'done'
+            self.final_time = datetime.datetime.now()
+            self.determine_run_time()
         elif execution_type == JobExecutionTypeEnum.queue:
             self.execute_queue()
         elif execution_type == JobExecutionTypeEnum.pipe:
