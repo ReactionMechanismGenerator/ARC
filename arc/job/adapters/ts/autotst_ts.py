@@ -241,7 +241,7 @@ class AutoTSTAdapter(JobAdapter):
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
                     # run AutoTST as a subprocess in the desired direction
-                    script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'ts', 'scripts', 'autotst_script.py')
+                    script_path = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'autotst_script.py')
                     commands = ['source ~/.bashrc', f'{AUTOTST_PYTHON} {script_path} {reaction_label} {self.output_path}']
                     command = '; '.join(commands)
 
