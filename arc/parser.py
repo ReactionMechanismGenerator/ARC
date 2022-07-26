@@ -10,14 +10,13 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-import rmgpy.constants as constants
 from rmgpy.exceptions import InputError as RMGInputError
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
 from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot, read_yaml_file
 from arc.exceptions import InputError, ParserError
-from arc.species.converter import str_to_xyz, xyz_from_data
+from arc.species.converter import hartree_to_si, str_to_xyz, xyz_from_data
 
 
 logger = get_logger()
@@ -319,7 +318,7 @@ def parse_e_elect(path: str,
             lines = f.readlines()
         for line in lines:
             if 'TOTAL ENERGY' in line:
-                e_elect = float(line.split()[3]) * constants.E_h * constants.Na * 0.001
+                e_elect = hartree_to_si(float(line.split()[3]))
         return e_elect
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
@@ -367,7 +366,7 @@ def parse_zpe(path: str) -> Optional[float]:
         lines = _get_lines_from_file(path)
         for line in lines:
             if 'total energy' in line:
-                return float(line.split()[3]) * constants.E_h * constants.Na * 0.001
+                return hartree_to_si(float(line.split()[3]))
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
@@ -404,7 +403,7 @@ def parse_1d_scan_energies(path: str,
             lines = _get_lines_from_file(scan_path)
             for line in lines:
                 if 'energy:' in line:
-                    energies.append(float(line.split()[1]) * constants.E_h * constants.Na * 0.001)
+                    energies.append(hartree_to_si(float(line.split()[1])))
             min_e = min(energies)
             energies = [e - min_e for e in energies]
             resolution = 360.0 / len(energies)
