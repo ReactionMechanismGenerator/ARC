@@ -3302,11 +3302,13 @@ class Scheduler(object):
         for value in self.job_dict[label].values():
             if value in ['conformers', 'tsg']:
                 for job_name, job in self.job_dict[label][value].items():
-                    if label in self.running_jobs.keys() and job_name in self.running_jobs[label]:
+                    if label in self.running_jobs.keys() and job_name in self.running_jobs[label] \
+                            and job.execution_type != 'incore':
                         logger.info(f'Deleted job {value}{job_name}')
                         job.delete()
             for job_name, job in value.items():
-                if label in self.running_jobs.keys() and job_name in self.running_jobs[label]:
+                if label in self.running_jobs.keys() and job_name in self.running_jobs[label] \
+                        and job.execution_type != 'incore':
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
