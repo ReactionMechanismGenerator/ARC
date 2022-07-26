@@ -178,9 +178,8 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     # run checks:
     for ess, server_list in settings_dict.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'psi4',
-                               'gcn', 'heuristics', 'autotst', 'kinbot']:
-            raise SettingsError(f'ESS software are Gaussian, QChem, Molpro, Orca, TeraChem, Psi4, '
-                                f'or OneDMin. Got: {ess}')
+                               'gcn', 'heuristics', 'autotst', 'kinbot', 'xtb', 'xtb_gsm']:
+            raise SettingsError(f'Got an unrecognized software in ESS settings: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
