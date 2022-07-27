@@ -378,7 +378,10 @@ class Level(object):
             var_2 = LevelOfTheory(**kwargs)
             kwargs['software'] = self.software  # add or overwrite software
             # start w/ the software argument (var_1) in case there are several entries that only vary by software
-            var_1 = LevelOfTheory(**kwargs)
+            try:
+                var_1 = LevelOfTheory(**kwargs)
+            except ValueError:
+                var_1 = None
 
             if variant == 'freq':
                 # if not found, the factor is set to exactly 1
@@ -488,6 +491,14 @@ class Level(object):
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
+
+        # TorchANI
+        if 'torchani' in self.method:
+            self.software = 'torchani'
+
+        # xTB
+        if 'xtb' in self.method or 'gfn' in self.method:
+            self.software = 'xtb'
 
         # User phrases from settings (levels_ess)
         if self.software is None:
