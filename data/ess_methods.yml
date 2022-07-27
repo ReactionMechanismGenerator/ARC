@@ -144,3 +144,10 @@ terachem:  # see http://www.petachem.com/doc/userguide.pdf for more info on tera
   - wb97xd  # custom shortcut definition of ARC
   - wb97xd2  # custom shortcut definition of ARC
   - wb97xd3  # custom shortcut definition of ARC
+xtb:
+  - xtb
+  - xtb2
+  - gfn1
+  - gfn2
+torchani:
+  - torchani
