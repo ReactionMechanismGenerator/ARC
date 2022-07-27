@@ -790,6 +790,41 @@ H      3.654100    0.340300    0.057100"""
         self.assertIsInstance(xyz_dict2['coords'], tuple)
         self.assertIsInstance(xyz_dict2['coords'][0], tuple)
 
+    def test_species_to_sdf_file(self):
+        """Test the species_to_sdf_file() function."""
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf')
+        spc = ARCSpecies(label='NCC', smiles='NCC')
+        converter.species_to_sdf_file(spc, path)
+        with open(path, 'r') as f:
+            sdf_content = f.read()
+        expected_sdf = """
+     RDKit          3D
+
+ 10  9  0  0  0  0  0  0  0  0999 V2000
+    1.1517   -0.3760   -0.5231 N   0  0  0  0  0  0  0  0  0  0  0  0
+    0.2893    0.4500    0.3115 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.1415   -0.0561    0.2592 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.1386   -1.3376   -0.1854 H   0  0  0  0  0  0  0  0  0  0  0  0
+    2.1151   -0.0555   -0.4352 H   0  0  0  0  0  0  0  0  0  0  0  0
+    0.6517    0.4342    1.3447 H   0  0  0  0  0  0  0  0  0  0  0  0
+    0.3279    1.4855   -0.0414 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2133   -1.0839    0.6308 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.7870    0.5726    0.8809 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.5327   -0.0332   -0.7636 H   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  1  4  1  0
+  1  5  1  0
+  2  3  1  0
+  2  6  1  0
+  2  7  1  0
+  3  8  1  0
+  3  9  1  0
+  3 10  1  0
+M  END
+$$$$
+"""
+        self.assertEqual(sdf_content, expected_sdf)
+
     def test_sort_xyz_using_indices(self):
         """Test the sort_xyz_using_indices() function."""
         xyz_1 = converter.sort_xyz_using_indices(self.xyz1['dict'], indices=[4, 3, 2, 1, 0])
@@ -4897,8 +4932,12 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
-                      os.path.join(ARC_PATH, 'arc', 'species', 'nul'), os.path.join(ARC_PATH, 'arc', 'species', 'run.out')]
+        file_paths = [os.path.join(ARC_PATH, 'nul'),
+                      os.path.join(ARC_PATH, 'run.out'),
+                      os.path.join(ARC_PATH, 'arc', 'species', 'nul'),
+                      os.path.join(ARC_PATH, 'arc', 'species', 'run.out'),
+                      os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf'),
+                      ]
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
