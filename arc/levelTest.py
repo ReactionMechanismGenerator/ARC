@@ -78,6 +78,17 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
 
+    def test_equal(self):
+        """Test identifying equal levels."""
+        level_1 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        level_2 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        level_3 = Level(method='wb97xd', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        self.assertEqual(level_1, level_2)
+        self.assertNotEqual(level_1, level_3)
+
     def test_build(self):
         """Test bulding a Level object from a string or dict representation"""
         level_1 = Level(repr='wB97xd/def2-tzvp')
