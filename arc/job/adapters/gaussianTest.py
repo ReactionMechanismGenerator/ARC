@@ -13,7 +13,7 @@ import unittest
 from arc.common import ARC_PATH
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
-from arc.settings.settings import input_filenames, output_filenames
+from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
 
 
@@ -264,28 +264,28 @@ O       0.00000000    0.00000000    1.00000000
 
     def test_set_files(self):
         """Test setting files"""
-        job_1_files_to_upload = [{'file_name': 'submit.sub',
-                                  'local': os.path.join(self.job_1.local_path, 'submit.sub'),
-                                  'remote': os.path.join(self.job_1.remote_path, 'submit.sub'),
+        job_3_files_to_upload = [{'file_name': 'submit.sub',
+                                  'local': os.path.join(self.job_3.local_path, submit_filenames[servers[self.job_3.server]['cluster_soft']]),
+                                  'remote': os.path.join(self.job_3.remote_path, submit_filenames[servers[self.job_3.server]['cluster_soft']]),
                                   'make_x': False,
                                   'source': 'path'},
                                  {'file_name': 'input.gjf',
-                                  'local': os.path.join(self.job_8.local_path, input_filenames[self.job_8.job_adapter]),
-                                  'remote': os.path.join(self.job_8.remote_path, input_filenames[self.job_8.job_adapter]),
+                                  'local': os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]),
+                                  'remote': os.path.join(self.job_3.remote_path, input_filenames[self.job_3.job_adapter]),
                                   'source': 'path',
                                   'make_x': False}]
-        job_1_files_to_download = [{'file_name': 'input.log',
-                                    'local': os.path.join(self.job_8.local_path, output_filenames[self.job_8.job_adapter]),
-                                    'remote': os.path.join(self.job_8.remote_path, output_filenames[self.job_8.job_adapter]),
+        job_3_files_to_download = [{'file_name': 'input.log',
+                                    'local': os.path.join(self.job_3.local_path, output_filenames[self.job_3.job_adapter]),
+                                    'remote': os.path.join(self.job_3.remote_path, output_filenames[self.job_3.job_adapter]),
                                     'source': 'path',
                                     'make_x': False},
                                    {'file_name': 'check.chk',
-                                    'local': os.path.join(self.job_8.local_path, 'check.chk'),
-                                    'remote': os.path.join(self.job_8.remote_path, 'check.chk'),
+                                    'local': os.path.join(self.job_3.local_path, 'check.chk'),
+                                    'remote': os.path.join(self.job_3.remote_path, 'check.chk'),
                                     'source': 'path',
                                     'make_x': False}]
-        self.assertEqual(self.job_8.files_to_upload, job_1_files_to_upload)
-        self.assertEqual(self.job_8.files_to_download, job_1_files_to_download)
+        self.assertEqual(self.job_3.files_to_upload, job_3_files_to_upload)
+        self.assertEqual(self.job_3.files_to_download, job_3_files_to_download)
 
     def test_set_files_for_pipe(self):
         """Test setting files for a pipe job"""
