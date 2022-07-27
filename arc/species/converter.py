@@ -105,6 +105,8 @@ def str_to_xyz(xyz_str: str) -> dict:
     else:
         # this is a "regular" string xyz format, if it has isotope information it will be preserved
         for line in xyz_str.strip().splitlines():
+            if len(line.split()) in [0, 1]:
+                continue
             if line.strip():
                 splits = line.split()
                 if len(splits) != 4:
