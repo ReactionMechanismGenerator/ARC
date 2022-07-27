@@ -111,6 +111,14 @@ class Level(object):
             # it wasn't set by the user, try determining it
             self.deduce_software()
 
+    def __eq__(self, other: Level) -> bool:
+        """
+        Determine equality between Level object instances.
+        """
+        if isinstance(other, Level):
+            return str(self) == str(other)
+        return False
+
     def __str__(self) -> str:
         """
         Return a humane-readable string representation of the object.
