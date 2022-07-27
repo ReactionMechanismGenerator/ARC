@@ -755,7 +755,7 @@ class Scheduler(object):
         if shift:
             args['shift'] = shift
         if scan_trsh:
-            args['scan_trsh'] = scan_trsh
+            args['keyword']['scan_trsh'] = scan_trsh
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,
