@@ -333,8 +333,11 @@ class Level(object):
             warn (bool, optional): Whether to output a warning if an AEC variant could not be found.
 
         Returns:
-            LevelOfTheory: The respective Arkane ``LevelOfTheory`` object
+            Optional[LevelOfTheory]: The respective Arkane ``LevelOfTheory`` object
         """
+        level_aec = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+        if self.method in level_aec.keys():
+            return None
         if variant is None:
             if not comprehensive:
                 # only add basis and software if needed
