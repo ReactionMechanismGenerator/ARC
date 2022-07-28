@@ -10,10 +10,12 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
+import rmgpy.constants as constants
+from rmgpy.exceptions import InputError as RMGInputError
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
-from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot
+from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot, read_yaml_file
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import str_to_xyz, xyz_from_data
 
@@ -22,28 +24,37 @@ logger = get_logger()
 
 
 def parse_frequencies(path: str,
-                      software: str,
+                      software: Optional[str] = None,
                       ) -> np.ndarray:
     """
     Parse the frequencies from a freq job output file.
 
     Args:
         path (str): The log file path.
-        software (str): The ESS.
+        software (str, optional): The ESS.
 
     Returns: np.ndarray
         The parsed frequencies (in cm^-1).
     """
+    if not os.path.isfile(path):
+        raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'freqs' in content.keys():
+            return np.array(content['freqs'], dtype=np.float64)
+    software = software.lower() if software is not None else identify_ess(path)
     lines = _get_lines_from_file(path)
     freqs = np.array([], np.float64)
-    if software.lower() == 'qchem':
+    if software is None:
+        return freqs
+    if software == 'qchem':
         for line in lines:
             if ' Frequency:' in line:
                 items = line.split()
                 for i, item in enumerate(items):
                     if i:
                         freqs = np.append(freqs, [(float(item))])
-    elif software.lower() == 'gaussian':
+    elif software == 'gaussian':
         with open(path, 'r') as f:
             line = f.readline()
             while line != '':
@@ -53,7 +64,7 @@ def parse_frequencies(path: str,
                 if 'Frequencies --' in line:
                     freqs = np.append(freqs, [float(frq) for frq in line.split()[2:]])
                 line = f.readline()
-    elif software.lower() == 'molpro':
+    elif software == 'molpro':
         read = False
         for line in lines:
             if 'Nr' in line and '[1/cm]' in line:
@@ -65,7 +76,7 @@ def parse_frequencies(path: str,
                 freqs = np.append(freqs, [float(line.split()[-1])])
             if 'Low' not in line and 'Vibration' in line and 'Wavenumber' in line:
                 read = True
-    elif software.lower() == 'orca':
+    elif software == 'orca':
         with open(path, 'r') as f:
             line = f.readline()
             read = True
@@ -85,7 +96,7 @@ def parse_frequencies(path: str,
                     break
                 else:
                     line = f.readline()
-    elif software.lower() == 'terachem':
+    elif software == 'terachem':
         read_output = False
         for line in lines:
             if '=== Mode' in line:
@@ -103,9 +114,23 @@ def parse_frequencies(path: str,
                 # 'Mode  Eigenvalue(AU)  Frequency(cm-1)  Intensity(km/mol)   Vib.Temp(K)      ZPE(AU) ...'
                 # '  1     0.0331810528   170.5666870932      52.2294230772  245.3982965841   0.0003885795 ...'
                 freqs = np.append(freqs, [float(line.split()[2])])
+    elif software == 'xtb':
+        read_output = False
+        for line in lines:
+            if read_output:
+                if 'eigval :' in line:
+                    splits = line.split()
+                    for split in splits[2:]:
+                        freq = float(split)
+                        if freq:
+                            freqs = np.append(freqs, freq)
+                else:
+                    break
+            if 'vibrational frequencies' in line:
+                read_output = True
 
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem and TeraChem '
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
                           f'files, got {software}')
     logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
@@ -129,14 +154,24 @@ def parse_normal_mode_displacement(path: str,
     Returns: Tuple[np.ndarray, np.ndarray]
         The frequencies (in cm^-1) and the normal mode displacements.
     """
-    software = software or determine_ess(path)
+    if not os.path.isfile(path):
+        raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'freqs' in content.keys() and 'modes' in content.keys():
+            return content['freqs'], content['modes']
+    software = software.lower() if software is not None else identify_ess(path) or determine_ess(path)
     freqs, normal_mode_disp, normal_mode_disp_entries = list(), list(), list()
-    num_of_freqs_per_line = 3
+    if software == 'xtb':
+        g98_path = os.path.join(os.path.dirname(path), 'g98.out')
+        if os.path.isfile(g98_path):
+            path = g98_path
     with open(path, 'r') as f:
         lines = f.readlines()
-    if software == 'gaussian':
+    if software in ['gaussian', 'xtb']:
+        num_of_freqs_per_line = 3
         parse, parse_normal_mode_disp = False, False
-        for line in lines:
+        for line in lines + ['']:
             if 'Harmonic frequencies (cm**-1)' in line:
                 # e.g.:  Harmonic frequencies (cm**-1), IR intensities (KM/Mole), Raman scattering
                 parse = True
@@ -160,7 +195,7 @@ def parse_normal_mode_displacement(path: str,
                     if len(normal_mode_disp_entries) < i + 1:
                         normal_mode_disp_entries.append(list())
                     normal_mode_disp_entries[i].append(splits[3 * i: 3 * i + 3])
-            elif parse and 'Atom  AN      X      Y      Z' in line:
+            elif parse and 'Atom  AN      X      Y      Z' in line or 'Atom AN      X      Y      Z' in line:
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
@@ -181,15 +216,41 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
     Returns: Optional[Dict[str, tuple]]
         The cartesian geometry.
     """
+    if not os.path.isfile(path):
+        raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'xyz' in content.keys():
+            return content['xyz']
+    software = identify_ess(path)
+    xyz_str = ''
+    if software == 'xtb':
+        lines = _get_lines_from_file(path)
+        final_structure, coord, first_line = False, False, True
+        for line in lines:
+            if '$' in line or 'END' in line or len(line.split()) < 10:
+                coord = False
+            if coord:
+                splits = line.split()
+                xyz_str += f'{qcel.periodictable.to_E(splits[3])}  {splits[0]}  {splits[1]}  {splits[2]}\n'
+            if final_structure and ('$coord' in line or len(line.split()) > 15):
+                coord = True
+                if len(line.split()) > 15 and first_line:
+                    splits = line.split()
+                    xyz_str += f'{qcel.periodictable.to_E(splits[3])}  {splits[0]}  {splits[1]}  {splits[2]}\n'
+                    first_line = False
+            if 'final structure:' in line:
+                final_structure = True
+        return str_to_xyz(xyz_str)
+
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         coords, number, _ = log.load_geometry()
     except LogError:
         logger.debug(f'Could not parse xyz from {path}')
 
-        # try parsing Gaussian standard orientation instead of the input orientation parsed by Arkane
+        # Try parsing Gaussian standard orientation instead of the input orientation parsed by Arkane.
         lines = _get_lines_from_file(path)
-        xyz_str = ''
         for i in range(len(lines)):
             if 'Standard orientation:' in lines[i]:
                 xyz_str = ''
@@ -204,7 +265,6 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
 
         if xyz_str:
             return str_to_xyz(xyz_str)
-
         return None
 
     return xyz_from_data(coords=coords, numbers=number)
@@ -233,6 +293,7 @@ def parse_t1(path: str) -> Optional[float]:
 
 def parse_e_elect(path: str,
                   zpe_scale_factor: float = 1.,
+                  software: Optional[str] = None,
                   ) -> Optional[float]:
     """
     Parse the electronic energy from an sp job output file.
@@ -240,19 +301,53 @@ def parse_e_elect(path: str,
     Args:
         path (str): The ESS log file to parse from.
         zpe_scale_factor (float): The ZPE scaling factor, used only for composite methods in Gaussian via Arkane.
+        software (str, optional): The ESS.
 
     Returns: Optional[float]
         The electronic energy in kJ/mol.
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'sp' in content.keys():
+            return content['sp']
+    e_elect = None
+    software = software or identify_ess(path)
+    if software is not None and software.lower() == 'xtb':
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            if 'TOTAL ENERGY' in line:
+                e_elect = float(line.split()[3]) * constants.E_h * constants.Na * 0.001
+        return e_elect
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         e_elect = log.load_energy(zpe_scale_factor) * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
         logger.warning(f'Could not read e_elect from {path}')
-        e_elect = None
     return e_elect
+
+
+def identify_ess(path: str) -> Optional[str]:
+    """
+    Identify the software that generated a specific output file.
+    This function supports ESS not identified by Arkane.
+
+    Args:
+        path (str): The ESS log file to parse from.
+
+    Returns:
+        Optional[str]: The ESS.
+    """
+    software = None
+    with open(path, 'r') as f:
+        for _ in range(25):
+            line = f.readline()
+            if 'x T B' in line:
+                software = 'xtb'
+                break
+    return software
 
 
 def parse_zpe(path: str) -> Optional[float]:
@@ -267,21 +362,30 @@ def parse_zpe(path: str) -> Optional[float]:
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
+    software = identify_ess(path)
+    if software == 'xtb':
+        lines = _get_lines_from_file(path)
+        for line in lines:
+            if 'total energy' in line:
+                return float(line.split()[3]) * constants.E_h * constants.Na * 0.001
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         zpe = log.load_zero_point_energy() * 0.001  # convert to kJ/mol
     except (LogError, NotImplementedError):
-        logger.warning('Could not read zpe from {0}'.format(path))
+        logger.warning(f'Could not read zpe from {path}')
         zpe = None
     return zpe
 
 
-def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+def parse_1d_scan_energies(path: str,
+                           initial_angle: float = 0.0,
+                           ) -> Tuple[Optional[List[float]], Optional[List[float]]]:
     """
     Parse the 1D torsion scan energies from an ESS log file.
 
     Args:
         path (str): The ESS log file to parse from.
+        initial_angle (float, optional): The initial dihedral angle.
 
     Raises:
         InputError: If ``path`` is invalid.
@@ -291,6 +395,22 @@ def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[L
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
+    energies, angles = None, None
+    software = identify_ess(path)
+    if software == 'xtb':
+        scan_path = os.path.join(os.path.dirname(path), 'xtbscan.log')
+        energies = list()
+        if os.path.isfile(scan_path):
+            lines = _get_lines_from_file(scan_path)
+            for line in lines:
+                if 'energy:' in line:
+                    energies.append(float(line.split()[1]) * constants.E_h * constants.Na * 0.001)
+            min_e = min(energies)
+            energies = [e - min_e for e in energies]
+            resolution = 360.0 / len(energies)
+            angles = [initial_angle + i * resolution for i in range(len(energies))]
+        return energies, angles
+
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         energies, angles = log.load_scan_energies()
@@ -298,7 +418,6 @@ def parse_1d_scan_energies(path: str) -> Tuple[Optional[List[float]], Optional[L
         angles *= 180 / np.pi  # convert to degrees
     except (LogError, NotImplementedError, ZeroDivisionError):
         logger.warning(f'Could not read energies from {path}')
-        energies, angles = None, None
     return energies, angles
 
 
@@ -309,14 +428,36 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
     Args:
         path (str): The ESS log file to parse from.
 
-    Returns: list
-        The Cartesian coordinates.
+    Returns:
+        List[Dict[str, tuple]]: The Cartesian coordinates.
     """
+    if not os.path.isfile(path):
+        raise InputError(f'Could not find file {path}')
+    software = identify_ess(path)
+    traj = list()
+
+    if software == 'xtb':
+        scan_path = os.path.join(os.path.dirname(path), 'xtbscan.log')
+        if os.path.isfile(scan_path):
+            lines = _get_lines_from_file(scan_path)
+            xyz_str = ''
+            for line in lines:
+                splits = line.split()
+                if len(splits) == 1:
+                    if xyz_str:
+                        traj.append(str_to_xyz(xyz_str))
+                        xyz_str = ''
+                    continue
+                if 'energy:' in line:
+                    continue
+                xyz_str += f'{qcel.periodictable.to_E(splits[0])}  {splits[1]}  {splits[2]}  {splits[3]}\n'
+            traj.append(str_to_xyz(xyz_str))
+        return traj
+
     lines = _get_lines_from_file(path)
     log = ess_factory(fullpath=path, check_for_errors=False)
     if not isinstance(log, GaussianLog):
         raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files, got {type(log)}')
-    traj = list()
     done = False
     i = 0
     while not done:
@@ -537,6 +678,13 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     Returns: Optional[Dict[str, tuple]]
         The parsed cartesian coordinates.
     """
+    if not os.path.isfile(path):
+        raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'xyz' in content.keys():
+            return content['xyz']
+
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
 
@@ -605,7 +753,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         try:
             log = ess_factory(fullpath=path, check_for_errors=False)
             ess_file = True
-        except InputError:
+        except (InputError, RMGInputError):
             ess_file = False
 
     if ess_file:
@@ -1052,7 +1200,10 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
         pd.DataFrame: a list of conformers containing the all the internal
                        coordinates information in pd.DataFrame
     """
-    log = ess_factory(fullpath=file_path, check_for_errors=False)
+    try:
+        log = ess_factory(fullpath=file_path, check_for_errors=False)
+    except RMGInputError:
+        raise NotImplementedError
     scan_args = parse_scan_args(file_path)
     scan_ic_info = parse_ic_info(file_path)
     if isinstance(log, GaussianLog):
