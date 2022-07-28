@@ -779,7 +779,7 @@ def trsh_ess_job(label: str,
     trsh_keyword, shift = '', ''
     memory = memory_gb
 
-    if 'memory' not in servers[server]:
+    if server is not None and 'memory' not in servers[server]:
         servers[server]['memory'] = 64
         logger.warning(f'A "memory" key (relating to the *maximum* physical node memory) was not defined '
                        f'for server {server}. Setting it to 64 GB (as a guess). This will affect job troubleshooting '
@@ -848,7 +848,7 @@ def trsh_ess_job(label: str,
             ess_trsh_methods.append('cbs-qb3')
             level_of_theory = Level(method='cbs-qb3')
             job_type = 'composite'
-        elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods:
+        elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods and server is not None:
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
             memory = min(memory_gb * 2, max_mem * 0.9)
@@ -1067,7 +1067,7 @@ def trsh_ess_job(label: str,
 
 def trsh_conformer_isomorphism(software: str,
                                ess_trsh_methods: list = None,
-                               ) -> str:
+                               ) -> Optional[str]:
     """
     Troubleshoot conformer optimization for a species that failed isomorphic test in
     `determine_most_stable_conformer` by specifying a "good" level of theory.
@@ -1079,7 +1079,7 @@ def trsh_conformer_isomorphism(software: str,
     Raises:
         TrshError: If the requested ``ess_trsh_methods`` is not supported.
 
-    Returns: str
+    Returns: Optional[str]
         The level of theory to troubleshoot at.
     """
     ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
@@ -1092,7 +1092,8 @@ def trsh_conformer_isomorphism(software: str,
     elif software == 'terachem':
         conformer_trsh_methods = ['wb97xd3/def2-TZVP']
     else:
-        raise TrshError(f'The troubleshoot_conformer_isomorphism() method is not implemented for {software}.')
+        logger.warning(f'The troubleshoot_conformer_isomorphism() method is not implemented for {software}.')
+        return None
 
     level_of_theory = None
     for method in conformer_trsh_methods:
@@ -1404,7 +1405,7 @@ def scan_quality_check(label: str,
                 invalidate = True
                 invalidation_reason = f'Two consecutive points are inconsistent by more than ' \
                                       f'{inconsistency_ab * max(energies):.2f} kJ/mol'
-                message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by' \
+                message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by ' \
                           f'more than {inconsistency_ab * max(energies):.2f} kJ/mol between ' \
                           f'two consecutive points. ARC will attempt to troubleshoot this rotor scan.'
                 logger.error(message)
