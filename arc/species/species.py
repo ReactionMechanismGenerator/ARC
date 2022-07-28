@@ -81,6 +81,8 @@ class ARCSpecies(object):
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
                               'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
+                              'trsh_counter': ``int``,
+                              'trsh_methods': ``List[str]``,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
