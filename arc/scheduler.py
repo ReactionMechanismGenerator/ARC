@@ -417,6 +417,13 @@ class Scheduler(object):
                             self.run_sp_job(label=species.label)
                         if self.job_types['onedmin']:
                             self.run_onedmin_job(species.label)
+                elif species.get_xyz(generate=False) and not self.job_types['conformers'] and not self.job_types['opt']:
+                    if self.job_types['freq']:
+                        self.run_freq_job(species.label)
+                    if self.job_types['sp']:
+                        self.run_sp_job(species.label)
+                    if self.job_types['rotors']:
+                        self.run_sp_job(species.label)
                 elif ((species.initial_xyz is not None or species.final_xyz is not None)
                         or species.is_ts and species.rxn_label is None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
