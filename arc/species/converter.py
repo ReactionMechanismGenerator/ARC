@@ -16,6 +16,7 @@ from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
+import rmgpy.constants as constants
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.quantity import ArrayQuantity
@@ -569,6 +570,22 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
         List[float]: The corresponding list of mass in amu.
     """
     return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+
+
+def hartree_to_si(e: float,
+                  kilo: bool = True,
+                  ) -> float:
+    """
+    Convert Hartree units into J/mol or into kJ/mol.
+
+    Args:
+        e (float): Energy in Hartree.
+        kilo (bool, optional): Whether to return kJ/mol units. ``True`` by default.
+    """
+    if not isinstance(e, (int, float)):
+        raise ValueError(f'Expected a float, got {e} which is a {type(e)}.')
+    factor = 0.001 if kilo else 1
+    return e * constants.E_h * constants.Na * factor
 
 
 def rmg_conformer_to_xyz(conformer):
