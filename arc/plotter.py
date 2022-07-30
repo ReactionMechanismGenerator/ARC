@@ -546,8 +546,8 @@ def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
                 rmg_rxn_dict['T_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else T_min
                 rmg_rxn_dict['T_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else T_max
                 k = list()
-                scaled_T_count = max(T_count * (rmg_rxn_dict['T_max'].value_si - rmg_rxn_dict['T_min'].value_si)
-                                     / (T_max.value_si - T_min.value_si), 25)
+                scaled_T_count = int(max(T_count * (rmg_rxn_dict['T_max'].value_si - rmg_rxn_dict['T_min'].value_si)
+                                         / (T_max.value_si - T_min.value_si), 25))
                 temp = np.linspace(rmg_rxn_dict['T_min'].value_si, rmg_rxn_dict['T_max'].value_si, scaled_T_count)
                 for T in temp:
                     k.append(rmg_rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order])
