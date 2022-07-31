@@ -1689,6 +1689,12 @@ H       1.12853146   -0.86793870    0.06973060"""
                                            [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224, 1.00782503224,
                                             1.00782503224, 1.00782503224, 1.00782503224]))
 
+    def test_get_bonds(self):
+        """Test the get_bonds() method."""
+        r_bonds, p_bonds = self.rxn1.get_bonds()
+        self.assertEqual(r_bonds, [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)])  # CH4 + OH
+        self.assertEqual(p_bonds, [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)])  # CH3 + H2O
+
 
 def check_atom_map(rxn: ARCReaction) -> bool:
     """
