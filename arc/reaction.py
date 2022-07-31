@@ -898,7 +898,7 @@ class ARCReaction(object):
 
     def get_element_mass(self) -> List[float]:
         """
-        Get the mass of all elements of a reaction. Uses the ato order of the reactants.
+        Get the mass of all elements of a reaction. Uses the atom order of the reactants.
 
         Returns:
             List[float]: The RMS of the normal mode displacements.
@@ -908,6 +908,27 @@ class ARCReaction(object):
             for atom in reactant.mol.atoms:
                 masses.append(get_element_mass(atom.element.symbol)[0])
         return masses
+
+    def get_bonds(self) -> Tuple[list, list]:
+        """
+        Get the connectivity of the reactants and products.
+
+        Returns:
+            Tuple[List[Tuple[int, int]]]:
+                A length-2 tuple is which entries represent reactants and product information, respectively.
+                Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
+        """
+        r_bonds, p_bonds = list(), list()
+        for bonds, spc_list in zip([r_bonds, p_bonds], [self.r_species, self.p_species]):
+            len_atoms = 0
+            for spc in spc_list:
+                for i, atom_1 in enumerate(spc.mol.atoms):
+                    for atom2, bond12 in atom_1.edges.items():
+                        bond = tuple(sorted([i + len_atoms, spc.mol.atoms.index(atom2) + len_atoms]))
+                        if bond not in bonds:
+                            bonds.append(bond)
+                len_atoms += spc.number_of_atoms
+        return r_bonds, p_bonds
 
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
