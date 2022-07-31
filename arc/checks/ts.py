@@ -231,67 +231,79 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
         return
     if reaction.family is None:
         rmgdb.determine_family(reaction)
-    amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.6, 0.8, 1]
+    amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.7, 1]
     amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
     reaction.ts_species.ts_checks['normal_mode_displacement'] = False
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=reaction) or list()
-    freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file, raise_error=False)
-    if not len(normal_modes_disp):
+    freqs, normal_mode_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file, raise_error=False)
+    if not len(normal_mode_disp):
         return
     largest_neg_freq_idx = get_index_of_abs_largest_neg_freq(freqs)
-    bond_lone_hs = any(len(spc.mol.atoms) == 2 and spc.mol.atoms[0].element.symbol == 'H'
-                       and spc.mol.atoms[0].element.symbol == 'H' for spc in reaction.r_species + reaction.p_species)
-    # bond_lone_hs = False
     xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
 
     done = False
     for amplitude in amplitudes:
-        xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[largest_neg_freq_idx], amplitude=amplitude)
+        xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_mode_disp[largest_neg_freq_idx], amplitude=amplitude)
         dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-        dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
-                                           elements=xyz_1['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
-        dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
-                                           elements=xyz_2['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
-        got_expected_changing_bonds = False
+        if dmat_1 is None or dmat_2 is None:
+            continue
+        bond_diff = dmat_1 - dmat_2
         for i, rmg_reaction in enumerate(rmg_reactions):
             r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
                                                                                 rmg_reaction=rmg_reaction)[0]
-            if r_label_dict is None:
+            if r_label_dict is None or reaction is None:
                 continue
-            expected_breaking_bonds, expected_forming_bonds = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
-            if expected_breaking_bonds is None or expected_forming_bonds is None:
+            expected_breaking_bonds, expected_forming_bonds, expected_bo_changes \
+                = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
+            if expected_breaking_bonds is None \
+                    or all(not len(expected) for expected in [expected_breaking_bonds, expected_forming_bonds, expected_bo_changes]):
                 continue
-            got_expected_changing_bonds = True
-            breaking = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_breaking_bonds]
-            forming = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_forming_bonds]
-            if len(breaking) and len(forming) \
-                    and not any(entry is None for entry in breaking) and not any(entry is None for entry in forming) \
-                    and all(entry == breaking[0] for entry in breaking) and all(entry == forming[0] for entry in forming) \
-                    and breaking[0] != forming[0]:
+
+            breaking_diff, forming_diff, bo_change_diff, background_diff = \
+                get_mass_weighted_bond_changes(reaction, expected_breaking_bonds, expected_forming_bonds, expected_bo_changes, bond_diff)
+
+            if max(background_diff) > 1.2 * min(breaking_diff + forming_diff + bo_change_diff):
+                continue
+            if all(b < 0 for b in breaking_diff) and all(f > 0 for f in forming_diff) \
+                    or all(b > 0 for b in breaking_diff) and all(f < 0 for f in forming_diff):
                 reaction.ts_species.ts_checks['normal_mode_displacement'] = True
                 done = True
                 break
-        if not got_expected_changing_bonds and not reaction.ts_species.ts_checks['normal_mode_displacement']:
-            reaction.ts_species.ts_checks['warnings'] += 'Could not compare normal mode displacement to expected ' \
-                                                         'breaking/forming bonds due to a missing RMG template; '
-            reaction.ts_species.ts_checks['normal_mode_displacement'] = True
-            break
-        if not len(rmg_reactions):
-            # Just check that some bonds break/form, and that this is not a torsional saddle point.
-            warning = f'Cannot check normal mode displacement for reaction {reaction} since a corresponding ' \
-                      f'RMG template could not be generated'
-            logger.warning(warning)
-            reaction.ts_species.ts_checks['warnings'] += warning + '; '
-            if any(bond not in dmat_bonds_2 for bond in dmat_bonds_1) \
-                    or any(bond not in dmat_bonds_1 for bond in dmat_bonds_2):
-                reaction.ts_species.ts_checks['normal_mode_displacement'] = True
-                break
         if done:
             break
+
+
+def get_mass_weighted_bond_changes(reaction: 'ARCReaction',
+                                   expected_breaking_bonds: List[Tuple[int, ...]],
+                                   expected_forming_bonds: List[Tuple[int, ...]],
+                                   expected_bo_changes: List[Tuple[int, ...]],
+                                   bond_diff: np.ndarray,
+                                   ) -> Tuple[list, list, list, list]:
+    """
+    Get the actual magnitude of expected changing bonds.
+
+    Args:
+        reaction: (ARCReaction): The reaction for which the TS is checked.
+        expected_breaking_bonds (List[Tuple[int, ...]]): The expected breaking bonds.
+        expected_forming_bonds (List[Tuple[int, ...]]): The expected forming bonds.
+        expected_bo_changes (List[Tuple[int, ...]]): The expected bonds that change their order.
+        bond_diff (np.ndarray): The difference between the two dmats.
+
+    Returns:
+        Tuple[list, list, list, list]: breaking_diff, forming_diff, bo_change_diff, background_diff.
+    """
+    ms = reaction.get_element_mass()
+    breaking_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_breaking_bonds]
+    forming_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_forming_bonds]
+    bo_change_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_bo_changes]
+    background_diff = list()
+    for bi in range(len(reaction.atom_map)):
+        for bj in range(len(reaction.atom_map)):
+            if bi < bj and (bi, bj) not in expected_breaking_bonds + expected_forming_bonds + expected_bo_changes:
+                background_diff.append(bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55)
+    return breaking_diff, forming_diff, bo_change_diff, background_diff
+
+
 
 
 def determine_changing_bond(bond: Tuple[int, ...],
@@ -300,7 +312,7 @@ def determine_changing_bond(bond: Tuple[int, ...],
                             ) -> Optional[str]:
     """
     Determine whether a bond breaks or forms in a TS.
-    Note that ``bond`` and all bond entries in `dmat_bonds_1/2`` must be already sorted from small to large indices.
+    Note that ``bond`` and all bond entries in ``dmat_bonds_1/2`` must be already sorted from small to large indices.
 
     Args:
         bond (Tuple[int]): The atom indices describing the bond.
@@ -309,7 +321,7 @@ def determine_changing_bond(bond: Tuple[int, ...],
 
     Returns:
         Optional[bool]:
-            'forming' if the bond indeed forms between ``dmat_1`` and ``dmat_2``, 'breaking' if it indeed breaks,
+            'forming' if the bond indeed forms between ``dmat_1`` and ``dmat_2``, 'breaking' if it breaks,
             ``None`` if it does not change significantly.
     """
     if len(bond) != 2 or any(not isinstance(entry, int) for entry in bond):
