@@ -20,9 +20,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger, torsions_to_scans
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -1006,7 +1007,7 @@ class JobAdapter(ABC):
         The renaming should happen automatically, this method functions to troubleshoot
         cases where renaming wasn't successful the first time.
         """
-        if not os.path.isfile(self.local_path_to_output_file) and self.yml_out_path is None:
+        if not os.path.isfile(self.local_path_to_output_file) and not self.local_path_to_output_file.endswith('.yml'):
             rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
 
     def add_to_args(self,
@@ -1309,3 +1310,25 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+
+    def save_output_file(self,
+                         key: Optional[str] = None,
+                         val: Optional[Union[float, dict, np.ndarray]] = None,
+                         content_dict: Optional[dict] = None,
+                         ):
+        """
+        Save the output of a job to the YAML output file.
+
+        Args:
+            key (str, optional): The key for the YAML output file.
+            val (Union[float, dict, np.ndarray], optional): The value to be stored.
+            content_dict (dict, optional): A dictionary to store.
+
+        """
+        yml_out_path = os.path.join(self.local_path, 'output.yml')
+        content = read_yaml_file(yml_out_path) if os.path.isfile(yml_out_path) else dict()
+        if content_dict is not None:
+            content.update(content_dict)
+        if key is not None:
+            content[key] = val
+        save_yaml_file(path=yml_out_path, content=content)
