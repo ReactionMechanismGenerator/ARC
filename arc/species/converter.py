@@ -4,7 +4,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
 from ase import Atoms
@@ -12,6 +12,7 @@ from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
+from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
@@ -38,6 +39,9 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               get_parameter_from_atom_indices,
                               zmat_to_coords,
                               xyz_to_zmat)
+
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 
 ob.obErrorLog.SetOutputLevel(0)
@@ -432,6 +436,25 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
         isotopes = tuple(get_most_common_isotope_for_element(symbol) for symbol in symbols)
     xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
     return xyz_dict
+
+
+def species_to_sdf_file(species: 'ARCSpecies',
+                        path: str,
+                        ):
+    """
+    Write an SDF file with coordinates and connectivity information.
+
+    Args:
+        species (ARCSpecies): The ARCSpecies object instance.
+        path (str): The full path to the .sdf file that will be saved.
+    """
+    if species.mol is None:
+        species.mol_from_xyz()
+    if species.mol is not None:
+        rdkit_mol = rdkit_conf_from_mol(species.mol, species.get_xyz())[1]
+        w = SDWriter(path)
+        w.write(rdkit_mol)
+        w.close()
 
 
 def sort_xyz_using_indices(xyz_dict: dict,
