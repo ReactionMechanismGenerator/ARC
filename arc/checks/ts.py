@@ -69,9 +69,6 @@ def check_ts(reaction: 'ARCReaction',
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
         check_normal_mode_displacement(reaction, job=job)
 
-    # if 'IRC' in checks or (not self.ts_species.ts_checks['IRC'] and IRC_wells is not None):
-    #     self.check_irc()
-
     if 'rotors' in checks or (ts_passed_all_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
@@ -484,6 +481,59 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
             if (entry - rms) / entry < 0.12:
                 number_by_family += 1
     return number_by_family
+
+
+def check_irc_species_and_rxn(xyz_1: dict,
+                              xyz_2: dict,
+                              rxn: Optional['ARCReaction'],
+                              ):
+    """
+    Check that the two species that result from optimizing the outputs of two IRC runs
+    correspond to the desired reactants and products of the corresponding reaction.
+
+    Args:
+        xyz_1 (dict): The coordinates of IRS species 1.
+        xyz_2 (dict): The coordinates of IRS species 2.
+        rxn (ARCReaction): The corresponding reaction object instance.
+    """
+    if rxn is None:
+        return None
+    rxn.ts_species.ts_checks['IRC'] = False
+    dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
+    dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
+                                       elements=xyz_1['symbols'],
+                                       tolerance=1.5,
+                                       bond_lone_hydrogens=False,
+                                       )
+    dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
+                                       elements=xyz_2['symbols'],
+                                       tolerance=1.5,
+                                       bond_lone_hydrogens=False,
+                                       )
+    r_bonds, p_bonds = rxn.get_bonds()
+    if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
+            or _check_equal_bonds_list(dmat_bonds_2, r_bonds) and _check_equal_bonds_list(dmat_bonds_1, p_bonds):
+        rxn.ts_species.ts_checks['IRC'] = True
+
+
+def _check_equal_bonds_list(bonds_1: List[Tuple[int, int]],
+                            bonds_2: List[Tuple[int, int]],
+                            ) -> bool:
+    """
+    Check whether two lists of bonds are equal.
+
+    Args:
+        bonds_1 (List[Tuple[int, int]]): List 1 of bonds.
+        bonds_2 (List[Tuple[int, int]]): List 2 of bonds.
+
+    Returns:
+        bool: Whether the two lists of bonds are equal.
+    """
+    if len(bonds_1) != len(bonds_2):
+        return False
+    if all(bond in bonds_2 for bond in bonds_1):
+        return True
+    return False
 
 
 def check_imaginary_frequencies(imaginary_freqs: Optional[List[float]]) -> bool:
