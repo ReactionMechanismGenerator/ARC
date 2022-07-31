@@ -4,30 +4,35 @@ An adapter for executing Arkane.
 
 import os
 import shutil
-from typing import Optional, Type
+from typing import Optional, Tuple, Union
 
-from rmgpy.species import Species
+import numpy as np
 
-import arkane.encorr.data as data
+import rmgpy.constants as constants
+from rmgpy.species import Species, TransitionState
+from rmgpy.statmech import Conformer, HarmonicOscillator, HinderedRotor, IdealGasTranslation, LinearRotor, NonlinearRotor
+
 import arkane.input
+from arkane.encorr.data import data
+from arkane.common import get_element_mass, get_principal_moments_of_inertia
 from arkane.input import (reaction as arkane_reaction,
                           species as arkane_input_species,
                           transitionState as arkane_transition_state,
                           )
 from arkane.kinetics import KineticsJob
-from arkane.statmech import StatMechJob
+from arkane.statmech import StatMechJob, project_rotors
 from arkane.thermo import ThermoJob
 from arkane.ess import ess_factory
 
-import rmgpy.constants as constants
-
 import arc.plotter as plotter
 from arc.checks.ts import check_ts, ts_passed_all_checks
-from arc.common import get_logger
+from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import InputError, RotorError
 from arc.imports import input_files
 from arc.level import Level
+from arc.parser import parse_1d_scan_energies, parse_frequencies
 from arc.reaction import ARCReaction
+from arc.species.converter import xyz_to_coords_and_element_numbers
 from arc.species.species import ARCSpecies, determine_rotor_symmetry, determine_rotor_type
 from arc.statmech.adapter import StatmechAdapter
 from arc.statmech.factory import register_statmech_adapter
@@ -128,7 +133,7 @@ class ArkaneAdapter(StatmechAdapter):
             # Initialize the Arkane species_dict so that species for which thermo is calculated won't interfere
             # with species used for a rate coefficient calculation.
             arkane.input.species_dict = dict()
-            if self.sp_level.to_arkane_level_of_theory(variant='AEC', raise_error=False, warn=False) is None:
+            if not self.arkane_has_en_corr():
                 raise ValueError('Cannot compute thermo without a valid Arkane Level for AEC.')
 
         if self.species is None:
@@ -150,12 +155,12 @@ class ArkaneAdapter(StatmechAdapter):
                 # Add resonance structures for thermo determination.
                 arkane_species.molecule = self.species.mol_list
                 self.species.rmg_species.molecule = self.species.mol_list
-            statmech_success = self.run_statmech(arkane_species=arkane_species,
-                                                 arkane_file_path=self.species.arkane_file,
-                                                 arkane_output_path=arkane_output_path,
-                                                 bac_type=self.bac_type,
-                                                 sp_level=self.sp_level,
-                                                 plot=False)
+            arkane_species, statmech_success = self.run_statmech(arkane_species=arkane_species,
+                                                                 arkane_file_path=self.species.arkane_file,
+                                                                 arkane_output_path=arkane_output_path,
+                                                                 bac_type=self.bac_type,
+                                                                 sp_level=self.sp_level,
+                                                                 plot=False)
             if statmech_success:
                 self.species.e0 = arkane_species.conformer.E0.value_si * 0.001  # convert to kJ/mol
                 logger.debug(f'Assigned E0 to {self.species.label}: {self.species.e0:.2f} kJ/mol')
@@ -196,13 +201,13 @@ class ArkaneAdapter(StatmechAdapter):
                                                                    skip_rotors=skip_rotors,
                                                                    )
             arkane_ts_species = arkane_transition_state(ts_species.label, ts_species.arkane_file)
-            statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
-                                                 arkane_file_path=ts_species.arkane_file,
-                                                 arkane_output_path=arkane_output_path,
-                                                 bac_type=None,
-                                                 sp_level=self.sp_level,
-                                                 plot=False,
-                                                 )
+            arkane_ts_species, statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
+                                                                    arkane_file_path=ts_species.arkane_file,
+                                                                    arkane_output_path=arkane_output_path,
+                                                                    bac_type=None,
+                                                                    sp_level=self.sp_level,
+                                                                    plot=False,
+                                                                    )
             if not statmech_success:
                 logger.error(f'Could not run statmech job for TS species {ts_species.label} '
                              f'of reaction {self.reaction.label}')
@@ -253,6 +258,8 @@ class ArkaneAdapter(StatmechAdapter):
                                            Tcount=self.T_count,
                                            three_params=self.three_params,
                                            )
+                kinetics_job.reaction.transition_state.frequency = kinetics_job.reaction.transition_state.frequency \
+                                                                   or arkane_ts_species.frequency
                 if verbose:
                     if self.three_params:
                         msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
@@ -285,18 +292,18 @@ class ArkaneAdapter(StatmechAdapter):
                                is_ts=True)
 
     def run_statmech(self,
-                     arkane_species: Type[Species],
+                     arkane_species: Union[Species, TransitionState],
                      arkane_file_path: str,
                      arkane_output_path: str = None,
                      bac_type: Optional[str] = None,
                      sp_level: Optional[Level] = None,
                      plot: bool = False,
-                     ) -> bool:
+                     ) -> Tuple[Union[Species, TransitionState], bool]:
         """
         A helper function for running an Arkane statmech job.
 
         Args:
-            arkane_species (arkane_input_species): An instance of an Arkane species() object.
+            arkane_species (Union[Species, TransitionState]): An instance of an Arkane species() object.
             arkane_file_path (str): The path to the Arkane species file (either in .py or YAML form).
             arkane_output_path (str): The path to the folder in which the Arkane output.py file will be saved.
             bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
@@ -305,39 +312,187 @@ class ArkaneAdapter(StatmechAdapter):
             plot (bool): A flag indicating whether to plot a PDF of the calculated thermo properties (True to plot)
 
         Returns:
-            bool: Whether the statmech job was successful.
+            Tuple[Union[Species, TransitionState], bool]:
+                - The Arkane Species or TransitionState object instance with an initialized ``Conformer`` object instance.
+                - Whether the statmech job was successful.
         """
         success = True
-        stat_mech_job = StatMechJob(arkane_species, arkane_file_path)
-        stat_mech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
-        if bac_type is not None:
-            stat_mech_job.bondEnergyCorrectionType = bac_type
-        if sp_level is None or not self.arkane_has_en_corr():
-            # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
-            stat_mech_job.applyAtomEnergyCorrections = False
-        else:
-            stat_mech_job.level_of_theory = sp_level.to_arkane_level_of_theory()
-        stat_mech_job.frequencyScaleFactor = self.freq_scale_factor
+        statmech_job = self.initialize_statmech_job_object(arkane_species=arkane_species,
+                                                           arkane_file_path=arkane_file_path,
+                                                           bac_type=bac_type,
+                                                           sp_level=sp_level,
+                                                           )
         try:
-            stat_mech_job.execute(output_directory=arkane_output_path, plot=plot)
+            statmech_job.execute(output_directory=arkane_output_path, plot=plot)
         except Exception as e:
+            if 'could not be identified' in str(e):
+                return self.run_statmech_using_molecular_properties(arkane_species=arkane_species,
+                                                                    arkane_file_path=arkane_file_path,
+                                                                    sp_level=sp_level,
+                                                                    )
             logger.error(f'Arkane statmech job for species {arkane_species.label} failed with the error message:\n{e}')
-            if stat_mech_job.applyBondEnergyCorrections \
+            if statmech_job.applyBondEnergyCorrections \
                     and 'missing' in str(e).lower() and 'bac parameters for model chemistry' in str(e).lower():
-                # Try executing Arkane w/o BACs.
                 logger.warning('Trying to run Arkane without BACs')
-                stat_mech_job.applyBondEnergyCorrections = False
+                statmech_job.applyBondEnergyCorrections = False
                 try:
-                    stat_mech_job.execute(output_directory=arkane_output_path, plot=plot)
+                    statmech_job.execute(output_directory=arkane_output_path, plot=plot)
                 except Exception as e:
                     logger.error(f'Arkane statmech job for {arkane_species.label} failed with the error message:\n{e}')
                     success = False
             else:
                 success = False
-        return success
+        return arkane_species, success
+
+    def run_statmech_using_molecular_properties(self,
+                                                arkane_species: Union[Species, TransitionState],
+                                                arkane_file_path: str,
+                                                sp_level: Optional[Level] = None,
+                                                ) -> Tuple[Union[Species, TransitionState], bool]:
+        """
+        A helper function for running an Arkane statmech job using directly entered molecular properties.
+        Useful for computations that were done using software not supported by Arkane.
+
+        Args:
+            arkane_species (Union[Species, TransitionState]): An instance of an Arkane species() object.
+            arkane_file_path (str): The path to the Arkane species file (either in .py or YAML form).
+            sp_level (Level, optional): The level of theory used for energy corrections.
+
+        Returns:
+            Tuple[Union[Species, TransitionState], bool]:
+                - The Arkane Species or TransitionState object instance with an initialized ``Conformer`` object instance.
+                - Whether the statmech job was successful.
+        """
+        logger.warning(f'Running statmech for {arkane_species.label} using electronic energy only (no ZPE correction).')
+        success = True
+        species = self.species_dict[arkane_species.label] \
+            if self.species_dict is not None and arkane_species.label in self.species_dict.keys() else self.species
+        arkane_species = self.initialize_arkane_species_directly(arc_species=species,
+                                                                 path=os.path.dirname(arkane_file_path),
+                                                                 sp_level=sp_level,
+                                                                 )
+        return arkane_species, success
+
+    def initialize_arkane_species_directly(self,
+                                           arc_species: ARCSpecies,
+                                           path: str,
+                                           sp_level: Optional[Level] = None,
+                                           ) -> Union[Species, TransitionState]:
+        """
+        Write the species molecular properties Arkane input file.
+
+        Args:
+            arc_species (ARCSpecies): The species object instance.
+            path (str): The working folder path.
+            sp_level (Level, optional): The level of theory used for energy corrections.
+
+        Returns:
+            Union[Species, TransitionState]: An initialized Arkane species with a ``Conformer`` object instance.
+        """
+        negative_freqs = None
+        arc_species.determine_symmetry()
+        yml_out_path = os.path.join(path, 'output.yml')
+        output_dict = read_yaml_file(yml_out_path) if os.path.isfile(yml_out_path) else None
+        modes = [IdealGasTranslation(mass=(arc_species.mol.get_molecular_weight() * 1E3, 'g/mol'))]
+        coords, z_list = xyz_to_coords_and_element_numbers(arc_species.get_xyz())
+        moments_of_inertia = list(get_principal_moments_of_inertia(coords=np.array(coords, dtype=np.float64),
+                                                                   numbers=np.array(z_list, dtype=np.float64))[0])
+        linear = any([moment <= 0.01 for moment in moments_of_inertia])
+        if linear:
+            moments_of_inertia = [moment for moment in moments_of_inertia if moment > 0.01]
+            if len(moments_of_inertia):
+                modes.append(LinearRotor(inertia=(moments_of_inertia[0], 'amu*angstrom^2'),
+                                         symmetry=arc_species.external_symmetry))
+            else:
+                # This is a single atom molecule.
+                pass
+        else:
+            modes.append(NonlinearRotor(inertia=(moments_of_inertia, 'amu*angstrom^2'),
+                                        symmetry=arc_species.external_symmetry))
+        if not arc_species.is_monoatomic():
+            freqs = parse_frequencies(self.output_dict[arc_species.label]['paths']['freq'])
+            negative_freqs = np.array([freq for freq in freqs if freq < 0], dtype=np.float64)
+            freqs = np.array([freq for freq in freqs if freq > 0], dtype=np.float64)
+            modes.append(HarmonicOscillator(frequencies=(freqs, 'cm^-1')))
+
+        corr = get_atomic_energy_corrections(arc_species=arc_species, sp_level=sp_level)
+        conformer = Conformer(E0=(arc_species.e_elect + corr, 'kJ/mol'),
+                              modes=modes,
+                              spin_multiplicity=arc_species.multiplicity,
+                              optical_isomers=arc_species.optical_isomers,
+                              mass=([get_element_mass(s)[0] for s in arc_species.get_xyz()['symbols']], 'amu'),
+                              number=z_list,
+                              coordinates=(coords, 'angstrom'),
+                              )
+        for rotor in arc_species.rotors_dict.values():
+            if not rotor['success']:
+                continue
+            inertia = conformer.get_internal_reduced_moment_of_inertia(pivots=rotor['pivots'], top1=rotor['top'])
+            fourier_rotor = HinderedRotor(inertia=(inertia, 'amu*angstrom^2'), symmetry=rotor['symmetry'] or 1)
+            energies, angles = parse_1d_scan_energies(rotor['scan_path'])
+            fourier_rotor.fit_fourier_potential_to_data(np.array(angles, dtype=np.float64),
+                                                        np.array(energies, dtype=np.float64))
+            conformer.modes.append(fourier_rotor)
+        hessian = output_dict['hessian'] if output_dict is not None and 'hessian' in output_dict.keys() else None
+        if hessian is not None and len(z_list) > 1 and len(arc_species.rotors_dict.keys()) > 0:
+            frequencies = np.array(project_rotors(conformer=conformer,
+                                                  hessian=np.array(hessian, np.float64),
+                                                  rotors=[[rotor['pivots'], rotor['top'], rotor['symmetry']]
+                                                          for rotor in arc_species.rotors_dict.values()],
+                                                  linear=linear,
+                                                  is_ts=arc_species.is_ts,
+                                                  label=self.species.label,
+                                                  ))
+            for mode in conformer.modes:
+                if isinstance(mode, HarmonicOscillator):
+                    mode.frequencies = (frequencies * self.freq_scale_factor, 'cm^-1')
+        if arc_species.is_ts:
+            if arc_species.label in arkane.input.transition_state_dict.keys():
+                del arkane.input.transition_state_dict[arc_species.label]
+            arkane_species = arkane_transition_state(label=arc_species.label)
+            arkane_species.frequency = (negative_freqs[0] * self.freq_scale_factor, 'cm^-1')
+        else:
+            if arc_species.label in arkane.input.species_dict.keys():
+                del arkane.input.species_dict[arc_species.label]
+            arkane_species = arkane_input_species(label=arc_species.label)
+            arkane_species.molecule = [arc_species.mol.copy(deep=True)]
+            arkane_species.reactive = True
+        arkane_species.conformer = conformer
+        return arkane_species
+
+    def initialize_statmech_job_object(self,
+                                       arkane_species: Species,
+                                       arkane_file_path: str,
+                                       bac_type: Optional[str] = None,
+                                       sp_level: Optional[Level] = None,
+                                       ) -> StatMechJob:
+        """
+        Initialize a StatMechJob object instance.
+
+        Args:
+            arkane_species (arkane_input_species): An instance of an Arkane species() object.
+            arkane_file_path (str): The path to the Arkane species file (either in .py or YAML form).
+            bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
+                                      ``None`` to not use BAC.
+            sp_level (Level, optional): The level of theory used for energy corrections.
+
+        Returns:
+            StatMechJob: THe initialized StatMechJob object instance.
+        """
+        statmech_job = StatMechJob(arkane_species, arkane_file_path)
+        statmech_job.applyBondEnergyCorrections = bac_type is not None and sp_level is not None
+        if bac_type is not None:
+            statmech_job.bondEnergyCorrectionType = bac_type
+        if sp_level is None or not self.arkane_has_en_corr():
+            # If this is a kinetics computation and we don't have a valid model chemistry, don't bother about it.
+            statmech_job.applyAtomEnergyCorrections = False
+        else:
+            statmech_job.level_of_theory = sp_level.to_arkane_level_of_theory()
+        statmech_job.frequencyScaleFactor = self.freq_scale_factor
+        return statmech_job
 
     def generate_arkane_species_file(self,
-                                     species: Type[ARCSpecies],
+                                     species: ARCSpecies,
                                      bac_type: Optional[str],
                                      skip_rotors: bool = False,
                                      ) -> Optional[str]:
@@ -503,6 +658,9 @@ class ArkaneAdapter(StatmechAdapter):
         Returns:
             bool: Whether Arkane has the respective AEC values.
         """
+        level_aec = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+        if self.sp_level.method in level_aec.keys():
+            return True
         arkane_energy_level = self.sp_level.to_arkane_level_of_theory()
         arkane_energy_level = getattr(arkane_energy_level, 'energy', arkane_energy_level)
         try:
@@ -518,6 +676,31 @@ class ArkaneAdapter(StatmechAdapter):
                     and any(symbol not in atom_energies for symbol in self.species.get_xyz()['symbols'])):
             return False
         return True
+
+
+def get_atomic_energy_corrections(arc_species: ARCSpecies,
+                                  sp_level: Optional[Level] = None,
+                                  ) -> float:
+    """
+    Get the atomic energy corrections for the species.
+
+    Args:
+        arc_species (ARCSpecies): The species object instance.
+        sp_level (Level, optional): The level of theory used for energy corrections.
+
+    Returns:
+        float: The atomic energy correction.
+    """
+    corr = 0.0
+    atoms = dict()
+    for symbol in arc_species.get_xyz()['symbols']:
+        atoms[symbol] = atoms.get(symbol, 0) + 1
+    level_aec = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+    if sp_level.method in level_aec.keys():
+        atom_energies = level_aec[sp_level.method]
+        for symbol, count in atoms.items():
+            corr -= count * atom_energies.get(symbol, 0)
+    return corr
 
 
 def clean_output_directory(species_path: str,
