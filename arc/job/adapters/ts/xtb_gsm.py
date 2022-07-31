@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from mako.template import Template
 
-from arc.common import ARC_PATH, get_logger
+from arc.common import ARC_PATH, get_logger, safe_copy_file
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -223,9 +223,9 @@ class xTBGSMAdapter(JobAdapter):
             f.write(Template(input_template).render(**inpfileq_args))
 
         if self.execution_type == 'incore':
-            shutil.copyfile(src=os.path.join(self.xtb_gsm_scripts_path, 'gsm.orca'), dst=self.gsm_orca_path)
-            shutil.copyfile(src=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), dst=self.ograd_path)
-            shutil.copyfile(src=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), dst=self.tm2orca_path)
+            safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'gsm.orca'), destination=self.gsm_orca_path)
+            safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
+            safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
 
     def set_files(self) -> None:
         """
