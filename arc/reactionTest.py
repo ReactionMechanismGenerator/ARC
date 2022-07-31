@@ -640,10 +640,11 @@ class TestARCReaction(unittest.TestCase):
     def test_get_expected_changing_bonds(self):
         """Test the get_expected_changing_bonds() method."""
         self.rxn11.determine_family(self.rmgdb)
-        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+        expected_breaking_bonds, expected_forming_bonds, expected_bo_change = self.rxn11.get_expected_changing_bonds(
             r_label_dict={'*1': 1, '*2': 2, '*3': 6})
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
         self.assertEqual(expected_forming_bonds, [(1, 6)])
+        self.assertEqual(expected_bo_change, [])
 
     def test_get_number_of_atoms_in_reaction_zone(self):
         """Test the get_number_of_atoms_in_reaction_zone() method."""
