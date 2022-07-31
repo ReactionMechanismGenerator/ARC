@@ -287,7 +287,7 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
         if species.chosen_ts is not None and not species.ts_guesses_exhausted:
             rects[energy_sorting_map.index(map_tsg_to_results[species.chosen_ts])].set_color('r')
         ax.set_ylim(0, (max(y) or 1) * 1.2)
-        ax.set_ylabel(r'Electronic energy, kJ/mol')
+        ax.set_ylabel(r'Relative electronic energy, kJ/mol')
         ax.set_title(species.rxn_label)
         ax.set_xticks([])
         plt.savefig(path, dpi=120, facecolor='w', edgecolor='w', orientation='portrait',
