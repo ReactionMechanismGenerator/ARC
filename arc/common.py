@@ -1588,3 +1588,30 @@ def _check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_reaction: 'ARCReaction',
             print(rmg_p_symbols)
             result = False
     return result
+
+
+def safe_copy_file(source: str,
+                   destination: str,
+                   wait: int = 10,
+                   max_cycles: int = 100,
+                   ):
+    """
+    Copt a file safely.
+
+    Args:
+        source (str): The full path to the file to be copied.
+        destination (str): The full path to the file destination.
+        wait (int, optional): The number of seconds to wait between cycles.
+        max_cycles (int, optional): The number of cycles.
+    """
+    for i in range(max_cycles):
+        try:
+            shutil.copyfile(src=source, dst=destination)
+        except OSError:
+            time.sleep(wait)
+        except shutil.SameFileError:
+            break
+        else:
+            break
+        if i >= max_cycles:
+            break
