@@ -15,7 +15,7 @@ import arc.checks.ts as ts
 from arc.common import ARC_PATH, almost_equal_lists
 from arc.job.factory import job_factory
 from arc.level import Level
-from arc.parser import parse_normal_mode_displacement
+from arc.parser import parse_normal_mode_displacement, parse_xyz_from_file
 from arc.reaction import ARCReaction
 from arc.rmgdb import load_families_only, make_rmg_database_object
 from arc.species.species import ARCSpecies, TSGuess
@@ -641,6 +641,53 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('default'), 3)
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration'), 3)
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration', rms_list=self.rms_list_1), 4)
+
+    def test_check_irc_species_and_rxn(self):
+        """Test the check_irc_species_and_rxn() function."""
+        xyz_1 = """ O                 -0.41278100    1.32451200    1.69341300
+                    C                 -0.36012400    0.71815900    0.68711000
+                    C                  0.07168300   -0.73373200    0.45498600
+                    O                 -0.09882100   -1.07908500   -0.89888400
+                    O                  0.69058000   -0.12998800   -1.65496000
+                    H                  0.05586000    0.59945600   -1.74796200
+                    H                  1.11467600   -0.83984800    0.77895200
+                    H                 -0.57663000   -1.40626900    1.02593400"""
+        xyz_2 = """ O                 -0.43783600    1.29437500    1.69860500
+                    C                 -0.27875600    0.77603900    0.63081800
+                    C                  0.05866100   -0.70395300    0.45930700
+                    O                 -0.05939300   -1.06149500   -0.93456800
+                    O                  0.65685500   -0.22958000   -1.67443200
+                    H                 -0.35607400    1.32805100   -0.32564200
+                    H                  1.08243900   -0.89713600    0.79060300
+                    H                 -0.63911300   -1.34159000    1.00373600"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)],
+                          )
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
+        self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
+        ts.check_irc_species_and_rxn(xyz_1=parse_xyz_from_file(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')),
+                                     xyz_2=parse_xyz_from_file(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')),
+                                     rxn=rxn,
+                                     )
+        self.assertTrue(rxn.ts_species.ts_checks['IRC'])
+
+    def test_check_equal_bonds_list(self):
+        """Test the _check_equal_bonds_list() function."""
+        bonds_1 = [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)]
+        bonds_2 = [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)]
+        self.assertTrue(ts._check_equal_bonds_list(bonds_1, bonds_1))
+        self.assertTrue(ts._check_equal_bonds_list(bonds_2, bonds_2))
+        self.assertFalse(ts._check_equal_bonds_list(bonds_1, bonds_2))
+        self.assertFalse(ts._check_equal_bonds_list(bonds_2, bonds_1))
+
+        dmat_bonds_1 = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (2, 6), (2, 7)]
+        dmat_bonds_2 = [(0, 1), (1, 2), (2, 3), (3, 4), (1, 5), (2, 6), (2, 7)]
+        r_bonds = [(0, 1), (1, 2), (2, 3), (2, 6), (2, 7), (3, 4), (4, 5)]
+        p_bonds = [(0, 1), (1, 2), (1, 5), (2, 3), (2, 6), (2, 7), (3, 4)]
+        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_1, dmat_bonds_1))
+        self.assertFalse(ts._check_equal_bonds_list(dmat_bonds_1, dmat_bonds_2))
+        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_1, r_bonds))
+        self.assertTrue(ts._check_equal_bonds_list(dmat_bonds_2, p_bonds))
 
     def test_check_imaginary_frequencies(self):
         """Test the check_imaginary_frequencies() function."""
