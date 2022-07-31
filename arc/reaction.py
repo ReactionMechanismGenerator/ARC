@@ -770,27 +770,31 @@ class ARCReaction(object):
 
     def get_expected_changing_bonds(self,
                                     r_label_dict: Dict[str, int],
-                                    ) -> Tuple[Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
+                                    ) -> Tuple[Optional[List[Tuple[int, ...]]],
+                                               Optional[List[Tuple[int, ...]]],
+                                               Optional[List[Tuple[int, ...]]]]:
         """
-        Get the expected forming and breaking bonds from the RMG reaction template.
+        Get the expected forming, breaking, and bond order changing bonds from the RMG reaction template.
 
         Args:
             r_label_dict (Dict[str, int]): The RMG reaction atom labels and corresponding atom indices
                                            of atoms in a TemplateReaction.
 
         Returns:
-            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+            Tuple[Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]], Optional[List[Tuple[int, ...]]]]:
                 A list of tuples of atom indices representing breaking and forming bonds.
         """
         if self.family is None:
-            return None, None
+            return None, None, None
         template_recipe_actions = self.family.forward_recipe.actions
-        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1']]
+        # E.g.: [['BREAK_BOND', '*1', 1, '*2'], ['FORM_BOND', '*2', 1, '*3'], ['GAIN_RADICAL', '*1', '1'], ['CHANGE_BOND', '*4', -1, '*5']]
         expected_breaking_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
                                    for action in template_recipe_actions if action[0] == 'BREAK_BOND']
         expected_forming_bonds = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
                                   for action in template_recipe_actions if action[0] == 'FORM_BOND']
-        return expected_breaking_bonds, expected_forming_bonds
+        expected_bo_changes = [tuple(sorted([r_label_dict[action[1]], r_label_dict[action[3]]]))
+                               for action in template_recipe_actions if action[0] == 'CHANGE_BOND']
+        return expected_breaking_bonds, expected_forming_bonds, expected_bo_changes
 
     def get_number_of_atoms_in_reaction_zone(self) -> Optional[int]:
         """
