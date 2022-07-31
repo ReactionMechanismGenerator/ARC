@@ -3659,6 +3659,15 @@ H      -4.07566100   -0.52115800    0.00003300"""
         self.assertEqual(mass_list, [14.00307400443, 1.00782503224, 1.00782503224, 14.00307400443,
                                      1.00782503224, 1.00782503224, 14.00307400443, 1.00782503224])
 
+    def test_hartree_to_si(self):
+        """Test the hartree_to_si() function."""
+        e = converter.hartree_to_si(1)
+        self.assertAlmostEqual(e, 2625.5, places=1)
+        e = converter.hartree_to_si(5)
+        self.assertAlmostEqual(e, 13127.499291814986)
+        e = converter.hartree_to_si(5, kilo=False)
+        self.assertAlmostEqual(e, 13127499.291814985)
+
     def test_translate_xyz(self):
         """Test the translate_xyz() function."""
         self.assertEqual(self.xyz1['dict'], converter.translate_xyz(xyz_dict=self.xyz1['dict'], translation=(0, 0, 0)))
