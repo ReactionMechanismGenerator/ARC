@@ -59,6 +59,8 @@ class JobEnum(str, Enum):
         - ESS:
             - cfour
             - cosmo
+            - PySCF (https://pyscf.org/user/geomopt.html)
+            - TS opt via pysisyphus (https://pysisyphus.readthedocs.io/en/dev/tsoptimization.html)
             - onedmin
             - openbabel
             - rdkit
