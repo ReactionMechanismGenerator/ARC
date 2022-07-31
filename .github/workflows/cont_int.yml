@@ -33,7 +33,9 @@ jobs:
         use-mamba: true
 
     - name: Update environment
-      run: mamba env update -n arc_env -f environment.yml
+      run: |
+        mamba env update -n arc_env -f environment.yml
+        conda list
 
     - name: Install codecov
       run: mamba install -y -c conda-forge codecov
