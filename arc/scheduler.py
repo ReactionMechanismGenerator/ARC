@@ -537,9 +537,9 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # This is a successfully completed tsg job. It may have resulted in several TSGuesses.
                             self.end_job(job=job, label=label, job_name=job_name)
-                            if job.yml_out_path is not None:
+                            if job.local_path_to_output_file.endswith('.yml'):
                                 for rxn in job.reactions:
-                                    rxn.ts_species.process_completed_tsg_queue_jobs(yml_path=job.yml_out_path)
+                                    rxn.ts_species.process_completed_tsg_queue_jobs(yml_path=job.local_path_to_output_file)
                             # Just terminated a tsg job.
                             # Are there additional tsg jobs currently running for this species?
                             for spec_jobs in job_list:
@@ -597,7 +597,8 @@ class Scheduler(object):
                                 self.check_directed_scan_job(label=label, job=job)
                                 if 'cont' in job.directed_scan_type and job.job_status[1]['status'] == 'done':
                                     # This is a continuous restricted optimization, spawn the next job in the scan.
-                                    xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
+                                    xyz = parser.parse_xyz_from_file(job.local_path_to_output_file) \
+                                        if not hasattr(job, 'opt_xyz') else job.opt_xyz
                                     self.spawn_directed_scan_jobs(label=label, rotor_index=job.rotor_index, xyz=xyz)
                             if 'brute_force' in job.directed_scan_type:
                                 # Just terminated a brute_force directed scan job.
@@ -616,7 +617,7 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             job = self.job_dict[label]['scan'][job_name]
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination and job.directed_scan_type is None:
+                            if successful_server_termination and job.directed_scan_type == 'ess':
                                 self.check_scan_job(label=label, job=job)
                             self.timer = False
                             break
@@ -831,7 +832,7 @@ class Scheduler(object):
         if level.software is not None:
             job_adapter = level.software
         else:
-            logger.error(f'Could not determine software for job  type {job_type}')
+            logger.error(f'Could not determine software for job type {job_type}')
             logger.error(f'Using level_of_theory: {level}')
             available_ess = list(self.ess_settings.keys())
             if 'gaussian' in available_ess:
@@ -880,7 +881,7 @@ class Scheduler(object):
 
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
-        if not os.path.exists(job.local_path_to_output_file) and not job.execution_type == 'incore' and job.yml_out_path is None:
+        if not os.path.exists(job.local_path_to_output_file) and not job.execution_type == 'incore':
             if 'restart_due_to_file_not_found' in job.ess_trsh_methods:
                 job.job_status[0] = 'errored'
                 job.job_status[1]['status'] = 'errored'
@@ -1059,6 +1060,7 @@ class Scheduler(object):
                             f'using it for geometry optimization')
                 self.species_dict[label].ts_guesses[0].energy = 0.0  # Set relative energy to 0, no other guesses.
                 self.species_dict[label].initial_xyz = successful_tsgs[0].initial_xyz
+                self.species_dict[label].mol_from_xyz(get_cheap=False)
                 if not self.composite_method:
                     self.run_opt_job(label, fine=self.fine_only)
                 else:
@@ -1133,6 +1135,7 @@ class Scheduler(object):
 
         # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
+                and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
                 and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
                 and self.output[label]['paths']['geo']:
             logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
@@ -1143,7 +1146,7 @@ class Scheduler(object):
                     if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
                 self.post_sp_actions(label=label,
-                                     sp_path=os.path.join(recent_opt_job.local_path, 'output.out'),
+                                     sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
                                      level=level,
                                      )
 
@@ -2106,7 +2109,7 @@ class Scheduler(object):
             self.output[label]['job_types']['sp'] = True
             if self.job_types['fine']:
                 self.output[label]['job_types']['fine'] = True  # all composite jobs are fine if fine was asked for
-            self.output[label]['paths']['composite'] = os.path.join(job.local_path, 'output.out')
+            self.output[label]['paths']['composite'] = os.path.join(job.local_path_to_output_file)
             if self.composite_method is not None:
                 self.species_dict[label].opt_level = self.composite_method.simple()
             rxn_str = ''
@@ -2435,7 +2438,7 @@ class Scheduler(object):
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
             self.post_sp_actions(label,
-                                 sp_path=os.path.join(job.local_path, 'output.out'),
+                                 sp_path=os.path.join(job.local_path_to_output_file),
                                  level=job.level,
                                  )
             # Update restart dictionary and save the yaml restart file:
