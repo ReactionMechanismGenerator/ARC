@@ -489,7 +489,7 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
 def check_imaginary_frequencies(imaginary_freqs: Optional[List[float]]) -> bool:
     """
     Check that the number of imaginary frequencies make sense.
-    Theoretically a TS should only have one imaginary frequency,
+    Theoretically, a TS should only have one "large" imaginary frequency,
     however additional imaginary frequency are allowed if they are very small in magnitude.
     This method does not consider the normal mode displacement check.
 
@@ -503,19 +503,9 @@ def check_imaginary_frequencies(imaginary_freqs: Optional[List[float]]) -> bool:
         # Freqs haven't been calculated for this TS guess, do consider it as an optional candidate.
         return True
     if len(imaginary_freqs) == 0:
-        # Freqs have been calculated, and there are no imaginary frequencies.
         return False
     if len(imaginary_freqs) == 1 \
             and LOWEST_MAJOR_TS_FREQ < abs(imaginary_freqs[0]) < HIGHEST_MAJOR_TS_FREQ:
-        # Freqs have been calculated, and there is only one imaginary frequency within the right range.
         return True
     else:
-        # Freqs have been calculated, and there are several imaginary frequencies.
-        num_major_freqs = 0
-        for im_freq in imaginary_freqs:
-            if LOWEST_MAJOR_TS_FREQ < abs(im_freq) < HIGHEST_MAJOR_TS_FREQ:
-                num_major_freqs += 1
-        if num_major_freqs == 1:
-            # Only one major imaginary frequency.
-            return True
-        return False
+        return len([im_freq for im_freq in imaginary_freqs if LOWEST_MAJOR_TS_FREQ < abs(im_freq) < HIGHEST_MAJOR_TS_FREQ]) == 1
