@@ -28,6 +28,7 @@ from arc.common import (almost_equal_coords,
                         get_single_bond_length,
                         generate_resonance_structures,
                         is_angle_linear,
+                        read_yaml_file,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
@@ -1454,6 +1455,26 @@ class ARCSpecies(object):
                 cluster_tsgs.append(tsg)
         self.ts_guesses = cluster_tsgs
 
+    def process_completed_tsg_queue_jobs(self, yml_path: str):
+        """
+        Process YAML files which are the output of running a TS guess job in the queue.
+
+        Args:
+            yml_path (str): The path to the output YAML file.
+        """
+        if not isinstance(yml_path, str) or not os.path.isfile(yml_path):
+            return None
+        tsg_list = read_yaml_file(yml_path)
+        if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
+            return None
+        tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
+        for tsg in tsgs:
+            if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
+                if tsg.index is None:
+                    tsg.index = len(self.ts_guesses)
+                self.ts_guesses.append(tsg)
+        self.cluster_tsgs()
+
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
                      get_cheap: bool = False,
@@ -1997,8 +2018,8 @@ class TSGuess(object):
             self.constraints = constraints
             self.t0 = t0
             self.execution_time = execution_time if execution_time is not None else execution_time
-            self.opt_xyz = None
-            self.initial_xyz = None
+            self._opt_xyz = None
+            self._initial_xyz = None
             self.process_xyz(xyz)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
@@ -2028,6 +2049,26 @@ class TSGuess(object):
             str_representation += f'cluster="{self.cluster}", '
         str_representation += f'success={self.success})'
         return str_representation
+
+    @property
+    def initial_xyz(self):
+        """The initial coordinate guess"""
+        return self._initial_xyz
+
+    @initial_xyz.setter
+    def initial_xyz(self, value):
+        """Allow setting the initial coordinate guess"""
+        self._initial_xyz = check_xyz_dict(value)
+
+    @property
+    def opt_xyz(self):
+        """The optimized coordinates"""
+        return self._opt_xyz
+
+    @opt_xyz.setter
+    def opt_xyz(self, value):
+        """Allow setting the initial coordinate guess"""
+        self._opt_xyz = check_xyz_dict(value)
 
     def as_dict(self, for_report: bool = False) -> dict:
         """

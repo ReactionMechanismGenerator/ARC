@@ -143,6 +143,28 @@ cp geometry*.* "$SubmitDir/"
 rm -rf $sdir
 
 """,
+        'gcn': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+conda activate arc_env
+python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
+
+""",
     },
 
     'atlas': {

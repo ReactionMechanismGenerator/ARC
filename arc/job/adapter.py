@@ -30,6 +30,7 @@ from arc.job.local import (change_mode,
                            delete_job,
                            get_last_modified_time,
                            rename_output,
+                           submit_job,
                            )
 from arc.job.trsh import trsh_job_on_server
 from arc.job.ssh import SSHClient
@@ -285,6 +286,20 @@ class JobAdapter(ABC):
         """
         pass
 
+    def legacy_queue_execution(self):
+        """
+        Execute a job to the server's queue.
+        The server could be either "local" or remote.
+        """
+        self._log_job_execution()
+        # Submit to queue, differentiate between local (same machine using its queue) and remote servers.
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                self.job_status[0], self.job_id = ssh.submit_job(remote_path=self.remote_path)
+        else:
+            # submit to the local queue
+            self.job_status[0], self.job_id = submit_job(path=self.local_path)
+
     def set_job_shell_file_to_upload(self) -> dict:
         """
         The HTCondor cluster software does not allow, to the best of our understanding,
@@ -337,7 +352,7 @@ class JobAdapter(ABC):
             #   - Check that the HDF5 file is available, else raise an error.
             #   - Submit ARC workers with the HDF5 file.
             self.execute_queue()  # This is temporary until pipe is fully functional.
-        if not self.restrarted:
+        if not self.restarted:
             self._write_initiated_job_to_csv_file()
 
     def determine_job_array_parameters(self):
@@ -350,6 +365,8 @@ class JobAdapter(ABC):
         ARC will allocate, e.g., 8 workers, to simultaneously get processes (one by one) from the HDF5 bank
         and execute them. On average, each worker in this example executes 125 jobs.
         """
+        if self.execution_type == 'incore':
+            return None
         if len(self.job_types) > 1:
             self.iterate_by.append('job_types')
 
@@ -711,13 +728,13 @@ class JobAdapter(ABC):
         Set cpu and memory based on ESS and cluster software.
         This is not an abstract method and should not be overwritten.
         """
-        max_cpu = servers[self.server].get('cpus', None)  # Max cpus per node on server
+        max_cpu = servers[self.server].get('cpus', None) if self.server is not None else 8  # Max cpus per node on server
         # Set to 8 if user did not specify cpu in settings and in ARC input file.
         job_cpu_cores = default_job_settings.get('job_cpu_cores', 8)
         if max_cpu is not None and job_cpu_cores > max_cpu:
             job_cpu_cores = max_cpu
         self.cpu_cores = self.cpu_cores or job_cpu_cores
-        max_mem = servers[self.server].get('memory', None)  # Max memory per node in GB.
+        max_mem = servers[self.server].get('memory', None) if self.server is not None else 16  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.8)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
@@ -729,7 +746,7 @@ class JobAdapter(ABC):
         else:
             total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
-        cluster_software = servers[self.server].get('cluster_soft').lower()
+        cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'pbs', 'htcondor']:
             # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
@@ -982,7 +999,7 @@ class JobAdapter(ABC):
         The renaming should happen automatically, this method functions to troubleshoot
         cases where renaming wasn't successful the first time.
         """
-        if not os.path.isfile(self.local_path_to_output_file):
+        if not os.path.isfile(self.local_path_to_output_file) and self.yml_out_path is None:
             rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
 
     def add_to_args(self,
@@ -1068,7 +1085,7 @@ class JobAdapter(ABC):
         if source not in ['path', 'input_files']:
             raise ValueError(f'The source argument must be either "path" or "input_files", got {source}.')
         local = local or os.path.join(self.local_path, file_name)
-        remote = remote or os.path.join(self.remote_path, file_name)
+        remote = remote or os.path.join(self.remote_path, file_name) if self.remote_path is not None else None
         return {'file_name': file_name,
                 'local': local,
                 'remote': remote,
@@ -1103,7 +1120,7 @@ class JobAdapter(ABC):
         if divmod(360, self.scan_res)[1]:
             raise ValueError(f'Got an illegal scan resolution of {self.scan_res}.')
 
-        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'] else rotor_scan_resolution
+        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'].keys() else rotor_scan_resolution
 
         for rotor_dict in species.rotors_dict.values():
             directed_scan_type = rotor_dict['directed_scan_type']

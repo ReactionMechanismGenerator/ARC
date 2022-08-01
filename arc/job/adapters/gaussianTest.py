@@ -112,14 +112,23 @@ class TestGaussianAdapter(unittest.TestCase):
                                     irc_direction='reverse',
                                     testing=True,
                                     )
+        cls.job_8 = GaussianAdapter(execution_type='queue',
+                                    job_type='composite',
+                                    level=Level(method='cbs-qb3-paraskevas'),
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    testing=True,
+                                    args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
+                                    )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
-        self.job_1.input_file_memory = None
-        self.job_1.submit_script_memory = None
-        self.job_1.server = 'server2'
-        self.job_1.set_cpu_and_mem()
-        self.assertEqual(self.job_1.cpu_cores, 8)
+        self.job_8.input_file_memory = None
+        self.job_8.submit_script_memory = None
+        self.job_8.server = 'server2'
+        self.job_8.set_cpu_and_mem()
+        self.assertEqual(self.job_8.cpu_cores, 8)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
@@ -255,23 +264,28 @@ O       0.00000000    0.00000000    1.00000000
 
     def test_set_files(self):
         """Test setting files"""
-        job_1_files_to_upload = [{'file_name': 'input.gjf',
-                                  'local': os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]),
-                                  'remote': os.path.join(self.job_1.remote_path, input_filenames[self.job_1.job_adapter]),
+        job_1_files_to_upload = [{'file_name': 'submit.sub',
+                                  'local': os.path.join(self.job_1.local_path, 'submit.sub'),
+                                  'remote': os.path.join(self.job_1.remote_path, 'submit.sub'),
+                                  'make_x': False,
+                                  'source': 'path'},
+                                 {'file_name': 'input.gjf',
+                                  'local': os.path.join(self.job_8.local_path, input_filenames[self.job_8.job_adapter]),
+                                  'remote': os.path.join(self.job_8.remote_path, input_filenames[self.job_8.job_adapter]),
                                   'source': 'path',
                                   'make_x': False}]
         job_1_files_to_download = [{'file_name': 'input.log',
-                                    'local': os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]),
-                                    'remote': os.path.join(self.job_1.remote_path, output_filenames[self.job_1.job_adapter]),
+                                    'local': os.path.join(self.job_8.local_path, output_filenames[self.job_8.job_adapter]),
+                                    'remote': os.path.join(self.job_8.remote_path, output_filenames[self.job_8.job_adapter]),
                                     'source': 'path',
                                     'make_x': False},
                                    {'file_name': 'check.chk',
-                                    'local': os.path.join(self.job_1.local_path, 'check.chk'),
-                                    'remote': os.path.join(self.job_1.remote_path, 'check.chk'),
+                                    'local': os.path.join(self.job_8.local_path, 'check.chk'),
+                                    'remote': os.path.join(self.job_8.remote_path, 'check.chk'),
                                     'source': 'path',
                                     'make_x': False}]
-        self.assertEqual(self.job_1.files_to_upload, job_1_files_to_upload)
-        self.assertEqual(self.job_1.files_to_download, job_1_files_to_download)
+        self.assertEqual(self.job_8.files_to_upload, job_1_files_to_upload)
+        self.assertEqual(self.job_8.files_to_download, job_1_files_to_download)
 
     def test_set_files_for_pipe(self):
         """Test setting files for a pipe job"""

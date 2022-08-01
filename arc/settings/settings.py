@@ -57,6 +57,7 @@ servers = {
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
     'gaussian': ['local', 'server2'],
+    'gcn': 'local',
     'molpro': ['local', 'server2'],
     'onedmin': 'server1',
     'orca': 'local',
@@ -139,7 +140,7 @@ input_filenames = {'gaussian': 'input.gjf',
                    }
 
 output_filenames = {'gaussian': 'input.log',
-                    'gromacs': 'output.yml',
+                    'gcn': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
                     'orca': 'input.log',

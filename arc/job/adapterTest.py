@@ -118,7 +118,7 @@ class TestJobAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.job_1 = GaussianAdapter(execution_type='incore',
+        cls.job_1 = GaussianAdapter(execution_type='queue',
                                     job_type='conformers',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
@@ -180,6 +180,14 @@ class TestJobAdapter(unittest.TestCase):
                                     project='test_scans',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_scan'),
                                     species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
+                                    testing=True,
+                                    )
+        cls.job_4 = GaussianAdapter(execution_type='queue',
+                                    job_type='opt',
+                                    level=Level(method='cbs-qb3'),
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
 
@@ -304,20 +312,20 @@ class TestJobAdapter(unittest.TestCase):
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         # HTCondor
-        self.job_1.cpu_cores = None
-        self.job_1.set_cpu_and_mem()
-        self.assertEqual(self.job_1.cpu_cores, 8)
+        self.job_4.cpu_cores = None
+        self.job_4.set_cpu_and_mem()
+        self.assertEqual(self.job_4.cpu_cores, 8)
         expected_memory = math.ceil((14 * 1024 * 1.1))
-        self.assertEqual(self.job_1.submit_script_memory, expected_memory)
+        self.assertEqual(self.job_4.submit_script_memory, expected_memory)
 
         # Slurm
-        self.job_1.server = 'server2'
-        self.job_1.cpu_cores = None
-        self.job_1.set_cpu_and_mem()
-        self.assertEqual(self.job_1.cpu_cores, 8)
-        expected_memory = math.ceil((14 * 1024 * 1.1) / self.job_1.cpu_cores)
-        self.assertEqual(self.job_1.submit_script_memory, expected_memory)
-        self.job_1.server = 'local'
+        self.job_4.server = 'server2'
+        self.job_4.cpu_cores = None
+        self.job_4.set_cpu_and_mem()
+        self.assertEqual(self.job_4.cpu_cores, 8)
+        expected_memory = math.ceil((14 * 1024 * 1.1) / self.job_4.cpu_cores)
+        self.assertEqual(self.job_4.submit_script_memory, expected_memory)
+        self.job_4.server = 'local'
 
     def test_set_file_paths(self):
         """Test setting up the job's paths"""
@@ -344,6 +352,28 @@ class TestJobAdapter(unittest.TestCase):
                          'block': {'specific_key_2': 'val_tst_4\nval_tst_5'},
                          'trsh': {}}
         self.assertEqual(self.job_1.args, expected_args)
+        self.job_1.write_input_file()
+        new_expected_args = {'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3 scf=xqc'},  #  scf=xqc
+                             'block': {'specific_key_2': 'val_tst_4\nval_tst_5'},
+                             'trsh': {}}
+        self.assertEqual(self.job_1.args, new_expected_args)
+
+        job_with_args = GaussianAdapter(execution_type='queue',
+                                        job_type='opt',
+                                        level=Level(method='cbs-qb3'),
+                                        project='test',
+                                        project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                        species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                        testing=True,
+                                        args={'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
+                                              'block': {'specific_key_2': 'val_tst_4\nval_tst_5'},
+                                              'trsh': {'no_xqc': 'no_xqc'},
+                                              },
+                                        )
+        expected_args = {'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
+                         'block': {'specific_key_2': 'val_tst_4\nval_tst_5'},
+                         'trsh': {'no_xqc': 'no_xqc'}}
+        self.assertEqual(job_with_args.args, expected_args)
 
     def test_get_file_property_dictionary(self):
         """Test getting the file property dictionary"""
