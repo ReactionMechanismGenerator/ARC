@@ -14,9 +14,10 @@ import numpy as np
 from IPython.display import display
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_rxn_e0
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_rxn_e0, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -54,7 +55,6 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_to_coords_list,
                                    xyz_to_str,
                                    )
-import arc.rmgdb as rmgdb
 from arc.species.vectors import get_angle, calculate_dihedral_angle
 
 if TYPE_CHECKING:
@@ -625,7 +625,7 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
-                                self.check_irc_job(label=label, job=job)
+                                self.spawn_post_irc_jobs(label=label, job=job)
                             self.timer = False
                             break
                     elif 'orbitals' in job_name:
@@ -2168,7 +2168,9 @@ class Scheduler(object):
         logger.debug(f'parsing opt geo for {job.job_name}')
         if job.job_status[1]['status'] == 'done':
             opt_xyz = parser.parse_xyz_from_file(path=job.local_path_to_xyz or job.local_path_to_output_file)
-            if not job.fine and self.job_types['fine'] and not job.job_adapter == 'molpro':
+            if not job.fine and self.job_types['fine'] \
+                    and not job.level.method_type == 'wavefunction' \
+                    and self.species_dict[label].irc_label is None:
                 # Run opt again using a finer grid.
                 # Save the optimized geometry as ``initial_xyz``, since trsh looks there.
                 self.species_dict[label].initial_xyz = opt_xyz
@@ -2199,6 +2201,9 @@ class Scheduler(object):
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file  # will be overwritten with freq
                 if not self.species_dict[label].is_ts:
                     plotter.draw_structure(species=self.species_dict[label], project_directory=self.project_directory)
+                    if self.species_dict[label].irc_label is not None:
+                        self.check_irc_species(label=label)
+                        return False
                     is_isomorphic = self.species_dict[label].check_xyz_isomorphism(
                         allow_nonisomorphic_2d=self.allow_nonisomorphic_2d)
                     if is_isomorphic:
@@ -2510,27 +2515,55 @@ class Scheduler(object):
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
         self.output[label]['job_types']['sp'] = True
 
-    def check_irc_job(self,
-                      label: str,
-                      job: 'JobAdapter',
-                      ):
+    def spawn_post_irc_jobs(self,
+                            label: str,
+                            job: 'JobAdapter',
+                            ):
         """
-        Check an IRC job and perform post-job tasks.
-
-        Todo:
-            Need to check isomorphism
+        Spawn additional jobs after IRC has converged.
 
         Args:
             label (str): The species label.
             job (JobAdapter): The single point job object.
         """
-        self.output[label]['paths']['irc'].append(os.path.join(job.local_path, 'output.out'))
+        self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
+        index = 1
         if len(self.output[label]['paths']['irc']) == 2:
+            index = 2
             self.output[label]['job_types']['irc'] = True
             plotter.save_irc_traj_animation(irc_f_path=self.output[label]['paths']['irc'][0],
                                             irc_r_path=self.output[label]['paths']['irc'][1],
                                             out_path=os.path.join(self.project_directory, 'output',
                                                                   'rxns', label, 'irc_traj.gjf'))
+        irc_label = f'IRC_{index}_{label}'
+        irc_spc = ARCSpecies(label=irc_label,
+                             xyz=parser.parse_xyz_from_file(job.local_path_to_output_file),
+                             irc_label=label,
+                             )
+        if self.species_dict[label].irc_label is None:
+            self.species_dict[label].irc_label = irc_label
+        else:
+            self.species_dict[label].irc_label += f' {irc_label}'
+
+        self.species_dict[irc_spc.label] = irc_spc
+        self.job_dict[label] = dict()
+        self.initialize_output_dict(label=irc_label)
+        self.run_opt_job(label)
+
+    def check_irc_species(self, label: str):
+        """
+        Check that the optimized geometry of the two species created from a TS IRC runs makes sense
+
+        Args:
+            label (str): The label of one of the optimized IRC-resulting species.
+        """
+        ts_label = self.species_dict[label].irc_label
+        irc_species_labels = self.species_dict[ts_label].irc_label.split()
+        if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+            check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
+                                      xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
+                                      rxn=self.rxn_dict.get([self.species_dict[ts_label].rxn_index], None),
+                                      )
 
     def check_scan_job(self,
                        label: str,
@@ -3444,7 +3477,7 @@ class Scheduler(object):
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:
-                        if job_type in ['rotors', 'bde', 'irc']:
+                        if job_type in ['rotors', 'bde']:
                             # rotors could be invalidated due to many reasons,
                             # also could be falsely identified in a species that has no torsional modes.
                             self.output[species.label]['job_types'][job_type] = True
