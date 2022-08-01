@@ -227,6 +227,9 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
         job (JobAdapter): The frequency job object instance.
         amplitudes (Union[float, List[float]], optional): The factor(s) multiplication for the displacement.
     """
+    # wrap in a func that calls this for R xyz + TS xyz and P xyz + TS xyz, and then R & P xyz, if any works, fine
+    # which atom moves? (forms + breaks bond, like intra H migrartion) - i't row in th rdmat diff will be the largest regardless of mass!
+    # think this way of different reaction families
     if job is None:
         return
     if reaction.family is None:
@@ -252,24 +255,31 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
             r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
                                                                                 rmg_reaction=rmg_reaction)[0]
             if r_label_dict is None or reaction is None:
+                print('C 1')
                 continue
             expected_breaking_bonds, expected_forming_bonds, expected_bo_changes \
                 = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
             if expected_breaking_bonds is None \
                     or all(not len(expected) for expected in [expected_breaking_bonds, expected_forming_bonds, expected_bo_changes]):
+                print('C 2')
                 continue
 
             breaking_diff, forming_diff, bo_change_diff, background_diff = \
                 get_mass_weighted_bond_changes(reaction, expected_breaking_bonds, expected_forming_bonds, expected_bo_changes, bond_diff)
 
-            if max(background_diff) > 1.2 * min(breaking_diff + forming_diff + bo_change_diff):
+            print(f' max B: {max(background_diff)}')
+            print(f' min: {min(abs(v) for v in breaking_diff + forming_diff + bo_change_diff)}')
+            if max(background_diff) > 1.2 * min(abs(v) for v in breaking_diff + forming_diff + bo_change_diff):
+                print('C 3')
                 continue
             if all(b < 0 for b in breaking_diff) and all(f > 0 for f in forming_diff) \
                     or all(b > 0 for b in breaking_diff) and all(f < 0 for f in forming_diff):
                 reaction.ts_species.ts_checks['normal_mode_displacement'] = True
                 done = True
+                print('B 1')
                 break
         if done:
+            print('B 2')
             break
 
 
@@ -292,15 +302,18 @@ def get_mass_weighted_bond_changes(reaction: 'ARCReaction',
     Returns:
         Tuple[list, list, list, list]: breaking_diff, forming_diff, bo_change_diff, background_diff.
     """
+    print('\n')
+    import pprint
+    pprint.pprint(bond_diff)
     ms = reaction.get_element_mass()
-    breaking_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_breaking_bonds]
-    forming_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_forming_bonds]
-    bo_change_diff = [bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55 for bi, bj in expected_bo_changes]
+    breaking_diff = [bond_diff[bi, bj] for bi, bj in expected_breaking_bonds]
+    forming_diff = [bond_diff[bi, bj] for bi, bj in expected_forming_bonds]
+    bo_change_diff = [bond_diff[bi, bj] for bi, bj in expected_bo_changes]
     background_diff = list()
     for bi in range(len(reaction.atom_map)):
         for bj in range(len(reaction.atom_map)):
             if bi < bj and (bi, bj) not in expected_breaking_bonds + expected_forming_bonds + expected_bo_changes:
-                background_diff.append(bond_diff[bi, bj] * (ms[bi] + ms[bj]) ** 0.55)
+                background_diff.append(bond_diff[bi, bj])
     return breaking_diff, forming_diff, bo_change_diff, background_diff
 
 
