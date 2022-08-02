@@ -27,11 +27,9 @@ install-kinbot:
 install-sella:
 	bash devtools/install_sella.sh
 
-# xTB is included in the arc_env, install_xtb.sh is not executed by ``make install-all``
 install-xtb:
 	bash devtools/install_xtb.sh
 
-# TorchANI is included in the arc_env, install_torchani.sh is not executed by ``make install-all``
 install-torchani:
 	bash devtools/install_torchani.sh
 
