@@ -219,7 +219,7 @@ default_job_settings = {
 
 # Criteria for identification of imaginary frequencies for transition states.
 # An imaginary frequency is valid if it is between the following range (in cm-1):
-LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 5.0, 10000.0
+LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
 TS_GCN_PYTHON, AUTOTST_PYTHON, ARC_PYTHON = None, None, None

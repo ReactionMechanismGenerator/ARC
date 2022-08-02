@@ -181,6 +181,9 @@ class ARCSpecies(object):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        irc_label (str, optional): The label of an original ``ARCSpecies`` object (a TS) for which an IRC job was spawned.
+                                   The present species object instance represents a geometry optimization job of the IRC
+                                   result in one direction.
 
     Attributes:
         label (str): The species' label.
@@ -274,6 +277,10 @@ class ARCSpecies(object):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        irc_label (str): The label of an original ``ARCSpecies`` object (a TS)  for which an IRC job was spawned.
+                         The present species object instance represents a geometry optimization job of the IRC
+                         result in one direction. If a species is a transition state, then this attribute contains the
+                         labels of the two corresponding "IRC species", separated by a blank space.
     """
 
     def __init__(self,
@@ -291,6 +298,7 @@ class ARCSpecies(object):
                  force_field: str = 'MMFF94s',
                  inchi: str = '',
                  is_ts: bool = False,
+                 irc_label: Optional[str] = None,
                  label: Optional[str] = None,
                  mol: Optional[Molecule] = None,
                  multiplicity: Optional[int] = None,
@@ -329,6 +337,7 @@ class ARCSpecies(object):
         self.multiplicity = multiplicity
         self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
+        self.irc_label = irc_label
         self.occ = occ
         self.optical_isomers = optical_isomers
         self.charge = charge
@@ -608,6 +617,8 @@ class ARCSpecies(object):
         species_dict['number_of_rotors'] = self.number_of_rotors
         if self.external_symmetry is not None:
             species_dict['external_symmetry'] = self.external_symmetry
+        if self.irc_label is not None:
+            species_dict['irc_label'] = self.irc_label
         if self.optical_isomers is not None:
             species_dict['optical_isomers'] = self.optical_isomers
         if self.neg_freqs_trshed:
@@ -774,6 +785,7 @@ class ARCSpecies(object):
         self.opt_level = species_dict['opt_level'] if 'opt_level' in species_dict else None
         self.number_of_rotors = species_dict['number_of_rotors'] if 'number_of_rotors' in species_dict else 0
         self.external_symmetry = species_dict['external_symmetry'] if 'external_symmetry' in species_dict else None
+        self.irc_label = species_dict['irc_label'] if 'irc_label' in species_dict else None
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
