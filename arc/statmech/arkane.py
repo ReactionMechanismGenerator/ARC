@@ -29,7 +29,7 @@ from arc.checks.ts import check_ts, ts_passed_all_checks
 from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import InputError, RotorError
 from arc.imports import input_files
-from arc.level import Level
+from arc.level import Level, get_params_from_arkane_level_of_theory_as_str
 from arc.parser import parse_1d_scan_energies, parse_frequencies
 from arc.reaction import ARCReaction
 from arc.species.converter import xyz_to_coords_and_element_numbers
@@ -663,13 +663,13 @@ class ArkaneAdapter(StatmechAdapter):
             return True
         arkane_energy_level = self.sp_level.to_arkane_level_of_theory()
         arkane_energy_level = getattr(arkane_energy_level, 'energy', arkane_energy_level)
-        try:
-            atom_energies = data.atom_energies[arkane_energy_level]
-        except KeyError:
-            try:
-                atom_energies = data.atom_energies[arkane_energy_level.simple()]
-            except KeyError:
-                return False
+        for level, atom_energies in data.atom_energies.items():
+            level_dict = get_params_from_arkane_level_of_theory_as_str(level)
+            if arkane_energy_level.method == level_dict['method'] and arkane_energy_level.basis == level_dict['basis'] \
+                    and arkane_energy_level.software == level_dict['software']:
+                break
+        else:
+            return False
         if (self.reaction is not None
             and any(symbol not in atom_energies for symbol in self.reaction.ts_species.get_xyz()['symbols'])) \
                 or (self.species is not None
