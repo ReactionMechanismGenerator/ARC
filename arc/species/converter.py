@@ -349,7 +349,7 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     Returns:
         Optional[np.array]: The distance matrix.
     """
-    if xyz_dict is None:
+    if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
     dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
