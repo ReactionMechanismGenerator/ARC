@@ -351,4 +351,4 @@ class TorchANIAdapter(JobAdapter):
         self.execute_incore()
 
 
-register_job_adapter('torchani', TorchANIAdapter)
+# register_job_adapter('torchani', TorchANIAdapter)
