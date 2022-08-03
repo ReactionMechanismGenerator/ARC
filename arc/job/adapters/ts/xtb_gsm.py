@@ -36,8 +36,9 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-input_filenames, output_filenames, servers, submit_filenames = \
-    settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames']
+input_filenames, output_filenames, servers, submit_filenames, xtb_gsm_settings = \
+    settings['input_filenames'], settings['output_filenames'], settings['servers'], settings['submit_filenames'], \
+    settings['xtb_gsm_settings']
 
 
 input_template = """# FSM/GSM/SSM inpfileq
@@ -342,26 +343,27 @@ class xTBGSMAdapter(JobAdapter):
         Returns:
             dict: THe updated keywords.
         """
-        defaults = {'sm_type': 'GSM',
-                    'restart': 0,
-                    'max_opt_iters': 160,
-                    'step_opt_iters': 30,
-                    'conv_tol': 0.0005,
-                    'add_node_tol': 0.1,
-                    'scaling': 1.0,
-                    'ssm_dqmax': 0.8,
-                    'growth_direction': 0,
-                    'int_thresh': 2.0,
-                    'min_spacing': 5.0,
-                    'bond_fragments': 1,
-                    'initial_opt': 0,
-                    'final_opt': 150,
-                    'product_limit': 100.0,
-                    'ts_final_type': 1,
-                    'nnodes': 15,
-                    }
+        parameters = {'sm_type': 'GSM',
+                      'restart': 0,
+                      'max_opt_iters': 160,
+                      'step_opt_iters': 30,
+                      'conv_tol': 0.0005,
+                      'add_node_tol': 0.1,
+                      'scaling': 1.0,
+                      'ssm_dqmax': 0.8,
+                      'growth_direction': 0,
+                      'int_thresh': 2.0,
+                      'min_spacing': 5.0,
+                      'bond_fragments': 1,
+                      'initial_opt': 0,
+                      'final_opt': 150,
+                      'product_limit': 100.0,
+                      'ts_final_type': 1,
+                      'nnodes': 15,
+                      }
+        parameters.update(xtb_gsm_settings)
         updated_args = dict()
-        for key, val in defaults.items():
+        for key, val in parameters.items():
             updated_args[key] = self.level.args['keyword'][key] \
                 if self.level is not None and key in self.level.args['keyword'] else str(val)
         return updated_args
