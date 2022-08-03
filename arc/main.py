@@ -818,13 +818,13 @@ class ARC(object):
                     logger.info(f'  Did NOT find Molpro on {server}')
         if diagnostics:
             logger.info('\n\n')
-        if 'gaussian' in self.ess_settings.keys():
+        if 'gaussian' in self.ess_settings.keys() and self.ess_settings["gaussian"]:
             logger.info(f'Using Gaussian on {self.ess_settings["gaussian"]}')
-        if 'qchem' in self.ess_settings.keys():
+        if 'qchem' in self.ess_settings.keys() and self.ess_settings["qchem"]:
             logger.info(f'Using QChem on {self.ess_settings["qchem"]}')
-        if 'orca' in self.ess_settings.keys():
+        if 'orca' in self.ess_settings.keys() and self.ess_settings["orca"]:
             logger.info(f'Using Orca on {self.ess_settings["orca"]}')
-        if 'molpro' in self.ess_settings.keys():
+        if 'molpro' in self.ess_settings.keys() and self.ess_settings["molpro"]:
             logger.info(f'Using Molpro on {self.ess_settings["molpro"]}')
         logger.info('\n')
 
