@@ -37,7 +37,7 @@ dependencies:
   - pymongo
   - pyparsing
   - rmg::pyrdl
-  - python >=3.8
+  - python >=3.7
   - pyyaml
   - rmg::quantities
   - rmg::rdkit >=2020.03.3.0
