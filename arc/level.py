@@ -117,6 +117,9 @@ class Level(object):
         """
         if isinstance(other, Level):
             return str(self) == str(other)
+        if isinstance(other, LevelOfTheory):
+            if self.method == other.method and self.basis == other.basis:
+                return True
         return False
 
     def __str__(self) -> str:
