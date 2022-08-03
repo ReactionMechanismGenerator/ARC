@@ -186,6 +186,26 @@ orca_default_options_dict = {
                            'dlpno_threshold': 'normalPNO'}},
 }
 
+# xTB-GSM
+xtb_gsm_settings = {'sm_type': 'GSM',
+                    'restart': 0,
+                    'max_opt_iters': 160,
+                    'step_opt_iters': 30,
+                    'conv_tol': 0.0005,
+                    'add_node_tol': 0.1,
+                    'scaling': 1.0,
+                    'ssm_dqmax': 0.8,
+                    'growth_direction': 0,
+                    'int_thresh': 2.0,
+                    'min_spacing': 5.0,
+                    'bond_fragments': 1,
+                    'initial_opt': 0,
+                    'final_opt': 150,
+                    'product_limit': 100.0,
+                    'ts_final_type': 1,
+                    'nnodes': 15,
+                    }
+
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
