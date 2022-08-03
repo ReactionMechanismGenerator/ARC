@@ -3,6 +3,7 @@ channels:
   - defaults
   - rmg
   - conda-forge
+  - pytorch
 dependencies:
   - cairo
   - cairocffi
