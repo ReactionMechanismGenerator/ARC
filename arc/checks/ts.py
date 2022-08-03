@@ -240,6 +240,8 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                        and spc.mol.atoms[0].element.symbol == 'H' for spc in reaction.r_species + reaction.p_species)
     # bond_lone_hs = False
     xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
+    if not xyz['coords']:
+        xyz = reaction.ts_species.get_xyz()
 
     done = False
     for amplitude in amplitudes:
