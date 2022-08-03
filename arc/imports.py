@@ -28,7 +28,8 @@ if os.path.isfile(local_arc_settings_path):
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
-        settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] or None
+        settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] \
+            if 'global_ess_settings' in local_settings_dict and local_settings_dict['global_ess_settings'] else None
 
 local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
 if os.path.isfile(local_arc_submit_path):
