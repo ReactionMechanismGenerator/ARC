@@ -244,7 +244,7 @@ default_job_settings = {
     'job_total_memory_gb': 14,
     'job_cpu_cores': 8,
     'job_time_limit_hrs': 120,
-    'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used per job **if needed**
+    'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 
 # Criteria for identification of imaginary frequencies for transition states.

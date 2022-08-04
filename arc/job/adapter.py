@@ -481,6 +481,8 @@ class JobAdapter(ABC):
         """
         Write a submit script to execute the job.
         """
+        if self.server is None:
+            return
         if self.max_job_time > 9999 or self.max_job_time <= 0:
             self.max_job_time = 120
         architecture = ''
@@ -742,8 +744,8 @@ class JobAdapter(ABC):
         if max_cpu is not None and job_cpu_cores > max_cpu:
             job_cpu_cores = max_cpu
         self.cpu_cores = self.cpu_cores or job_cpu_cores
-        max_mem = servers[self.server].get('memory', None) if self.server is not None else 16  # Max memory per node in GB.
-        job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.8)
+        max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
+        job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
                            f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
