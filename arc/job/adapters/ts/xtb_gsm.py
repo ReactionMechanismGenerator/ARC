@@ -24,7 +24,7 @@ from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
-from arc.job.local import execute_command
+from arc.job.local import change_mode, execute_command
 from arc.level import Level
 from arc.parser import parse_trajectory
 from arc.species import TSGuess
@@ -227,6 +227,7 @@ class xTBGSMAdapter(JobAdapter):
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'gsm.orca'), destination=self.gsm_orca_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'ograd'), destination=self.ograd_path)
             safe_copy_file(source=os.path.join(self.xtb_gsm_scripts_path, 'tm2orca.py'), destination=self.tm2orca_path)
+            change_mode(mode='+x', file_name=self.gsm_orca_path, path=self.local_path)
 
     def set_files(self) -> None:
         """
