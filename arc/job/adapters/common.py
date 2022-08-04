@@ -216,8 +216,8 @@ def _initialize_adapter(obj: 'JobAdapter',
                 obj.server = obj.ess_settings[obj.job_adapter]
 
     obj.set_file_paths()
+    obj.set_cpu_and_mem()
     if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
-        obj.set_cpu_and_mem()
         obj.determine_job_array_parameters()
 
     obj.scan_res = obj.args['trsh']['scan_res'] \
