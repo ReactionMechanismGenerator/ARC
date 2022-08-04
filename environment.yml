@@ -57,3 +57,4 @@ dependencies:
   - pytables
   - anaconda::pytest
   - conda-forge::xtb
+  - conda-forge::torchani
