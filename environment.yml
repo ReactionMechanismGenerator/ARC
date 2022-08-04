@@ -56,10 +56,10 @@ dependencies:
   - conda-forge::qcelemental
   - mako
   - pytables
-  - libuv == 1.40.0
+  - libuv >= 1.40.0
   - pytorch::torchvision == 0.8.1
   - pytorch::pytorch == 1.7.0
-  - cpuonly
+  - pytorch::cpuonly == 1.0-0
   - anaconda::pytest
   - conda-forge::torchani
   - conda-forge::xtb
