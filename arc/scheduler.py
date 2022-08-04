@@ -756,7 +756,7 @@ class Scheduler(object):
         if shift:
             args['shift'] = shift
         if scan_trsh:
-            args['scan_trsh'] = scan_trsh
+            args['keyword']['scan_trsh'] = scan_trsh
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,
@@ -953,7 +953,7 @@ class Scheduler(object):
                      max_job_time=job.max_job_time,
                      rotor_index=job.rotor_index,
                      reactions=job.reactions,
-                     trsh=job.args['keyword']['trsh'] if 'trsh' in job.args['keyword'] else '',
+                     trsh=job.args['trsh'].values() if 'trsh' in job.args else '',
                      torsions=job.torsions,
                      times_rerun=job.times_rerun + int(rerun),
                      tsg=job.tsg,

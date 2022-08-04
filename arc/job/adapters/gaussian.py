@@ -226,7 +226,7 @@ class GaussianAdapter(JobAdapter):
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
+        input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
@@ -245,7 +245,7 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method[:2] == 'ro':
             self.add_to_args(val='use=L506')
-        elif 'no_xqc' not in self.args['trsh'].values():
+        elif not('no_xqc' in list(self.args['trsh'].values())):
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
             self.add_to_args(val='scf=xqc')
 
