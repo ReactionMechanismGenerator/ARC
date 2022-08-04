@@ -426,11 +426,11 @@ H      -0.59436200   -0.94730400    0.00000000"""
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'NCC_xTB.out')
         e_elect = parser.parse_e_elect(path, software='xtb')
-        self.assertAlmostEqual(e_elect, -2822.9880775867755)
+        self.assertAlmostEqual(e_elect, -28229.880775867754)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'NCC_xTB.out')
         e_elect = parser.parse_e_elect(path)  # not specifying software
-        self.assertAlmostEqual(e_elect, -2822.9880775867755)
+        self.assertAlmostEqual(e_elect, -28229.880775867754)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'output.yml')
         e_elect = parser.parse_e_elect(path)
