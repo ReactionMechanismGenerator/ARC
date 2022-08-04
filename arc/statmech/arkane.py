@@ -665,7 +665,9 @@ class ArkaneAdapter(StatmechAdapter):
         arkane_energy_level = getattr(arkane_energy_level, 'energy', arkane_energy_level)
         for level, atom_energies in data.atom_energies.items():
             level_dict = get_params_from_arkane_level_of_theory_as_str(level)
-            if arkane_energy_level.method == level_dict['method'] and arkane_energy_level.basis == level_dict['basis'] \
+            if arkane_energy_level.method == level_dict['method'] \
+                    and (arkane_energy_level.basis == level_dict['basis']
+                         or not arkane_energy_level.basis and not level_dict['basis']) \
                     and arkane_energy_level.software == level_dict['software']:
                 break
         else:
