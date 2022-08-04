@@ -102,6 +102,8 @@ class TestARC(unittest.TestCase):
                                           'orca': ['local'],
                                           'qchem': ['server1'],
                                           'terachem': ['server1'],
+                                          'xtb': ['local'],
+                                          'xtb_gsm': ['local'],
                                           },
                          'freq_level': {'basis': '6-311+g(3df,2p)',
                                         'method': 'b3lyp',
