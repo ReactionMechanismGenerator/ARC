@@ -11,9 +11,8 @@ conda install -c conda-forge xtb-python -y
 conda install -c conda-forge pyyaml -y
 conda install -c anaconda pandas -y
 conda install -c conda-forge ase -y
-#conda install -c anaconda networkx -y
-#conda install -c conda-forge rmsd -y
 conda install -c anaconda pip -y
 $CONDA_BASE/envs/sella_env/bin/pip install sella
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:'"$CONDA_BASE"'/lib' >> ~/.bashrc
 source ~/.bashrc
 echo "Done installing Sella."
