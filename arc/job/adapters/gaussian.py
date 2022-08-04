@@ -245,7 +245,7 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method[:2] == 'ro':
             self.add_to_args(val='use=L506')
-        elif not('trsh' in self.args['keyword'] and 'no_xqc' in self.args['keyword']['trsh']):
+        elif not('no_xqc' in list(self.args['trsh'].values())):
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
             self.add_to_args(val='scf=xqc')
 
