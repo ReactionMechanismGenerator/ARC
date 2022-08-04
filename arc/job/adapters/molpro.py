@@ -212,7 +212,7 @@ class MolproAdapter(JobAdapter):
                     ]:
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
-        input_dict['basis'] = 'cc-pVDZ' if 'trsh' in self.args and 'vdz' in self.args['keyword']['trsh'] \
+        input_dict['basis'] = 'cc-pVDZ' if 'trsh' in self.args and 'vdz' in self.args['trsh'] \
             else self.level.basis or ''
         input_dict['cabs'] = self.level.cabs or ''
         input_dict['charge'] = self.charge
