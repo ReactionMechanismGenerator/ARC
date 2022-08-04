@@ -2,7 +2,7 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-conda create -n xtb_env python=3.8 -y
+conda create -n xtb_env python=3.7 -y
 conda activate xtb_env
 conda install -c conda-forge xtb -y
 conda install -c anaconda pyyaml -y
