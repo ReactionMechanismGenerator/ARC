@@ -180,24 +180,9 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.tsg = tsg
     obj.workers = None
     obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
-    obj.yml_out_path = None
 
     if obj.job_num is None or obj.job_name is None or obj.job_server_name:
         obj._set_job_number()
-
-    obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
-
-    if 'server' in obj.args['trsh'].keys():
-        obj.server = obj.args['trsh']['server']
-    elif obj.job_adapter in obj.ess_settings.keys():
-        if isinstance(obj.ess_settings[obj.job_adapter], list):
-            obj.server = obj.ess_settings[obj.job_adapter][0]
-        else:
-            obj.server = obj.ess_settings[obj.job_adapter]
-    obj.set_cpu_and_mem()
-
-    obj.scan_res = obj.args['trsh']['scan_res'] \
-        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
 
     if obj.species is not None:
         obj.charge = obj.species[0].charge
@@ -220,8 +205,24 @@ def _initialize_adapter(obj: 'JobAdapter',
         obj.is_ts = None
         obj.species_label = None
 
+    obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
+    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        if 'server' in obj.args['trsh']:
+            obj.server = obj.args['trsh']['server']
+        elif obj.job_adapter in obj.ess_settings.keys():
+            if isinstance(obj.ess_settings[obj.job_adapter], list):
+                obj.server = obj.ess_settings[obj.job_adapter][0]
+            else:
+                obj.server = obj.ess_settings[obj.job_adapter]
+
     obj.set_file_paths()
-    obj.determine_job_array_parameters()
+    obj.set_cpu_and_mem()
+    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        obj.determine_job_array_parameters()
+
+    obj.scan_res = obj.args['trsh']['scan_res'] \
+        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
+
     obj.set_files()
     check_argument_consistency(obj)
 
