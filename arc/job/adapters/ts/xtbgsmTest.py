@@ -65,7 +65,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'gsm.orca'),
                                   'remote': os.path.join(self.job_1.remote_path, 'gsm.orca'),
                                   'source': 'path',
-                                  'make_x': False},
+                                  'make_x': True},
                                  {'file_name': 'inpfileq',
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'inpfileq'),
                                   'remote': os.path.join(self.job_1.remote_path, 'inpfileq'),
@@ -79,7 +79,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                   'local': os.path.join(self.job_1.xtb_gsm_scripts_path, 'tm2orca.py'),
                                   'remote': os.path.join(self.job_1.remote_path, 'tm2orca.py'),
                                   'source': 'path',
-                                  'make_x': False}]
+                                  'make_x': True}]
         job_1_files_to_download = [{'file_name': 'stringfile.xyz0000',
                                     'local': os.path.join(self.job_1.local_path, 'stringfile.xyz0000'),
                                     'remote': os.path.join(self.job_1.remote_path, 'stringfile.xyz0000'),
