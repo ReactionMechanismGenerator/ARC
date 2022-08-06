@@ -59,4 +59,3 @@ dependencies:
   - anaconda::pytest
   - conda-forge::torchani
   - conda-forge::xtb
-  
