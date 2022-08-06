@@ -23,6 +23,7 @@ from arc.common import (extremum_list,
                         get_logger,
                         get_number_with_ordinal_indicator,
                         is_angle_linear,
+                        safe_copy_file,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         torsions_to_scans,
@@ -2250,10 +2251,7 @@ class Scheduler(object):
                 # Copy the frequency file to the species / TS output folder.
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'
                 freq_path = os.path.join(self.project_directory, 'output', folder_name, label, 'geometry', 'freq.out')
-                try:
-                    shutil.copyfile(job.local_path_to_output_file, freq_path)
-                except shutil.SameFileError:
-                    pass
+                safe_copy_file(source=job.local_path_to_output_file, destination=freq_path)
                 # Set species.polarizability.
                 polarizability = parser.parse_polarizability(job.local_path_to_output_file)
                 if polarizability is not None:
