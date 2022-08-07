@@ -33,6 +33,9 @@ install-sella:
 install-xtb:
 	bash devtools/install_xtb.sh
 
+install-torchani:
+	bash devtools/install_torchani.sh
+
 lite:
 	bash devtools/lite.sh
 
