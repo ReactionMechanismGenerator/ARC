@@ -1,5 +1,8 @@
 """
 ARC's settings
+
+You may keep a short version of this file in a local ".arc" folder under your home folder.
+Any definitions made to the local file will take precedence over this file.
 """
 
 import os
