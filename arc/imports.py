@@ -10,7 +10,7 @@ from arc.settings.inputs import input_files
 from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
 
 
-# Common imports where the user can optionally put a modified copy of an ARC file un their ~/.arc folder
+# Common imports where the user can optionally put a modified copy of settings.py or submit.py file under ~/.arc
 home = os.getenv("HOME") or os.path.expanduser("~")
 local_arc_path = os.path.join(home, '.arc')
 
