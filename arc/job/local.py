@@ -28,6 +28,7 @@ servers, check_status_command, submit_command, submit_filenames, delete_command,
 def execute_command(command: Union[str, List[str]],
                     shell: bool = True,
                     no_fail: bool = False,
+                    executable: Optional[str] = None,
                     ) -> Tuple[Optional[list], Optional[list]]:
     """
     Execute a command.
@@ -40,6 +41,8 @@ def execute_command(command: Union[str, List[str]],
         command (Union[str, List[str]]): An array of string commands to send.
         shell (bool, optional): Specifies whether the command should be executed using bash instead of Python.
         no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.
+        executable (str, optional): Select a specific shell to run with, e.g., '/bin/bash'.
+                                    Default shell of the subprocess command is '/bin/sh'.
 
     Returns: Tuple[list, list]:
         - A list of lines of standard output stream.
@@ -53,7 +56,10 @@ def execute_command(command: Union[str, List[str]],
     sleep_time = 60  # Seconds
     while i < max_times_to_try:
         try:
-            completed_process = subprocess.run(command, shell=shell, capture_output=True)
+            if executable is None:
+                completed_process = subprocess.run(command, shell=shell, capture_output=True)
+            else:
+                completed_process = subprocess.run(command, shell=shell, capture_output=True, executable=executable)
             return _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
         except subprocess.CalledProcessError as e:
             error = e  # Store the error so we can raise a SettingsError if needed.

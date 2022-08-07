@@ -10,7 +10,7 @@ from arc.settings.inputs import input_files
 from arc.settings.submit import incore_commands, pipe_submit, submit_scripts
 
 
-# Common imports where the user can optionally put a modified copy of an ARC file un their ~/.arc folder
+# Common imports where the user can optionally put a modified copy of settings.py or submit.py file under ~/.arc
 home = os.getenv("HOME") or os.path.expanduser("~")
 local_arc_path = os.path.join(home, '.arc')
 
@@ -28,7 +28,8 @@ if os.path.isfile(local_arc_settings_path):
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
-        settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] or None
+        settings['global_ess_settings'] = local_settings_dict['global_ess_settings'] \
+            if 'global_ess_settings' in local_settings_dict and local_settings_dict['global_ess_settings'] else None
 
 local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
 if os.path.isfile(local_arc_submit_path):

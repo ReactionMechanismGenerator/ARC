@@ -111,6 +111,17 @@ class Level(object):
             # it wasn't set by the user, try determining it
             self.deduce_software()
 
+    def __eq__(self, other: Level) -> bool:
+        """
+        Determine equality between Level object instances.
+        """
+        if isinstance(other, Level):
+            return str(self) == str(other)
+        if isinstance(other, LevelOfTheory):
+            if self.method == other.method and self.basis == other.basis:
+                return True
+        return False
+
     def __str__(self) -> str:
         """
         Return a humane-readable string representation of the object.
@@ -285,10 +296,11 @@ class Level(object):
             args[key1.lower()] = dict()
             if isinstance(val1, dict):
                 for key2, val2 in val1.items():
-                    if not isinstance(val2, str):
-                        raise ValueError(f'All entries in the args argument must be strings.\n'
-                                         f'Got {val2} which is a {type(val2)} in {self.args}.')
-                    args[key1.lower()][key2.lower()] = val2.lower()
+                    new_val2 = str(val2) if isinstance(val2, (int, float)) else val2
+                    if not isinstance(new_val2, str):
+                        raise ValueError(f'All entries in the args argument must be str, int, or float types.\n'
+                                         f'Got {new_val2} which is a {type(new_val2)} in {self.args}.')
+                    args[key1.lower()][key2.lower()] = new_val2.lower()
             elif isinstance(val1, str):
                 args[key1.lower()]['general'] = val1.lower()
             elif isinstance(val1, (list, tuple)):
@@ -324,8 +336,11 @@ class Level(object):
             warn (bool, optional): Whether to output a warning if an AEC variant could not be found.
 
         Returns:
-            LevelOfTheory: The respective Arkane ``LevelOfTheory`` object
+            Optional[LevelOfTheory]: The respective Arkane ``LevelOfTheory`` object
         """
+        level_aec = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
+        if self.method in level_aec.keys():
+            return None
         if variant is None:
             if not comprehensive:
                 # only add basis and software if needed
@@ -377,7 +392,10 @@ class Level(object):
             var_2 = LevelOfTheory(**kwargs)
             kwargs['software'] = self.software  # add or overwrite software
             # start w/ the software argument (var_1) in case there are several entries that only vary by software
-            var_1 = LevelOfTheory(**kwargs)
+            try:
+                var_1 = LevelOfTheory(**kwargs)
+            except ValueError:
+                var_1 = None
 
             if variant == 'freq':
                 # if not found, the factor is set to exactly 1
@@ -488,6 +506,14 @@ class Level(object):
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
 
+        # TorchANI
+        if 'torchani' in self.method:
+            self.software = 'torchani'
+
+        # xTB
+        if 'xtb' in self.method or 'gfn' in self.method:
+            self.software = 'xtb'
+
         # User phrases from settings (levels_ess)
         if self.software is None:
             for ess, phrase_list in levels_ess.items():
@@ -532,3 +558,25 @@ class Level(object):
                 self.compatible_ess.append('terachem')
             if self.method in ess_methods['molpro']:
                 self.compatible_ess.append('molpro')
+
+
+def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
+    """
+    Get the method, basis set, and software (if any) of an str representation of an Arkane LevelOfTheory object instance.
+
+    Args:
+        arkane_level (str): The Arkane level.
+
+    Returns:
+        Dict[str, str]: Keys are 'method', 'basis', 'software'.
+    """
+    # LevelOfTheory(method='b3lyp',basis='6311+g(3df,2p)',software='gaussian')
+    level_dict = {'method': '',
+                  'basis': '',
+                  'software': '',
+                  }
+    for key in level_dict.keys():
+        if key in arkane_level:
+            splits = arkane_level.split(f"{key}='")
+            level_dict[key] = splits[1].split("'")[0]
+    return level_dict

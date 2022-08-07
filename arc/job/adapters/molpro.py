@@ -212,7 +212,8 @@ class MolproAdapter(JobAdapter):
                     ]:
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
-        input_dict['basis'] = 'cc-pVDZ' if 'vdz' in self.args['trsh'].values() else self.level.basis or ''  # includes vdz trsh
+        input_dict['basis'] = 'cc-pVDZ' if 'trsh' in self.args and 'vdz' in self.args['trsh'] \
+            else self.level.basis or ''
         input_dict['cabs'] = self.level.cabs or ''
         input_dict['charge'] = self.charge
         input_dict['label'] = self.species_label
@@ -331,7 +332,7 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
               raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
               )
         self._log_job_execution()
-        execute_command(incore_commands[self.server][self.job_adapter])
+        execute_command(incore_commands[self.job_adapter])
 
     def execute_queue(self):
         """

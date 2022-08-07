@@ -38,11 +38,14 @@ class TestEnumerationClasses(unittest.TestCase):
         self.assertEqual(JobEnum('psi4').value, 'psi4')
         self.assertEqual(JobEnum('qchem').value, 'qchem')
         self.assertEqual(JobEnum('terachem').value, 'terachem')
+        self.assertEqual(JobEnum('torchani').value, 'torchani')
+        self.assertEqual(JobEnum('xtb').value, 'xtb')
         self.assertEqual(JobEnum('autotst').value, 'autotst')
         self.assertEqual(JobEnum('heuristics').value, 'heuristics')
         self.assertEqual(JobEnum('kinbot').value, 'kinbot')
         self.assertEqual(JobEnum('gcn').value, 'gcn')
         self.assertEqual(JobEnum('user').value, 'user')
+        self.assertEqual(JobEnum('xtb_gsm').value, 'xtb_gsm')
         with self.assertRaises(ValueError):
             JobEnum('wrong')
 
@@ -284,9 +287,9 @@ class TestJobAdapter(unittest.TestCase):
 
     def test_write_queue_submit_script(self):
         """Test writing a queue submit script"""
-        self.job_2.number_of_processes, self.job_2.workers = 1, None
-        self.job_2.write_submit_script()
-        with open(os.path.join(self.job_2.local_path, submit_filenames[servers[self.job_2.server]['cluster_soft']]),
+        self.job_4.number_of_processes, self.job_4.workers = 1, None
+        self.job_4.write_submit_script()
+        with open(os.path.join(self.job_4.local_path, submit_filenames[servers[self.job_4.server]['cluster_soft']]),
                   'r') as f:
             lines = f.readlines()
         array, hdf5, g16 = False, False, False
@@ -329,10 +332,10 @@ class TestJobAdapter(unittest.TestCase):
 
     def test_set_file_paths(self):
         """Test setting up the job's paths"""
-        self.assertEqual(self.job_2.local_path, os.path.join(self.job_2.project_directory, 'calcs', 'Species',
-                                                             self.job_2.species_label, self.job_2.job_name))
-        self.assertEqual(self.job_2.remote_path, os.path.join('runs', 'ARC_Projects', self.job_2.project,
-                                                              self.job_2.species_label, self.job_2.job_name))
+        self.assertEqual(self.job_1.local_path, os.path.join(self.job_1.project_directory, 'calcs', 'Species',
+                                                             self.job_1.species_label, self.job_1.job_name))
+        self.assertEqual(self.job_1.remote_path, os.path.join('runs', 'ARC_Projects', self.job_1.project,
+                                                              self.job_1.species_label, self.job_1.job_name))
 
     def test_format_max_job_time(self):
         """Test that the maximum job time can be formatted properly, including days, minutes, and seconds"""

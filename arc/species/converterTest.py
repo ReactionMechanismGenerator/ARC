@@ -96,6 +96,14 @@ R2=1.7820""",
                              [1.09124847, 1.7820013, 0., 1.7820013, 1.7820013],
                              [1.09124847, 1.7820013, 1.7820013, 0., 1.7820013],
                              [1.09124847, 1.7820013, 1.7820013, 1.7820013, 0.]],
+                    'Turbomole': """$coord angs
+ 0.00000000    0.00000000    0.00000000      c
+ 0.63003260    0.63003260    0.63003260      h
+-0.63003260   -0.63003260    0.63003260      h
+-0.63003260    0.63003260   -0.63003260      h
+ 0.63003260   -0.63003260   -0.63003260      h
+$end
+""",
                     }
 
         cls.xyz2 = {'str': """S       1.02558264   -0.04344404   -0.07343859
@@ -134,6 +142,16 @@ H      -1.43009127    0.23517346   -1.11797908
                              [2.51409166, 3.07926623, 2.16662322, 1.09133324, 0., 1.80097071, 2.30585633],
                              [2.45124337, 2.69780089, 2.12283495, 1.09169397, 1.80097071, 0., 2.92889793],
                              [2.68310024, 1.95867823, 1.02337844, 2.02956962, 2.30585633, 2.92889793, 0.]],
+                    'Turbomole': """$coord angs
+ 1.02558264   -0.04344404   -0.07343859      s
+-0.25448248    1.10710477    0.18359696      o
+-1.30762173    0.15796567   -0.10489290      n
+-0.49011438   -1.03704380    0.15365747      c
+-0.64869950   -1.85796321   -0.54773423      h
+-0.60359153   -1.37304859    1.18613964      h
+-1.43009127    0.23517346   -1.11797908      h
+$end
+""",
                     }
 
         cls.xyz3 = {'str': """O          -0.25448248    1.10710477    0.18359696
@@ -221,7 +239,35 @@ H      -1.34135876    1.49608206    0.53295071
                                         (2.20318015, -0.14715186, -0.64755729),
                                         (1.59252246, 1.5117895, -0.33908352),
                                         (-0.8785689, -2.02453514, 0.38494433),
-                                        (-1.34135876, 1.49608206, 0.53295071))}}
+                                        (-1.34135876, 1.49608206, 0.53295071))},
+                    'Turbomole': """$coord angs
+-0.06618943   -0.12360663   -0.07631983      s
+-0.79539707    0.86755487    1.02675668      o
+-0.68919931    0.25421823   -1.34830853      o
+ 0.01546439   -1.54297548    0.44580391      n
+ 1.59721519    0.47861334    0.00711000      c
+ 1.94428095    0.40772394    1.03719428      h
+ 2.20318015   -0.14715186   -0.64755729      h
+ 1.59252246    1.51178950   -0.33908352      h
+-0.87856890   -2.02453514    0.38494433      h
+-1.34135876    1.49608206    0.53295071      h
+$end
+""",
+                    'Turbomole eht': """$coord angs
+-0.06618943   -0.12360663   -0.07631983      s
+-0.79539707    0.86755487    1.02675668      o
+-0.68919931    0.25421823   -1.34830853      o
+ 0.01546439   -1.54297548    0.44580391      n
+ 1.59721519    0.47861334    0.00711000      c
+ 1.94428095    0.40772394    1.03719428      h
+ 2.20318015   -0.14715186   -0.64755729      h
+ 1.59252246    1.51178950   -0.33908352      h
+-0.87856890   -2.02453514    0.38494433      h
+-1.34135876    1.49608206    0.53295071      h
+$eht charge=0 unpaired=1
+$end
+""",
+                    }
 
         cls.xyz7 = {'str': """O       2.64631000   -0.59546000    0.29327900
 O       2.64275300    2.05718500   -0.72942300
@@ -566,6 +612,30 @@ R1=1.0912"""
                                    (-3.45160473, -0.17570977, -1.43980481))}
         self.assertTrue(almost_equal_coords_lists(xyz_from_commas, expected_xyz))
 
+        xyz_format = """11
+
+C      0.237100   -0.245500   -0.027400
+C      1.508600    0.594000   -0.039600
+C      2.756600   -0.274000    0.064100
+H      0.232300   -0.941400   -0.864300
+H      0.170400   -0.820500    0.894000
+H     -0.644200    0.388000   -0.102000
+H      1.485100    1.297400    0.795900
+H      1.549200    1.176900   -0.962600
+H      2.743000   -0.852200    0.985800
+H      2.808300   -0.967200   -0.773000
+H      3.654100    0.340300    0.057100"""
+        expected_xyz = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                        'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'coords': ((0.2371, -0.2455, -0.0274), (1.5086, 0.594, -0.0396),
+                                   (2.7566, -0.274, 0.0641), (0.2323, -0.9414, -0.8643),
+                                   (0.1704, -0.8205, 0.894), (-0.6442, 0.388, -0.102),
+                                   (1.4851, 1.2974, 0.7959), (1.5492, 1.1769, -0.9626),
+                                   (2.743, -0.8522, 0.9858), (2.8083, -0.9672, -0.773),
+                                   (3.6541, 0.3403, 0.0571))}
+        xyz = converter.str_to_xyz(xyz_format)
+        self.assertEqual(xyz, expected_xyz)
+
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
         xyz_str1 = converter.xyz_to_str(xyz_dict=self.xyz1['dict'])
@@ -645,6 +715,28 @@ R1=1.0912"""
         self.assertEqual(xyzf2, self.xyz2['file'])
         self.assertEqual(xyzf6, self.xyz6['file'])
 
+    def test_xyz_to_turbomol_format(self):
+        """Test the xyz_to_turbomol_format() function."""
+        xyz_t1 = converter.xyz_to_turbomol_format(xyz_dict=self.xyz1['dict'])
+        xyz_t2 = converter.xyz_to_turbomol_format(xyz_dict=self.xyz2['dict'])
+        xyz_t6 = converter.xyz_to_turbomol_format(xyz_dict=self.xyz6['dict'])
+        xyz_t6_eht = converter.xyz_to_turbomol_format(xyz_dict=self.xyz6['dict'], charge=0, unpaired=1)
+        self.assertEqual(xyz_t1, self.xyz1['Turbomole'])
+        self.assertEqual(xyz_t2, self.xyz2['Turbomole'])
+        self.assertEqual(xyz_t6, self.xyz6['Turbomole'])
+        self.assertEqual(xyz_t6_eht, self.xyz6['Turbomole eht'])
+
+    def test_xyz_to_coords_and_element_numbers(self):
+        """Test the xyz_to_coords_and_element_numbers() function."""
+        coords, atom_nums = converter.xyz_to_coords_and_element_numbers(self.xyz1['dict'])
+        self.assertEqual(coords,
+                         [[0.0, 0.0, 0.0],
+                          [0.6300326, 0.6300326, 0.6300326],
+                          [-0.6300326, -0.6300326, 0.6300326],
+                          [-0.6300326, 0.6300326, -0.6300326],
+                          [0.6300326, -0.6300326, -0.6300326]])
+        self.assertEqual(atom_nums, [6, 1, 1, 1, 1])
+
     def test_xyz_to_dmat(self):
         """Test converting xyz to dmat"""
         dmat1 = converter.xyz_to_dmat(xyz_dict=self.xyz1['dict'])
@@ -697,6 +789,41 @@ R1=1.0912"""
         self.assertEqual(xyz_dict2, self.xyz1['dict'])
         self.assertIsInstance(xyz_dict2['coords'], tuple)
         self.assertIsInstance(xyz_dict2['coords'][0], tuple)
+
+    def test_species_to_sdf_file(self):
+        """Test the species_to_sdf_file() function."""
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf')
+        spc = ARCSpecies(label='NCC', smiles='NCC')
+        converter.species_to_sdf_file(spc, path)
+        with open(path, 'r') as f:
+            sdf_content = f.read()
+        expected_sdf = """
+     RDKit          3D
+
+ 10  9  0  0  0  0  0  0  0  0999 V2000
+    1.1517   -0.3760   -0.5231 N   0  0  0  0  0  0  0  0  0  0  0  0
+    0.2893    0.4500    0.3115 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.1415   -0.0561    0.2592 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.1386   -1.3376   -0.1854 H   0  0  0  0  0  0  0  0  0  0  0  0
+    2.1151   -0.0555   -0.4352 H   0  0  0  0  0  0  0  0  0  0  0  0
+    0.6517    0.4342    1.3447 H   0  0  0  0  0  0  0  0  0  0  0  0
+    0.3279    1.4855   -0.0414 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2133   -1.0839    0.6308 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.7870    0.5726    0.8809 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.5327   -0.0332   -0.7636 H   0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  1  4  1  0
+  1  5  1  0
+  2  3  1  0
+  2  6  1  0
+  2  7  1  0
+  3  8  1  0
+  3  9  1  0
+  3 10  1  0
+M  END
+$$$$
+"""
+        self.assertEqual(sdf_content, expected_sdf)
 
     def test_sort_xyz_using_indices(self):
         """Test the sort_xyz_using_indices() function."""
@@ -3532,6 +3659,17 @@ H      -4.07566100   -0.52115800    0.00003300"""
         self.assertEqual(mass_list, [14.00307400443, 1.00782503224, 1.00782503224, 14.00307400443,
                                      1.00782503224, 1.00782503224, 14.00307400443, 1.00782503224])
 
+    def test_hartree_to_si(self):
+        """Test the hartree_to_si() function."""
+        e = converter.hartree_to_si(1)
+        self.assertAlmostEqual(e, 2625.5, places=1)
+        e = converter.hartree_to_si(5)
+        self.assertAlmostEqual(e, 13127.499291814986)
+        e = converter.hartree_to_si(5, kilo=False)
+        self.assertAlmostEqual(e, 13127499.291814985)
+        e = converter.hartree_to_si(-10.752192838993)
+        self.assertAlmostEqual(e, -28229.880775867754)
+
     def test_translate_xyz(self):
         """Test the translate_xyz() function."""
         self.assertEqual(self.xyz1['dict'], converter.translate_xyz(xyz_dict=self.xyz1['dict'], translation=(0, 0, 0)))
@@ -4805,8 +4943,12 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
-                      os.path.join(ARC_PATH, 'arc', 'species', 'nul'), os.path.join(ARC_PATH, 'arc', 'species', 'run.out')]
+        file_paths = [os.path.join(ARC_PATH, 'nul'),
+                      os.path.join(ARC_PATH, 'run.out'),
+                      os.path.join(ARC_PATH, 'arc', 'species', 'nul'),
+                      os.path.join(ARC_PATH, 'arc', 'species', 'run.out'),
+                      os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf'),
+                      ]
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)

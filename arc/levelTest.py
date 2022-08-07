@@ -11,7 +11,7 @@ import unittest
 from arkane.modelchem import LevelOfTheory
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.level import Level
+from arc.level import Level, get_params_from_arkane_level_of_theory_as_str
 
 
 class TestLevel(unittest.TestCase):
@@ -78,8 +78,23 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.solvent, 'water')
         self.assertEqual(level.args, {'keyword': {'general': 'iop(99/33=1)'}, 'block': {}})
 
+    def test_equal(self):
+        """Test identifying equal levels."""
+        level_1 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        level_2 = Level(method='b3lyp', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        level_3 = Level(method='wb97xd', basis='def2tzvp', auxiliary_basis='aug-def2-svp',
+                        dispersion='gd3bj', software='gaussian')
+        self.assertEqual(level_1, level_2)
+        self.assertNotEqual(level_1, level_3)
+
+        arkane_level = LevelOfTheory(method='b3lyp', basis='6311+g(3df,2p)', software='gaussian')
+        level_4 = LevelOfTheory(method='b3lyp', basis='6311+g(3df,2p)', software='gaussian')
+        self.assertEqual(level_4, arkane_level)
+
     def test_build(self):
-        """Test bulding a Level object from a string or dict representation"""
+        """Test building a Level object from a string or dict representation"""
         level_1 = Level(repr='wB97xd/def2-tzvp')
         self.assertEqual(level_1.method, 'wb97xd')
         self.assertEqual(level_1.basis, 'def2-tzvp')
@@ -156,6 +171,32 @@ class TestLevel(unittest.TestCase):
         level_2 = level_1.copy()
         self.assertIsNot(level_1, level_2)
         self.assertEqual(level_1.as_dict(), level_2.as_dict())
+
+    def test_get_params_from_arkane_level_of_theory_as_str(self):
+        """Test the get_params_from_arkane_level_of_theory_as_str() function."""
+        arkane_level = "LevelOfTheory(method='b3lyp',basis='6311+g(3df,2p)',software='gaussian')"
+        level_dict = get_params_from_arkane_level_of_theory_as_str(arkane_level)
+        self.assertEqual(level_dict['method'], 'b3lyp')
+        self.assertEqual(level_dict['basis'], '6311+g(3df,2p)')
+        self.assertEqual(level_dict['software'], 'gaussian')
+
+        arkane_level = "LevelOfTheory(method='mp2',basis='ccpvdz')"
+        level_dict = get_params_from_arkane_level_of_theory_as_str(arkane_level)
+        self.assertEqual(level_dict['method'], 'mp2')
+        self.assertEqual(level_dict['basis'], 'ccpvdz')
+        self.assertEqual(level_dict['software'], '')
+
+        arkane_level = "LevelOfTheory(method='ccsd(t)f12',basis='ccpcvtzf12',software='molpro')"
+        level_dict = get_params_from_arkane_level_of_theory_as_str(arkane_level)
+        self.assertEqual(level_dict['method'], 'ccsd(t)f12')
+        self.assertEqual(level_dict['basis'], 'ccpcvtzf12')
+        self.assertEqual(level_dict['software'], 'molpro')
+
+        arkane_level = "LevelOfTheory(method='cbsqb3',software='gaussian')"
+        level_dict = get_params_from_arkane_level_of_theory_as_str(arkane_level)
+        self.assertEqual(level_dict['method'], 'cbsqb3')
+        self.assertEqual(level_dict['basis'], '')
+        self.assertEqual(level_dict['software'], 'gaussian')
 
 
 if __name__ == '__main__':

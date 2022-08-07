@@ -29,55 +29,52 @@ default_job_settings, global_ess_settings, rotor_scan_resolution = \
 ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              '1,2_Insertion_CO': ['kinbot'],
                              '1,2_Insertion_carbene': ['kinbot'],
-                             '1,2_shiftC': ['gcn'],
-                             '1,2_shiftS': ['gcn', 'kinbot'],
+                             '1,2_shiftC': ['gcn', 'xtb_gsm'],
+                             '1,2_shiftS': ['gcn', 'kinbot', 'xtb_gsm'],
                              '1,3_Insertion_CO2': ['kinbot'],
                              '1,3_Insertion_ROR': ['kinbot'],
                              '1,3_Insertion_RSR': ['kinbot'],
-                             '1,4_Cyclic_birad_scission': ['gcn'],
-                             '2+2_cycloaddition_CCO': ['kinbot'],
-                             '2+2_cycloaddition_CO': ['kinbot'],
-                             '2+2_cycloaddition_CS': ['kinbot'],
-                             '2+2_cycloaddition_Cd': ['kinbot'],
-                             '6_membered_central_C-C_shift': ['gcn'],
-                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn'],
+                             '1,4_Cyclic_birad_scission': ['gcn', 'xtb_gsm'],
+                             '2+2_cycloaddition': ['kinbot'],
+                             '6_membered_central_C-C_shift': ['gcn', 'xtb_gsm'],
+                             'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH': ['gcn', 'xtb_gsm'],
                              'Cyclic_Ether_Formation': ['kinbot'],
-                             'Cyclopentadiene_scission': ['gcn'],
+                             'Cyclopentadiene_scission': ['gcn', 'xtb_gsm'],
                              'Diels_alder_addition': ['kinbot'],
                              'H_Abstraction': ['heuristics', 'autotst'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot'],
-                             'Intra_2+2_cycloaddition_Cd': ['gcn'],
-                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn'],
-                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot'],
-                             'Intra_Disproportionation': ['gcn'],
-                             'Intra_ene_reaction': ['gcn', 'kinbot'],
-                             'intra_H_migration': ['autotst', 'gcn', 'kinbot'],
-                             'intra_NO2_ONO_conversion': ['gcn'],
-                             'intra_OH_migration': ['gcn', 'kinbot'],
-                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot'],
-                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot'],
-                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot'],
-                             'Intra_R_Add_Exo_scission': ['gcn'],
-                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot'],
+                             'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm'],
+                             'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm'],
+                             'Intra_Diels_alder_monocyclic': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Intra_Disproportionation': ['gcn', 'xtb_gsm'],
+                             'Intra_ene_reaction': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'intra_H_migration': ['autotst', 'gcn', 'kinbot', 'xtb_gsm'],
+                             'intra_NO2_ONO_conversion': ['gcn', 'xtb_gsm'],
+                             'intra_OH_migration': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Intra_RH_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Intra_RH_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Intra_R_Add_Endocyclic': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Intra_R_Add_Exo_scission': ['gcn', 'xtb_gsm'],
+                             'Intra_R_Add_Exocyclic': ['gcn', 'kinbot', 'xtb_gsm'],
                              'Intra_R_Add_ExoTetCyclic': ['kinbot'],
                              'Intra_Retro_Diels_alder_bicyclic': ['kinbot'],
-                             'intra_substitutionCS_isomerization': ['gcn'],
-                             'intra_substitutionS_isomerization': ['gcn'],
-                             'ketoenol': ['gcn', 'kinbot'],
-                             'Korcek_step1': ['gcn'],
+                             'intra_substitutionCS_isomerization': ['gcn', 'xtb_gsm'],
+                             'intra_substitutionS_isomerization': ['gcn', 'xtb_gsm'],
+                             'ketoenol': ['gcn', 'kinbot', 'xtb_gsm'],
+                             'Korcek_step1': ['gcn', 'xtb_gsm'],
                              'Korcek_step2': ['kinbot'],
                              'R_Addition_COm': ['kinbot'],
                              'R_Addition_CSm': ['kinbot'],
                              'R_Addition_MultipleBond': ['autotst', 'kinbot'],
                              'Retroene': ['kinbot'],
-                             'Singlet_Carbene_Intra_Disproportionation': ['gcn'],
+                             'Singlet_Carbene_Intra_Disproportionation': ['gcn', 'xtb_gsm'],
                              }
 
 all_families_ts_adapters = []
-
+adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4']
+default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani']
 
 
 def _initialize_adapter(obj: 'JobAdapter',
@@ -121,10 +118,12 @@ def _initialize_adapter(obj: 'JobAdapter',
     """
     A common Job adapter initializer function.
     """
-    if not is_ts and any(arg is None for arg in [job_type, level, project, project_directory]):
+    if not is_ts and any(arg is None for arg in [job_type, project, project_directory]):
         raise ValueError(f'All of the following arguments must be given:\n'
                          f'job_type, level, project, project_directory\n'
                          f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
+    if not is_ts and obj.job_adapter not in adapters_that_do_not_require_a_level_arg and level is None:
+        raise ValueError(f'A `level` argument must be given')
 
     obj.project = project
     obj.project_directory = project_directory
@@ -181,24 +180,9 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.tsg = tsg
     obj.workers = None
     obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
-    obj.yml_out_path = None
 
     if obj.job_num is None or obj.job_name is None or obj.job_server_name:
         obj._set_job_number()
-
-    obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
-
-    if 'server' in obj.args['trsh'].keys():
-        obj.server = obj.args['trsh']['server']
-    elif obj.job_adapter in obj.ess_settings.keys():
-        if isinstance(obj.ess_settings[obj.job_adapter], list):
-            obj.server = obj.ess_settings[obj.job_adapter][0]
-        else:
-            obj.server = obj.ess_settings[obj.job_adapter]
-    obj.set_cpu_and_mem()
-
-    obj.scan_res = obj.args['trsh']['scan_res'] \
-        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
 
     if obj.species is not None:
         obj.charge = obj.species[0].charge
@@ -221,8 +205,24 @@ def _initialize_adapter(obj: 'JobAdapter',
         obj.is_ts = None
         obj.species_label = None
 
+    obj.args = set_job_args(args=obj.args, level=obj.level, job_name=obj.job_name)
+    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        if 'server' in obj.args['trsh']:
+            obj.server = obj.args['trsh']['server']
+        elif obj.job_adapter in obj.ess_settings.keys():
+            if isinstance(obj.ess_settings[obj.job_adapter], list):
+                obj.server = obj.ess_settings[obj.job_adapter][0]
+            else:
+                obj.server = obj.ess_settings[obj.job_adapter]
+
     obj.set_file_paths()
-    obj.determine_job_array_parameters()
+    obj.set_cpu_and_mem()
+    if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
+        obj.determine_job_array_parameters()
+
+    obj.scan_res = obj.args['trsh']['scan_res'] \
+        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
+
     obj.set_files()
     check_argument_consistency(obj)
 

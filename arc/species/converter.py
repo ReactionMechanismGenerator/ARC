@@ -4,7 +4,7 @@ A module for performing various species-related format conversions.
 
 import numpy as np
 import os
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
 from ase import Atoms
@@ -12,9 +12,11 @@ from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
+from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
+import rmgpy.constants as constants
 from rmgpy.exceptions import AtomTypeError
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.quantity import ArrayQuantity
@@ -38,6 +40,9 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               get_parameter_from_atom_indices,
                               zmat_to_coords,
                               xyz_to_zmat)
+
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 
 ob.obErrorLog.SetOutputLevel(0)
@@ -83,7 +88,7 @@ def str_to_xyz(xyz_str: str) -> dict:
         from arc.parser import parse_xyz_from_file
         return parse_xyz_from_file(xyz_str)
     xyz_str = xyz_str.replace(',', ' ')
-    if len(xyz_str.splitlines()[0]) == 1:
+    if len(xyz_str.splitlines()) and len(xyz_str.splitlines()[0]) == 1:
         # this is a zmat
         return zmat_to_xyz(zmat=str_to_zmat(xyz_str), keep_dummy=False)
     xyz_dict = {'symbols': tuple(), 'isotopes': tuple(), 'coords': tuple()}
@@ -101,6 +106,8 @@ def str_to_xyz(xyz_str: str) -> dict:
     else:
         # this is a "regular" string xyz format, if it has isotope information it will be preserved
         for line in xyz_str.strip().splitlines():
+            if len(line.split()) in [0, 1]:
+                continue
             if line.strip():
                 splits = line.split()
                 if len(splits) != 4:
@@ -269,6 +276,52 @@ def xyz_to_xyz_file_format(xyz_dict: dict,
     return str(len(xyz_dict['symbols'])) + '\n' + comment.strip() + '\n' + xyz_to_str(xyz_dict) + '\n'
 
 
+def xyz_to_turbomol_format(xyz_dict: dict,
+                           charge: Optional[int] = None,
+                           unpaired: Optional[int] = None,
+                           ) -> Optional[str]:
+    """
+    Get the respective Turbomole coordinates format.
+
+$eht charge=0 unpaired=0
+
+    Args:
+        xyz_dict (dict): The ARC xyz format.
+        charge (int, optional): The net charge.
+        unpaired (int, optional): The number of unpaired electrons.
+
+    Returns:
+        str: The respective Turbomole coordinates.
+    """
+    if xyz_dict is None:
+        return None
+    xyz_dict = check_xyz_dict(xyz_dict)
+    coords_list = ['$coord angs']
+    for symbol, coord in zip(xyz_dict['symbols'], xyz_dict['coords']):
+        row = '{0:11.8f}{1:14.8f}{2:14.8f}'.format(*coord)
+        row += f'      {symbol.lower()}'
+        coords_list.append(row)
+    if charge is not None and unpaired is not None:
+        coords_list.append(f'$eht charge={charge} unpaired={unpaired}')
+    coords_list.append('$end\n')
+    return '\n'.join(coords_list)
+
+
+def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
+    """
+    Convert xyz to a coords list and an atomic number list.
+
+    Args:
+        xyz (dict): The coordinates.
+
+    Returns:
+        Tuple[list, list]: Coords and atomic numbers.
+    """
+    coords = xyz_to_coords_list(xyz)
+    z_list = [qcel.periodictable.to_Z(symbol) for symbol in xyz['symbols']]
+    return coords, z_list
+
+
 def xyz_to_kinbot_list(xyz_dict: dict) -> List[Union[str, float]]:
     """
     Get the KinBot xyz format of a single running list of:
@@ -296,7 +349,7 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     Returns:
         Optional[np.array]: The distance matrix.
     """
-    if xyz_dict is None:
+    if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
     dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
@@ -386,6 +439,25 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
         isotopes = tuple(get_most_common_isotope_for_element(symbol) for symbol in symbols)
     xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
     return xyz_dict
+
+
+def species_to_sdf_file(species: 'ARCSpecies',
+                        path: str,
+                        ):
+    """
+    Write an SDF file with coordinates and connectivity information.
+
+    Args:
+        species (ARCSpecies): The ARCSpecies object instance.
+        path (str): The full path to the .sdf file that will be saved.
+    """
+    if species.mol is None:
+        species.mol_from_xyz()
+    if species.mol is not None:
+        rdkit_mol = rdkit_conf_from_mol(species.mol, species.get_xyz())[1]
+        w = SDWriter(path)
+        w.write(rdkit_mol)
+        w.close()
 
 
 def sort_xyz_using_indices(xyz_dict: dict,
@@ -498,6 +570,22 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
         List[float]: The corresponding list of mass in amu.
     """
     return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+
+
+def hartree_to_si(e: float,
+                  kilo: bool = True,
+                  ) -> float:
+    """
+    Convert Hartree units into J/mol or into kJ/mol.
+
+    Args:
+        e (float): Energy in Hartree.
+        kilo (bool, optional): Whether to return kJ/mol units. ``True`` by default.
+    """
+    if not isinstance(e, (int, float)):
+        raise ValueError(f'Expected a float, got {e} which is a {type(e)}.')
+    factor = 0.001 if kilo else 1
+    return e * constants.E_h * constants.Na * factor
 
 
 def rmg_conformer_to_xyz(conformer):

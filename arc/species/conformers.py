@@ -1596,6 +1596,8 @@ def find_internal_rotors(mol):
                         rotor['dimensions'] = 1
                         rotor['original_dihedrals'] = list()
                         rotor['cont_indices'] = list()
+                        rotor['symmetry'] = None
+                        rotor['max_e'] = None
                         rotors.append(rotor)
     return rotors
 

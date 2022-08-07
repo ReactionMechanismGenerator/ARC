@@ -20,9 +20,10 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger, torsions_to_scans
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -65,7 +66,6 @@ class JobEnum(str, Enum):
             - openbabel
             - rdkit
             - terachem
-            - torchani
             - AIMNet (https://github.com/aiqm/aimnet)
             - turbomol
             - xtb
@@ -89,6 +89,8 @@ class JobEnum(str, Enum):
     psi4 = 'psi4'
     qchem = 'qchem'
     terachem = 'terachem'
+    torchani = 'torchani'
+    xtb = 'xtb'
 
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
@@ -96,6 +98,7 @@ class JobEnum(str, Enum):
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     user = 'user'  # user guesses
+    xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
 
 
 class JobTypeEnum(str, Enum):
@@ -288,6 +291,42 @@ class JobAdapter(ABC):
         """
         pass
 
+    def execute(self):
+        """
+        Execute a job.
+        The execution type could be 'incore', 'queue', or 'pipe'.
+
+        An 'incore' execution type assumes a single job (if more are given, only the first one will be executed),
+        and executes the job in the same CPU process as ARC (i.e., Python waits for the response).
+
+        A 'queue' execution type assumes a single job (if more are given, only the first one will be executed),
+        and submits that single job to the server queue. The server could be either remote (accessed via SSH) or local.
+
+        A 'pipe' execution type assumes an array of jobs and submits several ARC instances (workers)
+        with an HDF5 file that contains specific directions.
+        The output is returned within the HDF5 file.
+        The new ARC instance, representing a single worker, will run all of its jobs incore.
+        """
+        self.upload_files()
+        execution_type = JobExecutionTypeEnum(self.execution_type)
+        if execution_type == JobExecutionTypeEnum.incore:
+            self.initial_time = datetime.datetime.now()
+            self.job_status[0] = 'running'
+            self.execute_incore()
+            self.job_status[0] = 'done'
+            self.job_status[1]['status'] = 'done'
+            self.final_time = datetime.datetime.now()
+            self.determine_run_time()
+        elif execution_type == JobExecutionTypeEnum.queue:
+            self.execute_queue()
+        elif execution_type == JobExecutionTypeEnum.pipe:
+            # Todo:
+            #   - Check that the HDF5 file is available, else raise an error.
+            #   - Submit ARC workers with the HDF5 file.
+            self.execute_queue()  # This is temporary until pipe is fully functional.
+        if not self.restarted:
+            self._write_initiated_job_to_csv_file()
+
     def legacy_queue_execution(self):
         """
         Execute a job to the server's queue.
@@ -323,39 +362,6 @@ class JobAdapter(ABC):
                 if self.server == 'local':
                     change_mode(mode='+x', file_name=file_name, path=self.local_path)
             return self.get_file_property_dictionary(file_name=file_name, make_x=True)
-
-    def execute(self):
-        """
-        Execute a job.
-        The execution type could be 'incore', 'queue', or 'pipe'.
-
-        An 'incore' execution type assumes a single job (if more are given, only the first one will be executed),
-        and executes the job in the same CPU process as ARC (i.e., Python waits for the response).
-
-        A 'queue' execution type assumes a single job (if more are given, only the first one will be executed),
-        and submits that single job to the server queue. The server could be either remote (accessed via SSH) or local.
-
-        A 'pipe' execution type assumes an array of jobs and submits several ARC instances (workers)
-        with an HDF5 file that contains specific directions.
-        The output is returned within the HDF5 file.
-        The new ARC instance, representing a single worker, will run all of its jobs incore.
-        """
-        self.upload_files()
-        execution_type = JobExecutionTypeEnum(self.execution_type)
-        if execution_type == JobExecutionTypeEnum.incore:
-            self.job_status[0] = 'running'
-            self.execute_incore()
-            self.job_status[0] = 'done'
-            self.job_status[1]['status'] = 'done'
-        elif execution_type == JobExecutionTypeEnum.queue:
-            self.execute_queue()
-        elif execution_type == JobExecutionTypeEnum.pipe:
-            # Todo:
-            #   - Check that the HDF5 file is available, else raise an error.
-            #   - Submit ARC workers with the HDF5 file.
-            self.execute_queue()  # This is temporary until pipe is fully functional.
-        if not self.restarted:
-            self._write_initiated_job_to_csv_file()
 
     def determine_job_array_parameters(self):
         """
@@ -475,6 +481,8 @@ class JobAdapter(ABC):
         """
         Write a submit script to execute the job.
         """
+        if self.server is None:
+            return
         if self.max_job_time > 9999 or self.max_job_time <= 0:
             self.max_job_time = 120
         architecture = ''
@@ -736,8 +744,8 @@ class JobAdapter(ABC):
         if max_cpu is not None and job_cpu_cores > max_cpu:
             job_cpu_cores = max_cpu
         self.cpu_cores = self.cpu_cores or job_cpu_cores
-        max_mem = servers[self.server].get('memory', None) if self.server is not None else 16  # Max memory per node in GB.
-        job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.8)
+        max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
+        job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:
             logger.warning(f'The memory for job {self.job_name} using {self.job_adapter} ({self.job_memory_gb} GB) '
                            f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
@@ -1001,7 +1009,7 @@ class JobAdapter(ABC):
         The renaming should happen automatically, this method functions to troubleshoot
         cases where renaming wasn't successful the first time.
         """
-        if not os.path.isfile(self.local_path_to_output_file) and self.yml_out_path is None:
+        if not os.path.isfile(self.local_path_to_output_file) and not self.local_path_to_output_file.endswith('.yml'):
             rename_output(local_file_path=self.local_path_to_output_file, software=self.job_adapter)
 
     def add_to_args(self,
@@ -1304,3 +1312,25 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+
+    def save_output_file(self,
+                         key: Optional[str] = None,
+                         val: Optional[Union[float, dict, np.ndarray]] = None,
+                         content_dict: Optional[dict] = None,
+                         ):
+        """
+        Save the output of a job to the YAML output file.
+
+        Args:
+            key (str, optional): The key for the YAML output file.
+            val (Union[float, dict, np.ndarray], optional): The value to be stored.
+            content_dict (dict, optional): A dictionary to store.
+
+        """
+        yml_out_path = os.path.join(self.local_path, 'output.yml')
+        content = read_yaml_file(yml_out_path) if os.path.isfile(yml_out_path) else dict()
+        if content_dict is not None:
+            content.update(content_dict)
+        if key is not None:
+            content[key] = val
+        save_yaml_file(path=yml_out_path, content=content)

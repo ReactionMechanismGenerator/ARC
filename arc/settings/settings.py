@@ -1,5 +1,8 @@
 """
 ARC's settings
+
+You may keep a short version of this file in a local ".arc" folder under your home folder.
+Any definitions made to the local file will take precedence over this file.
 """
 
 import os
@@ -63,13 +66,15 @@ global_ess_settings = {
     'orca': 'local',
     'qchem': 'server1',
     'terachem': 'server1',
+    'xtb': 'local',
+    'xtb_gsm': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
 supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
-ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot']
+ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot', 'xtb_gsm']
 
 # List here job types to execute by default
 default_job_types = {'conformers': True,      # defaults to True if not specified
@@ -93,6 +98,8 @@ levels_ess = {
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
     'terachem': ['pbe'],
+    'xtb': ['xtb', 'gfn'],
+    'torchani': ['torchani'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -137,6 +144,7 @@ input_filenames = {'gaussian': 'input.gjf',
                    'orca': 'input.in',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
+                   'xtb': 'input.sh',
                    }
 
 output_filenames = {'gaussian': 'input.log',
@@ -146,6 +154,8 @@ output_filenames = {'gaussian': 'input.log',
                     'orca': 'input.log',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
+                    'torchani': 'output.yml',
+                    'xtb': 'output.out',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -175,6 +185,26 @@ orca_default_options_dict = {
     'global': {'keyword': {'scf_convergence': 'TightSCF',
                            'dlpno_threshold': 'normalPNO'}},
 }
+
+# xTB-GSM
+xtb_gsm_settings = {'sm_type': 'GSM',
+                    'restart': 0,
+                    'max_opt_iters': 160,
+                    'step_opt_iters': 30,
+                    'conv_tol': 0.0005,
+                    'add_node_tol': 0.1,
+                    'scaling': 1.0,
+                    'ssm_dqmax': 0.8,
+                    'growth_direction': 0,
+                    'int_thresh': 2.0,
+                    'min_spacing': 5.0,
+                    'bond_fragments': 1,
+                    'initial_opt': 0,
+                    'final_opt': 150,
+                    'product_limit': 100.0,
+                    'ts_final_type': 1,
+                    'nnodes': 15,
+                    }
 
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
@@ -214,7 +244,7 @@ default_job_settings = {
     'job_total_memory_gb': 14,
     'job_cpu_cores': 8,
     'job_time_limit_hrs': 120,
-    'job_max_server_node_memory_allocation': 0.8,  # e.g., at most 80% node memory will be used per job **if needed**
+    'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 
 # Criteria for identification of imaginary frequencies for transition states.
@@ -222,7 +252,7 @@ default_job_settings = {
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
-TS_GCN_PYTHON, AUTOTST_PYTHON, ARC_PYTHON = None, None, None
+TS_GCN_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB = None, None, None, None
 home = os.getenv("HOME") or os.path.expanduser("~")
 
 gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
@@ -245,6 +275,22 @@ autotst_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tst_env'
 for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4, autotst_pypath_5]:
     if os.path.isfile(autotst_pypath):
         AUTOTST_PYTHON = autotst_pypath
+        break
+
+paths = list()
+paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                            'arc_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
+paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'bin', 'xtb'))
+paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
+for xtb_path in paths:
+    if os.path.isfile(xtb_path):
+        XTB = xtb_path
         break
 
 arc_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),

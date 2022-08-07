@@ -81,6 +81,8 @@ class ARCSpecies(object):
                               'times_dihedral_set': ``int``,
                               'scan_path': <path to scan output file>,
                               'max_e': ``float``,  # relative to the minimum energy, in kJ/mol,
+                              'trsh_counter': ``int``,
+                              'trsh_methods': ``List[str]``,
                               'symmetry': ``int``,
                               'dimensions': ``int``,
                               'original_dihedrals': ``list``,
@@ -811,6 +813,11 @@ class ARCSpecies(object):
             elif inchi is not None:
                 self.mol = rmg_mol_from_inchi(inchi)
             elif smiles is not None:
+                if isinstance(smiles, list):
+                    raise SpeciesError(f'Got a list value type for SMILES of species {self.label}:\n'
+                                       f'{smiles}, type: {type(smiles)}\n'
+                                       f'Did you mean to enter this as a string? Consider adding quotation marks '
+                                       f'before and after the SMILES value if entering through a YAML file.')
                 self.mol = Molecule(smiles=smiles)
         # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
         # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.

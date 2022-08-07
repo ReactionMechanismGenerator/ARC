@@ -178,9 +178,8 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     # run checks:
     for ess, server_list in settings_dict.items():
         if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'psi4',
-                               'gcn', 'heuristics', 'autotst', 'kinbot']:
-            raise SettingsError(f'ESS software are Gaussian, QChem, Molpro, Orca, TeraChem, Psi4, '
-                                f'or OneDMin. Got: {ess}')
+                               'gcn', 'heuristics', 'autotst', 'kinbot', 'xtb', 'xtb_gsm']:
+            raise SettingsError(f'Got an unrecognized software in ESS settings: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
@@ -937,7 +936,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
             if not almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol):
                 return False
         else:
-            if isinstance(entry1, (int, float)) and isinstance(entry2, (int, float)):
+            if isinstance(entry1, (int, float, np.float32, np.float64)) \
+                    and isinstance(entry2, (int, float, np.float32, np.float64)):
                 if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
                     return False
             else:
@@ -1589,3 +1589,30 @@ def _check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_reaction: 'ARCReaction',
             print(rmg_p_symbols)
             result = False
     return result
+
+
+def safe_copy_file(source: str,
+                   destination: str,
+                   wait: int = 10,
+                   max_cycles: int = 100,
+                   ):
+    """
+    Copy a file safely.
+
+    Args:
+        source (str): The full path to the file to be copied.
+        destination (str): The full path to the file destination.
+        wait (int, optional): The number of seconds to wait between cycles.
+        max_cycles (int, optional): The number of cycles.
+    """
+    for i in range(max_cycles):
+        try:
+            shutil.copyfile(src=source, dst=destination)
+        except OSError:
+            time.sleep(wait)
+        except shutil.SameFileError:
+            break
+        else:
+            break
+        if i >= max_cycles:
+            break

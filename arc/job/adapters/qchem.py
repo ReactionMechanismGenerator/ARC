@@ -254,9 +254,8 @@ class QChemAdapter(JobAdapter):
             if self.rotor_index is not None:
                 if self.species[0].rotors_dict \
                         and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
-                    if self.species[0].rotors_dict and self.rotor_index is not None:
-                        scans = self.species[0].rotors_dict[self.rotor_index]['scan']
-                        scans = [scans] if not isinstance(scans[0], list) else scans
+                    scans = self.species[0].rotors_dict[self.rotor_index]['scan']
+                    scans = [scans] if not isinstance(scans[0], list) else scans
             elif self.torsions is not None and len(self.torsions):
                 scans = torsions_to_scans(self.torsions)
             scan_string = '\n$scan\n'
@@ -356,7 +355,7 @@ class QChemAdapter(JobAdapter):
               raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
               )
         self._log_job_execution()
-        execute_command(incore_commands[self.server][self.job_adapter])
+        execute_command(incore_commands[self.job_adapter])
 
     def execute_queue(self):
         """
