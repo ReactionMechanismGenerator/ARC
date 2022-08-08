@@ -268,7 +268,9 @@ class xTBAdapter(JobAdapter):
 
         uhf_charge = f'--uhf {uhf} --chrg {self.charge}'
         self.long_command = f'{self.command} mol.sdf{directives} {uhf_charge} > {output_filenames[self.job_adapter]}\n'
-
+        
+        if self.species[0].mol is None:
+            self.species[0].mol_from_xyz()
         if not self.is_opt_ts_job() and self.species[0].mol is not None:
             species_to_sdf_file(species=self.species[0], path=self.sdf_path)
             with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
