@@ -266,7 +266,7 @@ def map_h_abstraction(rxn: 'ARCReaction',
                            )
     spc_r1_h2.final_xyz = spc_r1_h2.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
     try:
-        spc_r1_h2_cuts = spc_r1_h2.scissors()
+        spc_r1_h2_cuts = spc_r1_h2.scissors(sort_atom_labels=True)
     except SpeciesError:
         return None
     spc_r1_h2_cut = [spc for spc in spc_r1_h2_cuts if spc.label != 'H'][0] \
@@ -279,7 +279,7 @@ def map_h_abstraction(rxn: 'ARCReaction',
                            )
     spc_r3_h2.final_xyz = spc_r3_h2.get_xyz()
     try:
-        spc_r3_h2_cuts = spc_r3_h2.scissors()
+        spc_r3_h2_cuts = spc_r3_h2.scissors(sort_atom_labels=True)
     except SpeciesError:
         return None
     spc_r3_h2_cut = [spc for spc in spc_r3_h2_cuts if spc.label != 'H'][0] \
@@ -447,7 +447,7 @@ def map_intra_h_migration(rxn: 'ARCReaction',
                        )
     spc_r.final_xyz = spc_r.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
     try:
-        spc_r_dot = [spc for spc in spc_r.scissors() if spc.label != 'H'][0]
+        spc_r_dot = [spc for spc in spc_r.scissors(sort_atom_labels=True) if spc.label != 'H'][0]
     except SpeciesError:
         return None
     spc_p = ARCSpecies(label='P',
@@ -457,7 +457,7 @@ def map_intra_h_migration(rxn: 'ARCReaction',
                        )
     spc_p.final_xyz = spc_p.get_xyz()
     try:
-        spc_p_dot = [spc for spc in spc_p.scissors() if spc.label != 'H'][0]
+        spc_p_dot = [spc for spc in spc_p.scissors(sort_atom_labels=True) if spc.label != 'H'][0]
     except SpeciesError:
         return None
     map_ = map_two_species(spc_r_dot, spc_p_dot, backend=backend)
