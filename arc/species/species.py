@@ -1768,13 +1768,25 @@ class ARCSpecies(object):
                     logger.warning('Allowing nonisomorphic 2D')
         return isomorphic
 
-    def scissors(self) -> list:
+    def label_atoms(self):
+        """
+        Labels atoms in order.
+        The label is stored in the atom.label property.
+        """
+        for index, atom in enumerate(self.mol.atoms):
+            atom.label = str(index)
+
+    def scissors(self,
+                sort_atom_labels: bool = False) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the scissioned bond.
         If one of the scission-resulting species is a hydrogen atom, it will be returned last, labeled as 'H'.
         Other species labels will be <original species label>_BDE_index1_index2_X, where "X" is either "A" or "B",
         and the indices are 1-indexed.
+        
+        Args:
+            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
 
         Returns: list
             The scission-resulting species.
