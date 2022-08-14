@@ -1241,6 +1241,13 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(species_dict=species_dict)
         self.assertTrue(spc.is_ts)
 
+    def test_label_atoms(self):
+        """Test the label_atoms method"""
+        spc_copy = self.spc6.copy()
+        spc_copy.label_atoms()
+        for index, atom in enumerate(spc_copy.mol.atoms):
+            self.assertEqual(str(index), atom.label)
+
     def test_copy(self):
         """Test the copy() method."""
         spc_copy = self.spc6.copy()
