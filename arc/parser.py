@@ -412,6 +412,9 @@ def identify_ess(path: str) -> Optional[str]:
             if 'x T B' in line:
                 software = 'xtb'
                 break
+            elif "Psi4" in line:
+                software = 'psi4'
+                break
     return software
 
 
