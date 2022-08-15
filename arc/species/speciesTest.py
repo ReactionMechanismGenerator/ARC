@@ -1241,6 +1241,13 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc = ARCSpecies(species_dict=species_dict)
         self.assertTrue(spc.is_ts)
 
+    def test_label_atoms(self):
+        """Test the label_atoms method"""
+        spc_copy = self.spc6.copy()
+        spc_copy.label_atoms()
+        for index, atom in enumerate(spc_copy.mol.atoms):
+            self.assertEqual(str(index), atom.label)
+
     def test_copy(self):
         """Test the copy() method."""
         spc_copy = self.spc6.copy()
@@ -2027,6 +2034,32 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle_scissors[0].mol.update()
         self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
         self.assertEqual(len(cycle_scissors), 1)
+
+        benzyl_alcohol = ARCSpecies(label='benzyl_alcohol', smiles='c1ccccc1CO',
+                                    xyz="""O       2.64838903    0.03033680    1.02963866
+                                           C       2.08223673   -0.09327854   -0.26813441
+                                           C       0.58011672   -0.03951284   -0.19914397
+                                           C      -0.09047623    1.18918897   -0.26985124
+                                           C      -0.16442536   -1.21163631   -0.00891767
+                                           C      -1.48186739    1.24136671   -0.17379396
+                                           C      -2.21381021    0.06846364    0.00253129
+                                           C      -1.55574847   -1.15724814    0.08689917
+                                           H       2.47222737    0.71379644   -0.89724902
+                                           H       2.41824638   -1.03876722   -0.70676479
+                                           H       0.46950724    2.11319745   -0.39919154
+                                           H      -1.99496868    2.19776599   -0.23432175
+                                           H      -3.29735459    0.10998171    0.07745660
+                                           H      -2.12646340   -2.07132623    0.22966400
+                                           H       0.33744916   -2.17418164    0.06678265
+                                           H       1.91694170    0.12185320    1.66439598""")
+        benzyl_alcohol.bdes = [(7, 13)]
+        benzyl_alcohol.final_xyz = benzyl_alcohol.get_xyz()
+        species = benzyl_alcohol.scissors(sort_atom_labels=True)
+        for spc in species:
+            if spc.label != 'H':
+                for i, atom in enumerate(spc.mol.atoms):
+                    if atom.radical_electrons:
+                        self.assertEqual(i, 6)
 
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""

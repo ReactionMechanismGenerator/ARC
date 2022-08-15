@@ -32,6 +32,7 @@ from arc.common import (almost_equal_coords,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
+                        sort_atoms_in_decending_label_order,
                         )
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
@@ -248,6 +249,7 @@ class ARCSpecies(object):
         rxn_index (int): The reaction index which is the respective key to the Scheduler rxn_dict.
         arkane_file (str): Path to the Arkane Species file generated in processor.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
+        keep_mol (bool): Label to prevent the generation of a new Molecule object.
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
         external_symmetry (int): The external symmetry of the species (not including rotor symmetries).
         optical_isomers (int): Whether (=2) or not (=1) the species has chiral center/s.
@@ -317,6 +319,7 @@ class ARCSpecies(object):
                  ts_number: Optional[int] = None,
                  xyz: Optional[Union[list, dict, str]] = None,
                  yml_path: Optional[str] = None,
+                 keep_mol: bool = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -347,6 +350,7 @@ class ARCSpecies(object):
         self.checkfile = checkfile
         self.transport_data = TransportData()
         self.yml_path = yml_path
+        self.keep_mol = keep_mol
         self.fragments = fragments
         self.original_label = None
         self.chosen_ts = None
@@ -1543,7 +1547,8 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_smiles()}\n'
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
-                self.mol = perceived_mol
+                if not self.keep_mol:
+                    self.mol = perceived_mol
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
@@ -1764,13 +1769,25 @@ class ARCSpecies(object):
                     logger.warning('Allowing nonisomorphic 2D')
         return isomorphic
 
-    def scissors(self) -> list:
+    def label_atoms(self):
+        """
+        Labels atoms in order.
+        The label is stored in the atom.label property.
+        """
+        for index, atom in enumerate(self.mol.atoms):
+            atom.label = str(index)
+
+    def scissors(self,
+                sort_atom_labels: bool = False) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the scissioned bond.
         If one of the scission-resulting species is a hydrogen atom, it will be returned last, labeled as 'H'.
         Other species labels will be <original species label>_BDE_index1_index2_X, where "X" is either "A" or "B",
         and the indices are 1-indexed.
+        
+        Args:
+            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
 
         Returns: list
             The scission-resulting species.
@@ -1794,21 +1811,26 @@ class ARCSpecies(object):
                             atom_indices_reverse = (atom_indices[1], atom_indices[0])
                             if atom_indices not in self.bdes and atom_indices_reverse not in self.bdes:
                                 self.bdes.append(atom_indices)
+        if sort_atom_labels:
+            self.label_atoms()
         resulting_species = list()
         for index_tuple in self.bdes:
-            new_species_list = self._scissors(indices=index_tuple)
+            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels)
             for new_species in new_species_list:
                 if new_species.label not in [existing_species.label for existing_species in resulting_species]:
                     # Mainly checks that the H species doesn't already exist.
                     resulting_species.append(new_species)
         return resulting_species
 
-    def _scissors(self, indices: tuple) -> list:
+    def _scissors(self,
+                  indices: tuple,
+                  sort_atom_labels: bool = True) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
+            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
 
         Returns: list
             The scission-resulting species, a list of either one or two species, if the scissored location is linear,
@@ -1860,6 +1882,10 @@ class ARCSpecies(object):
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
         mol_splits = mol_copy.split()
+        if sort_atom_labels:
+            for split in mol_splits:
+                sort_atoms_in_decending_label_order(split)
+
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
                               mol=mol_splits[0],
@@ -1902,8 +1928,8 @@ class ARCSpecies(object):
                     else:
                         raise SpeciesError(f'Could not figure out which atom should gain a radical '
                                            f'due to scission in {self.label}')
-        mol1.update(raise_atomtype_exception=False)
-        mol2.update(raise_atomtype_exception=False)
+        mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+        mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
         # match xyz to mol:
         if len(mol1.atoms) != len(mol2.atoms):
@@ -1934,7 +1960,8 @@ class ARCSpecies(object):
                           multiplicity=mol1.multiplicity,
                           charge=mol1.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
@@ -1943,7 +1970,8 @@ class ARCSpecies(object):
                           multiplicity=mol2.multiplicity,
                           charge=mol2.get_net_charge(),
                           compute_thermo=False,
-                          e0_only=True)
+                          e0_only=True,
+                          keep_mol=True)
         spc2.generate_conformers()
         spc2.rotors_dict = None
 

@@ -8,6 +8,7 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
+import random
 import time
 import unittest
 
@@ -1185,6 +1186,23 @@ class TestCommon(unittest.TestCase):
         b_5 = np.array([[4, 3], [2, 1]])
         rmsd_5 = common.calc_rmsd(a_5, b_5)
         self.assertAlmostEqual(rmsd_5, 3.1622776601683795)
+
+    def test_sort_atoms_in_decending_label_order(self):
+        """tests the sort_atoms_in_decending_label_order function"""
+        mol = Molecule(smiles="C1CCCC1")
+        for index, atom in enumerate(mol.atoms):
+            atom.label = str(index)
+        random.shuffle(mol.atoms)
+        common.sort_atoms_in_decending_label_order(mol)
+        for index, atom in enumerate(mol.atoms):
+            self.assertEqual(str(index), atom.label)
+        mol = Molecule(smiles="NC1=NC=NC2=C1N=CN2")
+        for index, atom in enumerate(mol.atoms):
+            atom.label = str(index)
+        random.shuffle(mol.atoms)
+        common.sort_atoms_in_decending_label_order(mol)
+        for index, atom in enumerate(mol.atoms):
+            self.assertEqual(str(index), atom.label)
 
     def test_check_r_n_p_symbols_between_rmg_and_arc_rxns(self):
         """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
