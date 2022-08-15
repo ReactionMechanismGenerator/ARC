@@ -220,6 +220,39 @@ def parse_normal_mode_displacement(path: str,
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
+    elif software.lower() == 'psi4':
+        freqs = []
+        normal_mode_disp = []
+        with open(path, 'r') as f:
+            line = f.readline()
+            while line != "":
+                line = f.readline()
+                if "Harmonic Vibrational Analysis" in line:
+                    while line != "":
+                        line = f.readline()
+                        if "Freq" in line:
+                            freqs += list(map(float, line.split()[2:]))
+                        if "----------------------------------------------------------------------------------" in line:
+                            line = f.readline()
+                            while line.split() == []:
+                                continue
+                            else:
+                                block = []
+                                while line.split() != []:
+                                    block.append(list(map(float,line.split()[2:])))
+                                    line = f.readline()
+                                block = np.array(block, np.float64)
+                                for i in range(block.shape[1]//3):
+                                    mat = list()
+                                    for j in range(3):
+                                        mat.append(block[:,i+j])
+                                    normal_mode_disp.append(np.array(mat).T)
+
+                                if "Thermochemistry Components" in line:
+                                    break
+                                    
+        normal_mode_disp = np.array(normal_mode_disp)
+        freqs = np.array(list(map(convert_imaginary_freq_to_negative_float, freqs)))
     elif raise_error:
         raise NotImplementedError(f'parse_normal_mode_displacement() is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
