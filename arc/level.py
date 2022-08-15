@@ -523,7 +523,7 @@ class Level(object):
                         self.software = ess.lower()
 
         if self.software is None:
-            preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem', 'cfour']
+            preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem', 'cfour', 'psi4']
 
             if self.method_type in ['force_field', 'semiempirical']:
                 preferred_ess_order = ['gaussian', 'qchem', 'orca', 'molpro', 'terachem']
@@ -532,7 +532,7 @@ class Level(object):
             elif self.method_type in ['composite']:
                 preferred_ess_order = ['gaussian']
             elif self.method_type in ['dft']:
-                preferred_ess_order = ['gaussian', 'qchem', 'terachem', 'orca']
+                preferred_ess_order = ['gaussian', 'qchem', 'terachem', 'orca', 'psi4']
 
             self.determine_compatible_ess()
             relevant_software = get_ordered_intersection_of_two_lists(self.compatible_ess, supported_ess)

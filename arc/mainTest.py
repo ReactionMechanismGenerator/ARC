@@ -101,6 +101,7 @@ class TestARC(unittest.TestCase):
                                           'molpro': ['local', 'server2'],
                                           'onedmin': ['server1'],
                                           'orca': ['local'],
+                                          'psi4': ['local'],                                          
                                           'qchem': ['server1'],
                                           'terachem': ['server1'],
                                           'xtb': ['local'],
