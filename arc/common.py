@@ -1616,3 +1616,18 @@ def safe_copy_file(source: str,
             break
         if i >= max_cycles:
             break
+
+
+def sort_atoms_in_decending_label_order(mol: 'Molecule') -> None:
+    """
+    A helper function, helpful in the context of atom mapping.
+    This function reassign the .atoms in Molecule with a list of atoms
+    with the orders based on the labels of the atoms.
+    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
+    then the function will re-assign the new atom with the order [1, 4, 7, 32]
+    
+    Args:
+        mol (Molecule): An RMG Molecule object, with labeled atoms
+    """
+    mol.atoms = sorted(mol.atoms, key= lambda x : int(x.label))
+    
