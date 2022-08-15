@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
+from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog, Psi4Log
 import rmgpy
 from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
 from rmgpy.molecule.atomtype import ATOMTYPES
@@ -146,6 +146,8 @@ def determine_ess(log_file: str) -> str:
         return 'qchem'
     if isinstance(log, TeraChemLog):
         return 'terachem'
+    if isinstance(log, Psi4Log):
+        return 'psi4'
     raise InputError(f'Could not identify the log file in {log_file} as belonging to '
                      f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
 
