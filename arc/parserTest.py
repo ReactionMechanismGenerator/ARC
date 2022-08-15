@@ -44,6 +44,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3_xtb.out')
         yml_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
         vibspectrum_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'vibspectrum')
+        psi4_out = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'psi4_vinoxy.out')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -58,6 +59,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs = parser.parse_frequencies(path=ts_xtb_freqs_path)
         yml_freqs = parser.parse_frequencies(path=yml_freqs_path)
         vibspectrum_freqs = parser.parse_frequencies(path=vibspectrum_path, software='xTB')
+        psi4_freqs = parser.parse_frequencies(path=psi4_out)
 
         np.testing.assert_almost_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64))
@@ -110,6 +112,9 @@ class TestParser(unittest.TestCase):
                                                  3230.936983192379, 3235.2332367908975, 3922.9230982968807],
                                                 np.float64))
         np.testing.assert_almost_equal(vibspectrum_freqs, np.array([4225.72], np.float64))
+        np.testing.assert_almost_equal(psi4_freqs, np.array([443.2069, 505.8835, 756.6704, 976.2501, 
+                                                           978.9482, 1159.8839, 1397.7428, 1474.551,
+                                                           1549.6391, 2954.9212, 3152.147, 3266.3025], np.float64))
 
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
