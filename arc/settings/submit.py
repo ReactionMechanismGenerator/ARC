@@ -22,6 +22,10 @@ incore_commands = {
               'conda activate sella_env',
               'python sella_runner.py',
               ],
+    'local': {
+        'gaussian': ['g16 < input.gjf > input.log', 'formchk check.chk check.fchk'],
+        'psi4': 'psi4',
+    }
 }
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
