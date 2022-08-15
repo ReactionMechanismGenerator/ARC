@@ -11,6 +11,7 @@ import pandas as pd
 import qcelemental as qcel
 
 from rmgpy.exceptions import InputError as RMGInputError
+from arkane.common import convert_imaginary_freq_to_negative_float
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
@@ -27,7 +28,9 @@ def parse_frequencies(path: str,
                       ) -> np.ndarray:
     """
     Parse the frequencies from a freq job output file.
-
+    This function was not a duplicate of the correspoding Arkane ones, since it behaves slightly differently.
+    This function returns all negative frequancies.
+    
     Args:
         path (str): The log file path.
         software (str, optional): The ESS.
@@ -140,8 +143,28 @@ def parse_frequencies(path: str,
                         freq = float(splits[-4]) if is_str_float(splits[-4]) else 0
                         if freq:
                             freqs = np.append(freqs, freq)
+    elif software.lower() == 'psi4':
+        with open(path, 'r') as f:
+            line = f.readline()
+            while line != '':
+                if 'Harmonic Vibrational Analysis' in line:
+                    while 'Thermochemistry Components' not in line:
+                        if 'Freq [cm^-1]' in line:
+                            if len(line.split()) == 5:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-3:]])
+                            elif len(line.split()) == 4:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-2:]])
+                            elif len(line.split()) == 3:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-1:]])
+                        line = f.readline()
+
+                    break
+                line = f.readline()
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem, xTB and Psi4 '
                           f'files, got {software}')
     logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
