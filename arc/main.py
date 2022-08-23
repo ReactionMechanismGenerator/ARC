@@ -1157,8 +1157,6 @@ class ARC(object):
                                         string=val, project_directory=self.project_directory))):
                                     self.output[label]['paths'][key] = globalize_path(
                                         string=val, project_directory=self.project_directory)
-                                else:
-                                    raise SpeciesError(f'Could not find {key} output file for species {label}: {val}')
             logger.debug(f'output dictionary successfully parsed:\n{self.output}')
         elif self.output is None:
             self.output = dict()
