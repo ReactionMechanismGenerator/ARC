@@ -1083,7 +1083,10 @@ def plot_torsion_angles(torsion_angles,
             if 'conformer torsions' in file_:
                 i += 1
         image_path = os.path.join(plot_path, f'conformer torsions {i}.png')
-        plt.savefig(image_path, bbox_inches='tight')
+        try:
+            plt.savefig(image_path, bbox_inches='tight')
+        except FileNotFoundError:
+            pass
     if is_notebook():
         plt.show()
     plt.close(fig)
