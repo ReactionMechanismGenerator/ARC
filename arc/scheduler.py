@@ -2814,6 +2814,7 @@ class Scheduler(object):
                                  and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
                              or job_type == 'bde' and self.species_dict[label].bdes is None
                              or job_type == 'conformers'
+                             or job_type == 'irc'
                              or job_type == 'tsg'):
                 logger.debug(f'Species {label} did not converge.')
                 all_converged = False
