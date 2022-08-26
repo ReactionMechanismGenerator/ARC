@@ -3,6 +3,7 @@ channels:
   - defaults
   - rmg
   - conda-forge
+  - psi4
 dependencies:
   - cairo
   - cairocffi
@@ -59,3 +60,4 @@ dependencies:
   - anaconda::pytest
   - conda-forge::torchani
   - conda-forge::xtb
+  - psi4
