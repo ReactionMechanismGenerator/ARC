@@ -79,6 +79,15 @@ class TestPSi4Adapter(unittest.TestCase):
                                     species=[ARCSpecies(label='h2o', smiles = "O")],
                                     testing=True)
 
+    def test_has_psi4(self):
+        has_psi4 = True
+        try:
+            import psi4
+        except ModuleNotFoundError:
+            has_psi4 = False
+        
+        self.assertTrue(has_psi4)
+    
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         self.job_1.input_file_memory = None
