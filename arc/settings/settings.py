@@ -72,7 +72,7 @@ global_ess_settings = {
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'cfour']
+supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot', 'xtb_gsm']

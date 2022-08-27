@@ -57,7 +57,7 @@ RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.dir
 VERSION = '1.1.0'
 
 
-default_job_types, servers = settings['default_job_types'], settings['servers']
+default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
 
 def initialize_job_types(job_types: Optional[dict] = None,
@@ -177,9 +177,8 @@ def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
                                 f'strings. Got: {server_list} which is a {type(server_list)}')
     # run checks:
     for ess, server_list in settings_dict.items():
-        if ess.lower() not in ['gaussian', 'qchem', 'molpro', 'orca', 'terachem', 'onedmin', 'psi4',
-                               'gcn', 'heuristics', 'autotst', 'kinbot', 'xtb', 'xtb_gsm']:
-            raise SettingsError(f'Got an unrecognized software in ESS settings: {ess}')
+        if ess.lower() not in supported_ess + ['gcn', 'heuristics', 'autotst', 'kinbot', 'xtb_gsm']:
+            raise SettingsError(f'Recognized ESS software are {supported_ess}. Got: {ess}')
         for server in server_list:
             if not isinstance(server, bool) and server.lower() not in [s.lower() for s in servers.keys()]:
                 server_names = [name for name in servers.keys()]
@@ -1630,4 +1629,3 @@ def sort_atoms_in_decending_label_order(mol: 'Molecule') -> None:
         mol (Molecule): An RMG Molecule object, with labeled atoms
     """
     mol.atoms = sorted(mol.atoms, key= lambda x : int(x.label))
-    
