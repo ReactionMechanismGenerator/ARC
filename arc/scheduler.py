@@ -1752,6 +1752,8 @@ class Scheduler(object):
                                      f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. NOT calculating '
                                      f'this species. To change this behaviour, pass `allow_nonisomorphic_2d = True`.')
                         self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
+                if b_mol is None and (self.allow_nonisomorphic_2d or self.species_dict[label].charge):
+                    self.output[label]['job_types']['conformers'] = True
                 if b_mol is not None:
                     try:
                         is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
