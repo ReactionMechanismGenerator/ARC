@@ -822,6 +822,26 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn17.ts_species.ts_guesses[0].success)
         self.assertEqual(rxn17.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'O', 'H', 'N', 'N', 'H', 'H'))
 
+        # HONO + HNOH <=> NO2 + NH2OH
+        hono = ARCSpecies(label='HONO', smiles='ON=O')
+        hnoh = ARCSpecies(label='HNOH', smiles='[NH]O')
+        no2 = ARCSpecies(label='NO2', smiles='[O-][N+]=O')
+        nh2oh = ARCSpecies(label='NH2OH', smiles='NO')
+        rxn1 = ARCReaction(r_species=[hono, hnoh], p_species=[no2, nh2oh])
+        rxn1.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn1.family.label, 'H_Abstraction')
+        heuristics_1 = HeuristicsAdapter(job_type='tsg',
+                                         reactions=[rxn1],
+                                         testing=True,
+                                         project='test',
+                                         project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'),
+                                         dihedral_increment=60,
+                                         )
+        heuristics_1.execute_incore()
+        self.assertTrue(rxn1.ts_species.is_ts)
+        self.assertEqual(rxn1.ts_species.multiplicity, 2)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False
