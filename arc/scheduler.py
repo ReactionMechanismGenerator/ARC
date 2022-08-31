@@ -804,7 +804,6 @@ class Scheduler(object):
                 # Jobs of this type haven't been spawned for label
                 self.job_dict[label][job_type] = dict()
             self.job_dict[label][job_type][job.job_name] = job
-            self.job_dict[label][job_type][job.job_name].execute()
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
@@ -812,7 +811,6 @@ class Scheduler(object):
             if 'conformers' not in self.job_dict[label]:
                 self.job_dict[label]['conformers'] = dict()
             self.job_dict[label]['conformers'][conformer] = job  # save job object
-            self.job_dict[label]['conformers'][conformer].execute()  # run the job
         elif tsg is not None:
             # Running a TS guess job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
@@ -820,9 +818,9 @@ class Scheduler(object):
             if 'tsg' not in self.job_dict[label]:
                 self.job_dict[label]['tsg'] = dict()
             self.job_dict[label]['tsg'][tsg] = job  # save job object
-            self.job_dict[label]['tsg'][tsg].execute()  # run the job
         if job.server is not None and job.server not in self.servers:
             self.servers.append(job.server)
+        job.execute()
         self.save_restart_dict()
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
