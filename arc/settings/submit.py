@@ -69,6 +69,7 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
 
 GAUSS_SCRDIR=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 export $GAUSS_SCRDIR
@@ -79,6 +80,8 @@ mkdir -p $GAUSS_SCRDIR
 g16 < input.gjf > input.log
 
 rm -rf $GAUSS_SCRDIR
+
+touch final_time
 
         """,
         'orca': """#!/bin/bash -l
@@ -98,6 +101,8 @@ echo "Starting on : $(date)"
 echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
+
+touch initial_time
 
 WorkDir=/state/partition1/user/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
@@ -120,6 +125,8 @@ $orcadir/orca input.in > input.log
 cp input.log  $SubmitDir/
 rm -rf  $WorkDir
 
+touch final_time
+
 """,
         'molpro': """#!/bin/bash -l
 #SBATCH -p long
@@ -141,6 +148,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 sdir=/scratch/{un}/$SLURM_JOB_NAME-$SLURM_JOB_ID
 SubmitDir=`pwd`
 
@@ -155,6 +164,8 @@ cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
 
 rm -rf $sdir
+
+touch final_time
 
 """,
         'gcn': """#!/bin/bash -l
@@ -175,9 +186,45 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 conda activate arc_env
+
 python $arc_path/arc/job/adapters/ts/scripts/gcn_runner.py --yml_in_path input.yml
 
+touch final_time
+
+""",
+        'cfour': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+module load intel/2020.1.217 openmpi/4.0.3 cfour-mpi/2.1
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+touch initial_time
+
+export CFOUR_NUM_CORES=$SLURM_NTASKS
+
+xcfour > output.out
+
+# Clean the symlink:
+if [[ -L "GENBAS" ]]; then unlink GENBAS; fi
+
+touch final_time
 """,
         'xtb': """#!/bin/bash -l
 #SBATCH -p long
@@ -197,6 +244,8 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 conda activate xtb_env
 
 export OMP_NUM_THREADS={cpus},1
@@ -206,6 +255,8 @@ export MKL_NUM_THREADS={cpus}
 export XTBPATH=$PWD  # Add here all paths were configuration and/or parameter files are stored.
 
 bash input.sh > output.out
+
+touch final_time
 
 """,
         'xtb_gsm': """#!/bin/bash -l
@@ -226,9 +277,13 @@ echo "Running on node : $SLURMD_NODENAME"
 echo "Current directory : $(pwd)"
 echo "============================================================"
 
+touch initial_time
+
 conda activate xtb_env
 
 ./gsm.orca
+
+touch final_time
 
 """,
     },
@@ -263,11 +318,11 @@ queue
         # will be renamed to ``job.sh`` when uploaded
         'gaussian_job': """#!/bin/csh
 
+touch initial_time
+
 mkdir -p /storage/ce_dana/{un}/scratch/g09/
 
 source /Local/ce_dana/g09/bsd/g09.login
-
-touch initial_time
 
 /Local/ce_dana/g09/g09 < input.gjf > input.log
 
@@ -301,6 +356,8 @@ queue
         # will be renamed to ``job.sh`` when uploaded
         'orca_job': """#!/bin/bash -l
 
+touch initial_time
+
 export OrcaDir=/Local/ce_dana/orca_4_0_1_2_linux_x86-64_openmpi202
 export PATH=$PATH:$OrcaDir
 
@@ -310,8 +367,6 @@ export PATH=$PATH:$OMPI_Dir
 export LD_LIBRARY_PATH=/Local/ce_dana/openmpi-2.0.2/lib:$LD_LIBRARY_PATH
 
 SubmitDir=`pwd`
-
-touch initial_time
 
 which orca
 
@@ -325,8 +380,6 @@ ${{OrcaDir}}/orca input.in > input.log
 cd $SubmitDir
 cp "$WorkDir/input.log" .
 cp "$WorkDir/input_property.txt" .
-
-touch final_time
 
 rm -rf $WorkDir
 
@@ -409,9 +462,13 @@ export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
 
 mkdir -p /scratch/{un}/{name}/qlscratch
 
+touch initial_time
+
 qchem -nt {cpus} input.in output.out
 
 rm -r /scratch/{un}/{name}
+
+touch final_time
 
 """,
         # Molpro 2015

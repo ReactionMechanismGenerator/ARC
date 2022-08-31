@@ -58,7 +58,6 @@ class JobEnum(str, Enum):
 
     Consider adding the following adapters:
         - ESS:
-            - cfour
             - cosmo
             - PySCF (https://pyscf.org/user/geomopt.html)
             - TS opt via pysisyphus (https://pysisyphus.readthedocs.io/en/dev/tsoptimization.html)
@@ -83,6 +82,7 @@ class JobEnum(str, Enum):
             - gan  # Generative adversarial networks, https://doi.org/10.1063/5.0055094
     """
     # ESS
+    cfour = 'cfour'
     gaussian = 'gaussian'
     molpro = 'molpro'
     orca = 'orca'

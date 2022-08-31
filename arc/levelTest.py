@@ -198,6 +198,18 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_dict['basis'], '')
         self.assertEqual(level_dict['software'], 'gaussian')
 
+    def test_determine_compatible_ess(self):
+        """Test the determine_compatible_ess() method."""
+        level_1 = Level(method='CCSD(T)', basis='cc-pvtz')
+        self.assertIsNone(level_1.compatible_ess)
+        level_1.determine_compatible_ess()
+        self.assertEqual(sorted(level_1.compatible_ess), sorted(['cfour', 'gaussian', 'molpro']))
+
+        level_2 = Level(method='B3LYP', basis='6-311(d,p)')
+        self.assertIsNone(level_2.compatible_ess)
+        level_2.determine_compatible_ess()
+        self.assertEqual(sorted(level_2.compatible_ess), sorted(['gaussian', 'qchem', 'terachem']))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
