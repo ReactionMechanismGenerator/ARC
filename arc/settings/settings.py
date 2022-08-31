@@ -107,7 +107,7 @@ levels_ess = {
     'terachem': ['pbe'],
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
-    'psi4': ['scf'],
+    'psi4': ['m06-hf'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
