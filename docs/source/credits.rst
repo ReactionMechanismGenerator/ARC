@@ -20,6 +20,7 @@ ARC's contributors are:
 - `Matt Johnson <http://greengroup.mit.edu/matt-johnson>`_
 - `Mark Goldman <http://greengroup.mit.edu/mark-goldman>`_
 - `Mengjie Liu <http://greengroup.mit.edu/max-liu>`_
+- `Kfir Kaplan <https://dana.net.technion.ac.il/members/kfir-kaplan/>`_
 - `Prof. William H Green <http://greengroup.mit.edu/william-green>`_
 
 
