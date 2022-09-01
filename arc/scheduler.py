@@ -858,7 +858,13 @@ class Scheduler(object):
             elif 'terachem' in available_ess:
                 logger.error('Setting it to TeraChem')
                 level.software = 'terachem'
+            elif 'psi4' in available_ess:
+                logger.error('Setting it to psi4')
+                level.software = 'psi4'
             job_adapter = level.software
+            if level.software == None:
+                logger.error(f'Could not determine software for level_of_theory: {level}')
+                return None
         return job_adapter.lower()
 
     def end_job(self, job: 'JobAdapter',
