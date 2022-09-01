@@ -298,14 +298,9 @@ dft_basis_tolerance {dft_basis_tolerance}
         """
         Execute a job incore.
         """
-        which(self.command,
-              return_bool=True,
-              raise_error=True,
-              raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
-              )
         self._log_job_execution()
-        commands = [f"cd {self.local_path}" , incore_commands[self.server][self.job_adapter]]
-        execute_command(commands)
+        commands = [f"cd {self.local_path}"] + incore_commands[self.job_adapter]
+        execute_command(command=commands)
         rename_output(self.local_path_to_output_file, "psi4")
 
     def execute_queue(self):
