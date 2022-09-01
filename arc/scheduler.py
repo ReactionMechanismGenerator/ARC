@@ -2558,6 +2558,24 @@ class Scheduler(object):
         self.initialize_output_dict(label=irc_label)
         self.run_opt_job(label)
 
+    def add_label_to_unique_species_labels(self, label: str) -> str:
+        """
+        Adds a label to self.unique_species_labels.
+        Modifies the label if it is not unique.
+
+        Args:
+            label (str): A species label.
+
+        Returns:
+            str: The modified species label
+        """
+        unique_label, i = label, 0
+        while unique_label in self.unique_species_labels:
+            unique_label = f'{label}_{i}'
+            i += 1
+        self.unique_species_labels.append(unique_label)
+        return unique_label
+
     def check_irc_species(self, label: str):
         """
         Check that the optimized geometry of the two species created from a TS IRC runs makes sense
