@@ -300,7 +300,7 @@ dft_basis_tolerance {dft_basis_tolerance}
         """
         self._log_job_execution()
         commands = [f"cd {self.local_path}"] + incore_commands[self.job_adapter]
-        execute_command(command=commands)
+        execute_command(command=commands, executable="/bin/bash")
         rename_output(self.local_path_to_output_file, "psi4")
 
     def execute_queue(self):
