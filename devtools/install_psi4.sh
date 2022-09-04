@@ -2,6 +2,11 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-conda create -n psi4_env python=3.7 -y
-conda activate psi4_env
-conda install -c psi4 psi4 -y
+# clone the repo in the parent directory
+echo "Creating the psi4 environment..."
+source ~/.bashrc
+conda create -n p4env psi4 -c psi4 -y
+conda update psi4 -c psi4 -y
+
+source ~/.bashrc
+echo "Done installing psi4."
