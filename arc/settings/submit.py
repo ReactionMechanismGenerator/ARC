@@ -24,7 +24,7 @@ incore_commands = {
               ],
     "psi4" : ['CONDA_BASE=$(conda info --base)',
               'source $CONDA_BASE/etc/profile.d/conda.sh',
-              'conda activate psi4_env',
+              'conda activate p4env',
               'psi4 -i input.dat -o output.dat'],
 }
 
