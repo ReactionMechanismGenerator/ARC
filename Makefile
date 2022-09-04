@@ -33,6 +33,9 @@ install-sella:
 
 install-xtb:
 	bash devtools/install_xtb.sh
+	
+install-psi4:
+	bash devtools/install_psi4.sh
 
 lite:
 	bash devtools/lite.sh
