@@ -19,7 +19,7 @@ from arc.common import (ARC_PATH,
                         sum_list_entries,
                         )
 from arc.imports import settings
-from arc.species.converter import displace_xyz, xyz_to_dmat
+from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
 from arc.species.mapping import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
                                  get_rmg_reactions_from_arc_reaction,
                                  )
@@ -501,6 +501,7 @@ def check_irc_species_and_rxn(xyz_1: dict,
     if rxn is None:
         return None
     rxn.ts_species.ts_checks['IRC'] = False
+    xyz_1, xyz_2 = check_xyz_dict(xyz_1), check_xyz_dict(xyz_2)
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
                                        elements=xyz_1['symbols'],

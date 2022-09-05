@@ -857,6 +857,11 @@ class TestCommon(unittest.TestCase):
         globalized_string = common.globalize_path(string=string, project_directory='')
         self.assertEqual(globalized_string, string)
 
+        string = '    project_directory: /storage/ce_dana/alongd/runs/ARC/debug_jm/D'
+        globalized_string = common.globalize_path(string=string, project_directory='~/Code/runs/run_1/')
+        self.assertEqual(globalized_string, '    project_directory: ~/Code/runs/run_1/')
+
+
     def test_estimate_orca_mem_cpu_requirement(self):
         """Test estimating memory and cpu requirements for an Orca job."""
         num_heavy_atoms_0 = 0

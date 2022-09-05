@@ -483,6 +483,10 @@ def globalize_path(string: str,
         new_string += '/' if new_string[-1] != '/' else ''
         new_string += 'calcs/' + splits[-1]
         return new_string
+    if 'project_directory: ' in string:
+        splits = string.split()
+        old_dir = splits[-1]
+        string = string.replace(old_dir, project_directory)
     return string
 
 

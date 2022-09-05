@@ -68,7 +68,23 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           'orbitals': False,
                           'lennard_jones': False,
                           }
-        cls.sched1 = Scheduler(project='project_test', ess_settings=cls.ess_settings,
+        cls.sched1 = Scheduler(project='project_test_1', ess_settings=cls.ess_settings,
+                               species_list=[cls.spc1, cls.spc2, cls.spc3],
+                               composite_method=None,
+                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               opt_level=Level(repr=default_levels_of_theory['opt']),
+                               freq_level=Level(repr=default_levels_of_theory['freq']),
+                               sp_level=Level(repr=default_levels_of_theory['sp']),
+                               scan_level=Level(repr=default_levels_of_theory['scan']),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               rmg_database=cls.rmg_database,
+                               project_directory=cls.project_directory,
+                               testing=True,
+                               job_types=cls.job_types1,
+                               orbitals_level=default_levels_of_theory['orbitals'],
+                               adaptive_levels=None,
+                               )
+        cls.sched2 = Scheduler(project='project_test_2', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
                                composite_method=None,
                                conformer_level=Level(repr=default_levels_of_theory['conformer']),
@@ -652,6 +668,19 @@ H      -1.82570782    0.42754384   -0.56130718"""
             self.assertTrue(species_has_property((species_output_dict)))
             species_output_dict = {'paths': {property_: True, 'composite': True}}
             self.assertTrue(species_has_property((species_output_dict)))
+
+    def test_add_label_to_unique_species_labels(self):
+        """Test the add_label_to_unique_species_labels() method."""
+        self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO'])
+        unique_label = self.sched2.add_label_to_unique_species_labels(label='new_species_15')
+        self.assertEqual(unique_label, 'new_species_15')
+        self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15'])
+        unique_label = self.sched2.add_label_to_unique_species_labels(label='new_species_15')
+        self.assertEqual(unique_label, 'new_species_15_0')
+        self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0'])
+        unique_label = self.sched2.add_label_to_unique_species_labels(label='new_species_15')
+        self.assertEqual(unique_label, 'new_species_15_1')
+        self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
     @classmethod
     def tearDownClass(cls):

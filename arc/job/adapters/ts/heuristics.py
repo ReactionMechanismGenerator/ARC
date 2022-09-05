@@ -145,6 +145,7 @@ class HeuristicsAdapter(JobAdapter):
 
         if dihedral_increment is not None and (dihedral_increment < 0 or dihedral_increment > 360):
             raise ValueError(f'dihedral_increment should be between 0 to 360, got: {dihedral_increment}')
+        dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
 
         _initialize_adapter(obj=self,
                             is_ts=True,
@@ -865,7 +866,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                   r1_stretch: float = 1.2,
                   r2_stretch: float = 1.2,
                   a2: float = 180,
-                  dihedral_increment: int = 20,
+                  dihedral_increment: Optional[int] = None,
                   ) -> List[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
@@ -889,6 +890,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         raise ValueError('Cannot generate TS guesses without an RMG Reaction object instance.')
 
     xyz_guesses = list()
+    dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
 
     # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
     # using the first RMG reaction; all other RMG reactions and the ARC reaction should have the same order.

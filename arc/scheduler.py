@@ -796,6 +796,8 @@ class Scheduler(object):
                           xyz=xyz,
                           )
         label = label or reactions[0].ts_species.label
+        if label not in self.job_dict.keys():
+            self.job_dict[label] = dict()
         if conformer is None and tsg is None:
             # this is NOT a conformer DFT job nor a TS guess job
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
@@ -804,7 +806,6 @@ class Scheduler(object):
                 # Jobs of this type haven't been spawned for label
                 self.job_dict[label][job_type] = dict()
             self.job_dict[label][job_type][job.job_name] = job
-            self.job_dict[label][job_type][job.job_name].execute()
         elif conformer is not None:
             # Running a conformer DFT job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
@@ -812,7 +813,6 @@ class Scheduler(object):
             if 'conformers' not in self.job_dict[label]:
                 self.job_dict[label]['conformers'] = dict()
             self.job_dict[label]['conformers'][conformer] = job  # save job object
-            self.job_dict[label]['conformers'][conformer].execute()  # run the job
         elif tsg is not None:
             # Running a TS guess job. Append differently to job_dict.
             self.running_jobs[label] = list() if label not in self.running_jobs else self.running_jobs[label]
@@ -820,9 +820,9 @@ class Scheduler(object):
             if 'tsg' not in self.job_dict[label]:
                 self.job_dict[label]['tsg'] = dict()
             self.job_dict[label]['tsg'][tsg] = job  # save job object
-            self.job_dict[label]['tsg'][tsg].execute()  # run the job
         if job.server is not None and job.server not in self.servers:
             self.servers.append(job.server)
+        job.execute()
         self.save_restart_dict()
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
@@ -2545,20 +2545,43 @@ class Scheduler(object):
                                             irc_r_path=self.output[label]['paths']['irc'][1],
                                             out_path=os.path.join(self.project_directory, 'output',
                                                                   'rxns', label, 'irc_traj.gjf'))
-        irc_label = f'IRC_{index}_{label}'
+        irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
                              xyz=parser.parse_xyz_from_file(job.local_path_to_output_file),
                              irc_label=label,
+                             compute_thermo=False,
                              )
         if self.species_dict[label].irc_label is None:
-            self.species_dict[label].irc_label = irc_label
+            self.species_dict[label].irc_label = irc_spc.label
         else:
-            self.species_dict[label].irc_label += f' {irc_label}'
-
+            self.species_dict[label].irc_label += f' {irc_spc.label}'
+        self.species_list.append(irc_spc)
         self.species_dict[irc_spc.label] = irc_spc
-        self.job_dict[label] = dict()
-        self.initialize_output_dict(label=irc_label)
-        self.run_opt_job(label)
+        self.initialize_output_dict(label=irc_spc.label)
+        self.run_job(label=irc_spc.label,
+                     xyz=self.species_dict[irc_spc.label].get_xyz(),
+                     level_of_theory=self.opt_level,
+                     job_type='opt',
+                     fine=False,
+                     )
+
+    def add_label_to_unique_species_labels(self, label: str) -> str:
+        """
+        Adds a label to self.unique_species_labels.
+        Modifies the label if it is not unique.
+
+        Args:
+            label (str): A species label.
+
+        Returns:
+            str: The modified species label
+        """
+        unique_label, i = label, 0
+        while unique_label in self.unique_species_labels:
+            unique_label = f'{label}_{i}'
+            i += 1
+        self.unique_species_labels.append(unique_label)
+        return unique_label
 
     def check_irc_species(self, label: str):
         """
@@ -2568,12 +2591,13 @@ class Scheduler(object):
             label (str): The label of one of the optimized IRC-resulting species.
         """
         ts_label = self.species_dict[label].irc_label
-        irc_species_labels = self.species_dict[ts_label].irc_label.split()
-        if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
-            check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
-                                      xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
-                                      rxn=self.rxn_dict.get([self.species_dict[ts_label].rxn_index], None),
-                                      )
+        if len(self.output[ts_label]['paths']['irc']) == 2:
+            irc_species_labels = self.species_dict[ts_label].irc_label.split()
+            if all(self.output[irc_label]['paths']['geo'] for irc_label in irc_species_labels):
+                check_irc_species_and_rxn(xyz_1=self.output[irc_species_labels[0]]['paths']['geo'],
+                                          xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
+                                          rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
+                                          )
 
     def check_scan_job(self,
                        label: str,
@@ -3480,7 +3504,7 @@ class Scheduler(object):
         """
         if label is not None or not self._does_output_dict_contain_info():
             for species in self.species_list:
-                if label is None or (label is not None and species.label == label):
+                if label is None or species.label == label:
                     if species.label not in self.output:
                         self.output[species.label] = dict()
                     if 'paths' not in self.output[species.label]:
