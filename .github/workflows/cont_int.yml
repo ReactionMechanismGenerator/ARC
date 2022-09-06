@@ -77,3 +77,11 @@ jobs:
         echo $PYTHONPATH
         make test
         codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
+
+    - name: Functional Test
+      run: |
+        source ~/.bashrc
+        conda activate arc_env
+        echo $PYTHONPATH
+        make test-functional
+        codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
