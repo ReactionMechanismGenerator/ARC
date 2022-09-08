@@ -926,6 +926,11 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 \
             and not is_angle_linear(a2) else list()
 
+        logger.info(f'\n\n\n*****\n\nHeuristics L 930')
+        logger.info(f'dihedral_increment: {dihedral_increment}')
+        logger.info(f'list(range(0, 360, dihedral_increment)): {list(range(0, 360, dihedral_increment))}')
+        logger.info(f'rmg_product_mol.atoms: {rmg_product_mol.atoms}')
+        logger.info(f'len(rmg_product_mol.atoms): {len(rmg_product_mol.atoms)}')
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
         d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 else list()
 
