@@ -2036,6 +2036,7 @@ class Scheduler(object):
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
                     e_min = tsg.energy
                     selected_i = tsg.index
+                logger.info(f'S L 2039: {self.species_dict[label].ts_checks}')
             e_min = None
             if selected_i is None:
                 logger.warning(f'Could not determine a likely TS conformer for {label}')
@@ -2277,6 +2278,7 @@ class Scheduler(object):
                                  job=job,
                                  checks=['freq'],
                                  )
+                        logger.info(f'S L 2280: {self.species_dict[label].ts_checks}')
                     if self.species_dict[label].ts_checks['normal_mode_displacement'] is False:
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
@@ -2348,6 +2350,7 @@ class Scheduler(object):
                     logger.info(f'TS {label} did not pass the negative frequency check. '
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
+                logger.info(f'S L 2353: {self.species_dict[label].ts_checks}')
                 self.switch_ts(label=label)
                 return False
             else:
@@ -2401,6 +2404,7 @@ class Scheduler(object):
                                          sp_level=self.sp_level if not self.composite_method else self.composite_method,
                                          freq_scale_factor=self.freq_scale_factor,
                                          )
+                logger.info(f'S L 2405: {self.species_dict[rxn.ts_label].ts_checks}')
                 if switch_ts is True:
                     logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
                                 f'Switching TS.\n')
@@ -2512,6 +2516,7 @@ class Scheduler(object):
                 if rxn.ts_label == label:
                     if not rxn.ts_species.ts_checks['e_elect']:
                         check_ts(reaction=rxn, verbose=True, checks=['energy'])
+                        logger.info(f'S L 2516: {self.species_dict[label].ts_checks}')
                     if species_has_freq(self.output[label]) and not rxn.ts_species.ts_checks['E0']:
                         self.check_rxn_e0_by_spc(label)
                         if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
@@ -2598,6 +2603,7 @@ class Scheduler(object):
                                           xyz_2=self.output[irc_species_labels[1]]['paths']['geo'],
                                           rxn=self.rxn_dict.get(self.species_dict[ts_label].rxn_index, None),
                                           )
+                logger.info(f'S L 2601: {self.species_dict[ts_label].ts_checks}')
 
     def check_scan_job(self,
                        label: str,
