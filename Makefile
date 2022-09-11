@@ -11,6 +11,7 @@ test test-unittests:
 
 test-functional:
 	python3 -m unittest functional/functional_test.py
+	python3 -m unittest functional/restart_test.py
 
 install-all:
 	bash devtools/install_all.sh
