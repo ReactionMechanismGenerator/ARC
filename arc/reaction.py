@@ -706,7 +706,7 @@ class ARCReaction(object):
                                     f'balanced ts xyz: {balanced_ts_xyz}\n'
                                     f'balanced ts species mol: {balanced_ts_species_mol}\n'
                                     f'balanced ts species xyz: {balanced_ts_species_xyz}\n'
-                                    f'balanced xyz guess: {balanced_xyz_guess}')
+                                    f'balanced xyz guess: {bool(balanced_xyz_guess)}')
             return False
 
         return True
