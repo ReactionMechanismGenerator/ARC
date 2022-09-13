@@ -1695,6 +1695,43 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(r_bonds, [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)])  # CH4 + OH
         self.assertEqual(p_bonds, [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)])  # CH3 + H2O
 
+    def test_multi_reactants(self):
+        """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
+        with self.assertRaises(ReactionError):
+            ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                   ARCSpecies(label='OH', smiles='[OH]'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O')],
+                        p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O')])
+
+        ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                               ARCSpecies(label='OH', smiles='[OH]'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O')],
+                    p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O')],
+                    ts_xyz_guess=["""C      -3.61598200   -0.14868700   -0.24629000
+                                    C      -2.87249000   -0.46501800   -1.37357200
+                                    H      -1.49356900   -0.33047800   -1.35181200
+                                    H      -0.84385200    0.11582900   -0.20370300
+                                    H      -1.59912100    0.44823500    0.91958000
+                                    H      -2.97672300    0.31399300    0.89602200
+                                    H      -4.69390100   -0.24965500   -0.26210800
+                                    H      -3.36776700   -0.80869200   -2.27293600
+                                    O      -0.91216500   -0.55783000   -2.23774700
+                                    H      -1.09587000    0.85059200    1.79098900
+                                    O      -3.55685000    0.58245300    1.76982000
+                                    H       0.61957500    0.23804900   -0.17583200
+                                    H       1.21746400   -1.55405900    0.34558600
+                                    O       2.65817800   -1.34488900    0.51012400
+                                    H       3.16323600   -2.29177100    0.72530400
+                                    H       3.06938800   -0.89699200   -0.39503300"""])
+
 
 def check_atom_map(rxn: ARCReaction) -> bool:
     """
