@@ -340,6 +340,7 @@ def process_bdes(label: str,
     for bde_indices in source.bdes:
         found_a_label, cyclic = False, False
         # Index 0 of the tuple:
+        logger.info(f'bde_indices: {bde_indices}')
         if source.mol.atoms[bde_indices[0] - 1].is_hydrogen():
             e1 = species_dict['H'].e0
         else:
