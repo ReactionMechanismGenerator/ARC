@@ -1845,32 +1845,9 @@ class ARCSpecies(object):
             raise SpeciesError(f'Scissors indices must be integers. Got: {indices}.')
         if self.final_xyz is None:
             raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
+        if len(indices) != 2:
+            raise SpeciesError(f'Expected two indices, got {len(indices)}')
         indices = convert_list_index_0_to_1(indices, direction=-1)
-        atom1 = self.mol.atoms[indices[0]]
-        atom2 = self.mol.atoms[indices[1]]
-        if atom1.is_hydrogen():
-            top1 = [self.mol.atoms.index(atom1)]
-            top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        elif atom2.is_hydrogen():
-            top2 = [self.mol.atoms.index(atom2)]
-            top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
-        else:
-            # For robustness, only use the smaller top,
-            # determine_top_group_indices() might get confused for (large) convolved tops.
-            top1 = determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
-            top2 = determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
-            if len(top1) > len(top2):
-                top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
-            elif len(top2) > len(top1):
-                top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        xyz1, xyz2 = dict(), dict()
-        xyz1['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top1)
-        xyz2['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top2)
-        xyz1['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top1)
-        xyz2['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top2)
-        xyz1['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top1)
-        xyz2['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top2)
-        xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
 
         mol_copy = self.mol.copy(deep=True)
         # We are about to change the connectivity of the atoms in the molecule,
@@ -1884,7 +1861,7 @@ class ARCSpecies(object):
         if not bond.is_single():
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
-        mol_splits = mol_copy.split()
+        mol_splits, fragment_indices = split_mol(mol_copy)
         if sort_atom_labels:
             for split in mol_splits:
                 sort_atoms_in_descending_label_order(split)
@@ -1934,27 +1911,14 @@ class ARCSpecies(object):
         mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
-        # match xyz to mol:
-        if len(mol1.atoms) != len(mol2.atoms):
-            # easy
-            if len(mol1.atoms) != len(top1):
-                xyz1, xyz2 = xyz2, xyz1
-        else:
-            # harder
-            element_dict_mol1, element_dict_xyz1 = dict(), dict()
-            for atom in mol1.atoms:
-                if atom.element.symbol in element_dict_mol1:
-                    element_dict_mol1[atom.element.symbol] += 1
-                else:
-                    element_dict_mol1[atom.element.symbol] = 1
-            for symbol in xyz1['symbols']:
-                if symbol in element_dict_xyz1:
-                    element_dict_xyz1[symbol] += 1
-                else:
-                    element_dict_xyz1[symbol] = 1
-            for symbol, count in element_dict_mol1.items():
-                if symbol not in element_dict_xyz1 or count != element_dict_xyz1[symbol]:
-                    xyz1, xyz2 = xyz2, xyz1
+        xyz1, xyz2 = dict(), dict()
+        xyz1['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in fragment_indices[0])
+        xyz2['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in fragment_indices[1])
+        xyz1['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in fragment_indices[0])
+        xyz2['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in fragment_indices[1])
+        xyz1['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in fragment_indices[0])
+        xyz2['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in fragment_indices[1])
+        xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
 
         spc1 = ARCSpecies(label=label1,
                           mol=mol1,
