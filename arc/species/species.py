@@ -1843,7 +1843,7 @@ class ARCSpecies(object):
             raise SpeciesError(f'Scissors indices must be integers. Got: {indices}.')
         if self.final_xyz is None:
             raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
-        indices = convert_list_index_0_to_1(indices, direction=-1)  # Convert to 0-indexed atoms.
+        indices = convert_list_index_0_to_1(indices, direction=-1)
         atom1 = self.mol.atoms[indices[0]]
         atom2 = self.mol.atoms[indices[1]]
         if atom1.is_hydrogen():
@@ -1874,7 +1874,7 @@ class ARCSpecies(object):
         # We are about to change the connectivity of the atoms in the molecule,
         # which invalidates any existing vertex connectivity information; thus we reset it.
         mol_copy.reset_connectivity_values()
-        atom1 = mol_copy.atoms[indices[0]]  # Note: redefining atom1 and atom2
+        atom1 = mol_copy.atoms[indices[0]]
         atom2 = mol_copy.atoms[indices[1]]
         if not mol_copy.has_bond(atom1, atom2):
             raise SpeciesError('Attempted to remove a nonexistent bond.')
@@ -1939,20 +1939,19 @@ class ARCSpecies(object):
                 xyz1, xyz2 = xyz2, xyz1
         else:
             # harder
-            element_dict_mol1, element_dict_top1 = dict(), dict()
+            element_dict_mol1, element_dict_xyz1 = dict(), dict()
             for atom in mol1.atoms:
                 if atom.element.symbol in element_dict_mol1:
                     element_dict_mol1[atom.element.symbol] += 1
                 else:
                     element_dict_mol1[atom.element.symbol] = 1
-            for i in top1:
-                atom = mol_copy.atoms[i - 1]
-                if atom.element.symbol in element_dict_top1:
-                    element_dict_top1[atom.element.symbol] += 1
+            for symbol in xyz1['symbols']:
+                if symbol in element_dict_xyz1:
+                    element_dict_xyz1[symbol] += 1
                 else:
-                    element_dict_top1[atom.element.symbol] = 1
-            for element, count in element_dict_mol1.items():
-                if element not in element_dict_top1 or count != element_dict_top1[element]:
+                    element_dict_xyz1[symbol] = 1
+            for symbol, count in element_dict_mol1.items():
+                if symbol not in element_dict_xyz1 or count != element_dict_xyz1[symbol]:
                     xyz1, xyz2 = xyz2, xyz1
 
         spc1 = ARCSpecies(label=label1,
