@@ -32,7 +32,7 @@ from arc.common import (almost_equal_coords,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
-                        sort_atoms_in_decending_label_order,
+                        sort_atoms_in_descending_label_order,
                         )
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
@@ -150,7 +150,7 @@ class ARCSpecies(object):
                                 The brute force methods will generate all the geometries in advance and submit all
                                 relevant jobs simultaneously. The continuous method will wait for the previous job
                                 to terminate, and use its geometry as the initial guess for the next job.
-                                Another set of three keys is allowed, adding `_diagonal' to each of the above
+                                Another set of three keys is allowed, adding `_diagonal` to each of the above
                                 keys. the secondary keys are therefore:
                                 - 'brute_force_sp_diagonal'
                                 - 'brute_force_opt_diagonal'
@@ -171,7 +171,7 @@ class ARCSpecies(object):
                                 attribute must be specified by the user.
                                 An additional supported key is 'ess', in which case ARC will allow the ESS to take care
                                 of spawning the ND continuous constrained optimizations (not yet implemented).
-        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
+        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahedral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all. If no 3D
                                                      coordinates are given for the species, all diastereomers will be
@@ -190,7 +190,7 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
-        original_label (str): The species' label prior to modifications (removing fornidden characters).
+        original_label (str): The species' label prior to modifications (removing forbidden characters).
         multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
                             (If unspecified, assumed to be either a singlet or a doublet).
         charge (int): The species' net charge. Assumed to be 0 if unspecified.
@@ -1788,7 +1788,7 @@ class ARCSpecies(object):
         and the indices are 1-indexed.
         
         Args:
-            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
+            sort_atom_labels (bool, optional): Boolean flag, determines whether sorting is required.
 
         Returns: list
             The scission-resulting species.
@@ -1825,20 +1825,21 @@ class ARCSpecies(object):
 
     def _scissors(self,
                   indices: tuple,
-                  sort_atom_labels: bool = True) -> list:
+                  sort_atom_labels: bool = True,
+                  ) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
-            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
+            sort_atom_labels (bool, optional): Boolean flag, determines whether sorting is required.
 
         Returns: list
             The scission-resulting species, a list of either one or two species, if the scissored location is linear,
             or one if the scission is in a cycle.
         """
         if any([i < 1 for i in indices]):
-            raise SpeciesError(f'Scissors indices must be larger than 0 (1-indexed). Got: {indices}.')
+            raise SpeciesError(f'Scissors indices must be greater than 0 (1-indexed). Got: {indices}.')
         if not all([isinstance(i, int) for i in indices]):
             raise SpeciesError(f'Scissors indices must be integers. Got: {indices}.')
         if self.final_xyz is None:
@@ -1885,7 +1886,7 @@ class ARCSpecies(object):
         mol_splits = mol_copy.split()
         if sort_atom_labels:
             for split in mol_splits:
-                sort_atoms_in_decending_label_order(split)
+                sort_atoms_in_descending_label_order(split)
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
