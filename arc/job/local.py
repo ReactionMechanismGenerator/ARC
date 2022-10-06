@@ -219,19 +219,26 @@ def parse_running_jobs_ids(stdout: List[str],
 
 
 def submit_job(path: str,
+               cluster_soft: Optional[str] = None,
+               submit_cmd: Optional[str] = None,
+               submit_filename: Optional[str] = None,
                ) -> Tuple[Optional[str], Optional[str]]:
     """
     Submit a job.
 
     Args:
         path (str): The job's folder path, where the submit script is located (just the folder path, w/o the filename).
+        cluster_soft (str, optional): The server cluster software.
+        submit_cmd (str, optional): The submit command.
+        submit_filename (str, optional): The submit script dile name.
 
     Returns:
         Tuple[Optional[str], Optional[str]]: job_status, job_id
     """
     job_status, job_id = '', ''
-    cmd = f"cd {path}; {submit_command[servers['local']['cluster_soft']]} " \
-          f"{submit_filenames[servers['local']['cluster_soft']]}"
+    submit_cmd = submit_cmd or submit_command[servers['local']['cluster_soft']]
+    submit_filename = submit_filename or submit_filenames[servers['local']['cluster_soft']]
+    cmd = f"cd {path}; {submit_cmd} {submit_filename}"
     stdout, stderr = execute_command(cmd)
     if not len(stdout):
         time.sleep(10)
@@ -242,7 +249,7 @@ def submit_job(path: str,
         logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')
         job_status = 'errored'
     else:
-        job_id = _determine_job_id(stdout=stdout)
+        job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
     job_status = 'running' if job_id else job_status
     return job_status, job_id
 
@@ -255,6 +262,10 @@ def _determine_job_id(stdout: List[str],
 
     Args:
         stdout (List[str]): The stdout got from submitting a job.
+        cluster_soft (str, optional): The server cluster software.
+
+    Returns:
+        str: The determined job ID.
     """
     job_id = ''
     cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
@@ -348,7 +359,7 @@ def change_mode(mode: str,
         mode (str): The mode change to be applied, can be either octal or symbolic.
         file_name (str): The path to the file or the directory to be changed.
         recursive (bool, optional): Whether to recursively change the mode to all files
-                                    under a directory.``True`` for recursively change.
+                                    under a directory. ``True`` for recursively change.
         path (str, optional): The directory path at which the command will be executed.
     """
     if os.path.isfile(path):
