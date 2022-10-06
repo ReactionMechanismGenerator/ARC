@@ -1208,14 +1208,14 @@ class TestCommon(unittest.TestCase):
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
         random.shuffle(mol.atoms)
-        common.sort_atoms_in_decending_label_order(mol)
+        common.sort_atoms_in_descending_label_order(mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
         mol = Molecule(smiles="NC1=NC=NC2=C1N=CN2")
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
         random.shuffle(mol.atoms)
-        common.sort_atoms_in_decending_label_order(mol)
+        common.sort_atoms_in_descending_label_order(mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
 
