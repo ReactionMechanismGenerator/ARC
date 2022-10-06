@@ -2093,6 +2093,18 @@ H       1.11582953    0.94384729   -0.10134685"""
                           '1_4_dioxane_BDE_5_14_A',
                           'H'])
 
+        oh = ARCSpecies(label='OH', smiles='[OH]',
+                        xyz="""O       0.00000000    0.00000000    0.61310000
+                               H       0.00000000    0.00000000   -0.61310000""")
+        oh.bdes = [(1, 2)]
+        oh.final_xyz = oh.get_xyz()
+        species = oh.scissors(sort_atom_labels=True)
+        for spc in species:
+            if spc.label != 'H':
+                self.assertEqual(len(spc.mol.atoms), 1)
+                self.assertEqual(spc.mol.atoms[0].element.symbol, 'O')
+                self.assertEqual(spc.get_xyz()['symbols'][0], 'O')
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
