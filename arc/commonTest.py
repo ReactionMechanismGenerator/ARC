@@ -1263,6 +1263,39 @@ class TestCommon(unittest.TestCase):
         self.assertTrue(common.almost_equal_coords(ch4_a, ch4_c))
         self.assertFalse(common.almost_equal_coords(ch4_a, ch4_d))
 
+    def test_dfs(self):
+        """Test the dfs() function."""
+        mol = Molecule(smiles='O')
+        visited = common.dfs(mol=mol, start=0)
+        self.assertEqual(visited, [0, 1, 2])
+        visited = common.dfs(mol=mol, start=1)
+        self.assertEqual(visited, [0, 1, 2])
+        visited = common.dfs(mol=mol, start=1, sort_result=False)
+        self.assertEqual(visited[0], 1)
+        self.assertEqual(sorted(visited), [0, 1, 2])
+
+        mol = Molecule(smiles='CC(CC)C')
+        visited = common.dfs(mol=mol, start=0)
+        self.assertEqual(visited, list(range(17)))
+
+        spc = ARCSpecies(label='H2O.H2O',
+                         xyz=""" O                 -2.25790521    1.74901183    0.00000000
+                                 H                 -1.29790521    1.74901183    0.00000000
+                                 H                 -2.57835980    2.65394766    0.00000000
+                                 O                  2.23814237   -1.56126480    0.00000000
+                                 H                  3.19814237   -1.56126480    0.00000000
+                                 H                  1.91768778   -0.65632897    0.00000000""")
+        visited = common.dfs(mol=spc.mol, start=0)
+        self.assertEqual(visited, [0, 1, 2])
+        visited = common.dfs(mol=spc.mol, start=4)
+        self.assertEqual(visited, [3, 4, 5])
+
+        mol = Molecule(smiles='CC(CC)C.C')
+        visited = common.dfs(mol=mol, start=0)
+        self.assertEqual(visited, [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
+        visited = common.dfs(mol=mol, start=21)
+        self.assertEqual(visited, [5, 18, 19, 20, 21])
+
     @classmethod
     def tearDownClass(cls):
         """
