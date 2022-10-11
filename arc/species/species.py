@@ -24,6 +24,7 @@ from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
                         determine_symmetry,
                         determine_top_group_indices,
+                        dfs,
                         get_logger,
                         get_single_bond_length,
                         generate_resonance_structures,
@@ -2678,3 +2679,26 @@ def check_atom_balance(entry_1: Union[dict, str, Molecule],
         return False
 
     return result
+
+
+def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
+    """
+    Split an RMG Molecule object by connectivity gaps while retaining the relative atom order.
+
+    Args:
+        mol (Molecule): The Molecule to split.
+
+    Returns:
+        Tuple[List[Molecule], List[List[int]]]:
+            - Entries are molecular fragments resulting from the split.
+            - Entries are lists with indices that correspond to the original atoms that were assigned to each fragment.
+    """
+    fragments, molecules = list(), list()
+    unvisited_indices = list(range(len(mol.atoms)))
+    while len(unvisited_indices):
+        start = unvisited_indices[0]
+        frag_indices = dfs(mol=mol, start=start, sort_result=True)
+        unvisited_indices = [index for index in unvisited_indices if index not in frag_indices]
+        molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
+        fragments.append(frag_indices)
+    return molecules, fragments
