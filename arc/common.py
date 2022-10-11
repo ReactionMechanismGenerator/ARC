@@ -18,6 +18,7 @@ import sys
 import time
 import warnings
 import yaml
+from collections import deque
 from itertools import chain
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
@@ -1633,3 +1634,34 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
         mol (Molecule): An RMG Molecule object, with labeled atoms
     """
     mol.atoms = sorted(mol.atoms, key=lambda x: int(x.label))
+
+
+def dfs(mol: Molecule,
+        start: int,
+        sort_result: bool = True,
+        ) -> List[int]:
+    """
+    A depth-first search algorithm for graph traversal of a Molecule object instance.
+
+    Args:
+        mol (Molecule): The Molecule to search.
+        start (int): The index of the first atom in the search.
+        sort_result (bool, optional): Whether to sort the returned visited indices.
+
+    Returns:
+        List[int]: Indices of all atoms connected to the starting atom.
+    """
+    if start >= len(mol.atoms):
+        raise ValueError(f'Got a wrong start number {start} for a molecule with only {len(mol.atoms)} atoms.')
+    visited = list()
+    stack = deque()
+    stack.append(start)
+    while stack:
+        key = stack.pop()
+        if key in visited:
+            continue
+        visited.append(key)
+        for atom in mol.atoms[key].edges.keys():
+            stack.append(mol.atoms.index(atom))
+    visited = sorted(visited) if sort_result else visited
+    return visited
