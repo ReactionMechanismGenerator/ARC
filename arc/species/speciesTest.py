@@ -35,6 +35,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 split_mol,
                                  )
 from arc.species.xyz_to_2d import MolGraph
 
@@ -2562,6 +2563,31 @@ H      -1.47626400   -0.10694600   -1.88883800"""
 1 S u1 p2 c0 {2,S}
 2 S u1 p2 c0 {1,S}
 """)
+
+    def test_split_mol(self):
+        """Test the split_mol() function."""
+        mol = Molecule(smiles='[H]')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(len(fragments), 1)
+
+        mol = Molecule(smiles='CC([O])C(C#N)Cc1ccccc1O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(len(fragments), 1)
+
+        mol = Molecule(smiles='O.O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 2)
+        self.assertEqual(len(fragments), 2)
+
+        mol = Molecule(smiles='O.O.O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 3)
+        self.assertEqual(len(fragments), 3)
+        for m in molecules:
+            self.assertEqual(m.to_smiles(), 'O')
+        self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
 
     @classmethod
     def tearDownClass(cls):
