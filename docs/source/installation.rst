@@ -218,6 +218,16 @@ Tests
     make test
 
   After the tests complete, you may unstash your changes, if relevant (``git stash pop``).
+  
+  In addition, functional tests are helpful in making sure that ARC is installed and functioning correctly.
+
+  Again, before performing these tests, it is reccommended to first stash your changes (``git stash``).
+  
+  To trigger the functional tests, type::
+   
+   make test-functional
+
+  After the tests complete, you may unstash your changes, if relevant (``git stash pop``).
 
 
 .. _aliases:

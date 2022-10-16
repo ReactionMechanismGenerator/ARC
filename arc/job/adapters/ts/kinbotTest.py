@@ -32,43 +32,40 @@ class TestKinBotAdapter(unittest.TestCase):
         cls.rmgdb = make_rmg_database_object()
         load_families_only(cls.rmgdb)
 
-    def test_has_kinbot(self):
-        """Test that KinBot was successfully imported"""
-        self.assertTrue(HAS_KINBOT)
-
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""
-        rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
-        rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
-                                     products=[Species().from_smiles('[CH2]CO')])
-        rxn1.determine_family(rmg_database=self.rmgdb)
-        rxn1.arc_species_from_rmg_reaction()
-        self.assertEqual(rxn1.family.label, 'intra_H_migration')
-        kinbot1 = KinBotAdapter(job_type='tsg',
-                                reactions=[rxn1],
-                                testing=True,
-                                project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_KinBot', 'tst1'),
-                                )
-        kinbot1.execute_incore()
-        self.assertTrue(rxn1.ts_species.is_ts)
-        self.assertEqual(rxn1.ts_species.charge, 0)
-        self.assertEqual(rxn1.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
-        self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'],
-                         ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
-        self.assertEqual(rxn1.ts_species.ts_guesses[1].initial_xyz['symbols'],
-                         ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
-        self.assertEqual(len(rxn1.ts_species.ts_guesses[1].initial_xyz['coords']), 8)
-        self.assertEqual(rxn1.ts_species.ts_guesses[0].method, 'kinbot')
-        self.assertEqual(rxn1.ts_species.ts_guesses[1].method, 'kinbot')
-        self.assertEqual(rxn1.ts_species.ts_guesses[0].method_index, 0)
-        self.assertEqual(rxn1.ts_species.ts_guesses[1].method_index, 1)
-        self.assertEqual(rxn1.ts_species.ts_guesses[0].method_direction, 'F')
-        self.assertEqual(rxn1.ts_species.ts_guesses[1].method_direction, 'R')
-        self.assertLess(rxn1.ts_species.ts_guesses[0].execution_time.seconds, 300)  # 0:00:00.003082
-        self.assertTrue(rxn1.ts_species.ts_guesses[0].success)
-        self.assertTrue(rxn1.ts_species.ts_guesses[1].success)
+        if HAS_KINBOT:
+            rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
+            rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
+                                         products=[Species().from_smiles('[CH2]CO')])
+            rxn1.determine_family(rmg_database=self.rmgdb)
+            rxn1.arc_species_from_rmg_reaction()
+            self.assertEqual(rxn1.family.label, 'intra_H_migration')
+            kinbot1 = KinBotAdapter(job_type='tsg',
+                                    reactions=[rxn1],
+                                    testing=True,
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_KinBot', 'tst1'),
+                                    )
+            kinbot1.execute_incore()
+            self.assertTrue(rxn1.ts_species.is_ts)
+            self.assertEqual(rxn1.ts_species.charge, 0)
+            self.assertEqual(rxn1.ts_species.multiplicity, 2)
+            self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
+            self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'],
+                             ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
+            self.assertEqual(rxn1.ts_species.ts_guesses[1].initial_xyz['symbols'],
+                             ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
+            self.assertEqual(len(rxn1.ts_species.ts_guesses[1].initial_xyz['coords']), 8)
+            self.assertEqual(rxn1.ts_species.ts_guesses[0].method, 'kinbot')
+            self.assertEqual(rxn1.ts_species.ts_guesses[1].method, 'kinbot')
+            self.assertEqual(rxn1.ts_species.ts_guesses[0].method_index, 0)
+            self.assertEqual(rxn1.ts_species.ts_guesses[1].method_index, 1)
+            self.assertEqual(rxn1.ts_species.ts_guesses[0].method_direction, 'F')
+            self.assertEqual(rxn1.ts_species.ts_guesses[1].method_direction, 'R')
+            self.assertLess(rxn1.ts_species.ts_guesses[0].execution_time.seconds, 300)  # 0:00:00.003082
+            self.assertTrue(rxn1.ts_species.ts_guesses[0].success)
+            self.assertTrue(rxn1.ts_species.ts_guesses[1].success)
 
     @classmethod
     def tearDownClass(cls):
