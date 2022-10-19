@@ -937,6 +937,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     Returns: List[dict]
         Entries are Cartesian coordinates of TS guesses for all reactions.
     """
+    global DIHEDRAL_INCREMENT
     if not len(rmg_reactions):
         raise ValueError('Cannot generate TS guesses without an RMG Reaction object instance.')
 
