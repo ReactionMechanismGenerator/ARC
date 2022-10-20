@@ -1658,6 +1658,14 @@ class TestZMat(unittest.TestCase):
             for coord1, coord2 in zip(coords1, coords2):
                 self.assertAlmostEqual(coord1, coord2)
 
+    def test_map_index_to_int(self):
+        """Test the map_index_to_int() function."""
+        self.assertEqual(zmat.map_index_to_int(9), 9)
+        self.assertEqual(zmat.map_index_to_int('X2'), 2)
+        self.assertIsInstance(zmat.map_index_to_int('X13'), int)
+        self.assertEqual(zmat.map_index_to_int('X5486'), 5486)
+        with self.assertRaises(TypeError):
+            zmat.map_index_to_int('XY5486')
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
