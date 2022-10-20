@@ -2036,6 +2036,22 @@ def remove_1st_atom(zmat: dict) -> dict:
                            up_param(coords[2], increment=-1) if i >= 4 else None))
     new_coords = tuple(new_coords)
     new_vars = {up_param(key, increment=-1): val for key, val in zmat['vars'].items() if key not in removed_vars}
-    val_0 = zmat['map'][0]
-    new_map = {key - 1: val - 1 if val > val_0 else val for key, val in zmat['map'].items() if key != 0}
+    val_0 = map_index_to_int(zmat['map'][0])
+    new_map = {key - 1: map_index_to_int(val) - 1 if map_index_to_int(val) > val_0 else val for key, val in zmat['map'].items() if key != 0}
     return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
+
+
+def map_index_to_int(index: Union[int, str]) -> int:
+    """
+    Convert a zmat map value, e.g., 1 or 'X15', into an int, e.g., 1 or 15.
+
+    Args:
+        index (Union[int, str]): The map index.
+
+    Returns: int
+    """
+    if isinstance(index, int):
+        return index
+    if isinstance(index, str) and all(char.isdigit() for char in index[1:]):
+        return int(index[1:])
+    raise TypeError(f'Expected either an int or a string on the format "X15", got {index}')
