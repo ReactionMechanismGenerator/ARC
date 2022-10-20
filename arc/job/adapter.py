@@ -36,6 +36,7 @@ from arc.job.local import (change_mode,
 from arc.job.trsh import trsh_job_on_server
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
+from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
 
 if TYPE_CHECKING:
@@ -822,7 +823,7 @@ class JobAdapter(ABC):
         if self.tsg:
             job_dict['tsg'] = self.tsg
         if self.xyz:
-            job_dict['xyz'] = self.xyz
+            job_dict['xyz'] = xyz_to_str(self.xyz)
         return job_dict
 
     def format_max_job_time(self, time_format: str) -> str:
