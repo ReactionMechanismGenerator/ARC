@@ -662,7 +662,11 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
                                                            relabel_atoms=False,
                                                            )
     for rmg_reaction in rmg_reactions:
+        logger.info('\n\n**************')
+        logger.info(rmg_reaction.copy())
         r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
+        logger.info(f'r_map: {r_map}')
+        logger.info(f'p_map: {p_map}')
         ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
         ordered_rmg_products = [rmg_reaction.products[p_map[i]] for i in range(len(rmg_reaction.products))]
         mapped_rmg_reactants, mapped_rmg_products = list(), list()
