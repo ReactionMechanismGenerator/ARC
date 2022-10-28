@@ -1778,7 +1778,8 @@ class ARCSpecies(object):
             atom.label = str(index)
 
     def scissors(self,
-                sort_atom_labels: bool = False) -> list:
+                 sort_atom_labels: bool = False,
+                 ) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
         preserving the 3D geometry other than the scissioned bond.
