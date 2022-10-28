@@ -2061,6 +2061,38 @@ H       1.11582953    0.94384729   -0.10134685"""
                     if atom.radical_electrons:
                         self.assertEqual(i, 6)
 
+        dioxane = ARCSpecies(label="1_4_dioxane",
+                             smiles="O1CCOCC1",
+                             bdes=['all_h', (1, 2), (2, 3)],
+                             xyz="""C       0.76422800    1.11776800    0.30323800
+                                    C       1.35370300   -0.27043400    0.14047400
+                                    O       0.40406000   -1.25943500    0.47642000
+                                    C      -0.76422800   -1.11776800   -0.30323800
+                                    C      -1.35370300    0.27043300   -0.14047400
+                                    O      -0.40406000    1.25943500   -0.47642000
+                                    H       1.46830100    1.87912700   -0.03427600
+                                    H       0.53133100    1.29562500    1.36278900
+                                    H       1.68661400   -0.40822800   -0.89814000
+                                    H       2.20781000   -0.40849000    0.80435700
+                                    H      -1.46830100   -1.87912700    0.03427600
+                                    H      -0.53133100   -1.29562500   -1.36278900
+                                    H      -2.20781000    0.40849000   -0.80435700
+                                    H      -1.68661400    0.40822800    0.89814000""")
+        dioxane.final_xyz = dioxane.get_xyz()
+        species = dioxane.scissors()
+        self.assertEqual(sorted([spc.label for spc in species]),
+                         ['1_4_dioxane_BDE_1_2_cyclic',
+                          '1_4_dioxane_BDE_1_7_A',
+                          '1_4_dioxane_BDE_1_8_A',
+                          '1_4_dioxane_BDE_2_10_A',
+                          '1_4_dioxane_BDE_2_3_cyclic',
+                          '1_4_dioxane_BDE_2_9_A',
+                          '1_4_dioxane_BDE_4_11_A',
+                          '1_4_dioxane_BDE_4_12_A',
+                          '1_4_dioxane_BDE_5_13_A',
+                          '1_4_dioxane_BDE_5_14_A',
+                          'H'])
+
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
         nh4 = ARCSpecies(label='NH4', smiles='[NH4+]', charge=1)
