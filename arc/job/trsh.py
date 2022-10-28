@@ -989,9 +989,14 @@ def trsh_ess_job(label: str,
             # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
             # The number is the ADDITIONAL memory required in GB
             ess_trsh_methods.append('memory')
-            add_mem = float(job_status['error'].split()[-2])  # parse Molpro's requirement in MW
-            add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-            memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
+            if all(c.isdigit() or c == '.' for c in add_mem_str):
+                add_mem = float(add_mem_str)
+                add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
+                memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+            else:
+                # The required memory is not specified
+                memory = memory_gb * 3  # convert MW to GB, add 5 extra GB (be conservative)
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
                         f'instead of {memory_gb} GB')
         elif 'shift' not in ess_trsh_methods:
