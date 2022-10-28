@@ -360,9 +360,14 @@ def determine_ess_status(output_path: str,
                     # e.g.: `insufficient memory available - require              228765625  have
                     #        62928590
                     #        the request was for real words`
-                    # add_mem = (float(line.split()[-2]) - float(prev_line.split()[0])) / 1e6
                     keywords = ['Memory']
                     error = f'Additional memory required: {float(line.split()[-2]) / 1e6} MW'
+                    break
+                elif 'Insufficient memory to allocate' in line or 'The problem occurs in memory' in line:
+                    # e.g.: `Insufficient memory to allocate a new array of length 321843600 8-byte words
+                    #        The problem occurs in memory`
+                    keywords = ['Memory']
+                    error = f'Additional memory required'
                     break
                 elif 'Basis library exhausted' in line:
                     # e.g.:
