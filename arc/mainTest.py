@@ -286,7 +286,7 @@ class TestARC(unittest.TestCase):
 
         # Test deduce levels from composite method specification
         arc2 = ARC(project='test', composite_method='cbs-qb3')
-        self.assertIsNone(arc2.opt_level)
+        self.assertIsNotNone(arc2.opt_level)
         self.assertIsNone(arc2.sp_level)
         self.assertIsNone(arc2.orbitals_level)
         self.assertEqual(arc2.freq_level.simple(), 'b3lyp/cbsb7')
