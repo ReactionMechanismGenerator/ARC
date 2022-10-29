@@ -999,6 +999,10 @@ class JobAdapter(ABC):
         self.job_status[1]['keywords'] = keywords
         self.job_status[1]['error'] = error
         self.job_status[1]['line'] = line.rstrip()
+        if 'Syntax' in self.job_status[1]['keywords']:
+            logger.error(error)
+            raise JobError(f'Got a syntax error in {self.job_adapter}.\n'
+                           f'Check the level of theory ({self.level}), its compatibility, and any other keywords.')
 
     def rename_output_file(self):
         """
