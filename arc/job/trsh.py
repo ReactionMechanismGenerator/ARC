@@ -782,7 +782,6 @@ def trsh_ess_job(label: str,
                  num_heavy_atoms: int,
                  cpu_cores: int,
                  ess_trsh_methods: list,
-                 available_ess: list = None,
                  is_h: bool = False,
                  ) -> tuple:
     """
@@ -801,11 +800,9 @@ def trsh_ess_job(label: str,
         num_heavy_atoms (int): Number of heavy atoms in a molecule.
         cpu_cores (int): The total number of cpu cores requested for a job.
         ess_trsh_methods (list): The troubleshooting methods tried for this job.
-        available_ess (list, optional): Entries are string representations of available ESS.
         is_h (bool): Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.
 
     Todo:
-        - Don't change the level of theory as a trsh method unless the user explicitly allows it
         - Change server to one that has the same ESS if running out of disk space.
 
     Returns: tuple
@@ -889,14 +886,6 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
-        # suggest spawning a cbs-qb3 job if there are not many heavy atoms
-        elif 'cbs-qb3' not in ess_trsh_methods and level_of_theory.method != 'cbs-qb3' \
-                and 'scan' not in job_type and num_heavy_atoms <= 15:
-            # try running CBS-QB3, which is relatively robust.
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using CBS-QB3')
-            ess_trsh_methods.append('cbs-qb3')
-            level_of_theory = Level(method='cbs-qb3')
-            job_type = 'composite'
         elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods and server is not None:
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
@@ -904,25 +893,6 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                         f'instead of {memory_gb} GB')
             ess_trsh_methods.append('memory')
-        elif level_of_theory.method != 'cbs-qb3' and 'scf=(qc,nosymm) & CBS-QB3' not in ess_trsh_methods \
-                and 'scan' not in job_type and num_heavy_atoms <= 15:
-            # try both qc and nosymm with CBS-QB3
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm) with CBS-QB3')
-            ess_trsh_methods.append('scf=(qc,nosymm) & CBS-QB3')
-            level_of_theory = Level(method='cbs-qb3')
-            trsh_keyword = 'scf=(qc,nosymm)'
-        elif 'qchem' not in ess_trsh_methods and job_type != 'composite' and \
-                (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
-            # Try QChem
-            logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
-            ess_trsh_methods.append('qchem')
-            software = 'qchem'
-        elif 'molpro' not in ess_trsh_methods and job_type not in ['composite', 'scan'] \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
-            # Try molpro
-            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
-            ess_trsh_methods.append('molpro')
-            software = 'molpro'
         else:
             couldnt_trsh = True
 
@@ -943,28 +913,6 @@ def trsh_ess_job(label: str,
                         f'DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('SYM_IGNORE')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
-        elif 'wB97X-D3/def2-TZVP' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using wB97X-D3/def2-TZVP')
-            ess_trsh_methods.append('wB97X-D3/def2-TZVP')
-            # try converging with wB97X-D3/def2-TZVP
-            level_of_theory = Level(method='wb97x-d3', basis='def2-tzvp')
-        elif 'b3lyp/6-311++g(d,p)' not in ess_trsh_methods:
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using b3lyp/6-311++g(d,p)')
-            ess_trsh_methods.append('b3lyp/6-311++g(d,p)')
-            # try converging with B3LYP
-            level_of_theory = Level(method='b3lyp', basis='6-311++g(d,p)')
-        elif 'gaussian' not in ess_trsh_methods \
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
-            # Try Gaussian
-            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
-            ess_trsh_methods.append('gaussian')
-            software = 'gaussian'
-        elif 'molpro' not in ess_trsh_methods and job_type != 'scan' \
-                and (available_ess is None or 'molpro' in [ess.lower() for ess in available_ess]):
-            # Try molpro
-            logger.info(f'Troubleshooting {job_type} job using molpro instead of {software} for {label}')
-            ess_trsh_methods.append('molpro')
-            software = 'molpro'
         else:
             couldnt_trsh = True
 
@@ -1068,18 +1016,6 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
                         f'instead of {memory_gb} GB')
             shift = 'shift,-1.0,-0.5;'
-        elif 'gaussian' not in ess_trsh_methods\
-                and (available_ess is None or 'gaussian' in [ess.lower() for ess in available_ess]):
-            # Try Gaussian
-            logger.info(f'Troubleshooting {job_type} job using gaussian instead of {software} for {label}')
-            ess_trsh_methods.append('gaussian')
-            software = 'gaussian'
-        elif 'qchem' not in ess_trsh_methods\
-                and (available_ess is None or 'qchem' in [ess.lower() for ess in available_ess]):
-            # Try QChem
-            logger.info(f'Troubleshooting {job_type} job using qchem instead of {software} for {label}')
-            ess_trsh_methods.append('qchem')
-            software = 'qchem'
         else:
             couldnt_trsh = True
 
