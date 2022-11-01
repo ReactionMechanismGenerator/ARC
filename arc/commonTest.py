@@ -1192,6 +1192,16 @@ class TestCommon(unittest.TestCase):
         rmsd_5 = common.calc_rmsd(a_5, b_5)
         self.assertAlmostEqual(rmsd_5, 3.1622776601683795)
 
+    def test_safe_copy_file(self):
+        """tests the safe_copy_file() function."""
+        source_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
+        destination_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb_copy.out')
+        common.safe_copy_file(source=source_path, destination=destination_path)
+        self.assertTrue(os.path.isfile(destination_path))
+        # Check that no error is being raised if we attempt to copy to the same destination.
+        common.safe_copy_file(source=source_path, destination=destination_path)
+        os.remove(destination_path)
+
     def test_sort_atoms_in_decending_label_order(self):
         """tests the sort_atoms_in_decending_label_order function"""
         mol = Molecule(smiles="C1CCCC1")
