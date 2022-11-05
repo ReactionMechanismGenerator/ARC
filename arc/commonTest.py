@@ -68,6 +68,18 @@ class TestCommon(unittest.TestCase):
         with self.assertRaises(InputError):
             common.read_yaml_file('nopath')
 
+    def test_to_yaml(self):
+        """test the to_yaml() function"""
+        content_1 = [1, 2, 3]
+        expected_1 = "- 1\n- 2\n- 3\n"
+        content_2 = {"a": 1, "b" : 2, "c" :3}
+        expected_2 = "a: 1\nb: 2\nc: 3\n"
+        content_3 = content_2.values()
+        expected_3 = expected_1
+        self.assertEqual(common.to_yaml(content_1), expected_1)
+        self.assertEqual(common.to_yaml(content_2), expected_2)
+        self.assertEqual(common.to_yaml(content_3), expected_3)
+
     def test_get_git_commit(self):
         """Test the get_git_commit() function"""
         git_commit = common.get_git_commit()
