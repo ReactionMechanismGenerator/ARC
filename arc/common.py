@@ -420,6 +420,9 @@ def to_yaml(py_content: Union[list, dict]) -> str:
     Returns: str
         The corresponding YAML representation.
     """
+    if not isinstance(py_content, (list, dict)):
+        logger.warning(f"Type of output data is not a list or dictionary. Trying to convert {type(py_content)} to list:")
+        py_content = list(py_content)
     yaml.add_representer(str, string_representer)
     yaml_str = yaml.dump(data=py_content)
     return yaml_str
