@@ -23,7 +23,6 @@ from rmgpy.transport import TransportData
 from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
                         determine_symmetry,
-                        determine_top_group_indices,
                         dfs,
                         get_logger,
                         get_single_bond_length,
