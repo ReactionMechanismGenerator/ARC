@@ -927,7 +927,9 @@ class TestMapping(unittest.TestCase):
         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_3,
                                                                                       rmg_reaction=rmg_reactions[0])
         self.assertEqual(r_dict, {'*3': 10, '*1': 1, '*2': 7})
-        self.assertEqual(p_dict, {'*1': 1, '*3': 9, '*2': 16})
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertIn(p_dict["*2"], [14, 15, 16, 18, 19, 20])
+        self.assertIn(p_dict["*3"], [9, 11])
         self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions))
 
         # EA + H <=> CH3CHNH2 + H2
