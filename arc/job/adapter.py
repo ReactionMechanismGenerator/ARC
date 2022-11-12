@@ -893,12 +893,6 @@ class JobAdapter(ABC):
                                                       'time limit.'
                         self.job_status[1]['line'] = line
                         break
-                    if 'memory exceeded' in line:
-                        self.job_status[1]['status'] = 'errored'
-                        self.job_status[1]['keywords'] = ['Memory']
-                        self.job_status[1]['error'] = 'Insufficient job memory.'
-                        self.job_status[1]['line'] = line
-                        break
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
 
@@ -986,6 +980,7 @@ class JobAdapter(ABC):
             status, keywords, error, line = determine_ess_status(output_path=self.local_path_to_output_file,
                                                                  species_label=self.species_label,
                                                                  job_type=self.job_type,
+                                                                 job_log=self.additional_job_info,
                                                                  software=self.job_adapter,
                                                                  )
             if status != 'done' and self.final_time is not None \
@@ -995,6 +990,7 @@ class JobAdapter(ABC):
                 status, keywords, error, line = determine_ess_status(output_path=self.local_path_to_output_file,
                                                                      species_label=self.species_label,
                                                                      job_type=self.job_type,
+                                                                     job_log=self.additional_job_info,
                                                                      software=self.job_adapter,
                                                                      )
         else:
