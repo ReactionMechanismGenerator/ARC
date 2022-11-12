@@ -448,6 +448,33 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('cpu', ess_trsh_methods)
         self.assertEqual(cpu_cores, 10)
 
+    def test_determine_job_log_memory_issues(self):
+        """Test the determine_job_log_memory_issues() function."""
+        job_log_path_1 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'no_issues.log')
+        keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_1)
+        self.assertEqual(keywords, [])
+        self.assertEqual(error, '')
+        self.assertEqual(line, '')
+
+        job_log_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'memory_exceeded.log')
+        keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_2)
+        self.assertEqual(keywords, ['Memory'])
+        self.assertEqual(error, 'Insufficient job memory.')
+        self.assertEqual(line, '\tMEMORY EXCEEDED\n')
+
+        job_log_path_3 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'using_to_few.log')
+        keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_3)
+        self.assertEqual(keywords, ['Memory'])
+        self.assertEqual(error, 'Memory requested is too high.')
+        self.assertEqual(line, '\tJob Is Wasting Memory using less than 20 percent of requested Memory\n')
+
+        with open(job_log_path_3, 'r') as f:
+            job_log_content = f.read()
+        keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_content)
+        self.assertEqual(keywords, ['Memory'])
+        self.assertEqual(error, 'Memory requested is too high.')
+        self.assertEqual(line, '\tJob Is Wasting Memory using less than 20 percent of requested Memory')
+
     def test_trsh_negative_freq(self):
         """Test troubleshooting a negative frequency"""
         gaussian_neg_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
