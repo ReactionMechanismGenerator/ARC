@@ -5,6 +5,8 @@
 This module contains unit tests of the arc.species.mapping module
 """
 
+from itertools import permutations
+
 import unittest
 
 from qcelemental.models.molecule import Molecule as QCMolecule
@@ -620,17 +622,19 @@ class TestMapping(unittest.TestCase):
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
         atom_map = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
         self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
-        self.assertIn(atom_map[4], [5, 7])
-        self.assertIn(atom_map[5], [6, 7])
-        self.assertIn(atom_map[6], [5, 6])
+        self.assertIn(tuple(atom_map[4:7]), list(permutations([5,6,7], 3)))
         self.assertIn(atom_map[7], [2, 14, 15, 16, 18, 19, 20])
         self.assertIn(atom_map[8], [2, 14, 15, 16, 18, 19, 20])
-        self.assertTrue(any(entry == 2 for entry in [atom_map[7], atom_map[8]]))
+        self.assertIn(2, atom_map[7:9])
         self.assertEqual(atom_map[9], 8)
-        self.assertIn(atom_map[10], [9])
-        self.assertIn(atom_map[11], [14, 15, 16])
-        self.assertIn(atom_map[12], [14, 15, 16])
-        self.assertEqual(atom_map[13:], [10, 11, 12, 13, 17, 18, 20, 19, 21, 22, 23])
+        self.assertIn(atom_map[10], [9,11])
+        self.assertIn(tuple(atom_map[11:13]), list(permutations([14, 15, 16, 18, 19], 2)))
+        self.assertIn(atom_map[13], [8, 10])
+        self.assertIn(atom_map[14], [9])
+        self.assertEqual(atom_map[15:18], [12, 13, 17])
+        self.assertIn(tuple(atom_map[18:21]), list(permutations([15, 16, 14], 3)))
+        self.assertIn(tuple(atom_map[21:23]), list(permutations([21, 22], 2)))
+        self.assertEqual(atom_map[-1], 23)
 
     def test_inc_vals(self):
         """Test creating an atom map via map_two_species() and incrementing all values"""
