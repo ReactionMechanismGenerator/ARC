@@ -1366,7 +1366,8 @@ class TestMapping(unittest.TestCase):
 
         candidates = mapping.identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                                 fingerprint_2=self.butenylnebzene_fingerprint)
-        self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
+        trivial = {0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}
+        self.assertTrue(any([all([trivial[j] == candidate[j] for j in candidate])for candidate in candidates]))
 
     def test_are_adj_elements_in_agreement(self):
         """Test the are_adj_elements_in_agreement function."""
