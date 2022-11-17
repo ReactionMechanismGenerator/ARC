@@ -49,6 +49,7 @@ class TestFunctional(unittest.TestCase):
                                conformer_level='gfn2',
                                level_of_theory='gfn2',
                                freq_scale_factor=1.0,
+                               bac_type = None,
                                )
 
         cls.species_list_2 = [ARCSpecies(label= "iC3H7", smiles="C[CH]C"), ARCSpecies(label= "nC3H7", smiles="CC[CH2]")]
@@ -62,6 +63,7 @@ class TestFunctional(unittest.TestCase):
                                level_of_theory='gfn2',
                                ts_guess_level = 'gfn2',
                                freq_scale_factor=1.0,
+                               bac_type = None,
                                )
     
     def testThermo(self):
