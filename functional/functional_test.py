@@ -50,13 +50,17 @@ class TestFunctional(unittest.TestCase):
                                level_of_theory='gfn2',
                                freq_scale_factor=1.0,
                                bac_type = None,
+                               verbose=1,
                                )
 
         cls.species_list_2 = [ARCSpecies(label= "iC3H7", smiles="C[CH]C"), ARCSpecies(label= "nC3H7", smiles="CC[CH2]")]
 
+        with open(os.path.join(ARC_PATH, "functional", "ts_guess.xyz"), 'r') as f:
+            cls.ts_guess = f.read()
+
         cls.arc_object_2 = ARC(project='FunctionalKineticTest',
                                project_directory=os.path.join(ARC_PATH, "functional", "test", "kinetic"),
-                               reactions=[ARCReaction(label= "iC3H7 <=> nC3H7")],
+                               reactions=[ARCReaction(label= "iC3H7 <=> nC3H7", ts_xyz_guess=[cls.ts_guess])],
                                species=cls.species_list_2,
                                job_types=cls.job_types,
                                conformer_level='gfn2',
@@ -64,6 +68,7 @@ class TestFunctional(unittest.TestCase):
                                ts_guess_level = 'gfn2',
                                freq_scale_factor=1.0,
                                bac_type = None,
+                               verbose=1,
                                )
     
     def testThermo(self):
