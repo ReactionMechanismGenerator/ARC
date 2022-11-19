@@ -374,6 +374,16 @@ def read_yaml_file(path: str,
     if not isinstance(path, str):
         raise InputError(f'path must be a string, got {path} which is a {type(path)}')
     if not os.path.isfile(path):
+        dir = os.listdir("/"+"/".join(path.split("/")[1:-1]))
+        logger.warning(f"The yaml file cannot be found. The path contains: {dir}")
+        for file in dir:
+            command = "cat "+"/".join(path.split("/")[:-1])+"/"+file
+            logger.warning("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+            try:
+                logger.warning(f"{subprocess.run(command, capture_output=True, shell=True, text=True)} ")
+            except:
+                logger.warning(f"{subprocess.run(command, capture_output=True, shell=True, text=True, encoding='ISO-8859-1')} ")
+            logger.warning("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
         raise InputError(f'Could not find the YAML file {path}')
     with open(path, 'r') as f:
         content = yaml.load(stream=f, Loader=yaml.FullLoader)
