@@ -55,3 +55,6 @@ tests:
 'Module docs':
   - arc/docs/**/*
 
+'Module Functional':
+  - functional/*
+
