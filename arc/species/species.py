@@ -1471,7 +1471,7 @@ class ARCSpecies(object):
                     cluster_tsg.cluster.append(tsg.index)
                     if tsg.method not in cluster_tsg.method:
                         cluster_tsg.method += f' + {tsg.method}'
-                        cluster_tsg.execution_time += f' + {tsg.execution_time}'
+                        cluster_tsg.execution_time = f'{cluster_tsg.execution_time} + {tsg.execution_time}'
                     break
             else:
                 tsg.cluster = [tsg.index]

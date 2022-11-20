@@ -33,7 +33,7 @@ class TestFunctional(unittest.TestCase):
         
         cls.job_types = {'conformers': True,
                     'opt': True,
-                    'fine_grid': True,
+                    'fine_grid': False,
                     'freq': True,
                     'sp': True,
                     'rotors': False,
@@ -43,25 +43,32 @@ class TestFunctional(unittest.TestCase):
         cls.species_list_1 = [ARCSpecies(label= "2-propanol", smiles="CC(O)C"), ARCSpecies(label= "1-propanol", smiles="CCCO"), ARCSpecies(label= "NN", smiles="NN")]
 
         cls.arc_object_1 = ARC(project='FunctionalThermoTest',
-                               project_directory=os.path.join(f"{ARC_PATH}", "functional", "test", "thermo"),
+                               project_directory=os.path.join(ARC_PATH, "functional", "test", "thermo"),
                                species=cls.species_list_1,
                                job_types=cls.job_types,
                                conformer_level='gfn2',
                                level_of_theory='gfn2',
                                freq_scale_factor=1.0,
+                               bac_type = None,
+                               verbose=1,
                                )
 
         cls.species_list_2 = [ARCSpecies(label= "iC3H7", smiles="C[CH]C"), ARCSpecies(label= "nC3H7", smiles="CC[CH2]")]
 
+        with open(os.path.join(ARC_PATH, "functional", "ts_guess.xyz"), 'r') as f:
+            cls.ts_guess = f.read()
+
         cls.arc_object_2 = ARC(project='FunctionalKineticTest',
-                               project_directory=os.path.join(f"{ARC_PATH}", "functional", "test", "kinetic"),
-                               reactions=[ARCReaction(label= "iC3H7 <=> nC3H7")],
+                               project_directory=os.path.join(ARC_PATH, "functional", "test", "kinetic"),
+                               reactions=[ARCReaction(label= "iC3H7 <=> nC3H7", ts_xyz_guess=[cls.ts_guess])],
                                species=cls.species_list_2,
                                job_types=cls.job_types,
                                conformer_level='gfn2',
                                level_of_theory='gfn2',
                                ts_guess_level = 'gfn2',
                                freq_scale_factor=1.0,
+                               bac_type = None,
+                               verbose=1,
                                )
     
     def testThermo(self):
@@ -70,8 +77,8 @@ class TestFunctional(unittest.TestCase):
         summary = self.arc_object_1.summary()
         for _, ter in summary.items():
             self.assertTrue(ter)
-        self.assertTrue(os.path.exists(os.path.join(f"{ARC_PATH}", "functional", "test", "thermo", "output", "RMG libraries", "thermo")))
-        with open(file=os.path.join(f"{ARC_PATH}", "functional", "test", "thermo", "output", "RMG libraries", "thermo", "FunctionalThermoTest.py"), mode='r') as f:
+        self.assertTrue(os.path.exists(os.path.join(ARC_PATH, "functional", "test", "thermo", "output", "RMG libraries", "thermo")))
+        with open(file=os.path.join(ARC_PATH, "functional", "test", "thermo", "output", "RMG libraries", "thermo", "FunctionalThermoTest.py"), mode='r') as f:
             entry = 0
             for line in f.readlines():
                 if "entry" in line:
@@ -84,9 +91,9 @@ class TestFunctional(unittest.TestCase):
         summary = self.arc_object_2.summary()
         for _, ter in summary.items():
             self.assertTrue(ter)
-        self.assertTrue(os.path.exists(os.path.join(f"{ARC_PATH}", "functional", "test", "kinetic", "output", "RMG libraries", "kinetics")))
+        self.assertTrue(os.path.exists(os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics")))
         has_content = False
-        with open(file = os.path.join(f"{ARC_PATH}", "functional", "test", "kinetic", "output", "RMG libraries", "kinetics", "reactions.py"), mode='r') as f:
+        with open(file = os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics", "reactions.py"), mode='r') as f:
             for line in f.readlines():
                 if "Arrhenius" in line:
                     has_content = True
