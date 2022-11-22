@@ -48,3 +48,6 @@ docs/build/*
 
 # timer.dat
 timer.dat
+
+# .vscode
+.vscode
