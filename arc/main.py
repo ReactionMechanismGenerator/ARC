@@ -976,6 +976,7 @@ class ARC(object):
                 else:
                     default_flag = ''
                 self.irc_level = Level(repr=self.irc_level)
+                self.opt_level = self.opt_level or self.irc_level
                 logger.info(f'IRC:{default_flag} {self.irc_level}')
 
             if self.job_types['orbitals']:
