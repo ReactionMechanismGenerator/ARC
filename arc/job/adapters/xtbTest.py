@@ -137,6 +137,13 @@ H      -0.20775137    1.01509427    0.05730382""")],
                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_11'),
                                 species=[ARCSpecies(label='TS', is_ts=True, xyz=cls.ts_xyz)],
                                 )
+        cls.job_12 = xTBAdapter(execution_type='incore',
+                                job_type='freq',
+                                project='test_12',
+                                level=Level(method='gfn2'),
+                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_12'),
+                                species=[ARCSpecies(label='H2', smiles='[H][H]')],
+                                )
 
     def test_write_input_file(self):
         """Test writing Gaussian input files"""
@@ -270,6 +277,11 @@ $end"""
         for freq, expected_freq in zip(parse_frequencies(self.job_11.local_path_to_output_file)[:5], expected_freqs):
             self.assertAlmostEqual(freq, expected_freq, places=0)
 
+        self.job_12.execute_incore()
+        expected_freqs = [4225.72]
+        for freq, expected_freq in zip(parse_frequencies(self.job_12.local_path_to_output_file), expected_freqs):
+            self.assertAlmostEqual(freq, expected_freq, places=0)
+
     def test_scan(self):
         """Test running a 1D scan calculation using xTB."""
         self.job_8.execute()
@@ -281,7 +293,7 @@ $end"""
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        for i in range(15):
+        for i in range(20):
             path = os.path.join(ARC_PATH, 'arc', 'testing', f'test_xTBAdapter_{i}')
             shutil.rmtree(path, ignore_errors=True)
 
