@@ -14,7 +14,7 @@ from rmgpy.exceptions import InputError as RMGInputError
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
-from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot, read_yaml_file
+from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot, is_str_float, read_yaml_file
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import hartree_to_si, str_to_xyz, xyz_from_data
 
@@ -127,7 +127,19 @@ def parse_frequencies(path: str,
                     break
             if 'vibrational frequencies' in line:
                 read_output = True
-
+        if freqs.size == 0:
+            # Could not read freqs from output.out, try reading from vibspectrum
+            vibspectrum_path = os.path.join(os.path.dirname(path), 'vibspectrum')
+            if os.path.isfile(vibspectrum_path):
+                lines = _get_lines_from_file(path=vibspectrum_path)
+                for line in lines:
+                    if '$' not in line and '#' not in line:
+                        splits = line.split()
+                        if len(splits) < 5:
+                            continue
+                        freq = float(splits[-4]) if is_str_float(splits[-4]) else 0
+                        if freq:
+                            freqs = np.append(freqs, freq)
     else:
         raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
                           f'files, got {software}')
