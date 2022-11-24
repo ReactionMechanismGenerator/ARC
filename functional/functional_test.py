@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-This module contains functional tests for ARC
+This module that contains functional tests for ARC
 """
 
 from encodings import utf_8
@@ -19,6 +19,7 @@ from arc.species import ARCSpecies
 
 settings['ts_adapters'] = ['xtb-gsm']
 
+
 class TestFunctional(unittest.TestCase):
     """
     Contains functional tests for ARC.
@@ -32,16 +33,17 @@ class TestFunctional(unittest.TestCase):
         cls.has_settings = False
         
         cls.job_types = {'conformers': True,
-                    'opt': True,
-                    'fine_grid': False,
-                    'freq': True,
-                    'sp': True,
-                    'rotors': False,
-                    'irc': False,
-                    }
+                         'opt': True,
+                         'fine_grid': False,
+                         'freq': True,
+                         'sp': True,
+                         'rotors': False,
+                         'irc': False,
+                         }
 
-        cls.species_list_1 = [ARCSpecies(label= "2-propanol", smiles="CC(O)C"), ARCSpecies(label= "1-propanol", smiles="CCCO"), ARCSpecies(label= "NN", smiles="NN")]
-
+        cls.species_list_1 = [ARCSpecies(label="2-propanol", smiles="CC(O)C"),
+                              ARCSpecies(label="1-propanol", smiles="CCCO"),
+                              ARCSpecies(label="NN", smiles="NN")]
         cls.arc_object_1 = ARC(project='FunctionalThermoTest',
                                project_directory=os.path.join(ARC_PATH, "functional", "test", "thermo"),
                                species=cls.species_list_1,
@@ -54,7 +56,6 @@ class TestFunctional(unittest.TestCase):
                                )
 
         cls.species_list_2 = [ARCSpecies(label= "iC3H7", smiles="C[CH]C"), ARCSpecies(label= "nC3H7", smiles="CC[CH2]")]
-
         with open(os.path.join(ARC_PATH, "functional", "ts_guess.xyz"), 'r') as f:
             cls.ts_guess = f.read()
 
@@ -65,7 +66,7 @@ class TestFunctional(unittest.TestCase):
                                job_types=cls.job_types,
                                conformer_level='gfn2',
                                level_of_theory='gfn2',
-                               ts_guess_level = 'gfn2',
+                               ts_guess_level='gfn2',
                                freq_scale_factor=1.0,
                                bac_type = None,
                                verbose=1,
@@ -93,10 +94,11 @@ class TestFunctional(unittest.TestCase):
             self.assertTrue(ter)
         self.assertTrue(os.path.exists(os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics")))
         has_content = False
-        with open(file = os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics", "reactions.py"), mode='r') as f:
+        with open(file=os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics", "reactions.py"), mode='r') as f:
             for line in f.readlines():
                 if "Arrhenius" in line:
                     has_content = True
+                    break
         self.assertTrue(has_content)
     
     @classmethod
@@ -105,8 +107,8 @@ class TestFunctional(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', 'kinetic'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', 'thermo'), ignore_errors=True)
+        for folder in ['thermo', 'kinetic']:
+            shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', folder), ignore_errors=True)
 
  
 if __name__ == '__main__':
