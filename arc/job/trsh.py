@@ -4,7 +4,7 @@ The ARC troubleshooting ("trsh") module
 
 import math
 import os
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -48,7 +48,9 @@ delete_command, inconsistency_ab, inconsistency_az, maximum_barrier, preserve_pa
 def determine_ess_status(output_path: str,
                          species_label: str,
                          job_type: str,
-                         software: str = None):
+                         job_log: Optional[str] = None,
+                         software: Optional[str] = None,
+                         ) -> Tuple[str, List[str], str, str]:
     """
     Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
 
@@ -56,14 +58,19 @@ def determine_ess_status(output_path: str,
         output_path (str): The path to the ESS output file.
         species_label (str): The species label.
         job_type (str): The job type (e.g., 'opt, 'freq', 'ts', 'sp').
+        job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.
         software (str, optional): The ESS software.
 
-    Returns: Tuple[str, list, str, str]
+    Returns: Tuple[str, List[str], str, str]
         - The status. Either 'done' or 'errored'.
         - The standardized error keywords.
         - A description of the error.
         - The parsed line from the ESS output file indicating the error.
     """
+    keywords, error, line = determine_job_log_memory_issues(job_log=job_log)
+    if error:
+        return 'errored', keywords, error, line
+
     if software is None:
         software = determine_ess(log_file=output_path)
 
@@ -420,6 +427,43 @@ def determine_ess_status(output_path: str,
             return 'errored', keywords, error, line
 
     return '', list(), '', ''
+
+
+def determine_job_log_memory_issues(job_log: Optional[str] = None) -> Tuple[List[str], str, str]:
+    """
+    Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.
+
+    Args:
+        job_log (str, optional): The path to the server job log file (not the ESS output file) or its content.
+
+    Returns: Tuple[List[str], str, str]
+        - The standardized error keywords.
+        - A description of the error.
+        - The parsed line from the ESS output file indicating the error.
+    """
+    keywords, error, line = list(), '', ''
+    if job_log is not None:
+        if os.path.isfile(job_log):
+            with open(job_log, 'r') as f:
+                lines = f.readlines()
+        else:
+            lines = job_log.splitlines()
+        mem_usage = ''
+        for line in lines:
+            if 'MemoryUsage of job' in line:
+                # E.g.: "      3162  -  MemoryUsage of job (MB)"
+                mem_usage = f', used only {0.001 * int(line.split()[0])} GB'
+            if 'memory exceeded' in line.lower():
+                keywords = ['Memory']
+                error = 'Insufficient job memory.'
+                break
+            if 'using less than' in line and 'percent of requested' in line:
+                # e.g., "using less than 20 percent of requested"
+                keywords = ['Memory']
+                error = f'Memory requested is too high{mem_usage}.'
+                break
+    line = line if error else ''
+    return keywords, error, line
 
 
 def trsh_negative_freq(label: str,
