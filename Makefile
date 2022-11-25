@@ -34,6 +34,9 @@ install-sella:
 install-xtb:
 	bash devtools/install_xtb.sh
 
+lite:
+	bash devtools/lite.sh
+
 clean:
 	find -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf testing
