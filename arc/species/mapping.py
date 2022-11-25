@@ -1001,6 +1001,8 @@ def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[
             result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
             if result is not None:
                 candidates.append(result)
+    if len(candidates) == 0:
+        return None
     return prune_identical_dicts(candidates)
 
 
