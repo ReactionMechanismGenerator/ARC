@@ -757,6 +757,14 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
         candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+        if candidates is None or len(candidates) == 0:
+            consider_chirality = not consider_chirality
+            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
+            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
+            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+            if candidates is None or len(candidates) == 0:
+                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
+                return None
         if not len(candidates):
             if allow_backend_shift:
                 backend = 'QCElemental'
