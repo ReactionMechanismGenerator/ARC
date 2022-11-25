@@ -51,62 +51,24 @@ class TestGCNAdapter(unittest.TestCase):
             content_r_sdf = f.read()
         with open(self.product_path, 'r') as f:
             content_p_sdf = f.read()
-        expected_r_sdf = """
-     RDKit          3D
-
- 10  9  0  0  0  0  0  0  0  0999 V2000
-    1.3390    0.2885    0.5167 C   0  0  0  0  0  3  0  0  0  0  0  0
-    0.1866   -0.4096   -0.1211 C   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.1463    0.0874    0.4131 C   0  0  0  0  0  0  0  0  0  0  0  0
-    2.3016   -0.2071    0.5757 H   0  0  0  0  0  0  0  0  0  0  0  0
-    1.2891    1.3478    0.7427 H   0  0  0  0  0  0  0  0  0  0  0  0
-    0.2306   -0.2567   -1.2045 H   0  0  0  0  0  0  0  0  0  0  0  0
-    0.2728   -1.4857    0.0639 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.2230   -0.0695    1.4944 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.9703   -0.4510   -0.0661 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.2801    1.1560    0.2137 H   0  0  0  0  0  0  0  0  0  0  0  0
-  1  2  1  0
-  1  4  1  0
-  1  5  1  0
-  2  3  1  0
-  2  6  1  0
-  2  7  1  0
-  3  8  1  0
-  3  9  1  0
-  3 10  1  0
-M  RAD  1   1   2
-M  END
-$$$$
-"""
-        expected_p_sdf = """
-     RDKit          3D
-
- 10  9  0  0  0  0  0  0  0  0999 V2000
-   -1.2887    0.0629    0.1089 C   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0110   -0.4576   -0.3934 C   0  0  0  0  0  3  0  0  0  0  0  0
-    1.2841    0.1132    0.1221 C   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.4984    1.0458   -0.3224 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.2825    0.1465    1.1995 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -2.0984   -0.6166   -0.1732 H   0  0  0  0  0  0  0  0  0  0  0  0
-    0.0274   -1.0601   -1.2952 H   0  0  0  0  0  0  0  0  0  0  0  0
-    1.4596    1.1037   -0.3073 H   0  0  0  0  0  0  0  0  0  0  0  0
-    2.1226   -0.5341   -0.1516 H   0  0  0  0  0  0  0  0  0  0  0  0
-    1.2634    0.1963    1.2126 H   0  0  0  0  0  0  0  0  0  0  0  0
-  1  2  1  0
-  1  4  1  0
-  1  5  1  0
-  1  6  1  0
-  2  3  1  0
-  2  7  1  0
-  3  8  1  0
-  3  9  1  0
-  3 10  1  0
-M  RAD  1   2   2
-M  END
-$$$$
-"""
-        self.assertEqual(content_r_sdf, expected_r_sdf)
-        self.assertEqual(content_p_sdf, expected_p_sdf)
+        expected_r_atoms = sorted(list(self.rxn_1.r_species[0].get_xyz()["symbols"]), key=ord)
+        expected_p_atoms = sorted(list(self.rxn_1.p_species[0].get_xyz()["symbols"]), key=ord)
+        r_xyz_atoms = sorted(list(filter(("").__ne__, content_r_sdf.split(" "))), key =len, reverse= False)
+        p_xyz_atoms = sorted(list(filter(("").__ne__, content_p_sdf.split(" "))), key =len, reverse= False)
+        i = 0
+        r_atoms = []
+        while len(r_xyz_atoms[i]) == 1:
+            if r_xyz_atoms[i] in ["C", "H", "O", "N"]:
+                r_atoms.append(r_xyz_atoms[i])
+            i += 1
+        i = 0
+        p_atoms = []
+        while len(p_xyz_atoms[i]) == 1:
+            if p_xyz_atoms[i] in ["C", "H", "O", "N"]:
+                p_atoms.append(p_xyz_atoms[i])
+            i += 1
+        self.assertEqual(r_atoms, expected_r_atoms)
+        self.assertEqual(p_atoms, expected_p_atoms)
 
     def test_run_subprocess_locally(self):
         """Test the run_subprocess_locally() function"""

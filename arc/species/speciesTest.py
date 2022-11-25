@@ -35,6 +35,7 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 split_mol,
                                  )
 from arc.species.xyz_to_2d import MolGraph
 
@@ -1986,15 +1987,15 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch3ch2o = ARCSpecies(label='ch3ch2o', smiles='CC[O]', xyz=ch3ch2o_xyz, multiplicity=2, bdes=[(1, 2)])
         ch3ch2o.final_xyz = ch3ch2o.conformers[0]
         spc1, spc2 = ch3ch2o.scissors()
-        self.assertEqual(spc2.mol.to_smiles(), '[CH3]')
+        self.assertEqual(spc1.mol.to_smiles(), '[CH3]')
         expected_conformer0 = {'symbols': ('C', 'O', 'H', 'H'), 'isotopes': (12, 16, 1, 1),
                                'coords': ((0.6948946528715227, 0.1950960079388373, 0.0),
                                           (-0.6219693471284773, -0.2562079920611626, 0.0),
                                           (0.7985566528715228, 0.8716160079388374, 0.880066),
                                           (0.7985566528715228, 0.8716160079388374, -0.880066))}
-        self.assertTrue(almost_equal_coords_lists(spc1.conformers[0], expected_conformer0))
-        self.assertEqual(spc1.multiplicity, 3)
-        self.assertEqual(spc2.multiplicity, 2)
+        self.assertTrue(almost_equal_coords_lists(spc2.conformers[0], expected_conformer0))
+        self.assertEqual(spc2.multiplicity, 3)
+        self.assertEqual(spc1.multiplicity, 2)
 
         xyz0 = """ C                  2.66919769   -3.26620310   -0.74374716
                    H                  2.75753007   -4.15036595   -1.33567513
@@ -2092,6 +2093,42 @@ H       1.11582953    0.94384729   -0.10134685"""
                           '1_4_dioxane_BDE_5_13_A',
                           '1_4_dioxane_BDE_5_14_A',
                           'H'])
+
+        oh = ARCSpecies(label='OH', smiles='[OH]',
+                        xyz="""O       0.00000000    0.00000000    0.61310000
+                               H       0.00000000    0.00000000   -0.61310000""")
+        oh.bdes = [(1, 2)]
+        oh.final_xyz = oh.get_xyz()
+        species = oh.scissors(sort_atom_labels=True)
+        for spc in species:
+            if spc.label != 'H':
+                self.assertEqual(len(spc.mol.atoms), 1)
+                self.assertEqual(spc.mol.atoms[0].element.symbol, 'O')
+                self.assertEqual(spc.get_xyz()['symbols'][0], 'O')
+
+    def test_keeping_atomic_order_in_scissors(self):
+        """Test that the atomic order in a species mol and xyz is consistent after calling scissors()."""
+        spc_1 = ARCSpecies(label='S1', smiles='CCC#C',
+                           xyz={'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                                'coords': ((-0.22032194786403442, -0.6081536542645684, -0.3243969736484967),
+                                           (-1.2271950358465793, 0.46040917059722275, 0.06619944696246732),
+                                           (1.1462964548265038, -0.21366678532056899, 0.04350224050830066),
+                                           (2.2645741718668058, 0.10557490883133323, 0.3428144021119964),
+                                           (-0.4797991147421434, -1.5506603495373987, 0.17036425020095783),
+                                           (-0.2771570589284261, -0.7841142464365669, -1.4043245574184129),
+                                           (-0.9980289759435756, 1.4026910109837285, -0.4414666851988214),
+                                           (-1.2115740302172682, 0.6430020722518816, 1.1462571145214786),
+                                           (-2.245373007873077, 0.1642726986342582, -0.20898323044004946),
+                                           (3.256912447879436, 0.3890546132622597, 0.6085111133972021))})
+        for atom, symbol in zip(spc_1.mol.atoms, spc_1.get_xyz()['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+        spc_1.final_xyz = spc_1.get_xyz()
+        spc_1.bdes = [(1, 5)]
+        frags = spc_1.scissors()
+        for frag in frags:
+            for atom, symbol in zip(frag.mol.atoms, frag.get_xyz()['symbols']):
+                self.assertEqual(atom.element.symbol, symbol)
 
     def test_net_charged_species(self):
         """Test that we can define, process, and manipulate ions"""
@@ -2550,6 +2587,31 @@ H      -1.47626400   -0.10694600   -1.88883800"""
 1 S u1 p2 c0 {2,S}
 2 S u1 p2 c0 {1,S}
 """)
+
+    def test_split_mol(self):
+        """Test the split_mol() function."""
+        mol = Molecule(smiles='[H]')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(len(fragments), 1)
+
+        mol = Molecule(smiles='CC([O])C(C#N)Cc1ccccc1O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 1)
+        self.assertEqual(len(fragments), 1)
+
+        mol = Molecule(smiles='O.O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 2)
+        self.assertEqual(len(fragments), 2)
+
+        mol = Molecule(smiles='O.O.O')
+        molecules, fragments = split_mol(mol)
+        self.assertEqual(len(molecules), 3)
+        self.assertEqual(len(fragments), 3)
+        for m in molecules:
+            self.assertEqual(m.to_smiles(), 'O')
+        self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
 
     @classmethod
     def tearDownClass(cls):

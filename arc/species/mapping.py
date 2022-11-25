@@ -757,6 +757,14 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
         candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+        if candidates is None or len(candidates) == 0:
+            consider_chirality = not consider_chirality
+            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
+            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
+            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+            if candidates is None or len(candidates) == 0:
+                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
+                return None
         if not len(candidates):
             if allow_backend_shift:
                 backend = 'QCElemental'
@@ -995,12 +1003,14 @@ def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[
                               of species 1, values are potentially mapped atom indices of species 2.
     """
     candidates = list()
-    for key_1, val_1 in fingerprint_1.items():
-        for key_2, val_2 in fingerprint_2.items():
+    for key_1 in fingerprint_1.keys():
+        for key_2 in fingerprint_2.keys():
             # Try all combinations of heavy atoms.
             result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
             if result is not None:
                 candidates.append(result)
+    if len(candidates) == 0:
+        return None
     return prune_identical_dicts(candidates)
 
 
@@ -1097,15 +1107,13 @@ def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
         List[dict]: A list of unique dicts.
     """
     new_dicts_list = list()
+    num_of_items = len(dicts_list[0].keys())
     for new_dict in dicts_list:
-        unique = True
         for existing_dict in new_dicts_list:
-            if unique:
-                for new_key, new_val in new_dict.items():
-                    if new_key not in existing_dict.keys() or new_val == existing_dict[new_key]:
-                        unique = False
-                        break
-        if unique:
+            if len([new_val for new_key, new_val in new_dict.items()
+                    if new_key in existing_dict.keys() and existing_dict[new_key] == new_val]) == num_of_items:
+                break
+        else:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 

@@ -5,6 +5,8 @@
 This module contains unit tests of the arc.species.mapping module
 """
 
+from itertools import permutations
+
 import unittest
 
 from qcelemental.models.molecule import Molecule as QCMolecule
@@ -620,17 +622,19 @@ class TestMapping(unittest.TestCase):
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
         atom_map = mapping.map_h_abstraction(rxn=rxn, db=self.rmgdb)
         self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
-        self.assertIn(atom_map[4], [5, 7])
-        self.assertIn(atom_map[5], [6, 7])
-        self.assertIn(atom_map[6], [5, 6])
+        self.assertIn(tuple(atom_map[4:7]), list(permutations([5,6,7], 3)))
         self.assertIn(atom_map[7], [2, 14, 15, 16, 18, 19, 20])
         self.assertIn(atom_map[8], [2, 14, 15, 16, 18, 19, 20])
-        self.assertTrue(any(entry == 2 for entry in [atom_map[7], atom_map[8]]))
+        self.assertIn(2, atom_map[7:9])
         self.assertEqual(atom_map[9], 8)
-        self.assertIn(atom_map[10], [9])
-        self.assertIn(atom_map[11], [14, 15, 16])
-        self.assertIn(atom_map[12], [14, 15, 16])
-        self.assertEqual(atom_map[13:], [10, 11, 12, 13, 17, 18, 20, 19, 21, 22, 23])
+        self.assertIn(atom_map[10], [9,11])
+        self.assertIn(tuple(atom_map[11:13]), list(permutations([14, 15, 16, 18, 19], 2)))
+        self.assertIn(atom_map[13], [8, 10])
+        self.assertIn(atom_map[14], [9])
+        self.assertEqual(atom_map[15:18], [12, 13, 17])
+        self.assertIn(tuple(atom_map[18:21]), list(permutations([15, 16, 14], 3)))
+        self.assertIn(tuple(atom_map[21:23]), list(permutations([21, 22], 2)))
+        self.assertEqual(atom_map[-1], 23)
 
     def test_inc_vals(self):
         """Test creating an atom map via map_two_species() and incrementing all values"""
@@ -927,7 +931,9 @@ class TestMapping(unittest.TestCase):
         r_dict, p_dict = mapping.get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_3,
                                                                                       rmg_reaction=rmg_reactions[0])
         self.assertEqual(r_dict, {'*3': 10, '*1': 1, '*2': 7})
-        self.assertEqual(p_dict, {'*1': 1, '*3': 9, '*2': 16})
+        self.assertEqual(p_dict["*1"], 1)
+        self.assertIn(p_dict["*2"], [14, 15, 16, 18, 19, 20])
+        self.assertIn(p_dict["*3"], [9, 11])
         self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_3, rmg_reactions))
 
         # EA + H <=> CH3CHNH2 + H2
@@ -1191,6 +1197,48 @@ class TestMapping(unittest.TestCase):
         atom_map = mapping.map_two_species(rmg_mol, rmg_spc)
         self.assertEqual(atom_map, [0, 1, 2, 3, 4])
 
+        # A fused cyclic species
+        spc1 = ARCSpecies(label='fused_1', smiles='[C]1(CC2)CC2CC1',
+                          xyz="""C      -0.38658964    0.97348439   -0.55296050
+                                 C       0.44456467   -1.04449048   -0.11713751
+                                 C       0.14517446   -0.20932339   -1.36146162
+                                 C       1.37616734   -0.10997154    0.67314292
+                                 C      -0.92775780   -1.07975617    0.57657735
+                                 C       0.80246711    1.28292282    0.37232052
+                                 C      -1.50145761    0.31313759    0.27575176
+                                 H       0.86855173   -2.03342005   -0.30132296
+                                 H       1.38248424   -0.32987805    1.74537038
+                                 H       2.40519832   -0.18106219    0.30307510
+                                 H      -1.56734166   -1.85321468    0.13657445
+                                 H      -0.85136590   -1.27016292    1.65174234
+                                 H      -0.60937947   -0.66103559   -2.01400392
+                                 H       1.03963635    0.03308105   -1.94488660
+                                 H       1.55043120    1.89424013   -0.14512423
+                                 H       0.50125035    1.80967656    1.28329207
+                                 H      -1.73259943    0.86939040    1.18965936
+                                 H      -2.42210739    0.22208655   -0.31163426""")
+        spc2 = ARCSpecies(label='fused_2', smiles='[C]1(CC2)CC2CC1',
+                          xyz="""C      -0.60486945   -0.69614987    0.55153384
+                                 C       0.72966175   -1.28623606    0.03831267
+                                 C      -1.34657984    0.00225478   -0.61236820
+                                 C      -0.12497217    0.49180595    1.37265484
+                                 C       1.58338329   -0.04095687   -0.24449177
+                                 C      -0.48245912    1.24108048   -0.89191311
+                                 C       0.59759030    1.04291815    0.15837061
+                                 H      -1.22233292   -1.42106657    1.08628881
+                                 H       0.59385579   -1.90248631   -0.85656549
+                                 H       1.20555473   -1.90421431    0.80862971
+                                 H      -2.35492058    0.30537385   -0.30720051
+                                 H      -1.43678923   -0.64229170   -1.49295698
+                                 H       2.47702748   -0.01380510    0.38658835
+                                 H       1.88367721    0.03019019   -1.29368859
+                                 H      -1.03766274    2.16736973   -0.71489201
+                                 H      -0.08418323    1.25142155   -1.91040305
+                                 H       0.55011565    0.22933604    2.19236815
+                                 H      -0.92609692    1.14545605    1.72973274""")
+        atom_map = mapping.map_two_species(spc1, spc2)
+        self.assertEqual(atom_map, [6, 0, 3, 2, 1, 5, 4, 7, 11, 10, 9, 8, 16, 17, 14, 15, 13, 12])
+
     def test_get_arc_species(self):
         """Test the get_arc_species function."""
         self.assertIsInstance(mapping.get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
@@ -1324,7 +1372,8 @@ class TestMapping(unittest.TestCase):
 
         candidates = mapping.identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                                 fingerprint_2=self.butenylnebzene_fingerprint)
-        self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
+        trivial = {0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}
+        self.assertTrue(any([all([trivial[j] == candidate[j] for j in candidate])for candidate in candidates]))
 
     def test_are_adj_elements_in_agreement(self):
         """Test the are_adj_elements_in_agreement function."""

@@ -23,7 +23,7 @@ from rmgpy.transport import TransportData
 from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,
                         determine_symmetry,
-                        determine_top_group_indices,
+                        dfs,
                         get_logger,
                         get_single_bond_length,
                         generate_resonance_structures,
@@ -32,7 +32,7 @@ from arc.common import (almost_equal_coords,
                         rmg_mol_from_dict_repr,
                         rmg_mol_to_dict_repr,
                         timedelta_from_str,
-                        sort_atoms_in_decending_label_order,
+                        sort_atoms_in_descending_label_order,
                         )
 from arc.exceptions import InputError, RotorError, SpeciesError, TSError
 from arc.imports import settings
@@ -150,7 +150,7 @@ class ARCSpecies(object):
                                 The brute force methods will generate all the geometries in advance and submit all
                                 relevant jobs simultaneously. The continuous method will wait for the previous job
                                 to terminate, and use its geometry as the initial guess for the next job.
-                                Another set of three keys is allowed, adding `_diagonal' to each of the above
+                                Another set of three keys is allowed, adding `_diagonal` to each of the above
                                 keys. the secondary keys are therefore:
                                 - 'brute_force_sp_diagonal'
                                 - 'brute_force_opt_diagonal'
@@ -171,7 +171,7 @@ class ARCSpecies(object):
                                 attribute must be specified by the user.
                                 An additional supported key is 'ess', in which case ARC will allow the ESS to take care
                                 of spawning the ND continuous constrained optimizations (not yet implemented).
-        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahydral carbon
+        consider_all_diastereomers (bool, optional): Whether to consider all different chiralities (tetrahedral carbon
                                                      centers, nitrogen inversions, and cis/trans double bonds) when
                                                      generating conformers. ``True`` to consider all. If no 3D
                                                      coordinates are given for the species, all diastereomers will be
@@ -190,7 +190,7 @@ class ARCSpecies(object):
 
     Attributes:
         label (str): The species' label.
-        original_label (str): The species' label prior to modifications (removing fornidden characters).
+        original_label (str): The species' label prior to modifications (removing forbidden characters).
         multiplicity (int): The species' electron spin multiplicity. Can be determined from the adjlist/smiles/xyz
                             (If unspecified, assumed to be either a singlet or a doublet).
         charge (int): The species' net charge. Assumed to be 0 if unspecified.
@@ -1788,7 +1788,7 @@ class ARCSpecies(object):
         and the indices are 1-indexed.
         
         Args:
-            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
+            sort_atom_labels (bool, optional): Boolean flag, determines whether sorting is required.
 
         Returns: list
             The scission-resulting species.
@@ -1825,56 +1825,34 @@ class ARCSpecies(object):
 
     def _scissors(self,
                   indices: tuple,
-                  sort_atom_labels: bool = True) -> list:
+                  sort_atom_labels: bool = True,
+                  ) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
 
         Args:
             indices (tuple): The atom indices between which to cut (1-indexed, atoms must be bonded).
-            sort_atom_labels (bool, optional): Boolean flag, dettermines whether or not sorting is required.
+            sort_atom_labels (bool, optional): Boolean flag, determines whether sorting is required.
 
         Returns: list
             The scission-resulting species, a list of either one or two species, if the scissored location is linear,
             or one if the scission is in a cycle.
         """
         if any([i < 1 for i in indices]):
-            raise SpeciesError(f'Scissors indices must be larger than 0 (1-indexed). Got: {indices}.')
+            raise SpeciesError(f'Scissors indices must be greater than 0 (1-indexed). Got: {indices}.')
         if not all([isinstance(i, int) for i in indices]):
             raise SpeciesError(f'Scissors indices must be integers. Got: {indices}.')
         if self.final_xyz is None:
             raise SpeciesError(f'Cannot use scissors without the .final_xyz attribute of species {self.label}')
-        indices = convert_list_index_0_to_1(indices, direction=-1)  # Convert to 0-indexed atoms.
-        atom1 = self.mol.atoms[indices[0]]
-        atom2 = self.mol.atoms[indices[1]]
-        if atom1.is_hydrogen():
-            top1 = [self.mol.atoms.index(atom1)]
-            top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        elif atom2.is_hydrogen():
-            top2 = [self.mol.atoms.index(atom2)]
-            top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
-        else:
-            # For robustness, only use the smaller top,
-            # determine_top_group_indices() might get confused for (large) convolved tops.
-            top1 = determine_top_group_indices(self.mol, atom1, atom2, index=0)[0]
-            top2 = determine_top_group_indices(self.mol, atom2, atom1, index=0)[0]
-            if len(top1) > len(top2):
-                top1 = [i for i in range(len(self.mol.atoms)) if i not in top2]
-            elif len(top2) > len(top1):
-                top2 = [i for i in range(len(self.mol.atoms)) if i not in top1]
-        xyz1, xyz2 = dict(), dict()
-        xyz1['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top1)
-        xyz2['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in top2)
-        xyz1['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top1)
-        xyz2['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in top2)
-        xyz1['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top1)
-        xyz2['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in top2)
-        xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
+        if len(indices) != 2:
+            raise SpeciesError(f'Expected two indices, got {len(indices)}')
+        indices = convert_list_index_0_to_1(indices, direction=-1)
 
         mol_copy = self.mol.copy(deep=True)
         # We are about to change the connectivity of the atoms in the molecule,
         # which invalidates any existing vertex connectivity information; thus we reset it.
         mol_copy.reset_connectivity_values()
-        atom1 = mol_copy.atoms[indices[0]]  # Note: redefining atom1 and atom2
+        atom1 = mol_copy.atoms[indices[0]]
         atom2 = mol_copy.atoms[indices[1]]
         if not mol_copy.has_bond(atom1, atom2):
             raise SpeciesError('Attempted to remove a nonexistent bond.')
@@ -1882,10 +1860,10 @@ class ARCSpecies(object):
         if not bond.is_single():
             logger.warning(f'Scissors were requested to remove a non-single bond in {self.label}.')
         mol_copy.remove_bond(bond)
-        mol_splits = mol_copy.split()
+        mol_splits, fragment_indices = split_mol(mol_copy)
         if sort_atom_labels:
             for split in mol_splits:
-                sort_atoms_in_decending_label_order(split)
+                sort_atoms_in_descending_label_order(split)
 
         if len(mol_splits) == 1:  # If cutting leads to only one split, then the split is cyclic.
             spc1 = ARCSpecies(label=self.label + '_BDE_' + str(indices[0] + 1) + '_' + str(indices[1] + 1) + '_cyclic',
@@ -1932,28 +1910,14 @@ class ARCSpecies(object):
         mol1.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
         mol2.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
 
-        # match xyz to mol:
-        if len(mol1.atoms) != len(mol2.atoms):
-            # easy
-            if len(mol1.atoms) != len(top1):
-                xyz1, xyz2 = xyz2, xyz1
-        else:
-            # harder
-            element_dict_mol1, element_dict_top1 = dict(), dict()
-            for atom in mol1.atoms:
-                if atom.element.symbol in element_dict_mol1:
-                    element_dict_mol1[atom.element.symbol] += 1
-                else:
-                    element_dict_mol1[atom.element.symbol] = 1
-            for i in top1:
-                atom = mol_copy.atoms[i - 1]
-                if atom.element.symbol in element_dict_top1:
-                    element_dict_top1[atom.element.symbol] += 1
-                else:
-                    element_dict_top1[atom.element.symbol] = 1
-            for element, count in element_dict_mol1.items():
-                if element not in element_dict_top1 or count != element_dict_top1[element]:
-                    xyz1, xyz2 = xyz2, xyz1
+        xyz1, xyz2 = dict(), dict()
+        xyz1['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in fragment_indices[0])
+        xyz2['symbols'] = tuple(symbol for i, symbol in enumerate(self.final_xyz['symbols']) if i in fragment_indices[1])
+        xyz1['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in fragment_indices[0])
+        xyz2['isotopes'] = tuple(isotope for i, isotope in enumerate(self.final_xyz['isotopes']) if i in fragment_indices[1])
+        xyz1['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in fragment_indices[0])
+        xyz2['coords'] = tuple(coord for i, coord in enumerate(self.final_xyz['coords']) if i in fragment_indices[1])
+        xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
 
         spc1 = ARCSpecies(label=label1,
                           mol=mol1,
@@ -2678,3 +2642,26 @@ def check_atom_balance(entry_1: Union[dict, str, Molecule],
         return False
 
     return result
+
+
+def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
+    """
+    Split an RMG Molecule object by connectivity gaps while retaining the relative atom order.
+
+    Args:
+        mol (Molecule): The Molecule to split.
+
+    Returns:
+        Tuple[List[Molecule], List[List[int]]]:
+            - Entries are molecular fragments resulting from the split.
+            - Entries are lists with indices that correspond to the original atoms that were assigned to each fragment.
+    """
+    fragments, molecules = list(), list()
+    unvisited_indices = list(range(len(mol.atoms)))
+    while len(unvisited_indices):
+        start = unvisited_indices[0]
+        frag_indices = dfs(mol=mol, start=start, sort_result=True)
+        unvisited_indices = [index for index in unvisited_indices if index not in frag_indices]
+        molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
+        fragments.append(frag_indices)
+    return molecules, fragments
