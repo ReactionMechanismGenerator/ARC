@@ -5,6 +5,7 @@
 This module contains unit tests of the arc.reaction module
 """
 
+from itertools import permutations
 import os
 import unittest
 
@@ -823,21 +824,21 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=c4h10o_xyz)
         rxn = ARCReaction(reactants=['C3H6O', 'C4H9O'], products=['C3H5O', 'C4H10O'],
                           r_species=[r_1, r_2], p_species=[p_1, p_2])
-        self.assertEqual(rxn.atom_map[:4], [0, 1, 3, 4])
-        self.assertIn(rxn.atom_map[4], [5, 7])
-        self.assertIn(rxn.atom_map[5], [6, 7])
-        self.assertIn(rxn.atom_map[6], [5, 6])
-        self.assertIn(rxn.atom_map[7], [2, 14, 15, 16, 18, 19, 20])
-        self.assertIn(rxn.atom_map[8], [2, 14, 15, 16, 18, 19, 20])
-        self.assertEqual(rxn.atom_map[9], 8)
-        self.assertEqual(rxn.atom_map[10], 9)
-        self.assertIn(rxn.atom_map[11], [14, 15, 16])
-        self.assertIn(rxn.atom_map[12], [14, 15, 16])
-        self.assertEqual(rxn.atom_map[13:18], [10, 11, 12, 13, 17])
-        for index in [18, 19, 20]:
-            self.assertIn(rxn.atom_map[index], [18, 19, 20])
-        for index in [21, 22, 23]:
-            self.assertEqual(rxn.atom_map[index], index)
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
+        self.assertIn(tuple(atom_map[4:7]), list(permutations([5,6,7], 3)))
+        self.assertIn(atom_map[7], [2, 14, 15, 16, 18, 19, 20])
+        self.assertIn(atom_map[8], [2, 14, 15, 16, 18, 19, 20])
+        self.assertIn(2, atom_map[7:9])
+        self.assertEqual(atom_map[9], 8)
+        self.assertIn(atom_map[10], [9,11])
+        self.assertIn(tuple(atom_map[11:13]), list(permutations([14, 15, 16, 18, 19], 2)))
+        self.assertIn(atom_map[13], [8, 10])
+        self.assertIn(atom_map[14], [9])
+        self.assertEqual(atom_map[15:18], [12, 13, 17])
+        self.assertIn(tuple(atom_map[18:21]), list(permutations([15, 16, 14], 3)))
+        self.assertIn(tuple(atom_map[21:23]), list(permutations([21, 22], 2)))
+        self.assertEqual(atom_map[-1], 23)
         self.assertTrue(check_atom_map(rxn))
 
         # H_Abstraction: NH + N2H3 <=> NH2 + N2H2(T)
