@@ -5,8 +5,8 @@ channels:
   - conda-forge
   - anaconda
 dependencies:
-  - cairo
-  - cairocffi
+  - anaconda::cairo
+  - conda-forge::cairocffi
   - rmg::cantera >=2.3.0
   - conda-forge::cclib >=1.7.0
   - rmg::chemprop
