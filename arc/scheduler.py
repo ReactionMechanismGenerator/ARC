@@ -887,22 +887,6 @@ class Scheduler(object):
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
-            original_mem = job.job_memory_gb
-            if job.job_status[1]['error'] == 'Insufficient job memory.':
-                job.job_memory_gb *= 3
-                logger.warning(f'Job {job.job_name} errored because of insufficient memory. '
-                               f'Was {original_mem} GB, rerunning job with {job.job_memory_gb} GB.')
-                self._run_a_job(job=job, label=label)
-            elif 'Memory requested is too high' in job.job_status[1]['error']:
-                used_mem = None
-                if 'used only' in job.job_status[1]['error']:
-                    used_mem = int(job.job_status[1]['error'][-2])
-                logger.warning(f'Job {job.job_name} errored because the requested memory is too high. '
-                               f'Was {original_mem} GB, rerunning job with {job.job_memory_gb} GB.')
-                job.job_memory_gb = used_mem * 4.5 if used_mem is not None else job.job_memory_gb * 0.5
-                self._run_a_job(job=job, label=label)
-
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':

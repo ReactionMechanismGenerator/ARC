@@ -837,11 +837,23 @@ def trsh_ess_job(label: str,
                              f'The job ran out of disc space on {server}; ')
         logger.error(f'Could not troubleshoot {job_type} for {label}! The job ran out of disc space on {server}')
         couldnt_trsh = True
-    elif 'BasisSet' in job_status['keywords']\
+
+    elif 'BasisSet' in job_status['keywords'] \
             and ('Unrecognized basis set' in job_status['error']
                  or 'is not appropriate for the this chemistry' in job_status['error']):
         output_errors.append(f'Error: Could not recognize basis set {job_status["error"].split()[-1]} in {software}; ')
         couldnt_trsh = True
+
+    elif 'Memory' in job_status['keywords'] and job_status['status'] == 'errored':
+        if job_status['error'] == 'Insufficient job memory.':
+            memory *= 3
+            logger.warning(f'Job errored because of insufficient memory. '
+                           f'Was {memory_gb} GB, requesting {memory} GB instead.')
+        elif 'Memory requested is too high' in job_status['error']:
+            used_mem = int(job_status['error'][-2]) if 'used only' in job_status['error'] else None
+            memory = used_mem * 4.5 if used_mem is not None else memory_gb * 0.5
+            logger.warning(f'Job errored because the requested memory was too high. '
+                           f'Was {used_mem} GB, requesting {memory} GB instead.')
 
     elif software == 'gaussian':
         if 'CheckFile' in job_status['keywords'] and 'checkfie=None' not in ess_trsh_methods:
