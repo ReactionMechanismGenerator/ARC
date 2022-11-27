@@ -95,12 +95,8 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
 # Avoid ascribing the same phrase to more than one software, this may cause undeterministic assignment of software
 # Format is levels_ess = {ess: ['phrase1', 'phrase2'], ess2: ['phrase3', 'phrase3']}
 levels_ess = {
-<<<<<<< main
     'cfour': ['casscf'],
     'gaussian': ['apfd', 'b3lyp', 'm062x'],
-=======
-    'gaussian': ['apfd', 'b3lyp', 'm062x', 'hf'],
->>>>>>> added psi4 to many locations
     'molpro': ['ccsd', 'cisd', 'vpz'],
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
