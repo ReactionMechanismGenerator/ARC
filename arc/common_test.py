@@ -827,6 +827,42 @@ class TestCommon(unittest.TestCase):
         self.assertTrue(common.check_that_all_entries_are_in_list(
             bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))  # No (1, 5) bond.
 
+    def test_determine_symmetry(self):
+        """
+        Test the determine_symmetry() function
+        The tests implemented here determine the external symmetries of ethanol (non-symmetric)
+        methane (highly symmetric) and a chiral species.
+        The ``optical_isomers`` parameter should be 1 if the species is non-chiral (1 optical isomer)
+        and 2 if the species is chiral (2 optical isomers).
+        """
+        xyz = """C      -0.97459464    0.29181710    0.10303882
+                 C       0.39565894   -0.35143697    0.10221676
+                 O       0.30253309   -1.63748710   -0.49196889
+                 H      -1.68942501   -0.32359616    0.65926091
+                 H      -0.93861751    1.28685508    0.55523033
+                 H      -1.35943743    0.38135479   -0.91822428
+                 H       0.76858330   -0.46187184    1.12485643
+                 H       1.10301149    0.25256708   -0.47388355
+                 H       1.19485981   -2.02360458   -0.47786539"""
+        symmetry, optical_isomers = common.determine_symmetry(xyz=converter.str_to_xyz(xyz))
+        self.assertEqual(symmetry, 1)
+        self.assertEqual(optical_isomers, 1)
+
+        ch4 = ARCSpecies(label='CH4', smiles='C')
+        symmetry, optical_isomers = common.determine_symmetry(xyz=ch4.get_xyz())
+        self.assertEqual(symmetry, 12)  # There are 4 equivalent C3 axes
+        self.assertEqual(optical_isomers, 1)
+
+        chiral = ARCSpecies(label='chiral', smiles='ClC(F)N')
+        symmetry, optical_isomers = common.determine_symmetry(xyz=chiral.get_xyz())
+        self.assertEqual(symmetry, 1)
+        self.assertEqual(optical_isomers, 2)
+
+        symmetric_chiral = ARCSpecies(label='symmetric_chiral', smiles='CC(Cl)CC(Cl)C')
+        symmetry, optical_isomers = common.determine_symmetry(xyz=symmetric_chiral.get_xyz())
+        self.assertEqual(symmetry, 2)
+        self.assertEqual(optical_isomers, 2)
+
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
         project_directory = os.path.join(common.ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths')
