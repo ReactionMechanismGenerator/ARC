@@ -943,7 +943,7 @@ class Scheduler(object):
                         self.species_dict[label].checkfile = check_path
             if job.job_type == 'scan' or job.directed_scan_type == 'ess':
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
-                    if rotors_dict['pivots'] == job.pivots:
+                    if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
             self.save_restart_dict()
             return True

@@ -452,7 +452,7 @@ H      -0.64965442    0.77699377   -0.67782845
 H       1.40965394    0.40549015    0.08143497""")
         ch2oh_mol = Molecule(smiles='[CH2]O')
         energies = conformers.get_force_field_energies(label='', mol=ch2oh_mol, xyz=ch2oh_xyz, optimize=True)[1]
-        self.assertAlmostEqual(energies[0], 13.466911, 5)
+        self.assertAlmostEqual(energies[0], 13.466911, 3)
 
         # Test peroxyl radical (uses UFF by default if MMFF94s is still buggy in RDKit).
         xyzs, energies = conformers.get_force_field_energies(label='', mol=Molecule(smiles='CCO[O]'), num_confs=10)
@@ -594,8 +594,8 @@ H       0.68104300    0.74807180    0.61546062""")]
                                      (0.59336, 1.16044, 0.53412),
                                      (2.51642, -0.38757, 0.25036))}]
         self.assertEqual(len(energies), 2)
-        self.assertAlmostEqual(energies[0], 3.49581, 5)
-        self.assertAlmostEqual(energies[1], -0.702848, 4)
+        self.assertAlmostEqual(energies[0], 3.49581, 3)
+        self.assertAlmostEqual(energies[1], -0.702848, 2)
         # Only symbols instead of the coordinate values are compared.
         # This is due to the unknown behavior of OpenBabel optimization function.
         # With the same iteration number and same initial xyz, the optimized xyzs can
@@ -646,9 +646,9 @@ O       1.40839617    0.14303696    0.00000000"""
         xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol,
                                                       force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
-        self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 5)
-        self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 5)
-        self.assertAlmostEqual(energies[2], 1.8168786624672814e-12, 5)
+        self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 3)
+        self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 3)
+        self.assertAlmostEqual(energies[2], 1.8168786624672814e-12, 3)
         expected_xyzs1 = [{'coords': ((-0.048697770520464284, 0.6080446547953217, 0.0),
                                       (-1.353634030198068, -0.41438354841733305, 0.0),
                                       (1.402331800718534, -0.19366110637798933, 0.0)),
@@ -1448,7 +1448,7 @@ O       1.40839617    0.14303696    0.00000000"""
         ncc_spc = ARCSpecies(label='NCC', smiles='NCC', xyz=ncc_xyz)
         ncc_mol = ncc_spc.mol
         energies = conformers.get_force_field_energies(label='NCC', mol=ncc_mol, xyz=ncc_xyz, optimize=True)[1]
-        self.assertAlmostEqual(energies[0], -6.15026868, 5)
+        self.assertAlmostEqual(energies[0], -6.15026868, 3)
         idx0 = 10
         for i, atom in enumerate(ncc_mol.atoms):
             if atom.is_nitrogen():
@@ -1470,7 +1470,7 @@ O       1.40839617    0.14303696    0.00000000"""
         rd_conf = converter.rdkit_conf_from_mol(ncc_mol, ncc_xyz)[0]
         angle = rdMT.GetDihedralDeg(rd_conf, torsion[0] - 1, torsion[1] - 1, torsion[2] - 1, torsion[3] - 1)
 
-        self.assertAlmostEqual(angle, 62.9431377, 5)
+        self.assertAlmostEqual(angle, 62.9431377, 3)
 
         xyzs, energies = conformers.change_dihedrals_and_force_field_it(label='NCC', mol=ncc_mol, xyz=ncc_xyz,
                                                                         torsions=[torsion], new_dihedrals=[180])
@@ -1488,7 +1488,7 @@ O       1.40839617    0.14303696    0.00000000"""
                                    (0.5795889232686523, 0.2571468947460437, -0.94038297444683),
                                    (0.5673605907115399, -0.969470108525465, 0.1343930969631629))}
 
-        self.assertAlmostEqual(energies[0], -6.1502687, 5)
+        self.assertAlmostEqual(energies[0], -6.1502687, 3)
         self.assertEqual(xyzs[0]['symbols'], expected_xyz['symbols'])
         self.assertTrue(almost_equal_coords_lists(xyzs[0], expected_xyz))
         self.assertEqual(len(energies), 1)
