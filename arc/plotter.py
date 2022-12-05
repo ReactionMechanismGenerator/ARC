@@ -438,8 +438,7 @@ def draw_thermo_parity_plots(species_list: list,
         s298_rmg.append(spc.rmg_thermo.get_entropy(298))  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label='H298', var_units='kJ / mol', labels=labels, pp=pp)
-    draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels,
-                     pp=pp)
+    draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels, pp=pp)
     pp.close()
     thermo_sources = '\nSources of thermoproperties determined by RMG for the parity plots:\n'
     max_label_len = max([len(label) for label in labels])
@@ -463,11 +462,10 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         var_units (str): The variable units.
         pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
     """
-    height = max(len(var_arc) / 3.5, 4)
-    width = 8
+    dimention = max(len(var_arc) / 3.5, 4)
     min_var = min(var_arc + var_rmg)
     max_var = max(var_arc + var_rmg)
-    fig = plt.figure(figsize=(width, height), dpi=120)
+    fig = plt.figure(figsize=(dimention, dimention), dpi=120)
     fig.add_subplot(111)
     plt.title(f'{var_label} parity plot')
     for i, label in enumerate(labels):
@@ -478,10 +476,6 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.xlim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
     plt.ylim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
     plt.legend(shadow=False, loc='best')
-    # txt_height = 0.04 * (plt.ylim[1] - plt.ylim[0])  # plt.ylim and plt.xlim return a tuple
-    # txt_width = 0.02 * (plt.xlim[1] - plt.xlim[0])
-    # text_positions = get_text_positions(var_arc, var_rmg, txt_width, txt_height)
-    # text_plotter(var_arc, var_rmg, labels, text_positions, ax, txt_width, txt_height)
     plt.tight_layout()
     if pp is not None:
         plt.savefig(pp, format='pdf')
