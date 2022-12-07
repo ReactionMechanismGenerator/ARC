@@ -9,6 +9,7 @@ bash devtools/install_gcn_cpu.sh
 bash devtools/install_kinbot.sh
 bash devtools/install_xtb.sh
 bash devtools/install_sella.sh
+bash devtools/install_torchani.sh
 echo "Done installing external repos."
 source ~/.bashrc
 echo $PYTHONPATH
