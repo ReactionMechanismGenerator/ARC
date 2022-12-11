@@ -391,7 +391,7 @@ class JobAdapter(ABC):
                     if job_type in ['sp', 'opt', 'freq', 'optfreq', 'composite', 'ornitals', 'onedmin', 'irc']:
                         self.number_of_processes += 1
                     # elif job_type == 'scan' and rotor_dict['directed_scan_type'] != 'ess':  # Todo: implement directed scans
-                    elif job_type == 'scan' and len(species.rotors_dict.keys()) > 10:
+                    elif job_type == 'scan' and len(species.rotors_dict.keys()) > 1000:  # Todo: Modify when pipe is implemented
                         self.iterate_by.append('scan')
                         scan_points_per_dimension = 360.0 / self.scan_res
                         for rotor_dict in species.rotors_dict.values():
