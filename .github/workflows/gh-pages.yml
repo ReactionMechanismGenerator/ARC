@@ -5,9 +5,16 @@ on:
     branches:
       - main
       - docs
+      - deploy
+
+  pull_request:
+    branches:
+      - main
+      - docs
+      - deploy
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
