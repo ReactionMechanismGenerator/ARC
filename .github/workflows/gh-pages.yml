@@ -5,63 +5,86 @@ on:
     branches:
       - main
       - docs
+      - deploy
+
+  pull_request:
+    branches:
+      - main
+      - docs
+      - deploy
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash -l {0}
 
     steps:
-      - uses: actions/checkout@v2
+    - uses: actions/checkout@v2
 
-      - name: Set up miniconda Python 3.7
-        uses: conda-incubator/setup-miniconda@v2
-        with:
-          environment-file: environment.yml
-          activate-environment: arc_env
-          python-version: 3.7
-          auto-activate-base: false
+    - name: Setup Mambaforge Python 3.7
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        environment-file: environment.yml
+        miniforge-variant: Mambaforge
+        miniforge-version: latest
+        activate-environment: arc_env
+        python-version: 3.7
+        use-mamba: true
 
-      - name: Install codecov
-        run: conda install -y -c conda-forge codecov
+    - name: Update environment
+      run: |
+        mamba env update -n arc_env -f environment.yml
+        conda list
+        
+    - name: Install dependencies
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        conda activate arc_env
+        cd ..
+        git clone https://github.com/ReactionMechanismGenerator/RMG-Py
+        cd RMG-Py
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        make
+        cd ..
+        git clone https://github.com/ReactionMechanismGenerator/RMG-database
+        cd ARC
+        source ~/.bashrc
+        conda activate arc_env
 
-      - name: Install dependencies
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          conda activate arc_env
-          cd ..
-          git clone https://github.com/ReactionMechanismGenerator/RMG-Py
-          cd RMG-Py
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          make
-          cd ..
-          git clone https://github.com/ReactionMechanismGenerator/RMG-database
-          cd ARC
-          conda deactivate
-          make gcn-cpu
-          cd ..
-          echo $(pwd)
-          conda activate arc_env
-          conda list
+    - name: Compile docs
+      run: |
+        cd ../RMG-Py
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        export PATH=$PATH:$(pwd)
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        cd ../ARC
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        export PATH=$PATH:$(pwd)
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        cd docs
+        conda activate arc_env
+        make html
 
-      - name: Compile docs
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          conda activate arc_env
-          cd ..
-          cd RMG-Py
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          cd ..
-          cd ARC
-          cd docs
-          make html
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v3.7.3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./public
+      # permissions:
+      #   contents: write
+      # concurrency:
+      #   group: ${{ github.workflow }}-${{ github.ref }}
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3.7.3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/build/html/
+      # with:
+      #   github_token: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+        publish_dir: ./docs/build/html/
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
 
 # https://github.com/marketplace/actions/github-pages-action
