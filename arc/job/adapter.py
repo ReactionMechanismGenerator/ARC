@@ -45,9 +45,9 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
-default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames, rotor_scan_resolution, workers_coeff = \
+default_job_settings, servers, submit_filenames, t_max_format, input_filenames, output_filenames, workers_coeff = \
     settings['default_job_settings'], settings['servers'], settings['submit_filenames'], settings['t_max_format'], \
-    settings['input_filenames'], settings['output_filenames'], settings['rotor_scan_resolution'], settings['workers_coeff']
+    settings['input_filenames'], settings['output_filenames'], settings['workers_coeff']
 
 constraint_type_dict = {2: 'B', 3: 'A', 4: 'D'}
 
@@ -391,7 +391,7 @@ class JobAdapter(ABC):
                     if job_type in ['sp', 'opt', 'freq', 'optfreq', 'composite', 'ornitals', 'onedmin', 'irc']:
                         self.number_of_processes += 1
                     # elif job_type == 'scan' and rotor_dict['directed_scan_type'] != 'ess':  # Todo: implement directed scans
-                    elif job_type == 'scan' and len(species.rotors_dict.keys()) > 10:
+                    elif job_type == 'scan' and len(species.rotors_dict.keys()) > 1000:  # Todo: Modify when pipe is implemented
                         self.iterate_by.append('scan')
                         scan_points_per_dimension = 360.0 / self.scan_res
                         for rotor_dict in species.rotors_dict.values():
@@ -1127,8 +1127,6 @@ class JobAdapter(ABC):
         if divmod(360, self.scan_res)[1]:
             raise ValueError(f'Got an illegal scan resolution of {self.scan_res}.')
 
-        scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'].keys() else rotor_scan_resolution
-
         for rotor_dict in species.rotors_dict.values():
             directed_scan_type = rotor_dict['directed_scan_type']
             if cont_only and 'cont' not in directed_scan_type:
@@ -1162,10 +1160,10 @@ class JobAdapter(ABC):
                 dihedrals = dict()
                 for torsion in torsions:
                     original_dihedral = calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=0)
-                    dihedrals[tuple(torsion)] = [round(original_dihedral + i * scan_res
-                                                       if original_dihedral + i * scan_res <= 180.0
-                                                       else original_dihedral + i * scan_res - 360.0, 2)
-                                                 for i in range(int(360 / scan_res) + 1)]
+                    dihedrals[tuple(torsion)] = [round(original_dihedral + i * self.scan_res
+                                                       if original_dihedral + i * self.scan_res <= 180.0
+                                                       else original_dihedral + i * self.scan_res - 360.0, 2)
+                                                 for i in range(int(360 / self.scan_res) + 1)]
                 modified_xyz = xyz.copy()
                 if 'diagonal' not in directed_scan_type:
                     # Increment dihedrals one by one (results in an ND scan).
@@ -1221,7 +1219,7 @@ class JobAdapter(ABC):
                         [f'{calculate_dihedral_angle(coords=xyz["coords"], torsion=scan, index=1):.2f}'
                          for scan in rotor_dict['scan']]  # Store the dihedrals as strings for the YAML restart file.
                 torsions = rotor_dict['torsion']
-                max_num = 360 / scan_res + 1  # Dihedral angles per scan
+                max_num = 360 / self.scan_res + 1  # Dihedral angles per scan
                 original_dihedrals = list()
                 for dihedral in rotor_dict['original_dihedrals']:
                     f_dihedral = float(dihedral)
@@ -1253,7 +1251,7 @@ class JobAdapter(ABC):
                 modified_xyz = xyz.copy()
                 dihedrals = list()
                 for index, (original_dihedral, torsion_) in enumerate(zip(original_dihedrals, torsions)):
-                    dihedral = original_dihedral + rotor_dict['cont_indices'][index] * scan_res
+                    dihedral = original_dihedral + rotor_dict['cont_indices'][index] * self.scan_res
                     # Change the original dihedral so we won't end up with two calcs for 180.0, but none for -180.0
                     # (it only matters for plotting, the geometry is of course the same).
                     dihedral = dihedral if dihedral <= 180.0 else dihedral - 360.0
