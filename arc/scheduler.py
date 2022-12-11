@@ -35,7 +35,7 @@ from arc.exceptions import (InputError,
                             TrshError,
                             )
 from arc.imports import settings
-from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
+from arc.job.adapters.common import all_families_ts_adapters, ts_adapters_by_rmg_family
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
 from arc.job.ssh import SSHClient
@@ -65,8 +65,8 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
-    default_job_types, rotor_scan_resolution, ts_adapters, max_rotor_trsh = \
-    settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
+    default_incore_adapters, default_job_types, rotor_scan_resolution, ts_adapters, max_rotor_trsh = \
+    settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], settings['default_incore_adapters'], \
     settings['default_job_types'], settings['rotor_scan_resolution'], settings['ts_adapters'], settings['max_rotor_trsh']
 
 ts_adapters = [ts_adapter.lower() for ts_adapter in ts_adapters]
@@ -858,7 +858,13 @@ class Scheduler(object):
             elif 'terachem' in available_ess:
                 logger.error('Setting it to TeraChem')
                 level.software = 'terachem'
+            elif 'psi4' in available_ess:
+                logger.error('Setting it to psi4')
+                level.software = 'psi4'
             job_adapter = level.software
+            if level.software == None:
+                logger.error(f'Could not determine software for level_of_theory: {level}')
+                return None
         return job_adapter.lower()
 
     def end_job(self, job: 'JobAdapter',

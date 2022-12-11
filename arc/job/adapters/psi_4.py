@@ -9,19 +9,18 @@ import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import psi4
 from mako.template import Template
 
 from arc.common import get_logger
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
-from arc.job.adapters.common import (check_argument_consistency,
-                                     is_restricted,
+from arc.job.adapters.common import (_initialize_adapter,
+                                     check_argument_consistency,
                                      set_job_args,
-                                     update_input_dict_with_args,
-                                     which)
+                                     which,
+                                     )
 from arc.job.factory import register_job_adapter
-from arc.job.local import execute_command
+from arc.job.local import execute_command, rename_output
 from arc.level import Level
 from arc.species.converter import xyz_to_str
 
@@ -31,77 +30,26 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+constraint_type_dict_optking = {2: 'frozen_distance', 3: 'frozen_angle', 4: 'frozen_dihedral'}  # https://psicode.org/psi4manual/master/optking.html
+constraint_type_dict_geometric = {2: 'distance', 3: 'angle', 4: 'dihedral'}  # https://psicode.org/psi4manual/master/optking.html#interface-to-geometric
+
 default_job_settings, global_ess_settings, input_filenames, output_filenames, rotor_scan_resolution, servers, \
     submit_filenames = settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
                        settings['output_filenames'], settings['rotor_scan_resolution'], settings['servers'], \
                        settings['submit_filenames']
 
-# psi4.core.be_quiet()
-# psi4.core.set_output_file('full_path/output.dat', False)  # don't append
-# psi4.core.print_out('str')  # Prints a string (using printf-like notation) to the output file.
-# psi4.core.close_outfile()
-#
-# psi4.core.set_memory_bytes(int(5e8))  # 4 GB in bytes
-# psi4.core.set_num_threads(8)  # number of threads, int
-#
-# # compute_energy(self: psi4.core.Wavefunction) → float
-# # energy(self: psi4.core.Wavefunction) → float
-# # compute_hessian(self: psi4.core.Wavefunction) → psi4.core.Matrix
-# # hessian(self: psi4.core.Wavefunction)
-# psi4.driver.frequencies(name='scf' or 'mp2' or 'ci5' or 'ccsd', molecule=mol_obj_if_not_the_last_mol_defined)
-# # legacy_frequencies()
-#
-#
-# psi4.core.clean()  # Remove scratch files. Call between independent jobs.
-# psi4.core.clean_options()
-# psi4.core.clean_variables()
-#
-# xyz_str = """O 0 0 0"""
-# psi4.driver.molutil.mol_from_str = psi4.driver.geometry(geom=xyz_str, name='name')
-# psi4.driver.molutil.mol_from_array = psi4.driver.molutil.molecule_from_arrays(
-#     name='label',
-#     units='Angstrom',
-#     geom='Cartesian coordinates as ndarray',
-#     elea='mass number (isotope), ndarray of str int',
-#     elem='element symbols, ndarray of str; either this or elea',
-#     molecular_charge=0,
-#     molecular_multiplicity=1,
-#     connectivity=[(0, 1, 1), (1, 2, 3), (21, 74, 2)],  # 0-indexed atom A, atom B and BO
-# )
-
-# optking: http://www.psicode.org/psi4manual/master/optking.html
-
-
-# constrained op
-# ts opt
-# scan ?
-# fine grid ?
-# r/u ?
-
-
-# trsh: set full_hess_every 1
-
-
-# job_type_1: '' for sp, irc, or composite methods, 'opt=calcfc', 'opt=(calcfc,ts,noeigen)',
-# job_type_2: '' or 'freq iop(7/33=1)' (cannot be combined with CBS-QB3)
-#             'scf=(tight,direct) int=finegrid irc=(rcfc,forward,maxpoints=100,stepsize=10) geom=check' for irc f
-#             'scf=(tight,direct) int=finegrid irc=(rcfc,reverse,maxpoints=100,stepsize=10) geom=check' for irc r
-# scan: '\nD 3 1 5 8 S 36 10.000000' (with the line break)
-# restricted: '' or 'u' for restricted / unrestricted
-# `iop(2/9=2000)` makes Gaussian print the geometry in the input orientation even for molecules with more
-#   than 50 atoms (important so it matches the hessian, and so that Arkane can parse the geometry)
-input_template = """${checkfile}
-%%mem=${memory}mb
-%%NProcShared=${cpus}
-
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion}
-
-${label}
-
+input_template = """
+memory ${memory} GB
+molecule ${label} {
 ${charge} ${multiplicity}
-${xyz}${scan}${scan_trsh}${block}
-
-
+${geometry}
+}
+${global_set}
+${scan}
+${indent}set basis ${basis}
+${indent}set reference uhf
+${indent}${function}(${function_args})
+${epilogue}
 """
 
 
@@ -191,109 +139,98 @@ class Psi4Adapter(JobAdapter):
                  tsg: Optional[int] = None,
                  xyz: Optional[dict] = None,
                  ):
-
+        
+        self.incore_capacity = 5
         self.job_adapter = 'psi4'
         self.execution_type = execution_type or 'incore'
-        self.command = 'psi4.py'
+        self.command = ["psi4 -i input.dat -o output.dat"]
         self.url = 'https://www.psicode.org/'
 
         if species is None:
             raise ValueError('Cannot execute Psi4 without an ARCSpecies object.')
-
-        if any(arg is None for arg in [job_type, level]):
-            raise ValueError(f'All of the following arguments must be given:\n'
-                             f'job_type, level, project, project_directory\n'
-                             f'Got: {job_type}, {level}, {project}, {project_directory}, respectively')
-
-        self.project = project
-        self.project_directory = project_directory
-        if self.project_directory and not os.path.isdir(self.project_directory):
-            os.makedirs(self.project_directory)
-        self.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
-        self.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
-        self.args = args or dict()
-        self.bath_gas = bath_gas
-        self.checkfile = checkfile
-        self.conformer = conformer
-        self.constraints = constraints or list()
-        self.cpu_cores = cpu_cores
-        self.dihedral_increment = dihedral_increment
-        self.dihedrals = dihedrals
-        self.directed_scan_type = directed_scan_type
-        self.ess_settings = ess_settings or global_ess_settings
-        self.ess_trsh_methods = ess_trsh_methods or list()
-        self.fine = fine
-        self.initial_time = datetime.datetime.strptime(initial_time.split('.')[0], '%Y-%m-%d %H:%M:%S') \
-            if isinstance(initial_time, str) else initial_time
-        self.irc_direction = irc_direction
-        self.job_id = job_id
-        self.job_memory_gb = job_memory_gb
-        self.job_name = job_name
-        self.job_num = job_num
-        self.job_server_name = job_server_name
-        self.job_status = job_status \
-            or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
-        # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
-        self.level = Level(repr=level) if not isinstance(level, Level) else level
-        self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
-        self.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
-        self.rotor_index = rotor_index
-        self.server = server
-        self.server_nodes = server_nodes or list()
-        self.species = [species] if species is not None and not isinstance(species, list) else species
-        self.testing = testing
-        self.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
-        self.pivots = [[tor[1] + 1, tor[2] + 1] for tor in self.torsions] if self.torsions is not None else None
-        self.tsg = tsg
-        self.xyz = xyz or self.species[0].get_xyz()
-        self.times_rerun = times_rerun
-
-        if self.job_num is None or self.job_name is None or self.job_server_name:
-            self._set_job_number()
-
-        self.args = set_job_args(args=self.args, level=self.level, job_name=self.job_name)
-
-        self.final_time = None
-        self.run_time = None
-        self.charge = self.species[0].charge
-        self.multiplicity = self.species[0].multiplicity
-        self.is_ts = self.species[0].is_ts
-        self.scan_res = self.args['trsh']['scan_res'] if 'scan_res' in self.args['trsh'].keys() else rotor_scan_resolution
-
-        self.server = self.args['trsh']['server'] if 'server' in self.args['trsh'].keys() \
-            else self.ess_settings[self.job_adapter][0] if isinstance(self.ess_settings[self.job_adapter], list) \
-            else self.ess_settings[self.job_adapter]
-        self.label = self.species[0].label
-        if len(self.species) > 1:
-            self.species_label += f'_and_{len(self.species) - 1}_others'
-
-        self.cpu_cores, self.input_file_memory, self.submit_script_memory = None, None, None
-        self.set_cpu_and_mem()
-        self.set_file_paths()
-
-        self.workers = None
-        self.iterate_by = list()
-        self.number_of_processes = 0
-        self.incore_capacity = 5
-        self.determine_job_array_parameters()  # Writes the local HDF5 file if needed.
-
-        self.files_to_upload = list()
-        self.files_to_download = list()
-        self.set_files()  # Set the actual files (and write them if relevant).
-
-        if self.checkfile is None and os.path.isfile(os.path.join(self.local_path, 'check.chk')):
-            self.checkfile = os.path.join(self.local_path, 'check.chk')
-
-        self.restrarted = bool(job_num)  # If job_num was given, this is a restarted job, don't save as initiated jobs.
-        self.additional_job_info = None
-
-        check_argument_consistency(self)
+        _initialize_adapter(obj=self,
+                            is_ts=False,
+                            project=project,
+                            project_directory=project_directory,
+                            job_type=job_type,
+                            args=args,
+                            bath_gas=bath_gas,
+                            checkfile=checkfile,
+                            conformer=conformer,
+                            constraints=constraints,
+                            cpu_cores=cpu_cores,
+                            dihedral_increment=dihedral_increment,
+                            dihedrals=dihedrals,
+                            directed_scan_type=directed_scan_type,
+                            ess_settings=ess_settings,
+                            ess_trsh_methods=ess_trsh_methods,
+                            fine=fine,
+                            initial_time=initial_time,
+                            irc_direction=irc_direction,
+                            job_id=job_id,
+                            job_memory_gb=job_memory_gb,
+                            job_name=job_name,
+                            job_num=job_num,
+                            job_server_name=job_server_name,
+                            job_status=job_status,
+                            level=level,
+                            max_job_time=max_job_time,
+                            reactions=reactions,
+                            rotor_index=rotor_index,
+                            server=server,
+                            server_nodes=server_nodes,
+                            species=species,
+                            testing=testing,
+                            times_rerun=times_rerun,
+                            torsions=torsions,
+                            tsg=tsg,
+                            xyz=xyz,
+                    )
 
     def write_input_file(self) -> None:
         """
         Write the input file to execute the job on the server.
         """
-        pass
+        scan, indent, epilogue, global_set, func = '', '', '', '', ''
+        geometry = xyz_to_str(self.get_geometry())
+        if self.job_type in ['conformers', 'opt']:
+            func = 'optimize'
+        elif self.job_type == 'sp':
+            func = 'energy'
+        elif self.job_type == 'freq':
+            func = 'frequency'
+        elif self.job_type == 'scan':
+            raise NotImplementedError((f'Psi4 job type scans is not implemented'))
+        else:
+            raise NotImplementedError(f'Psi4 job type {self.job_type} is not implemented')
+
+        dft_spherical_points = 590 if self.fine else 302
+        dft_radial_points = 75 if self.fine else 99
+        dft_basis_tolerance = 1.0E-12 if self.fine else 1.0E-11
+        global_set = f"""set {{
+scf_type df
+dft_spherical_points {dft_spherical_points}
+dft_radial_points {dft_radial_points}
+dft_basis_tolerance {dft_basis_tolerance}
+}}
+"""
+
+        input_dict = {'memory': self.job_memory_gb,
+                      'label': self.species_label,
+                      'charge': self.species[0].charge,
+                      'multiplicity': self.species[0].multiplicity,
+                      'geometry': geometry,
+                      'global_set': global_set,
+                      'basis': self.level.basis,
+                      'scan': scan,
+                      'indent': indent,
+                      'function': func,
+                      'function_args': self.write_func_args(func),
+                      'epilogue': epilogue,
+                      }
+
+        with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
+            f.write(Template(input_template).render(**input_dict))
 
     def set_files(self) -> None:
         """
@@ -361,13 +298,10 @@ class Psi4Adapter(JobAdapter):
         """
         Execute a job incore.
         """
-        which(self.command,
-              return_bool=True,
-              raise_error=True,
-              raise_msg=f'Please install {self.job_adapter}, see {self.url} for more information.',
-              )
         self._log_job_execution()
-        execute_command(incore_commands[self.job_adapter])
+        commands = [f"cd {self.local_path}"] + incore_commands[self.job_adapter]
+        execute_command(command=commands, executable="/bin/bash")
+        rename_output(self.local_path_to_output_file, "psi4")
 
     def execute_queue(self):
         """
@@ -375,5 +309,21 @@ class Psi4Adapter(JobAdapter):
         """
         self.legacy_queue_execution()
 
+    def get_geometry(self):
+        if self.xyz is not None:
+            return self.xyz
+        elif self.species[0] is not None:
+            return self.species[0].get_xyz()
+        else:
+            raise ValueError("Geometry is required to preform the calculations.")
+
+    def write_func_args(self, func) -> str:
+        if func in ['optimize', 'conformers', 'scan', 'E = optimize']:
+            func_args = f"name = '{self.level.method}', return_wfn='on', return_history='on', engine='optking', dertype='energy'"
+        elif func == 'energy':
+            func_args = f"name = '{self.level.method}', return_wfn='on'"
+        else:
+            func_args = f"name = '{self.level.method}', return_wfn='on'"
+        return func_args
 
 register_job_adapter('psi4', Psi4Adapter)

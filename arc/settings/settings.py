@@ -69,10 +69,11 @@ global_ess_settings = {
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
+    'psi4': 'local'
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb']
+supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'psi4']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'KinBot', 'xtb_gsm']
@@ -102,6 +103,7 @@ levels_ess = {
     'terachem': ['pbe'],
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
+    'psi4': ['m06-hf'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -148,6 +150,7 @@ input_filenames = {'cfour': 'ZMAT',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
+                   'psi4': 'input.dat',
                    }
 
 output_filenames = {'cfour': 'output.out',
@@ -160,6 +163,7 @@ output_filenames = {'cfour': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
+                    'psi4': 'output.dat',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -307,3 +311,6 @@ for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_p
     if os.path.isfile(arc_pypath):
         ARC_PYTHON = arc_pypath
         break
+
+# Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
+default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb']

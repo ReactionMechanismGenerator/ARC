@@ -60,6 +60,11 @@ def execute_command(command: Union[str, List[str]],
                 completed_process = subprocess.run(command, shell=shell, capture_output=True)
             else:
                 completed_process = subprocess.run(command, shell=shell, capture_output=True, executable=executable)
+            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            print(command)
+            print("#################################")
+            print(_format_stdout(completed_process.stdout),"\n", _format_stdout(completed_process.stderr))
+            print("#################################")
             return _format_stdout(completed_process.stdout), _format_stdout(completed_process.stderr)
         except subprocess.CalledProcessError as e:
             error = e  # Store the error so we can raise a SettingsError if needed.

@@ -11,6 +11,7 @@ import pandas as pd
 import qcelemental as qcel
 
 from rmgpy.exceptions import InputError as RMGInputError
+from arkane.common import convert_imaginary_freq_to_negative_float
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
@@ -27,7 +28,9 @@ def parse_frequencies(path: str,
                       ) -> np.ndarray:
     """
     Parse the frequencies from a freq job output file.
-
+    This function was not a duplicate of the correspoding Arkane ones, since it behaves slightly differently.
+    This function returns all negative frequancies.
+    
     Args:
         path (str): The log file path.
         software (str, optional): The ESS.
@@ -140,8 +143,28 @@ def parse_frequencies(path: str,
                         freq = float(splits[-4]) if is_str_float(splits[-4]) else 0
                         if freq:
                             freqs = np.append(freqs, freq)
+    elif software.lower() == 'psi4':
+        with open(path, 'r') as f:
+            line = f.readline()
+            while line != '':
+                if 'Harmonic Vibrational Analysis' in line:
+                    while 'Thermochemistry Components' not in line:
+                        if 'Freq [cm^-1]' in line:
+                            if len(line.split()) == 5:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-3:]])
+                            elif len(line.split()) == 4:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-2:]])
+                            elif len(line.split()) == 3:
+                                freqs = np.append(freqs, [float(convert_imaginary_freq_to_negative_float(d))
+                                                    for d in line.split()[-1:]])
+                        line = f.readline()
+
+                    break
+                line = f.readline()
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem, xTB and Psi4 '
                           f'files, got {software}')
     logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
@@ -210,6 +233,37 @@ def parse_normal_mode_displacement(path: str,
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
+    elif software.lower() == 'psi4':
+        freqs = []
+        normal_mode_disp = []
+        with open(path, 'r') as f:
+            line = f.readline()
+            while line != "":
+                line = f.readline()
+                if "Harmonic Vibrational Analysis" in line:
+                    while line != "":
+                        line = f.readline()
+                        if "Freq" in line:
+                            freqs += list(map(float, line.split()[2:]))
+                        if "----------------------------------------------------------------------------------" in line:
+                            line = f.readline()
+                            if line.split() != []:
+                                block = []
+                                while line.split() != []:
+                                    block.append(list(map(float,line.split()[2:])))
+                                    line = f.readline()
+                                block = np.array(block, np.float64)
+                                for i in range(block.shape[1]//3):
+                                    mat = list()
+                                    for j in range(3):
+                                        mat.append(block[:,i+j])
+                                    normal_mode_disp.append(np.array(mat).T)
+
+                                if "Thermochemistry Components" in line:
+                                    break
+                                    
+        normal_mode_disp = np.array(normal_mode_disp)
+        freqs = np.array(list(map(convert_imaginary_freq_to_negative_float, freqs)))
     elif raise_error:
         raise NotImplementedError(f'parse_normal_mode_displacement() is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
@@ -357,6 +411,9 @@ def identify_ess(path: str) -> Optional[str]:
             line = f.readline()
             if 'x T B' in line:
                 software = 'xtb'
+                break
+            elif "Psi4" in line:
+                software = 'psi4'
                 break
     return software
 

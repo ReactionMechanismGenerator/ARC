@@ -44,6 +44,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3_xtb.out')
         yml_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
         vibspectrum_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'vibspectrum')
+        psi4_out = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'psi4_vinoxy.out')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -58,6 +59,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs = parser.parse_frequencies(path=ts_xtb_freqs_path)
         yml_freqs = parser.parse_frequencies(path=yml_freqs_path)
         vibspectrum_freqs = parser.parse_frequencies(path=vibspectrum_path, software='xTB')
+        psi4_freqs = parser.parse_frequencies(path=psi4_out)
 
         np.testing.assert_almost_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64))
@@ -110,6 +112,9 @@ class TestParser(unittest.TestCase):
                                                  3230.936983192379, 3235.2332367908975, 3922.9230982968807],
                                                 np.float64))
         np.testing.assert_almost_equal(vibspectrum_freqs, np.array([4225.72], np.float64))
+        np.testing.assert_almost_equal(psi4_freqs, np.array([443.2069, 505.8835, 756.6704, 976.2501, 
+                                                           978.9482, 1159.8839, 1397.7428, 1474.551,
+                                                           1549.6391, 2954.9212, 3152.147, 3266.3025], np.float64))
 
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
@@ -243,6 +248,96 @@ class TestParser(unittest.TestCase):
              [0.07839541036186716, -0.009452306143447562, 0.15793005333991175],
              [-0.16184923713199378, -0.3376354950974596, 0.787886990928027]], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_4_0)
+
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'psi4_vinoxy.out')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path)
+        expected_freqs = np.array([443.2069, 505.8835, 756.6704, 976.2501, 978.9482, 1159.8839, 1397.7428, 1474.551, 1549.6391, 2954.9212, 3152.147, 3266.3025])
+        excepted_normal_modes_disp = np.array([[[ 0. ,  -0. ,  -0.  ],
+  [ 0.02, -0.01, -0.1 ],
+  [-0.01,  0.01,  0.07],
+  [-0.14,  0.08,  0.83],
+  [ 0.08, -0.05, -0.49],
+  [ 0.02, -0.01, -0.14]],
+
+ [[-0.  , -0.  , -0.14],
+  [-0.01, -0.1 , -0.07],
+  [ 0.01,  0.07,  0.2 ],
+  [ 0.08,  0.83,  0.29],
+  [-0.05, -0.49, -0.68],
+  [-0.01, -0.14, -0.23]],
+
+ [[-0.  , -0.14,  0.07],
+  [-0.1 , -0.07, -0.18],
+  [ 0.07,  0.2 ,  0.05],
+  [ 0.83,  0.29,  0.4 ],
+  [-0.49, -0.68,  0.31],
+  [-0.14, -0.23, -0.11]],
+
+ [[-0.02,  0.01,  0.1 ],
+  [ 0.03, -0.02, -0.2 ],
+  [-0.01,  0.  ,  0.05],
+  [ 0.05, -0.03, -0.28],
+  [ 0.02, -0.01, -0.11],
+  [-0.15,  0.09,  0.91]],
+
+ [[ 0.01,  0.1 ,  0.19],
+  [-0.02, -0.2 , -0.07],
+  [ 0.  ,  0.05, -0.09],
+  [-0.03, -0.28,  0.76],
+  [-0.01, -0.11, -0.36],
+  [ 0.09,  0.91, -0.29]],
+
+ [[ 0.1 ,  0.19, -0.12],
+  [-0.2 , -0.07,  0.02],
+  [ 0.05, -0.09,  0.04],
+  [-0.28,  0.76,  0.31],
+  [-0.11, -0.36,  0.13],
+  [ 0.91, -0.29,  0.11]],
+
+ [[-0.03, -0.03, -0.  ],
+  [-0.03, -0.08,  0.  ],
+  [-0.03,  0.1 , -0.02],
+  [ 0.28,  0.2 ,  0.03],
+  [ 0.24, -0.14,  0.05],
+  [ 0.77, -0.4 ,  0.17]],
+
+ [[-0.03, -0.  , -0.14],
+  [-0.08,  0.  ,  0.07],
+  [ 0.1 , -0.02,  0.01],
+  [ 0.2 ,  0.03,  0.47],
+  [-0.14,  0.05,  0.54],
+  [-0.4 ,  0.17, -0.31]],
+
+ [[-0.  , -0.14, -0.01],
+  [ 0.  ,  0.07,  0.03],
+  [-0.02,  0.01, -0.03],
+  [ 0.03,  0.47,  0.45],
+  [ 0.05,  0.54, -0.31],
+  [ 0.17, -0.31,  0.2 ]],
+
+ [[ 0.  ,  0.  , -0.  ],
+  [-0.04, -0.07,  0.  ],
+  [ 0.  , -0.  ,  0.  ],
+  [ 0.02, -0.04,  0.01],
+  [-0.  , -0.  , -0.  ],
+  [ 0.39,  0.92, -0.02]],
+
+ [[ 0.  , -0.  ,  0.06],
+  [-0.07,  0.  , -0.  ],
+  [-0.  ,  0.  , -0.  ],
+  [-0.04,  0.01, -0.44],
+  [-0.  , -0.  , -0.26],
+  [ 0.92, -0.02,  0.01]],
+
+ [[-0.  ,  0.06, -0.  ],
+  [ 0.  , -0.  , -0.  ],
+  [ 0.  , -0.  ,  0.  ],
+  [ 0.01, -0.44,  0.6 ],
+  [-0.  , -0.26, -0.59],
+  [-0.02,  0.01,  0.02]]])
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        np.testing.assert_almost_equal(normal_modes_disp, excepted_normal_modes_disp)
+
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""

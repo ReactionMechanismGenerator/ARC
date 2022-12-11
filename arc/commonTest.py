@@ -451,10 +451,11 @@ class TestCommon(unittest.TestCase):
         gaussian = os.path.join(common.ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         qchem = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
         molpro = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
-
+        psi4 = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'psi4_vinoxy.out')
         self.assertEqual(common.determine_ess(gaussian), 'gaussian')
         self.assertEqual(common.determine_ess(qchem), 'qchem')
         self.assertEqual(common.determine_ess(molpro), 'molpro')
+        self.assertEqual(common.determine_ess(psi4), 'psi4')
 
     def test_sort_two_lists_by_the_first(self):
         """Test the sort_two_lists_by_the_first function"""
