@@ -99,7 +99,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='anion TS', xyz=['O 0 0 1'], charge=-1, is_ts=True)],
+                                    species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                                     testing=True,
                                     )
         cls.job_7 = GaussianAdapter(execution_type='queue',
