@@ -242,9 +242,9 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(ts, calcfc, noeigentest, maxcycles=100) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
 
-anion_TS
+anion
 
 -1 2
 O       0.00000000    0.00000000    1.00000000
