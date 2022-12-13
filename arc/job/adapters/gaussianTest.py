@@ -99,7 +99,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='anion TS', xyz=['O 0 0 1'], charge=-1, is_ts=True)],
+                                    species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                                     testing=True,
                                     )
         cls.job_7 = GaussianAdapter(execution_type='queue',
@@ -121,6 +121,15 @@ class TestGaussianAdapter(unittest.TestCase):
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
                                     )
+        cls.job_9 = GaussianAdapter(execution_type='local',
+                            job_type='optfreq',
+                            level=Level(method='wb97xd',
+                                        basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
+                            testing=True,
+                            )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -163,7 +172,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2-tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
 
 spc1
 
@@ -181,7 +190,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2-tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
 
 ethanol
 
@@ -215,7 +224,7 @@ block
 %mem=14336mb
 %NProcShared=8
 
-#P  uwb97xd/def2-tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc  
+#P  uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc  
 
 birad_singlet
 
@@ -233,9 +242,9 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(ts, calcfc, noeigentest, maxcycles=100) uwb97xd/def2-tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
 
-anion_TS
+anion
 
 -1 2
 O       0.00000000    0.00000000    1.00000000
@@ -251,7 +260,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2-tzvp   IOp(2/9=2000) scf=xqc  
+#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
 
 IRC
 
@@ -306,6 +315,10 @@ O       0.00000000    0.00000000    1.00000000
                                     'make_x': False}]
         self.assertEqual(self.job_2.files_to_upload, job_2_files_to_upload)
         self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
+
+    def test_gaussian_def2tzvp(self):
+        """Test a Gaussian job using def2-tzvp"""
+        self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
 
     @classmethod
     def tearDownClass(cls):

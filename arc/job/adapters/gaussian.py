@@ -7,6 +7,7 @@ https://gaussian.com/
 import datetime
 import math
 import os
+import re
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from mako.template import Template
@@ -193,6 +194,8 @@ class GaussianAdapter(JobAdapter):
                             tsg=tsg,
                             xyz=xyz,
                             )
+        if isinstance(self.level, Level) and self.level.basis is not None:
+                self.level.basis = re.sub('def2-', 'def2', self.level.basis.lower())
 
         if self.checkfile is None:
             if os.path.isfile(os.path.join(self.local_path, 'check.chk')):
