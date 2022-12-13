@@ -51,6 +51,7 @@ class TestFunctional(unittest.TestCase):
                                conformer_level='gfn2',
                                level_of_theory='gfn2',
                                freq_scale_factor=1.0,
+                               n_confs=2,
                                bac_type = None,
                                verbose=1,
                                )
@@ -68,6 +69,7 @@ class TestFunctional(unittest.TestCase):
                                level_of_theory='gfn2',
                                ts_guess_level='gfn2',
                                freq_scale_factor=1.0,
+                               n_confs=2,
                                bac_type = None,
                                verbose=1,
                                )
