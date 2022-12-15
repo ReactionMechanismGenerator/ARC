@@ -7,11 +7,10 @@
 .PHONY : clean gcn gcn-cpu test test-unittests
 
 test test-unittests:
-	python3 -m unittest discover -p *Test.py -v
+	pytest arc/ --cov -ra -vv
 
 test-functional:
-	python3 -m unittest functional/functional_test.py
-	python3 -m unittest functional/restart_test.py
+	pytest functional/ -ra -vv
 
 install-all:
 	bash devtools/install_all.sh
