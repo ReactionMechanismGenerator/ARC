@@ -14,23 +14,25 @@ jobs:
         shell: bash -l {0}
 
     steps:
-      - uses: actions/checkout@v2
+    - uses: actions/checkout@v2
 
-      - name: Set up miniconda Python 3.7
-        uses: conda-incubator/setup-miniconda@v2
-        with:
-          environment-file: environment.yml
-          activate-environment: arc_env
-          python-version: 3.7
-          auto-activate-base: false
+    - name: Setup Mambaforge Python 3.7
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        environment-file: environment.yml
+        miniforge-variant: Mambaforge
+        miniforge-version: latest
+        activate-environment: arc_env
+        python-version: 3.7
+        use-mamba: true
 
       - name: Install codecov
-        run: conda install -y -c conda-forge codecov
+        run: mamba install -y -c conda-forge codecov
 
       - name: Install dependencies
         run: |
           export PYTHONPATH=$PYTHONPATH:$(pwd)
-          conda activate arc_env
+          mamba activate arc_env
           cd ..
           git clone https://github.com/ReactionMechanismGenerator/RMG-Py
           cd RMG-Py
@@ -39,17 +41,17 @@ jobs:
           cd ..
           git clone https://github.com/ReactionMechanismGenerator/RMG-database
           cd ARC
-          conda deactivate
+          mamba deactivate
           make gcn-cpu
           cd ..
           echo $(pwd)
-          conda activate arc_env
-          conda list
+          mamba activate arc_env
+          mamba list
 
       - name: Compile docs
         run: |
           export PYTHONPATH=$PYTHONPATH:$(pwd)
-          conda activate arc_env
+          mamba activate arc_env
           cd ..
           cd RMG-Py
           export PYTHONPATH=$PYTHONPATH:$(pwd)
