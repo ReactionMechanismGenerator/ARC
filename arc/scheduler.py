@@ -976,7 +976,7 @@ class Scheduler(object):
                      max_job_time=job.max_job_time,
                      rotor_index=job.rotor_index,
                      reactions=job.reactions,
-                     trsh=job.args['trsh'].values() if 'trsh' in job.args else '',
+                     trsh=list(job.args['trsh'].values()) if 'trsh' in job.args else '',
                      torsions=job.torsions,
                      times_rerun=job.times_rerun + int(rerun),
                      tsg=job.tsg,
