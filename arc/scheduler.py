@@ -2576,7 +2576,7 @@ class Scheduler(object):
         self.initialize_output_dict(label=irc_spc.label)
         self.run_job(label=irc_spc.label,
                      xyz=self.species_dict[irc_spc.label].get_xyz(),
-                     level_of_theory=self.opt_level,
+                     level_of_theory=self.opt_level if not self.composite_method else self.freq_level,
                      job_type='opt',
                      fine=False,
                      )
