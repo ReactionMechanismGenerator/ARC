@@ -18,8 +18,8 @@ local_arc_settings_path = os.path.join(local_arc_path, 'settings.py')
 settings = {key: val for key, val in vars(arc_settings).items() if '__' not in key}
 if os.path.isfile(local_arc_settings_path):
     local_settings = dict()
-    if local_arc_path not in sys.path:
-        sys.path.insert(1, local_arc_path)
+    if local_arc_path != sys.path[0]:
+        sys.path.insert(0, local_arc_path)
     try:
         import settings as local_settings
     except ImportError:
@@ -34,8 +34,8 @@ if os.path.isfile(local_arc_settings_path):
 local_arc_submit_path = os.path.join(local_arc_path, 'submit.py')
 if os.path.isfile(local_arc_submit_path):
     local_incore_commands, local_pipe_submit, local_submit_scripts = dict(), dict(), dict()
-    if local_arc_path not in sys.path:
-        sys.path.insert(1, local_arc_path)
+    if local_arc_path != sys.path[0]:
+        sys.path.insert(0, local_arc_path)
     try:
         from submit import incore_commands as local_incore_commands
     except ImportError:
@@ -58,8 +58,8 @@ if os.path.isfile(local_arc_submit_path):
 local_arc_inputs_path = os.path.join(local_arc_path, 'inputs.py')
 if os.path.isfile(local_arc_inputs_path):
     local_input_files = dict()
-    if local_arc_path not in sys.path:
-        sys.path.insert(1, local_arc_path)
+    if local_arc_path != sys.path[0]:
+        sys.path.insert(0, local_arc_path)
     try:
         from inputs import input_files as local_input_files
     except ImportError:
