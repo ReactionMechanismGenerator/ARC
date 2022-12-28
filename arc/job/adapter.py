@@ -758,14 +758,14 @@ class JobAdapter(ABC):
             total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
-        if cluster_software in ['oge', 'sge', 'pbs', 'htcondor']:
-            # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
+        if cluster_software in ['oge', 'sge', 'htcondor']:
+            # In SGE, "-l h_vmem=5000M" specifies the memory for all cores to be 5000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         if cluster_software in ['pbs']:
-            # In SGE, "-l h_vmem=5000M" specifies the amount of maximum memory required for all cores to be 5000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E3  # in B
+            # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E3  # in Bytes
         elif cluster_software in ['slurm']:
-            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the amount of memory required per cpu core to be 2000 MB.
+            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
         self.set_input_file_memory()
 
