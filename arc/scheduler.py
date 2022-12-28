@@ -3251,7 +3251,6 @@ class Scheduler(object):
                          memory_gb=job.job_memory_gb,
                          cpu_cores=job.cpu_cores,
                          ess_trsh_methods=job.ess_trsh_methods,
-                         available_ess=list(self.ess_settings.keys()),
                          )
         for output_error in output_errors:
             self.output[label]['errors'] += output_error
