@@ -48,6 +48,12 @@ servers = {
         'cpus': 24,  # number of cpu's per node, optional (default: 8)
         'memory': 256,  # amount of memory per node in GB, optional (default: 16)
     },
+    'server3': {
+        'cluster_soft': 'PBS',
+        'address': 'server3.host.edu',
+        'un': '<username>',
+        'key': 'path_to_rsa_key',
+    },
     'local': {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
