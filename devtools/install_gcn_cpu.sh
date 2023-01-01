@@ -2,6 +2,15 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
+if [ $(mamba) ] > /dev/null 2>&1; then 
+	COMMAND_PKG=conda
+	echo "conda found"
+	else
+	COMMAND_PKG=mamba
+	echo "mamba found"
+fi
+
+
 # temporarily change directory to install software
 pushd .
 cd ..
@@ -25,7 +34,7 @@ echo "Creating the GCN-cpu environment..."
 source ~/.bashrc
 bash devtools/create_env_cpu.sh
 conda activate ts_gcn
-conda env update -f devtools/cpu_environment.yml
+$COMMAND_PKG env update -f devtools/cpu_environment.yml
 
 # Restore the original directory
 cd ../ARC || exit

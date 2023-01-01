@@ -2,6 +2,16 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
+
+if [ $(mamba) ] > /dev/null 2>&1; then 
+	COMMAND_PKG=conda
+	echo "conda found"
+	else
+	COMMAND_PKG=mamba
+	echo "mamba found"
+fi
+
+
 # temporarily change directory to install software, and move one directory up in the tree
 pushd .
 cd ..
@@ -23,9 +33,9 @@ echo $PYTHONPATH
 # create the environment
 echo "Creating the AutoTST environment..."
 source ~/.bashrc
-conda env create -f environment.yml
+$COMMAND_PKG env create -f environment.yml
 conda activate tst_env
-conda install -c anaconda yaml -y
+$COMMAND_PKG install -c anaconda yaml -y
 source ~/.bashrc
 
 # Restore the original directory
