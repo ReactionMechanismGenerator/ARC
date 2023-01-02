@@ -2,14 +2,16 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-if [ $(mamba) ] > /dev/null 2>&1; then 
-	COMMAND_PKG=conda
-	echo "conda found"
-	else
+#Check if mamba/conda is installed
+if [ -x "$(command -v mamba)" ]; then
+	echo "mamba is installed."
 	COMMAND_PKG=mamba
-	echo "mamba found"
+elif [ -x "$(command -v conda)" ]; then
+	echo "conda is installed."
+	COMMAND_PKG=conda
+else
+    echo "mamba and conda are not installed. Please download and install mamba or conda - we strongly recommend mamba"
 fi
-
 
 # temporarily change directory to install software
 pushd .
