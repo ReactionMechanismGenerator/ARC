@@ -1018,6 +1018,31 @@ class TestHeuristicsAdapter(unittest.TestCase):
                               )
         self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions))
 
+        rxn_2 = ARCReaction(reactants=['H2N2(T)', 'N2H4'], products=['N2H3', 'N2H3'],
+                            r_species=[ARCSpecies(label='H2N2(T)', smiles='[N]N'), ARCSpecies(label='N2H4', smiles='NN')],
+                            p_species=[ARCSpecies(label='N2H3', smiles='[NH]N')])
+        rxn_2.determine_family(rmg_database=self.rmgdb, save_order=True)
+        self.assertEqual(rxn_2.family.label, 'H_Abstraction')
+        reactants, products = rxn_2.get_reactants_and_products(arc=False)
+        reactant_labels = [atom.label for atom in reactants[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in reactants[1].molecule[0].atoms if atom.label]
+        product_labels = [atom.label for atom in products[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in products[1].molecule[0].atoms if atom.label]
+        self.assertEqual(reactant_labels, list())
+        self.assertEqual(product_labels, list())
+        rmg_reactions = react(reactants=list(reactants),
+                              products=list(products),
+                              family=rxn_2.family,
+                              arc_reaction=rxn_2,
+                              )
+        reactant_labels = [atom.label for atom in rmg_reactions[0].reactants[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in rmg_reactions[0].reactants[1].molecule[0].atoms if atom.label]
+        product_labels = [atom.label for atom in rmg_reactions[0].products[0].molecule[0].atoms if atom.label] \
+                         + [atom.label for atom in rmg_reactions[0].products[1].molecule[0].atoms if atom.label]
+        for label in ['*1', '*2', '*3']:
+            self.assertIn(label, reactant_labels)
+            self.assertIn(label, product_labels)
+
     def test_generate_the_two_constrained_zmats(self):
         """Test the generate_the_two_constrained_zmats() function."""
         zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1=self.ccooh_xyz,
