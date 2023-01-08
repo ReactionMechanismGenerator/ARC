@@ -2,15 +2,14 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-#Check if mamba/conda is installed
-if [ -x "$(command -v mamba)" ]; then
-	echo "mamba is installed."
-	COMMAND_PKG=mamba
-elif [ -x "$(command -v conda)" ]; then
-	echo "conda is installed."
-	COMMAND_PKG=conda
+# Check if mamba or conda is installed
+if command -v mamba > /dev/null; then
+  COMMAND_PKG=mamba
+elif command -v conda > /dev/null; then
+  COMMAND_PKG=conda
 else
-    echo "mamba and conda are not installed. Please download and install mamba or conda - we strongly recommend mamba"
+  echo "mamba and conda are not installed. Please download and install mamba or conda - we strongly recommend mamba"
+  exit 1
 fi
 
 $COMMAND_PKG create -n xtb_env python=3.7 -y

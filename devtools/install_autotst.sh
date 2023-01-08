@@ -2,15 +2,14 @@
 CONDA_BASE=$(conda info --base)
 source $CONDA_BASE/etc/profile.d/conda.sh
 
-#Check if mamba/conda is installed
-if [ -x "$(command -v mamba)" ]; then
-	echo "mamba is installed."
-	COMMAND_PKG=mamba
-elif [ -x "$(command -v conda)" ]; then
-	echo "conda is installed."
-	COMMAND_PKG=conda
+# Check for package manager
+if command -v mamba 2>/dev/null; then
+    COMMAND_PKG=mamba
+elif command -v conda >/dev/null 2>&1; then
+    COMMAND_PKG=conda
 else
-    echo "mamba and conda are not installed. Please download and install mamba or conda - we strongly recommend mamba"
+    echo "Error: mamba or conda is not installed. Please download and install mamba or conda - we strongly recommend mamba"
+    exit 1
 fi
 
 # temporarily change directory to install software, and move one directory up in the tree
@@ -19,8 +18,12 @@ cd ..
 
 # clone the repo in the parent directory
 echo "Cloning/Updating AutoTST..."
-git clone https://github.com/ReactionMechanismGenerator/AutoTST
-cd AutoTST || exit
+if [ -d "./AutoTST" ]; then
+    cd AutoTST
+else
+    git clone https://github.com/ReactionMechanismGenerator/AutoTST
+    cd AutoTST || exit
+fi
 git fetch origin
 git checkout main
 git pull origin main
@@ -33,11 +36,9 @@ echo $PYTHONPATH
 
 # create the environment
 echo "Creating the AutoTST environment..."
-source ~/.bashrc
 $COMMAND_PKG env create -f environment.yml
 conda activate tst_env
 $COMMAND_PKG install -c anaconda yaml -y
-source ~/.bashrc
 
 # Restore the original directory
 cd ../ARC || exit
