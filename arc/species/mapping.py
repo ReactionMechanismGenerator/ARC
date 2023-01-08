@@ -592,7 +592,7 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
                         spc_map[i].append(j)
                     elif concatenate:
                         spc_map[i] = [j]
-                    else:
+                    elif i not in spc_map.keys() and j not in spc_map.values():
                         spc_map[i] = j
                         break
     if not r_map or not p_map:
