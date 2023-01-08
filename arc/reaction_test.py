@@ -608,6 +608,12 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn1.get_species_count(label=spc2.label, well=0), 1)
         self.assertEqual(rxn1.get_species_count(label=spc2.label, well=1), 2)
 
+        h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
+        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
+
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.arc_species_from_rmg_reaction()
@@ -637,6 +643,19 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertNotEqual(products[0].label, products[1].label)
+
+        h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
+        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=False)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertIs(products[0], products[1])
+        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=True)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertIsNot(products[0], products[1])
 
     def test_get_expected_changing_bonds(self):
         """Test the get_expected_changing_bonds() method."""
