@@ -25,9 +25,6 @@ $COMMAND_PKG  install -c conda-forge ncurses
 $COMMAND_PKG  install -c anaconda pip -y
 $CONDA_BASE/envs/sella_env/bin/pip install sella
 
-
-
-
 cd $CONDA_BASE/envs/sella_env
 mkdir -p ./etc/conda/activate.d
 mkdir -p ./etc/conda/deactivate.d
@@ -40,8 +37,6 @@ echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:'"$CONDA_BASE"'/envs/sella_env/l
 #This will reset the LD_LIBRARY_PATH back to the original LD_LIBRARY_PATH when the environment is deactivated
 echo 'export LD_LIBRARY_PATH=${OLD_LD_LIBRARY_PATH}' >> $CONDA_BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
 echo 'unset OLD_LD_LIBRARY_PATH' >> $CONDA_BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
-
-
 
 source ~/.bashrc
 echo "Done installing Sella."
