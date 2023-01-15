@@ -1114,6 +1114,29 @@ def get_zmat_param_value(coords: Dict[str, tuple],
         return sum(zmat["vars"][par] for par in param)
 
 
+def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
+    """
+    Relocate all dummy atoms in a ZMat to the end of the corresponding Cartesian coordinates atom list.
+    Only modifies the values of the ZMat map.
+
+    Args:
+        zmat_map (dict): The ZMat map.
+
+    Returns:
+        dict: The updated ZMat map.
+    """
+    no_x_map = {key: val for key, val in zmat_map.items() if isinstance(val, int)}
+    x_map = {key: val for key, val in zmat_map.items() if isinstance(val, str) and 'X' in val}
+    for x_atom_number_in_zmat, x_atom_val in x_map.items():
+        x_atom_number_in_cartesian = int(x_atom_val[1:])
+        if any(x_atom_number_in_cartesian < number_in_cartesian for number_in_cartesian in no_x_map.values()):
+            no_x_map = {key: val - 1 if x_atom_number_in_cartesian < val else val for key, val in no_x_map.items()}
+    num_no_x_atoms = len(no_x_map.keys())
+    x_map = {key: f'X{num_no_x_atoms + i}' for i, (key, val) in enumerate(x_map.items())}
+    no_x_map.update(x_map)
+    return no_x_map
+
+
 def modify_coords(coords: Dict[str, tuple],
                   indices: List[int],
                   new_value: float,
