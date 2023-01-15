@@ -2037,7 +2037,9 @@ def remove_1st_atom(zmat: dict) -> dict:
     new_coords = tuple(new_coords)
     new_vars = {up_param(key, increment=-1): val for key, val in zmat['vars'].items() if key not in removed_vars}
     val_0 = map_index_to_int(zmat['map'][0])
+    keys_of_x_atoms = [key - 1 for key, val in zmat['map'].items() if isinstance(val, str) and 'X' in val]
     new_map = {key - 1: map_index_to_int(val) - 1 if map_index_to_int(val) > val_0 else val for key, val in zmat['map'].items() if key != 0}
+    new_map = {key: val if key not in keys_of_x_atoms else f'X{val}' for key, val in new_map.items()}
     return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
 
 
