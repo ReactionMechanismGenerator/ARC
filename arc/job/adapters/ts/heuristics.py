@@ -678,7 +678,7 @@ def get_new_zmat_2_map(zmat_1: dict,
                        reactants_reversed: bool = False,
                        ) -> Dict[int, Union[int, str]]:
     """
-    Get the map of the combined zmat.
+    Get the map of the combined zmat ignoring the redundant H in ``zmat_2``.
 
     Args:
         zmat_1 (dict): The zmat describing R1H. Contains a dummy atom at the end if a2 is linear.
@@ -690,16 +690,7 @@ def get_new_zmat_2_map(zmat_1: dict,
     Returns:
         Dict[int, Union[int, str]]: The combined zmat map element.
     """
-    new_map = dict()
-    num_atoms_1, num_atoms_2 = len(zmat_1['symbols']), len(zmat_2['symbols']) - 1  # Redundant H in zmat_2.
-
-    # 1. Add zmat_1's map.
-    val_inc = num_atoms_2 if reactants_reversed else 0
-    for key, val in zmat_1['map'].items():
-        if isinstance(val, str) and 'X' in val:
-            new_map[key] = f'X{int(val[1:]) + val_inc}'
-        else:
-            new_map[key] = val + val_inc
+    new_map = get_new_map_based_on_zmat_1(zmat_1=zmat_1, zmat_2=zmat_2, reactants_reversed=reactants_reversed)
 
     # 2. Add zmat_2's map. Use the reaction atom_map, remember that dummy atoms are not considered in the atom_map.
     zmat_2_mod = remove_1st_atom(zmat_2)
@@ -727,6 +718,31 @@ def get_new_zmat_2_map(zmat_1: dict,
         new_map[new_key] = new_val
     if len(list(new_map.values())) != len(set(new_map.values())):
         raise ValueError(f'Could not generate a combined zmat map with no repeating values.\n{new_map}')
+    return new_map
+
+
+def get_new_map_based_on_zmat_1(zmat_1: dict,
+                                zmat_2: dict,
+                                reactants_reversed: bool = False,
+                                ) -> dict:
+    """
+    Generate an initial map for the combined zmats, here only consider ``zmat_1``.
+
+    Args:
+        zmat_1 (dict): The zmat describing R1H. Contains a dummy atom at the end if a2 is linear.
+        zmat_2 (dict): The zmat describing R2H.
+        reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
+
+    Returns:
+        dict: The initial map for the combined zmats.
+    """
+    new_map = dict()
+    val_inc = len(zmat_2['symbols']) - 1 if reactants_reversed else 0
+    for key, val in zmat_1['map'].items():
+        if isinstance(val, str) and 'X' in val:
+            new_map[key] = f'X{int(val[1:]) + val_inc}'
+        else:
+            new_map[key] = val + val_inc
     return new_map
 
 
