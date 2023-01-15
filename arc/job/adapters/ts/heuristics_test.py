@@ -886,6 +886,21 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(rxn1.ts_species.charge, 0)
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
 
+        # Molecules with linear motifs (and many dummy atoms in both R1H and P2H):
+        rxn1 = ARCReaction(r_species=[ARCSpecies(label='CtC[CH]CtC', smiles='C#C[CH]C#C'), ARCSpecies(label='CtCC[C]CtC', smiles='C#CC(C)C#C')],
+                           p_species=[ARCSpecies(label='CtCCCtC', smiles='C#CCC#C'), ARCSpecies(label='CtC[C][C]CtC', smiles='C#C[C](C)C#C')])
+        rxn1.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn1.family.label, 'H_Abstraction')
+        heuristics_1 = HeuristicsAdapter(job_type='tsg',
+                                         reactions=[rxn1],
+                                         testing=True,
+                                         project='test',
+                                         project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'),
+                                         dihedral_increment=60,
+                                         )
+        heuristics_1.execute_incore()
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False
