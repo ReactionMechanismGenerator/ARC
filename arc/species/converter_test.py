@@ -4674,6 +4674,20 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                           )
         self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 200, places=3)
 
+    def test_relocate_zmat_dummy_atoms_to_the_end(self):
+        """Test the relocating dummy atoms in a zmat to the end of the cartesian coordinates atom list"""
+        zmat_map_1 = {0: 1, 1: 2, 2: 'X0', 3: 3}
+        new_zmat_map_1 = converter.relocate_zmat_dummy_atoms_to_the_end(zmat_map_1)
+        self.assertEqual(new_zmat_map_1, {0: 0, 1: 1, 2: 'X3', 3: 2})
+
+        zmat_map_2 = {0: 1, 1: 0, 2: 'X2', 3: 3}
+        new_zmat_map_2 = converter.relocate_zmat_dummy_atoms_to_the_end(zmat_map_2)
+        self.assertEqual(new_zmat_map_2, {0: 1, 1: 0, 2: 'X3', 3: 2})
+
+        zmat_map_3 = {0: 1, 1: 3, 2: 'X0', 3: 2, 4: 'X4', 5: 6, 6: 'X5', 7: 7, 8: 'X8', 9: 9}
+        new_zmat_map_3 = converter.relocate_zmat_dummy_atoms_to_the_end(zmat_map_3)
+        self.assertEqual(new_zmat_map_3, {0: 0, 1: 2, 2: 'X6', 3: 1, 4: 'X7', 5: 4, 6: 'X8', 7: 5, 8: 'X9', 9: 6})
+
     def test_compare_zmats(self):
         """Test determining whether two conformers have almost equal internal coordinates (zmats)"""
         z_1 = {'symbols': ('N', 'N', 'H', 'H'),
