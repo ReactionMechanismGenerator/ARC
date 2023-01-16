@@ -17,6 +17,7 @@ from arc.common import ARC_PATH, almost_equal_lists
 from arc.exceptions import ReactionError
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.species import ARCSpecies
+from arc.mapping.engine import check_atom_map
 from arc.utils.wip import work_in_progress
 
 

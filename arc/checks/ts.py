@@ -20,9 +20,9 @@ from arc.common import (ARC_PATH,
                         )
 from arc.imports import settings
 from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
-from arc.species.mapping import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                 get_rmg_reactions_from_arc_reaction,
-                                 )
+from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
+                                get_rmg_reactions_from_arc_reaction,
+                                )
 from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:

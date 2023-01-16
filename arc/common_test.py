@@ -8,7 +8,6 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
-import random
 import time
 import unittest
 
@@ -22,7 +21,7 @@ import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 from arc.rmgdb import make_rmg_database_object, load_families_only
-from arc.species.mapping import get_rmg_reactions_from_arc_reaction
+from arc.mapping.engine import get_rmg_reactions_from_arc_reaction
 import arc.species.converter as converter
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
