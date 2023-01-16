@@ -2106,6 +2106,15 @@ H       1.11582953    0.94384729   -0.10134685"""
                 self.assertEqual(spc.mol.atoms[0].element.symbol, 'O')
                 self.assertEqual(spc.get_xyz()['symbols'][0], 'O')
 
+        p_1_xyz = {'symbols': ('O', 'Cl'), 'isotopes': (16, 35),
+                   'coords': ((0.8407400963991551, 0.0, 0.0), (-0.8407400963991551, 0.0, 0.0))}
+        spc1 = ARCSpecies(label="R3-X2", smiles="[O]Cl", xyz=p_1_xyz, bdes=[(1, 2)])
+        spc1.final_xyz = spc1.get_xyz()
+        cuts = spc1.scissors()
+        self.assertEqual(len(cuts), 2)
+        for cut in cuts:
+            self.assertEqual(cut.mol.atoms[0].element.symbol, cut.get_xyz()['symbols'][0])
+
     def test_keeping_atomic_order_in_scissors(self):
         """Test that the atomic order in a species mol and xyz is consistent after calling scissors()."""
         spc_1 = ARCSpecies(label='S1', smiles='CCC#C',
