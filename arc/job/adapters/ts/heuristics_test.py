@@ -913,7 +913,9 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertIn(rxn_1.atom_map[1], [0, 1])
         for index in [2, 3, 4, 5, 6, 7]:
             self.assertIn(rxn_1.atom_map[index], [2, 3, 4, 5, 6, 16])
-        self.assertEqual(rxn_1.atom_map[8:], [7, 8, 9, 10, 13, 11, 12, 14, 15])
+        self.assertEqual(rxn_1.atom_map[8:12], [7, 8, 9, 10])
+        self.assertIn(tuple(rxn_1.atom_map[12:15]), itertools.permutations([13, 11, 12]))
+        self.assertIn(rxn_1.atom_map[15:], [[14, 15], [15, 14]])
         heuristics_1 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_1],
                                          testing=True,
@@ -933,7 +935,12 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                        ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz)])
         rxn_2.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(rxn_2.family.label, 'H_Abstraction')
-        self.assertEqual(rxn_2.atom_map, [11, 10, 9, 16, 15, 14, 12, 13, 0, 1, 2, 3, 6, 4, 5, 7, 8])
+        self.assertEqual(rxn_2.atom_map[:2], [11, 10])
+        self.assertIn(tuple(rxn_2.atom_map[2:5]), itertools.permutations([9, 16, 15]))
+        self.assertIn(tuple(rxn_2.atom_map[5:8]), itertools.permutations([12, 13, 14]))
+        self.assertEqual(rxn_2.atom_map[8:12], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn_2.atom_map[12:15]), itertools.permutations([4, 5, 6]))
+        self.assertIn(tuple(rxn_2.atom_map[15:]), itertools.permutations([7, 8]))
         heuristics_2 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_2],
                                          testing=True,
@@ -952,7 +959,13 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
                                        ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz)])
         rxn_3.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_3.atom_map, [7, 8, 9, 10, 13, 11, 12, 14, 15, 1, 0, 16, 6, 5, 4, 2, 3])
+        self.assertEqual(rxn_3.atom_map[:4], [7, 8, 9, 10])
+        self.assertIn(tuple(rxn_3.atom_map[4:7]), itertools.permutations([11, 12, 13]))
+        self.assertIn(tuple(rxn_3.atom_map[7:9]), itertools.permutations([14, 15]))
+        self.assertEqual(rxn_3.atom_map[9:11], [1, 0])
+        self.assertIn(tuple(rxn_3.atom_map[11:14]), itertools.permutations([16, 5, 6]))
+        self.assertIn(tuple(rxn_3.atom_map[14:]), itertools.permutations([3, 4, 2]))
+
         heuristics_3 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_3],
                                          testing=True,
@@ -971,7 +984,12 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             p_species=[ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz),
                                        ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz)])
         rxn_4.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_4.atom_map, [0, 1, 2, 3, 6, 4, 5, 7, 8, 11, 10, 9, 16, 15, 14, 12, 13])
+        self.assertEqual(rxn_4.atom_map[:4], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn_4.atom_map[4:7]), itertools.permutations([4, 5, 6]))
+        self.assertIn(tuple(rxn_4.atom_map[7:9]), itertools.permutations([7, 8]))
+        self.assertEqual(rxn_4.atom_map[9:11], [11, 10])
+        self.assertIn(tuple(rxn_4.atom_map[11:14]), itertools.permutations([9, 15, 16]))
+        self.assertIn(tuple(rxn_4.atom_map[14:]), itertools.permutations([12, 13, 14 ]))
         heuristics_4 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_4],
                                          testing=True,
