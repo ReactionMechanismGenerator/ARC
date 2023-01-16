@@ -149,11 +149,25 @@ class ARCReaction(object):
         self.check_atom_balance()
 
     @property
-    def atom_map(self):
+    def atom_map(self, backend: str = 'arc'):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            self._atom_map = map_reaction(rxn=self)
+            try:
+                self._atom_map = map_reaction(rxn=self, backend=backend)
+            except ValueError:
+                logger.error(f'The requested ARC Reaction {self} could not be atom mapped. Trying to map the flipped reaction...')
+                try:
+                    self._atom_map = flip_map(map_reaction(rxn=self.flip_reaction(), backend=backend))
+                except ValueError:
+                    logger.error(f'The requested ARC Reaction {self} could not be atom mapped by ARC, trying again with general reaction.')
+                    try:
+                        self._atom_map = map_reaction(rxn=self, backend='qcelemental' if backend == 'arc' else 'arc')
+                    except ValueError:
+                        logger.error(f'The requested ARC Reaction {self} could not be atom mapped by ARC, trying again with general reaction.')
+                        self._atom_map = None
+            if self._atom_map is None:
+                self._atom_map = map_reaction(rxn=self, backend='qcelemental' if backend == 'arc' else 'arc')
         return self._atom_map
 
     @atom_map.setter
