@@ -945,10 +945,7 @@ def check_atom_map(rxn) -> bool:
     for i in range(len(unique(rxn.atom_map))):
         if unique(rxn.atom_map)[i] != i:
             return False
-
-    else:
-        # Did not break, the mapping makes sense.
-        return True
+    return True
 
 
 def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpecies,
