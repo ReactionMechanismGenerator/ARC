@@ -249,7 +249,7 @@ class HeuristicsAdapter(JobAdapter):
                                             multiplicity=rxn.multiplicity,
                                             )
             rxn.arc_species_from_rmg_reaction()
-            reactants, products = rxn.get_reactants_and_products(arc=True)
+            reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=True)
             reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
             product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
             reaction_list = list()
@@ -905,8 +905,9 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             products_reversed = True
             break
 
-    arc_reactant = arc_reaction.r_species[int(reactants_reversed)]  # Get R(*1)-H(*2).
-    arc_product = arc_reaction.p_species[int(not products_reversed)]  # Get R(*3)-H(*2).
+    arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
+    arc_reactant = arc_reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
+    arc_product = arc_products[int(not products_reversed)]  # Get R(*3)-H(*2).
 
     if any([is_linear(coordinates=np.array(arc_reactant.get_xyz()['coords'])),
             is_linear(coordinates=np.array(arc_product.get_xyz()['coords']))]) and is_angle_linear(a2):

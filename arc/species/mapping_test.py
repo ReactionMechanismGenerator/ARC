@@ -1031,6 +1031,19 @@ class TestMapping(unittest.TestCase):
         self.assertEqual(r_map, {0: 0, 1: 1})
         self.assertEqual(p_map, {0: 1, 1: 0})
 
+        rmg_reaction = Reaction(reactants=[Species(smiles='[N]N'), Species(smiles='NN')],
+                                products=[Species(smiles='[NH]N'), Species(smiles='[NH]N')])
+        arc_reaction = ARCReaction(r_species=[ARCSpecies(label='H2NN(T)', smiles='[N]N'),
+                                              ARCSpecies(label='N2H4', smiles='NN')],
+                                   p_species=[ARCSpecies(label='N2H3', smiles='[NH]N'),
+                                              ARCSpecies(label='N2H3', smiles='[NH]N')])
+        r_map, p_map = mapping.map_arc_rmg_species(rmg_reaction=rmg_reaction,
+                                                   arc_reaction=arc_reaction,
+                                                   concatenate=False,
+                                                   )
+        self.assertEqual(r_map, {0: 0, 1: 1})
+        self.assertEqual(p_map, {0: 0, 1: 1})
+
     def test_find_equivalent_atoms_in_reactants_and_products(self):
         """Test the find_equivalent_atoms_in_reactants_and_products() function"""
         equivalence_map_1 = mapping.find_equivalent_atoms_in_reactants(arc_reaction=self.rxn_2a)

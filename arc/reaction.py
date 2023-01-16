@@ -741,6 +741,7 @@ class ARCReaction(object):
 
     def get_reactants_and_products(self,
                                    arc: bool = True,
+                                   return_copies: bool = True,
                                    ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
@@ -748,6 +749,7 @@ class ARCReaction(object):
 
         Args:
             arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
+            return_copies (bool, optional): Whether to return unique object instances using the copy() method.
 
         Returns:
             Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
@@ -756,16 +758,20 @@ class ARCReaction(object):
         reactants, products = list(), list()
         for r_spc in self.r_species:
             if arc:
-                reactants.extend([r_spc] * self.get_species_count(species=r_spc, well=0))
+                for i in range(self.get_species_count(species=r_spc, well=0)):
+                    reactants.append(r_spc.copy() if return_copies else r_spc)
             else:
-                reactants.extend([Species(label=r_spc.label, molecule=[r_spc.mol])] *
-                                 self.get_species_count(species=r_spc, well=0))
+                for i in range(self.get_species_count(species=r_spc, well=0)):
+                    reactants.append(Species(label=r_spc.label, molecule=[r_spc.mol.copy(deep=True) if return_copies
+                                                                          else r_spc.mol]))
         for p_spc in self.p_species:
             if arc:
-                products.extend([p_spc] * self.get_species_count(species=p_spc, well=1))
+                for i in range(self.get_species_count(species=p_spc, well=1)):
+                    products.append(p_spc.copy() if return_copies else p_spc)
             else:
-                products.extend([Species(label=p_spc.label, molecule=[p_spc.mol])] *
-                                self.get_species_count(species=p_spc, well=1))
+                for i in range(self.get_species_count(species=p_spc, well=1)):
+                    products.append(Species(label=p_spc.label, molecule=[p_spc.mol.copy(deep=True) if return_copies
+                                                                          else p_spc.mol]))
         return reactants, products
 
     def get_expected_changing_bonds(self,

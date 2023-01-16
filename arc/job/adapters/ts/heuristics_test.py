@@ -795,6 +795,25 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(rxn1.ts_species.multiplicity, 2)
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
 
+        # H2NN(T) + N2H4 <=> N2H3 + N2H3
+        h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
+        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        rxn1.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn1.family.label, 'H_Abstraction')
+        heuristics_1 = HeuristicsAdapter(job_type='tsg',
+                                         reactions=[rxn1],
+                                         testing=True,
+                                         project='test',
+                                         project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'),
+                                         dihedral_increment=60,
+                                         )
+        heuristics_1.execute_incore()
+        self.assertTrue(rxn1.ts_species.is_ts)
+        self.assertEqual(rxn1.ts_species.charge, 0)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
+
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
         # reactant_reversed, products_reversed = False, False
@@ -1017,6 +1036,31 @@ class TestHeuristicsAdapter(unittest.TestCase):
                               arc_reaction=rxn_1,
                               )
         self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions))
+
+        rxn_2 = ARCReaction(reactants=['H2N2(T)', 'N2H4'], products=['N2H3', 'N2H3'],
+                            r_species=[ARCSpecies(label='H2N2(T)', smiles='[N]N'), ARCSpecies(label='N2H4', smiles='NN')],
+                            p_species=[ARCSpecies(label='N2H3', smiles='[NH]N')])
+        rxn_2.determine_family(rmg_database=self.rmgdb, save_order=True)
+        self.assertEqual(rxn_2.family.label, 'H_Abstraction')
+        reactants, products = rxn_2.get_reactants_and_products(arc=False)
+        reactant_labels = [atom.label for atom in reactants[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in reactants[1].molecule[0].atoms if atom.label]
+        product_labels = [atom.label for atom in products[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in products[1].molecule[0].atoms if atom.label]
+        self.assertEqual(reactant_labels, list())
+        self.assertEqual(product_labels, list())
+        rmg_reactions = react(reactants=list(reactants),
+                              products=list(products),
+                              family=rxn_2.family,
+                              arc_reaction=rxn_2,
+                              )
+        reactant_labels = [atom.label for atom in rmg_reactions[0].reactants[0].molecule[0].atoms if atom.label] \
+                          + [atom.label for atom in rmg_reactions[0].reactants[1].molecule[0].atoms if atom.label]
+        product_labels = [atom.label for atom in rmg_reactions[0].products[0].molecule[0].atoms if atom.label] \
+                         + [atom.label for atom in rmg_reactions[0].products[1].molecule[0].atoms if atom.label]
+        for label in ['*1', '*2', '*3']:
+            self.assertIn(label, reactant_labels)
+            self.assertIn(label, product_labels)
 
     def test_generate_the_two_constrained_zmats(self):
         """Test the generate_the_two_constrained_zmats() function."""
