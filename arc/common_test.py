@@ -13,6 +13,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+from random import shuffle
 
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
@@ -1349,6 +1350,23 @@ class TestCommon(unittest.TestCase):
             'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
         self.assertFalse(common.is_xyz_mol_match(mol1, xyz2))
         self.assertTrue(common.is_xyz_mol_match(mol2, xyz2))
+
+    def test_sort_atoms_in_decending_label_order(self):
+        "tests the sort_atoms_in_decending_label_order function"
+        mol = Molecule(smiles="C1CCCC1")
+        for index, atom in enumerate(mol.atoms):
+            atom.label = str(index)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_decending_label_order(mol)
+        for index, atom in enumerate(mol.atoms):
+            self.assertEqual(str(index), atom.label)
+        mol = Molecule(smiles="NC1=NC=NC2=C1N=CN2 Nc1c2ncNc2ncn1")
+        for index, atom in enumerate(mol.atoms):
+            atom.label = str(index)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_decending_label_order(mol)
+        for index, atom in enumerate(mol.atoms):
+            self.assertEqual(str(index), atom.label)
 
     @classmethod
     def tearDownClass(cls):
