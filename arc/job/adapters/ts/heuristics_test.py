@@ -1062,6 +1062,27 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             11: 1, 12: 0, 13: 6, 14: 5, 15: 4, 16: 2, 17: 3}
         self.assertEqual(new_map, expected_new_map)
 
+        reactant_2 = ARCSpecies(label='CtC[CH]CtC', smiles='C#C[CH]C#C',
+                                xyz={'symbols': ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H'),
+                                     'isotopes': (12, 12, 12, 12, 12, 1, 1, 1),
+                                     'coords': ((-2.291605883571667, -0.42331822283552906, -0.5890813676244919),
+                                                (-1.2473364930399486, 0.10981539119094576, -0.33203134389873684),
+                                                (-0.014210927595876454, 0.7422328036476595, -0.027581014832650772),
+                                                (1.2434491739534939, 0.09321854939774785, -0.12912903785018146),
+                                                (2.308402589136876, -0.453969497537813, -0.2143594496463511),
+                                                (-3.216005202211226, -0.9003163297195633, -0.8182367178025766),
+                                                (-0.03399884322236979, 1.7757469592667339, 0.2998700214665439),
+                                                (3.251305586550735, -0.9434096534101759, -0.2914025307027816))})
+        new_map = get_new_zmat_2_map(zmat_1=self.zmat_5,
+                                     zmat_2=self.zmat_6,
+                                     reactant_2=reactant_2,
+                                     reactants_reversed=True,
+                                     )
+        expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
+                            11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 3, 19: 1, 21: 4, 23: 0,
+                            25: 7, 26: 6, 28: 5, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+        self.assertEqual(new_map, expected_new_map)
+
     def test_get_new_map_based_on_zmat_1(self):
         """Test the get_new_map_based_on_zmat_1() function."""
         new_map = get_new_map_based_on_zmat_1(zmat_1=self.zmat_1, zmat_2=self.zmat_2, reactants_reversed=False)
