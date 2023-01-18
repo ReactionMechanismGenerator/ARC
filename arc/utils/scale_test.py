@@ -112,10 +112,13 @@ class TestScale(unittest.TestCase):
         """Test the scale rename_level() function"""
         level1 = 'b3lyp/6-311+G**'
         level2 = 'wb97xd/6-311+G(2d,2p)'
+        level3 = 'wb97xd/aug-ccpZQZ, solvation_method: SMD, solvent: DMSO, software: gaussian'
         renamed_level1 = rename_level(level1)
         renamed_level2 = rename_level(level2)
+        renamed_level3 = rename_level(level3)
         self.assertEqual(renamed_level1, 'b3lyp_6-311pGss')
         self.assertEqual(renamed_level2, 'wb97xd_6-311pGb2d,2pb')
+        self.assertEqual(renamed_level3, 'wb97xd_aug-ccpZQZ,_solvation_method.._SMD,_solvent.._DMSO,_software.._gaussian')
 
     @classmethod
     def tearDownClass(cls):
