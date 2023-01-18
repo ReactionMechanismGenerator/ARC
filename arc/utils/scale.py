@@ -362,4 +362,5 @@ def rename_level(level: str) -> str:
     level = level.replace(')', 'b')
     level = level.replace(')', 'b')
     level = level.replace(' ', '_')
+    level = level.replace(':', '..')
     return level
