@@ -32,7 +32,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
-from arc.species.converter import compare_zmats, zmat_from_xyz, zmat_to_xyz
+from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
 from arc.species.mapping import map_arc_rmg_species, map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
@@ -678,7 +678,14 @@ def get_new_zmat_2_map(zmat_1: dict,
                        reactants_reversed: bool = False,
                        ) -> Dict[int, Union[int, str]]:
     """
-    Get the map of the combined zmat.
+    Get the map of the combined zmat ignoring the redundant H in ``zmat_2``.
+
+    R1H           +           R2           <=>           P1           +           P2H
+    zmat_1                                                                        zmat_2
+    remains                  mapped                                               (H is redundant)
+    (bumped                  to
+    indices                  P2H
+    if reversed)
 
     Args:
         zmat_1 (dict): The zmat describing R1H. Contains a dummy atom at the end if a2 is linear.
@@ -690,43 +697,87 @@ def get_new_zmat_2_map(zmat_1: dict,
     Returns:
         Dict[int, Union[int, str]]: The combined zmat map element.
     """
-    new_map = dict()
-    num_atoms_1, num_atoms_2 = len(zmat_1['symbols']), len(zmat_2['symbols']) - 1  # Redundant H in zmat_2.
+    new_map = get_new_map_based_on_zmat_1(zmat_1=zmat_1, zmat_2=zmat_2, reactants_reversed=reactants_reversed)
+    zmat_2_mod = remove_1st_atom(zmat_2)
+    zmat_2_mod['map'] = relocate_zmat_dummy_atoms_to_the_end(zmat_2_mod['map'])
+    spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod)
+    atom_map = map_two_species(spc_1=spc_from_zmat_2, spc_2=reactant_2, consider_chirality=False)
+    new_map = update_new_map_based_on_zmat_2(new_map=new_map,
+                                             zmat_2=zmat_2_mod,
+                                             num_atoms_1=len(zmat_1['symbols']),
+                                             atom_map=atom_map,
+                                             reactants_reversed=reactants_reversed,
+                                             )
+    if len(list(new_map.values())) != len(set(new_map.values())):
+        raise ValueError(f'Could not generate a combined zmat map with no repeating values.\n{new_map}')
+    return new_map
 
-    # 1. Add zmat_1's map.
-    val_inc = num_atoms_2 if reactants_reversed else 0
+
+def get_new_map_based_on_zmat_1(zmat_1: dict,
+                                zmat_2: dict,
+                                reactants_reversed: bool = False,
+                                ) -> dict:
+    """
+    Generate an initial map for the combined zmats, here only consider ``zmat_1``.
+
+    Args:
+        zmat_1 (dict): The zmat describing R1H. Contains a dummy atom at the end if a2 is linear.
+        zmat_2 (dict): The zmat describing R2H.
+        reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
+
+    Returns:
+        dict: The initial map for the combined zmats.
+    """
+    new_map = dict()
+    val_inc = len(zmat_2['symbols']) - 1 if reactants_reversed else 0
     for key, val in zmat_1['map'].items():
         if isinstance(val, str) and 'X' in val:
             new_map[key] = f'X{int(val[1:]) + val_inc}'
         else:
             new_map[key] = val + val_inc
+    return new_map
 
-    # 2. Add zmat_2's map. Use the reaction atom_map, remember that dummy atoms are not considered in the atom_map.
-    zmat_2_mod = remove_1st_atom(zmat_2)
-    spc_from_zmat_2 = ARCSpecies(label='spc_from_zmat_2', xyz=zmat_2_mod)
-    atom_map = map_two_species(spc_1=spc_from_zmat_2, spc_2=reactant_2, consider_chirality=False)
-    dummy_2_indices = [int(val[1:]) for val in zmat_2['map'].values() if isinstance(val, str) and 'X' in val]
+
+def update_new_map_based_on_zmat_2(new_map: dict,
+                                   zmat_2: dict,
+                                   num_atoms_1,
+                                   atom_map: dict,
+                                   reactants_reversed: bool = False,
+                                   ):
+    """
+    Update the map for the combined zmats, here only consider the modified version of ``zmat_2``.
+    This function assumes that all dummy atoms are located at the end of the respective Cartesian coordinates
+    for ``zmat_2`` (i.e., that relocate_zmat_dummy_atoms_to_the_end() was called).
+
+    Args:
+        new_map (dict): The initial map for the combined zmats based on ``zmat_1``.
+        zmat_2 (dict): The modified ``zmat_2`` (with the 1st atom removed and all dummy atoms relocated to the end).
+        num_atoms_1 (int): The number of atoms in ``zmat_1``.
+        atom_map (dict): The atom-map relating the product that corresponds with ``zmat_2`` to the reactant molecule.
+        reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
+
+    Returns:
+        dict: The updated map for the combined zmats.
+    """
     key_inc = num_atoms_1
     val_inc = 0 if reactants_reversed else num_atoms_1
-    for i, (key, val) in enumerate(zmat_2_mod['map'].items()):
+    dummy_atom_counter = 0
+    num_of_non_x_atoms_in_zmat_2 = len([val for val in zmat_2['map'].values() if isinstance(val, int)])
+    for key, val in zmat_2['map'].items():
         # Atoms in zmat_2 always come after atoms in zmat_1 in the new zmat, regardless of the reactants/products
         # order on each side of the given reaction.
         new_key = key + key_inc
         # Use the atom_map to map atoms in zmat_2 (i.e., values in zmat_2's 'map') to atoms in the R(*3)
-        # reactant (at least for H-Abstraction reactions), since zmat_2 was built based on atoms in the R(*3)-H(*2)
+        # **reactant** (at least for H-Abstraction reactions), since zmat_2 was built based on atoms in the R(*3)-H(*2)
         # **product** (at least for H-Abstraction reactions).
         if isinstance(val, str) and 'X' in val:
-            # A dummy atom is not in the atom_map, look for the preceding atom and add 1.
-            dummy_index = int(val[1:])
-            new_val = atom_map[dummy_index - 1] + 1 + val_inc \
-                + len([dummy_2_index for dummy_2_index in dummy_2_indices if dummy_index > dummy_2_index])
+            # A dummy atom is not in the atom_map.
+            new_val = num_of_non_x_atoms_in_zmat_2 + val_inc + dummy_atom_counter
             new_val = f'X{new_val}'
+            dummy_atom_counter += 1
         else:
-            new_val = atom_map[val] + val_inc \
-                      + len([dummy_2_index for dummy_2_index in dummy_2_indices if val > dummy_2_index])
+            new_val = atom_map[val] + val_inc
         new_map[new_key] = new_val
-    if len(list(new_map.values())) != len(set(new_map.values())):
-        raise ValueError(f'Could not generate a combined zmat map with no repeating values.\n{new_map}')
     return new_map
 
 
