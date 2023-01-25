@@ -232,6 +232,32 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     return get_dihedral(v1, v2, v3, units=units)
 
 
+def calculate_param(coords: Union[list, tuple, dict],
+                    atoms: list,
+                    index: int = 0,
+                    ) -> float:
+    """
+    Calculate a distance / angle / dihedral angle parameter.
+    Default units (deg for angles) are used.
+
+    Args:
+        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.
+        atoms (list): The 2 atoms to calculate defining the vector for which the length will be calculated.
+        index (int, optional): Whether ``atoms`` is 0-indexed or 1-indexed (values are 0 or 1).
+
+    Returns: float
+        The calculated parameter.
+    """
+    if len(atoms) == 2:
+        return calculate_distance(coords=coords, atoms=atoms, index=index)
+    elif len(atoms) == 3:
+        return calculate_angle(coords=coords, atoms=atoms, index=index)
+    elif len(atoms) == 4:
+        return calculate_dihedral_angle(coords=coords, torsion=atoms, index=index)
+    else:
+        raise ValueError(f'Expected 2, 3, or 4 indices in coords, got {len(coords)}: {coords}')
+
+
 def unit_vector(vector: List[float]) -> List[float]:
     """
     Calculate a unit vector in the same direction as the input vector.
