@@ -232,6 +232,19 @@ O      -1.40465894   -0.03095532    0.00000000""")
         dihedral2 = vectors.calculate_dihedral_angle(coords=cj_11974['coords'], torsion=[15, 18, 19, 20], index=1)
         self.assertAlmostEqual(dihedral2, 308.04758, 2)
 
+    def test_calculate_param(self):
+        """Test calculating a parameter"""
+        distance = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1])
+        self.assertAlmostEqual(distance, 1.497630871004034)
+        angle = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1, 2])
+        self.assertAlmostEqual(angle, 125.18344391469404)
+        dihedral = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1, 2, 6])
+        self.assertAlmostEqual(dihedral, 180.0)
+        with self.assertRaises(ValueError):
+            vectors.calculate_param(coords=self.propene['coords'], atoms=[0])
+        with self.assertRaises(ValueError):
+            vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1, 2, 3, 4])
+
     def test_unit_vector(self):
         """Test calculating a unit vector"""
         v1 = [1, 0, 0]
