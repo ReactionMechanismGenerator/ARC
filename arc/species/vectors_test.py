@@ -25,6 +25,15 @@ class TestVectors(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls.propene = converter.str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
+    C      -0.13529200    0.45314000    0.00000000
+    C      -1.27957200   -0.21983000    0.00000000
+    H       1.17363000   -1.25551200    0.00000000
+    H       1.79909600    0.15138400    0.87934300
+    H       1.79909600    0.15138400   -0.87934300
+    H      -0.16831500    1.54137600    0.00000000
+    H      -2.23664600    0.28960500    0.00000000
+    H      -1.29848800   -1.30626200    0.00000000""")
 
     def test_get_normal(self):
         """Test calculating a normal vector"""
@@ -64,6 +73,11 @@ class TestVectors(unittest.TestCase):
         theta = vectors.get_angle(v1, v2)
         self.assertAlmostEqual(theta, math.pi)
 
+        v1 = [-0.9110001674469675, 0.41240600991486, 0.0]
+        v2 = [0.8619789448920263, 0.5069440956654351, 0.0]
+        theta = vectors.get_angle(v1, v2)
+        self.assertAlmostEqual(theta, 2.1848632513137702, 5)
+
     def test_get_dihedral(self):
         """Test calculating a dihedral angle from vectors"""
         v1, v2, v3 = [1., 1., 0.], [0., 1., 1.], [1., 0., 1.]  # test floats
@@ -89,20 +103,11 @@ class TestVectors(unittest.TestCase):
 
     def test_calculate_distance(self):
         """Test calculating a distance between two atoms"""
-        propene = converter.str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
-    C      -0.13529200    0.45314000    0.00000000
-    C      -1.27957200   -0.21983000    0.00000000
-    H       1.17363000   -1.25551200    0.00000000
-    H       1.79909600    0.15138400    0.87934300
-    H       1.79909600    0.15138400   -0.87934300
-    H      -0.16831500    1.54137600    0.00000000
-    H      -2.23664600    0.28960500    0.00000000
-    H      -1.29848800   -1.30626200    0.00000000""")
-        distance = vectors.calculate_distance(coords=propene['coords'], atoms=[1, 4], index=1)
+        distance = vectors.calculate_distance(coords=self.propene['coords'], atoms=[1, 4], index=1)
         self.assertAlmostEqual(distance, 1.092426698)
-        distance = vectors.calculate_distance(coords=propene['coords'], atoms=[1, 2], index=1)
+        distance = vectors.calculate_distance(coords=self.propene['coords'], atoms=[1, 2], index=1)
         self.assertAlmostEqual(distance, 1.49763087)
-        distance = vectors.calculate_distance(coords=propene['coords'], atoms=[2, 3], index=1)
+        distance = vectors.calculate_distance(coords=self.propene['coords'], atoms=[2, 3], index=1)
         self.assertAlmostEqual(distance, 1.32750337)
 
     def test_calculate_angle(self):
@@ -124,36 +129,17 @@ C      -0.00000000    0.00000004    0.00000000
 O      -1.40465894   -0.03095532    0.00000000""")
         angle = vectors.calculate_angle(coords=fake_co2['coords'], atoms=[0, 1, 2], index=0, units='degs')
         self.assertEqual(angle, 0.0)
-
-        propene = converter.str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
-    C      -0.13529200    0.45314000    0.00000000
-    C      -1.27957200   -0.21983000    0.00000000
-    H       1.17363000   -1.25551200    0.00000000
-    H       1.79909600    0.15138400    0.87934300
-    H       1.79909600    0.15138400   -0.87934300
-    H      -0.16831500    1.54137600    0.00000000
-    H      -2.23664600    0.28960500    0.00000000
-    H      -1.29848800   -1.30626200    0.00000000""")
-        angle = vectors.calculate_angle(coords=propene['coords'], atoms=[8, 3, 9], index=1, units='degs')
+        angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[8, 3, 9], index=1, units='degs')
         self.assertAlmostEqual(angle, 117.02817, 4)
-        angle = vectors.calculate_angle(coords=propene['coords'], atoms=[9, 3, 8], index=1, units='degs')
+        angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[9, 3, 8], index=1, units='degs')
         self.assertAlmostEqual(angle, 117.02817, 4)
-        angle = vectors.calculate_angle(coords=propene['coords'], atoms=[1, 2, 3], index=1, units='degs')
+        angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[1, 2, 3], index=1, units='degs')
         self.assertAlmostEqual(angle, 125.18344, 4)
-        angle = vectors.calculate_angle(coords=propene['coords'], atoms=[5, 1, 2], index=1, units='degs')
+        angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[5, 1, 2], index=1, units='degs')
         self.assertAlmostEqual(angle, 110.82078, 4)
 
     def test_calculate_dihedral_angle(self):
         """Test calculating a dihedral angle from xyz coordinates"""
-        propene = converter.str_to_xyz("""C       1.22905000   -0.16449200    0.00000000
-    C      -0.13529200    0.45314000    0.00000000
-    C      -1.27957200   -0.21983000    0.00000000
-    H       1.17363000   -1.25551200    0.00000000
-    H       1.79909600    0.15138400    0.87934300
-    H       1.79909600    0.15138400   -0.87934300
-    H      -0.16831500    1.54137600    0.00000000
-    H      -2.23664600    0.28960500    0.00000000
-    H      -1.29848800   -1.30626200    0.00000000""")
         hydrazine = converter.str_to_xyz("""N       0.70683700   -0.07371000   -0.21400700
     N      -0.70683700    0.07371000   -0.21400700
     H       1.11984200    0.81113900   -0.47587600
@@ -233,11 +219,11 @@ O      -1.40465894   -0.03095532    0.00000000""")
     H 	2.134	-1.659	-3.429
     H 	2.951	-3.078	-4.102""")
 
-        dihedral0 = vectors.calculate_dihedral_angle(coords=propene['coords'], torsion=[9, 3, 2, 7], index=1)
-        dihedral1 = vectors.calculate_dihedral_angle(coords=propene['coords'], torsion=[5, 1, 2, 7], index=1)
+        dihedral0 = vectors.calculate_dihedral_angle(coords=self.propene['coords'], torsion=[9, 3, 2, 7], index=1)
+        dihedral1 = vectors.calculate_dihedral_angle(coords=self.propene['coords'], torsion=[5, 1, 2, 7], index=1)
         self.assertAlmostEqual(dihedral0, 180, 2)
         self.assertAlmostEqual(dihedral1, 59.26447, 2)
-        dihedral2 = vectors.calculate_dihedral_angle(coords=propene['coords'], torsion=[8, 2, 1, 6], index=0)
+        dihedral2 = vectors.calculate_dihedral_angle(coords=self.propene['coords'], torsion=[8, 2, 1, 6], index=0)
         self.assertEqual(dihedral0, dihedral2)
 
         dihedral3 = vectors.calculate_dihedral_angle(coords=hydrazine['coords'], torsion=[3, 1, 2, 5], index=1)
