@@ -2025,6 +2025,7 @@ def remove_1st_atom(zmat: dict) -> dict:
     Returns:
         dict: The updated zmat.
     """
+    zmat = remove_1st_atom_references(zmat=zmat)
     new_symbols = tuple(zmat['symbols'][1:])
     new_coords, removed_vars = list(), list()
     for i, coords in enumerate(zmat['coords']):
@@ -2041,6 +2042,40 @@ def remove_1st_atom(zmat: dict) -> dict:
     new_map = {key - 1: map_index_to_int(val) - 1 if map_index_to_int(val) > val_0 else val for key, val in zmat['map'].items() if key != 0}
     new_map = {key: val if key not in keys_of_x_atoms else f'X{val}' for key, val in new_map.items()}
     return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
+
+
+def remove_1st_atom_references(zmat: dict) -> dict:
+    """
+    Remove references for the 1st atom (index 0) in the zmat in all coords and respective vars
+    from the 5th atom (index 4) on. I.e., the 2nd, 3rd, and 4th atoms can include references to the 1st atom.
+
+    Args:
+        zmat (dict): The zmat to process.
+
+    Returns:
+        dict: The updated zmat.
+    """
+    zmat = zmat.copy()
+    xyz_coords = None
+    new_zmat_coords, new_vals = list(), list()
+    for i, coords in enumerate(zmat['coords']):
+        new_coords = list(coords)
+        if i >= 4:
+            for j in range(3):
+                if '_0' in new_coords[j]:
+                    if xyz_coords is None:
+                        xyz_coords = zmat_to_coords(zmat=zmat, keep_dummy=True)[0]
+                    indices = get_atom_indices_from_zmat_parameter(new_coords[j])[0]
+                    new_index = 1
+                    while new_index in indices:
+                        new_index += 1
+                    new_indices = [index if index else new_index for index in indices]
+                    new_val = calculate_param(coords=xyz_coords, atoms=new_indices)
+                    new_coords[j] = '_'.join([new_coords[j].split('_')[0]] + [str(index) for index in new_indices])
+                    zmat['vars'][new_coords[j]] = new_val
+        new_zmat_coords.append(tuple(new_coords))
+    zmat['coords'] = tuple(new_zmat_coords)
+    return zmat
 
 
 def map_index_to_int(index: Union[int, str]) -> int:
