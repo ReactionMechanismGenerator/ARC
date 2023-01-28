@@ -206,7 +206,7 @@ def initialize_log(log_file: str,
     if project_directory is not None and os.path.isfile(log_file):
         if not os.path.isdir(os.path.join(project_directory, 'log_and_restart_archive')):
             os.mkdir(os.path.join(project_directory, 'log_and_restart_archive'))
-        local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+        local_time = datetime.datetime.now().strftime("%b%d_%Y_%H:%M:%S")
         log_backup_name = 'arc.old.' + local_time + '.log'
         shutil.copy(log_file, os.path.join(project_directory, 'log_and_restart_archive', log_backup_name))
         os.remove(log_file)

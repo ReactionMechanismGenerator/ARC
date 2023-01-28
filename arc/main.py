@@ -1134,7 +1134,7 @@ class ARC(object):
         if os.path.isfile(os.path.join(self.project_directory, 'restart.yml')):
             if not os.path.isdir(os.path.join(self.project_directory, 'log_and_restart_archive')):
                 os.mkdir(os.path.join(self.project_directory, 'log_and_restart_archive'))
-            local_time = datetime.datetime.now().strftime("%H%M%S_%b%d_%Y")
+            local_time = datetime.datetime.now().strftime("%b%d_%Y_%H:%M:%S")
             restart_backup_name = 'restart.old.' + local_time + '.yml'
             shutil.copy(os.path.join(self.project_directory, 'restart.yml'),
                         os.path.join(self.project_directory, 'log_and_restart_archive', restart_backup_name))
