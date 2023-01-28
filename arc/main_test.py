@@ -289,8 +289,8 @@ class TestARC(unittest.TestCase):
         self.assertIsNotNone(arc2.opt_level)
         self.assertIsNone(arc2.sp_level)
         self.assertIsNone(arc2.orbitals_level)
-        self.assertEqual(arc2.freq_level.simple(), 'b3lyp/cbsb7')
-        self.assertEqual(arc2.scan_level.simple(), 'b3lyp/cbsb7')
+        self.assertEqual(arc2.freq_level.simple(), 'b3lyp/6-31g(2df,p)')
+        self.assertEqual(arc2.scan_level.simple(), 'b3lyp/6-31g(2df,p)')
         self.assertEqual(arc2.composite_method.simple(), 'cbs-qb3')
 
         # Test deduce levels from level of theory specification
@@ -338,9 +338,9 @@ class TestARC(unittest.TestCase):
         # Test using default frequency and orbital level for composite job, also forbid rotors job
         arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
                     job_types={'rotors': False, 'orbitals': True})
-        self.assertEqual(arc10.freq_level.simple(), 'b3lyp/cbsb7')
+        self.assertEqual(arc10.freq_level.simple(), 'b3lyp/6-31g(2df,p)')
         self.assertIsNone(arc10.scan_level)
-        self.assertEqual(arc10.orbitals_level.simple(), 'b3lyp/cbsb7')
+        self.assertEqual(arc10.orbitals_level.simple(), 'b3lyp/6-31g(2df,p)')
 
         # Test using specified frequency, scan, and orbital for composite job
         arc11 = ARC(project='test', composite_method='cbs-qb3', freq_level='wb97xd/6-311g', scan_level='apfd/def2svp',
