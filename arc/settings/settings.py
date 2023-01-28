@@ -178,10 +178,10 @@ default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended t
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
                             'irc': 'wb97xd/def2tzvp',  # should be the same level as opt
                             'orbitals': 'wb97x-d3/def2tzvp',  # save orbitals for visualization
-                            'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
-                            'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
-                            'irc_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
-                            'orbitals_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
+                            'scan_for_composite': 'B3LYP/6-31G(2df,p)',  # This is the frequency level of G4
+                            'freq_for_composite': 'B3LYP/6-31G(2df,p)',  # This is the frequency level of G4
+                            'irc_for_composite': 'B3LYP/6-31G(2df,p)',  # This is the frequency level of G4
+                            'orbitals_for_composite': 'B3LYP/6-31G(2df,p)',  # This is the frequency level of G4
                             }
 
 # Software specific default settings
