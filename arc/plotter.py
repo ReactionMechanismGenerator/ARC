@@ -1132,6 +1132,8 @@ def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
         energies = np.array(energies, np.float64)  # in kJ/mol
     if isinstance(original_dihedral, list) and len(original_dihedral) == 1:
         original_dihedral = original_dihedral[0]
+    if isinstance(scan, list) and len(scan) == 1 and isinstance(scan[0], list):
+        scan = scan[0]
     marker_color, line_color = plt.cm.viridis([0.1, 0.9])
     fig = plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
