@@ -334,7 +334,7 @@ class TestJobAdapter(unittest.TestCase):
         self.job_4.server = 'server3'
         self.job_4.cpu_cores = None
         self.job_4.set_cpu_and_mem()
-        expected_memory = math.ceil(14 * 1024 * 1.1) * 1000
+        expected_memory = math.ceil(14 * 1024 * 1.1) * 1E6
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
 
