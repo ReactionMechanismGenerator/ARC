@@ -58,6 +58,8 @@ servers = {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
         'cpus': 48,
+        "max_jobs": 20,
+        "qstat_command": "qstat -x -u $USER | grep $USER | grep ' R\| Q' | wc -l",
     },
 }
 
