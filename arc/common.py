@@ -1665,3 +1665,24 @@ def dfs(mol: Molecule,
             stack.append(mol.atoms.index(atom))
     visited = sorted(visited) if sort_result else visited
     return visited
+
+
+def sort_atoms_in_decending_label_order(mol: 'Molecule')-> None:
+    """
+    If all atoms in the molecule object has a label, This function reassign the 
+    .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
+    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
+    then the function will return the new atom with the order [1, 4, 7, 32]
+    Args:
+        mol: An rmg Molecule object, with labeld atoms
+    """
+    if any([atom.label is None for atom in mol.atoms]):
+        return
+    labels = [int(atom.label) for atom in mol.atoms]
+    new_atoms = list()
+    for index in range(max(labels)+1):
+        if not index not in labels:
+            for atom in mol.atoms:
+                if int(atom.label) == index:
+                    new_atoms.append(atom)
+    mol.atoms = new_atoms
