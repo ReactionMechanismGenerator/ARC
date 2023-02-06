@@ -149,25 +149,26 @@ class ARCReaction(object):
         self.check_atom_balance()
 
     @property
-    def atom_map(self, backend: str = 'arc'):
+    def atom_map(self):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
             try:
-                self._atom_map = map_reaction(rxn=self, backend=backend)
+                self._atom_map = map_reaction(rxn=self, backend='arc')
             except ValueError:
                 logger.error(f'The requested ARC Reaction {self} could not be atom mapped. Trying to map the flipped reaction...')
                 try:
-                    self._atom_map = flip_map(map_reaction(rxn=self.flip_reaction(), backend=backend))
+                    self._atom_map = flip_map(map_reaction(rxn=self.flip_reaction(), backend='arc'))
                 except ValueError:
                     logger.error(f'The requested ARC Reaction {self} could not be atom mapped by ARC, trying again with general reaction.')
                     try:
-                        self._atom_map = map_reaction(rxn=self, backend='qcelemental' if backend == 'arc' else 'arc')
+                        self._atom_map = map_reaction(rxn=self, backend='qcelemental')
                     except ValueError:
-                        logger.error(f'The requested ARC Reaction {self} could not be atom mapped by ARC, trying again with general reaction.')
-                        self._atom_map = None
-            if self._atom_map is None:
-                self._atom_map = map_reaction(rxn=self, backend='qcelemental' if backend == 'arc' else 'arc')
+                        logger.error(f'The requested ARC Reaction {self} could not be atom mapped by qcelemental, trying again to flipt it.')
+                        try:
+                            self._atom_map = flip_map(map_reaction(rxn=self.flip_reaction(), backend='qcelemental'))
+                        except ValueError:
+                            return None
         return self._atom_map
 
     @atom_map.setter
