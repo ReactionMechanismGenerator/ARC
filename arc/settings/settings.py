@@ -55,11 +55,11 @@ servers = {
         'key': 'path_to_rsa_key',
     },
     'local': {
-        'cluster_soft': 'HTCondor',
+        'cluster_soft': 'PBS',
         'un': '<username>',
         'cpus': 48,
-        "max_jobs": 20,
-        "qstat_command": "qstat -x -u $USER | grep $USER | grep ' R\| Q' | wc -l",
+        'max_jobs': 30,
+        'qstat_command': "qstat -x -u $USER | grep $USER | grep ' R\| Q' | wc -l",
     },
 }
 
