@@ -3,11 +3,14 @@ import datetime
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import subprocess
 import os
+import numpy as np
 
+from arc.common import ARC_PATH, almost_equal_coords, get_logger, save_yaml_file, read_yaml_file
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
+from arc.job.factory import register_job_adapter
+from arc.plotter import save_geo
 from arc.species.converter import xyz_from_data, xyz_to_kinbot_list
-from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.imports import settings
 
@@ -22,6 +25,8 @@ logger = get_logger()
 default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames, KINBOT_PYTHON = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames'], settings['KINBOT_PYTHON']
+
+KINBOT_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'kinbot_script.py')
 
 class KinBotAdapter(JobAdapter):
 
@@ -69,7 +74,7 @@ class KinBotAdapter(JobAdapter):
         
         self.incore_capacity = 100
         self.job_adapter = 'kinbot'
-        self.execution_type = execution_type or None
+        self.execution_type = execution_type or 'incore'
         self.command = None #No executable file
         self.url = 'https://github.com/zadorlab/KinBot'
 
@@ -145,6 +150,7 @@ class KinBotAdapter(JobAdapter):
                             tsg=tsg,
                             xyz=xyz,
                             )
+        
     def write_input_file(self,
                          mol,
                          families,
@@ -160,6 +166,27 @@ class KinBotAdapter(JobAdapter):
                           'multiplicity': multiplicity,
                           'charge': charge}]
         save_yaml_file(path=os.path.join(self.local_path, "input.yml"),content=content)
+
+    def set_files(self) -> None:
+        """
+        Set files to be uploaded and downloaded. Writes the files if needed.
+        Modifies the self.files_to_upload and self.files_to_download attributes.
+        self.files_to_download is a list of remote paths.
+        self.files_to_upload is a list of dictionaries, each with the following keys:
+        ``'name'``, ``'source'``, ``'make_x'``, ``'local'``, and ``'remote'``.
+        If ``'source'`` = ``'path'``, then the value in ``'local'`` is treated as a file path.
+        Else if ``'source'`` = ``'input_files'``, then the value in ``'local'`` will be taken
+        from the respective entry in inputs.py
+        If ``'make_x'`` is ``True``, the file will be made executable.
+        """
+        pass
+    
+    def set_additional_file_paths(self) -> None:
+        """
+        Set additional file paths specific for the adapter.
+        Called from set_file_paths() and extends it.
+        """
+        self.local_path_to_output_file = os.path.join(self.local_path, 'output.yml')
 
     def set_input_file_memory(self) -> None:
         """
@@ -201,12 +228,7 @@ class KinBotAdapter(JobAdapter):
                     symbols = spc.get_xyz()['symbols']
                     for m, mol in enumerate(spc.mol_list):
 
-                        ts_guess = TSGuess(method=f'KinBot',
-                                               method_direction=method_direction,
-                                               method_index=method_index,
-                                               index=len(rxn.ts_species.ts_guesses),
-                                            )
-                        ts_guess.tic()
+
 
                         self.write_input_file(mol= mol.to_smiles(),
                                               families = self.family_map[rxn.family.label],
@@ -214,15 +236,71 @@ class KinBotAdapter(JobAdapter):
                                               multiplicity=rxn.multiplicity,
                                               charge = rxn.charge)
                         
+                        #self.input_file_path = str(self.local_path) + '/input.yml'
                         commands = ['source ~/.bashrc',
                                     f'{KINBOT_PYTHON} {KINBOT_SCRIPT_PATH} '
-                                    f' --yml_path {self.local_path}']
+                                    f' {self.local_path}']
                         command = '; '.join(commands)
                         output = subprocess.run(command, shell=True, executable='/bin/bash')
 
                         try:
                             output = read_yaml_file(path=os.path.join(self.local_path, "output.yml"))
+                            print(output)
                         except FileNotFoundError:
                             logger.error("Could not find output file")
 
-                        ts_guess.toc()
+                        for i in range(len(output)):
+
+                            temp_output = output[list(output.keys())[i]]
+                            ts_guess = TSGuess(method=f'KinBot',
+                                                method_direction=method_direction,
+                                                method_index=method_index,
+                                                index=len(rxn.ts_species.ts_guesses),
+                                                )
+                            ts_guess.tic()
+
+
+
+
+                            ts_guess.tok()
+                            unique = True
+
+                            if temp_output['success']:
+                                ts_guess.success = True
+                                xyz = xyz_from_data(coords=np.array(temp_output['coords']), symbols=symbols)
+                            else:
+                                for other_tsg in rxn.ts_species.ts_guesses:
+                                    if other_tsg.success and almost_equal_coords(xyz, other_tsg.initial_xyz):
+                                        if 'kinbot' not in other_tsg.method.lower():
+                                            other_tsg.method += ' and KinBot'
+                                        unique = False
+                                        break
+                                if unique:
+                                        ts_guess.process_xyz(xyz)
+                                        save_geo(xyz=xyz,
+                                                 path=self.local_path,
+                                                 filename=f'KinBot {method_direction} {method_index}',
+                                                 format_='xyz',
+                                                 comment=f'KinBot {method_direction} {method_index}'
+                                                 )
+                            if not temp_output['success']:
+                                ts_guess.success = False
+                            if unique:
+                                rxn.ts_species.ts_guesses.append(ts_guess)
+                                method_index += 1
+            if len(self.reactions) < 5:
+                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'kinbot' in tsg.method])
+                if successes:
+                    logger.info(f'KinBot successfully found {successes} TS guesses for {rxn.label}.')
+                else:
+                    logger.info(f'KinBot did not find any successful TS guesses for {rxn.label}.')
+        self.final_time = datetime.datetime.now()
+
+    def execute_queue(self):
+        """
+        (Execute a job to the server's queue.)
+        A single KinBot job will always be executed incore.
+        """
+        self.execute_incore()
+
+register_job_adapter('kinbot', KinBotAdapter)
