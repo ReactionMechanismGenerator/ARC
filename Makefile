@@ -36,6 +36,9 @@ install-xtb:
 install-torchani:
 	bash devtools/install_torchani.sh
 
+install-ob:
+	bash devtools/install_ob.sh
+
 lite:
 	bash devtools/lite.sh
 
