@@ -100,7 +100,49 @@ def set_up_kinbot(mol: 'Smiles',
 
     return reaction_generator
 
-def generate_coords(reaction_generator = None):
+def string_representer(dumper, data):
+    """
+    Add a custom string representer to use block literals for multiline strings.
+    """
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data, style='|')
+    return dumper.represent_scalar(tag='tag:yaml.org,2002:str', value=data)
+
+def save_yaml_file(path: str,
+                   content: list,
+                   ) -> None:
+    """
+    Save a YAML file.
+    Args:
+        path (str): The YAML file path to save.
+        content (list): The content to save.
+    """
+    yaml.add_representer(str, string_representer)
+    yaml_str = yaml.dump(data=content)
+    with open(path, 'w') as f:
+        f.write(yaml_str)
+
+def save_output_file(path,
+                     key = None,
+                     val = None,
+                     content_dict = None,
+                     ):
+    """
+    Save the output of a job to the YAML output file.
+    Args:
+        key (str, optional): The key for the YAML output file.
+        val (Union[float, dict, np.ndarray], optional): The value to be stored.
+        content_dict (dict, optional): A dictionary to store.
+    """
+    yml_out_path = os.path.join(path, 'output.yml')
+    content = read_yaml_file(yml_out_path) if os.path.isfile(yml_out_path) else dict()
+    if content_dict is not None:
+        content.update(content_dict)
+    if key is not None:
+        content[key] = val
+    save_yaml_file(path=yml_out_path, content=content)
+
+def generate_coords(path: str, reaction_generator = None):
     dict_files = {}
     for r, kinbot_rxn in enumerate(reaction_generator.species.reac_obj):
         step, fix, change, release = kinbot_rxn.get_constraints(step=20,
@@ -124,23 +166,8 @@ def generate_coords(reaction_generator = None):
 
         dict_files[str(kinbot_rxn.instance_name)]['success'] = success
         dict_files[str(kinbot_rxn.instance_name)]['coords'] = coords.tolist()
-    to_yaml("output", dict_files)
+    save_output_file(path = path, content_dict=dict_files)
     
-def to_yaml(file_name: str, py_content: dict) -> str:
-    """
-    Convert a Python list or dictionary to a YAML string format.
-
-    Args:
-        py_content (list, dict): The Python content to save.
-
-    Returns: str
-        The corresponding YAML representation.
-    """
-    with open(file_name + '.yaml', 'w') as file:
-        yaml.dump(py_content, file)
-
-        file.close()
-
 def parse_command_line_arguments(command_line_args=None):
     """
     Parse command-line arguments.
@@ -153,13 +180,12 @@ def parse_command_line_arguments(command_line_args=None):
     """
 
     parser = argparse.ArgumentParser(description='KinBot')
-    parser.add_argument('--yaml_path', metavar='FILE', type=str, nargs=1,
-                        default='input.yml'
-                        required=True,
+    parser.add_argument('yml_path', metavar='FILE', type=str,
+                        default='input.yml',
                         help='a file containing KinBot input requirements')
 
     args = parser.parse_args(command_line_args)
-    args.file = args.file[0]
+    args.yml_path = args.yml_path
 
     return args
 
@@ -168,15 +194,17 @@ def main():
     Run a job with Kinbot
     """
     args = parse_command_line_arguments()
-    input_file = args.file
+    input_file = args.yml_path
+    print(input_file)
     #project_directory = os.path.abspath(os.path.dirname(args.file))
-    file = read_yaml_file(path=input_file)
+    file = read_yaml_file(os.path.join(str(args.yml_path), "input.yml"))
     input_dict = dict(file[0])
     #if 'project' not in list(input_dict.keys()):
     #    raise ValueError('A project name must be provided!')
     kinbot_object = set_up_kinbot(**input_dict)
 
-    generate_coords(kinbot_object)
+    generate_coords(path=args.yml_path,
+                    reaction_generator=kinbot_object)
 
 if __name__ == '__main__':
     main()
