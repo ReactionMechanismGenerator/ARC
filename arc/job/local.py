@@ -54,7 +54,7 @@ def execute_command(command: Union[str, List[str]],
     command = [' && '.join(command)]
     i, max_times_to_try = 1, 30
     sleep_time = 60  # Seconds
-    if "max_jobs" in servers["local"].keys() and "qstat_command" in servers["locagitl"].keys() and servers["local"]["max_jobs"] != -1:
+    if "max_jobs" in servers["local"].keys() and "qstat_command" in servers["local"].keys() and servers["local"]["max_jobs"] != -1:
         njobs = _format_stdout(subprocess.run(servers["local"]["qstat_command"], shell=True, capture_output=True).stdout)
         while int(njobs.split(sep="\n")[0]) == servers["local"]["max_jobs"]:
             logger.error(f'You have reached the maximal job capacity of this server\n'
