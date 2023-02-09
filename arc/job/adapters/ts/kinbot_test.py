@@ -32,7 +32,7 @@ class TestKinBotAdapter(unittest.TestCase):
         cls.maxDiff = None
         cls.rmgdb = make_rmg_database_object()
         load_families_only(cls.rmgdb)
-    @pytest.mark.skip(reason="KinBot has been deprecated")
+    #@pytest.mark.skip(reason="KinBot has been deprecated")
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""
         if HAS_KINBOT:
