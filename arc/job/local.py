@@ -58,9 +58,9 @@ def execute_command(command: Union[str, List[str]],
         njobs = _format_stdout(subprocess.run(servers["local"]["qstat_command"], shell=True, capture_output=True).stdout)
         while int(njobs[0]) == servers["local"]["max_jobs"]:
             logger.error(f'You have reached the maximal job capacity of this server\n'
-                         f'ARC is sleeping for {sleep_time} seconds before retrying.')
+                         f'ARC is sleeping for {sleep_time} minutes before retrying.')
             logger.info('ZZZZZ..... ZZZZZ.....')
-            time.sleep(sleep_time)
+            time.sleep((sleep_time*60))
             njobs = _format_stdout(subprocess.run(servers["local"]["qstat_command"], shell=True, capture_output=True).stdout)
     while i < max_times_to_try:
         try:
