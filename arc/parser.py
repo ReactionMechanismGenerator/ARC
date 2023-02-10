@@ -678,6 +678,7 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     - .xyz: XYZ file
     - .gjf: Gaussian input file
     - .out or .log: ESS output file (Gaussian, Molpro, Orca, QChem, TeraChem) - calls parse_geometry()
+    - .yml or .yaml files
     - other: Molpro or QChem input file
 
     Args:
@@ -726,6 +727,12 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
                     start_parsing = True
     elif 'out' in file_extension or 'log' in file_extension:
         xyz = parse_geometry(path)
+    elif "yml" in file_extension or 'yaml' in file_extension:
+        content = read_yaml_file(path=path)
+        if "xyz" in content.keys():
+            xyz = content["xyz"]
+        elif "opt_xyz" in content.keys():
+            xyz = content["opt_xyz"]
     else:
         record = False
         for line in lines:
