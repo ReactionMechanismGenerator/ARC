@@ -55,8 +55,6 @@ dependencies:
   - conda-forge::qcelemental
   - mako
   - pytables
-  - pytorch::pytorch >=1.12.0
   - anaconda::pytest
-  - conda-forge::torchani
   - conda-forge::xtb
   - conda-forge::pytest-cov

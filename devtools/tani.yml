@@ -1,0 +1,25 @@
+name: tani_env
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+  - anaconda
+dependencies:
+  - conda-forge::cclib >=1.7.0
+  - graphviz
+  - matplotlib >=1.5
+  - networkx
+  - anaconda::numpy >=1.24
+  - pandas
+  - python >=3.10
+  - pyyaml
+  - scikit-learn
+  - scipy
+  - anaconda::paramiko >=2.6.0
+  - conda-forge::py3dmol >= 0.8.0
+  - conda-forge::ase >=3.15.0
+  - conda-forge::torchani
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::cpuonly

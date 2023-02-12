@@ -195,6 +195,19 @@ orca_default_options_dict = {
     'global': {'keyword': {'scf_convergence': 'TightSCF',
                            'dlpno_threshold': 'normalPNO'}},
 }
+tani_default_options_dict = {"model" : "ani2x", # available: 'ANI1ccx', 'ANI1x', 'ANI2x'
+                             "device" : "cpu",  # available: 'cpu', 'cuda'
+                             "engine" : "bfgs", # available:
+                                                # 'BFGS': Broyden–Fletcher–Goldfarb–Shanno. This algorithm chooses each step from
+                                                # the current atomic forces and an approximation of the Hessian matrix.
+                                                # The Hessian is established from an initial guess which is gradually
+                                                # improved as more forces are evaluated. Implemented in ASE.
+                                                # 'SciPyFminBFGS': A Quasi-Newton method (Broydon-Fletcher-Goldfarb-Shanno).
+                                                # An ASE interface to SciPy.
+                                                # 'SciPyFminCG': A non-linear (Polak-Ribiere) conjugate gradient algorithm.
+                                                # An ASE interface to SciPy.
+                             "fmax" : 0.001,    # Make sure it is an int or a float.
+                             "steps" : None}    # Make sure it is an int.
 
 # xTB-GSM
 xtb_gsm_settings = {'sm_type': 'GSM',
@@ -262,8 +275,20 @@ default_job_settings = {
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
-TS_GCN_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB = None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB = None, None, None, None, None
 home = os.getenv("HOME") or os.path.expanduser("~")
+
+tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                            'tani_env', 'bin', 'python')
+tani_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'tani_env', 'bin', 'python')
+tani_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
+tani_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'tani_env', 'bin', 'python')
+tani_pypath_5 = os.path.join(home, '.conda', 'envs', 'tani_env', 'bin', 'python')
+tani_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
+for tani_pypath in [tani_pypath_1, tani_pypath_2, tani_pypath_3, tani_pypath_4, tani_pypath_5, tani_pypath_6]:
+    if os.path.isfile(tani_pypath):
+        TANI_PYTHON = tani_pypath
+        break
 
 gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
                             'ts_gcn', 'bin', 'python')

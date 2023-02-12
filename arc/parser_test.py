@@ -12,7 +12,7 @@ import unittest
 import arc.parser as parser
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.species import ARCSpecies
-from arc.species.converter import xyz_to_str
+from arc.species.converter import str_to_xyz, xyz_to_str
 
 
 class TestParser(unittest.TestCase):
@@ -257,6 +257,7 @@ class TestParser(unittest.TestCase):
         path9 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'optim_traj_terachem.xyz')  # test trajectories
         path10 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'ethane_minimize_terachem_output.out')
         path11 = os.path.join(ARC_PATH, 'arc', 'testing', 'orca_example_opt.log')
+        path12 = os.path.join(ARC_PATH, 'arc', 'testing', 'tani_output.yml')
 
         xyz1 = parser.parse_xyz_from_file(path1)
         xyz2 = parser.parse_xyz_from_file(path2)
@@ -269,6 +270,7 @@ class TestParser(unittest.TestCase):
         xyz9 = parser.parse_xyz_from_file(path9)
         xyz10 = parser.parse_xyz_from_file(path10)
         xyz11 = parser.parse_xyz_from_file(path11)
+        xyz12 = parser.parse_xyz_from_file(path12)
 
         self.assertEqual(xyz1, xyz2)
         xyz1_str = xyz_to_str(xyz1)
@@ -307,6 +309,22 @@ O       1.20814900   -0.00000000    0.00000000
 H      -0.59436200    0.94730400    0.00000000
 H      -0.59436200   -0.94730400    0.00000000"""
         self.assertEqual(xyz11_str, expected_xyz_11)
+        expected_xyz_12 = """
+C       0.76543810    1.12187162    0.30492610
+C       1.35782656   -0.27242561    0.13987256
+O       0.40260198   -1.25859876    0.48175081
+C      -0.76543825   -1.12187192   -0.30492599
+C      -1.35782634    0.27242561   -0.13987266
+O      -0.40260197    1.25859858   -0.48175076
+H       1.46909034    1.88883246   -0.03480069
+H       0.53541546    1.29972688    1.36777761
+H       1.69381294   -0.40788846   -0.90078084
+H       2.21458405   -0.41511654    0.80648738
+H      -1.46909026   -1.88883253    0.03480063
+H      -0.53541537   -1.29972706   -1.36777773
+H      -2.21458420    0.41511639   -0.80648746
+H      -1.69381305    0.40788834    0.90078104"""
+        self.assertTrue(almost_equal_coords(xyz12, str_to_xyz(expected_xyz_12)))
 
     def test_parse_geometry(self):
         """Test parse_geometry()"""
