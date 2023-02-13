@@ -75,10 +75,12 @@ global_ess_settings = {
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
+    'torchani': 'local',
+    'openbabel': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb']
+supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']
@@ -108,6 +110,7 @@ levels_ess = {
     'terachem': ['pbe'],
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
+    'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -166,6 +169,7 @@ output_filenames = {'cfour': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
+                    'openbabel':'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
