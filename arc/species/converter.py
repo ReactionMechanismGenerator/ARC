@@ -1901,7 +1901,7 @@ def get_center_of_mass(xyz):
     cm_x /= sum(masses)
     cm_y /= sum(masses)
     cm_z /= sum(masses)
-    return cm_x, cm_y, cm_z
+    return float(cm_x), float(cm_y), float(cm_z)
 
 
 def translate_to_center_of_mass(xyz):
