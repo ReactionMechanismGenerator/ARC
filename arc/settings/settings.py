@@ -208,6 +208,11 @@ tani_default_options_dict = {"model" : "ani2x", # available: 'ANI1ccx', 'ANI1x',
                                                 # An ASE interface to SciPy.
                              "fmax" : 0.001,    # Make sure it is an int or a float.
                              "steps" : None}    # Make sure it is an int.
+                             
+ob_default_settings = {"FF" : "MMFF94s",
+                       "opt_gradient_settings" : {"steps" : 2000,
+                                                  "econv" : 1e-6}
+                       }
 
 # xTB-GSM
 xtb_gsm_settings = {'sm_type': 'GSM',
