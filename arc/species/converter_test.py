@@ -4673,6 +4673,27 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                           fragments=fragments,
                                           )
         self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 200, places=3)
+        
+        coords={'coords': ((-0.7862825353221515, -0.28824023055636216, 0.4782944637692894),
+                           (0.21968869054702736, 0.40094256193652866, -0.2919820499085219),
+                           (-0.07796443595084417, 0.5692847962524797, -1.6621913220858304),
+                           (-1.102200211589376, -1.1132157833188596, -0.01879031191901484),
+                           (-1.5973749070505925, 0.29546848172306867, 0.6474145668621136),
+                           (0.4237940503863438, 1.3660724867336205, 0.19101403432872205),
+                           (1.1352054736534014, -0.1980893380251006, -0.2652264470061931),
+                           (-0.7497944593402266, 1.258221857416732, -1.7507029654486272)),
+                'isotopes': (14, 12, 16, 1, 1, 1, 1, 1),
+                'symbols': ('N', 'C', 'O', 'H', 'H', 'H', 'H', 'H')}
+        indices=[3, 0, 1, 2]
+        new_value=53.76
+        modification_type="groups"
+        mol=Molecule(smiles="NCO")
+        new_xyz = converter.modify_coords(coords=coords,
+                                          indices=indices,
+                                          new_value=new_value,
+                                          modification_type=modification_type,
+                                          mol=mol)
+        self.assertTrue(type(new_xyz["coords"][0][0] is float))
 
     def test_relocate_zmat_dummy_atoms_to_the_end(self):
         """Test the relocating dummy atoms in a zmat to the end of the cartesian coordinates atom list"""
