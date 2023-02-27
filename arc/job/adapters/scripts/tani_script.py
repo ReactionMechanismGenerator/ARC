@@ -329,9 +329,9 @@ def main():
     device = input_dict["device"]
     model = None
     if input_dict["model"].lower() == 'ani1ccx':
-        model = torchani.models.ani1ccx(periodic_table_index=True).to(device)
+        model = torchani.models.ANI1ccx(periodic_table_index=True).to(device)
     elif input_dict["model"].lower() =='ani1x':
-        model = torchani.models.ani1x(periodic_table_index=True).to(device)
+        model = torchani.models.ANI1x(periodic_table_index=True).to(device)
     elif input_dict["model"].lower() == 'ani2x' or model is None:
         model = torchani.models.ANI2x(periodic_table_index=True).to(device)
 
