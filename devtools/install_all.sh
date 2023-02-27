@@ -7,6 +7,7 @@ pushd .
 bash devtools/install_autotst.sh
 bash devtools/install_gcn_cpu.sh
 bash devtools/install_kinbot.sh
+bash devtools/install_ob.sh
 bash devtools/install_xtb.sh
 bash devtools/install_sella.sh
 bash devtools/install_torchani.sh

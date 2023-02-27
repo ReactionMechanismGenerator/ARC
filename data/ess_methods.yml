@@ -193,3 +193,10 @@ cfour:   # see http://slater.chemie.uni-mainz.de/cfour/index.php?n=Main.QuantumC
   - CCSDT(Q)_A
   - CCSDT(Q)_B
   - CC4
+openbabel:
+  - MMFF94s
+  - MMFF94
+  - gaff
+  - uff
+  - ghemical
+

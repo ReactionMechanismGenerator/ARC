@@ -75,10 +75,12 @@ global_ess_settings = {
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
+    'torchani': 'local',
+    'openbabel': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb']
+supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']
@@ -108,6 +110,7 @@ levels_ess = {
     'terachem': ['pbe'],
     'xtb': ['xtb', 'gfn'],
     'torchani': ['torchani'],
+    'openbabel': ['mmff94s', 'mmff94', 'gaff', 'uff', 'ghemical'],
 }
 
 check_status_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qstat -u $USER',
@@ -166,6 +169,7 @@ output_filenames = {'cfour': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
+                    'openbabel':'output.yml',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -208,6 +212,11 @@ tani_default_options_dict = {"model" : "ani2x", # available: 'ANI1ccx', 'ANI1x',
                                                 # An ASE interface to SciPy.
                              "fmax" : 0.001,    # Make sure it is an int or a float.
                              "steps" : None}    # Make sure it is an int.
+                             
+ob_default_settings = {"FF" : "MMFF94s",
+                       "opt_gradient_settings" : {"steps" : 2000,
+                                                  "econv" : 1e-6}
+                       }
 
 # xTB-GSM
 xtb_gsm_settings = {'sm_type': 'GSM',
@@ -275,7 +284,7 @@ default_job_settings = {
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB = None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON = None, None, None, None, None, None
 home = os.getenv("HOME") or os.path.expanduser("~")
 
 tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
@@ -288,6 +297,17 @@ tani_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tani_env', 
 for tani_pypath in [tani_pypath_1, tani_pypath_2, tani_pypath_3, tani_pypath_4, tani_pypath_5, tani_pypath_6]:
     if os.path.isfile(tani_pypath):
         TANI_PYTHON = tani_pypath
+
+ob_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                            'ob_env', 'bin', 'python')
+ob_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'ob_env', 'bin', 'python')
+ob_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
+ob_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'ob_env', 'bin', 'python')
+ob_pypath_5 = os.path.join(home, '.conda', 'envs', 'ob_env', 'bin', 'python')
+ob_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
+for ob_pypath in [ob_pypath_1, ob_pypath_2, ob_pypath_3, ob_pypath_4, ob_pypath_5, ob_pypath_6]:
+    if os.path.isfile(ob_pypath):
+        OB_PYTHON = ob_pypath
         break
 
 gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
