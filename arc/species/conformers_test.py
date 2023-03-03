@@ -91,6 +91,13 @@ H      -1.22610851    0.40421362    1.35170355"""
         cls.cj_spc = ARCSpecies(label='CJ', xyz=cls.cj_xyz,
                                 smiles='COC1=C(CN[C@H]2C3CCN(CC3)[C@H]2C(C2=CC=CC=C2)C2=CC=CC=C2)C=C(C=C1)C(C)C')
 
+    def test_generate_conformers(self):
+        """Test that we can generate conformers for species which used to be problematic"""
+        lowest_confs, new_conformers = conformers.generate_conformers(mol_list=[Molecule(smiles='CCCC[C]1CC2CCC12')],
+                                                                      label='CCCC[C]1CC2CCC12',
+                                                                      )
+        self.assertGreater(len(new_conformers), 0)
+
     def test_CONFS_VS_HEAVY_ATOMS(self):
         """Test that the CONFS_VS_HEAVY_ATOMS dictionary has 0 and 'inf' in its keys"""
         found_zero = False
