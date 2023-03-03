@@ -1459,7 +1459,8 @@ def rdkit_force_field(label: str,
                                                                maxIters=200,
                                                                ignoreInterfragInteractions=True,
                                                                )
-            except RuntimeError:
+            except (RuntimeError, ValueError) as e:
+                logger.debug(f'Could not generate conformers for {label} using RDKit. Got:\n{e}')
                 if try_ob:
                     logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
                                    f'for {label}. This is often slower.')
