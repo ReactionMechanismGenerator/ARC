@@ -1,13 +1,10 @@
 """
-A module for atom-mapping a species or a set of species.
-
-Species atom-map logic:
-1. Fingerprint the species
-2. Identify and loop superimposable candidate backbone mapping
-3. Recursively modify dihedrals until the structures overlap to some tolerance
-4. Determine RMSD to backbone, if good then determine RMSD to H's
-5. When mapping H's on terminal heavy atoms, check whether rotating this rotor will reduce the overall RMSD
-   if there's more than one H on that terminal atom
+This is the engine part of the atom mapping module.
+Here, the core function for calculation the atom map are located.
+Strategy:
+    1) The wrapper function map_rxn is called by the driver.
+    2) The wrapper calls the relevant functions, in order. The algorithem is speciefied on each of the functions.
+    3) The atom map is returned to the driver.
 """
 
 from collections import deque
@@ -21,13 +18,13 @@ from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger
+from arc.common import convert_list_index_0_to_1, extremum_list, logger, key_by_val
 from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
 from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
-
+from numpy import unique
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import TemplateReaction
@@ -40,480 +37,15 @@ if TYPE_CHECKING:
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
 
-def map_reaction(rxn: 'ARCReaction',
-                 backend: str = 'ARC',
-                 db: Optional['RMGDatabase'] = None,
-                 ) -> Optional[List[int]]:
-    """
-    Map a reaction.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    if rxn.family is None:
-        rmgdb.determine_family(reaction=rxn, db=db)
-    if rxn.family is None:
-        return map_general_rxn(rxn, backend=backend)
-
-    fam_func_dict = {'Disproportionation': map_h_abstraction,  # Mapping a disprop reaction is similar to H_Abs.
-                     'H_Abstraction': map_h_abstraction,
-                     'HO2_Elimination_from_PeroxyRadical': map_ho2_elimination_from_peroxy_radical,
-                     'intra_H_migration': map_intra_h_migration,
-                     }
-
-    if rxn.family.label not in fam_func_dict.keys():
-        logger.info(f'Using a generic mapping algorithm for {rxn} of family {rxn.family.label}')
-
-    map_func = fam_func_dict.get(rxn.family.label, map_general_rxn)
-
-    return map_func(rxn, backend=backend, db=db)
-
-
-def map_general_rxn(rxn: 'ARCReaction',
-                    backend: str = 'ARC',
-                    db: Optional['RMGDatabase'] = None,
-                    ) -> Optional[List[int]]:
-    """
-    Map a general reaction (one that was not categorized into a reaction family by RMG).
-    The general method isn't great, a family-specific method should be implemented where possible.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    if rxn.is_isomerization():
-        for backend in ['ARC', 'QCElemental']:
-            atom_map = map_isomerization_reaction(rxn, backend, db)
-            if atom_map is not None:
-                break
-        return atom_map
-
-    # If the reaction is not a known RMG template and is not isomerization, use fragments via the QCElemental backend.
-    qcmol_1 = create_qc_mol(species=[spc.copy() for spc in rxn.r_species],
-                            charge=rxn.charge,
-                            multiplicity=rxn.multiplicity,
-                            )
-    qcmol_2 = create_qc_mol(species=[spc.copy() for spc in rxn.p_species],
-                            charge=rxn.charge,
-                            multiplicity=rxn.multiplicity,
-                            )
-    if qcmol_1 is None or qcmol_2 is None:
-        return None
-    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0)[1]
-    atom_map = data['mill'].atommap.tolist()
-    return atom_map
-
-
-def map_isomerization_reaction(rxn: 'ARCReaction',
-                               backend: str = 'ARC',
-                               db: Optional['RMGDatabase'] = None,
-                               ) -> Optional[List[int]]:
-    """
-    Map isomerization reaction that has no corresponding RMG family.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    # 1. Check if this is a ring opening reaction (only one bond scission occurs).
-    if abs(len(rxn.r_species[0].mol.get_all_edges()) - len(rxn.p_species[0].mol.get_all_edges())) == 1:
-        # Identify the bond that was removed, and map a modified version of the species (without this bond).
-        pairs, success = None, True
-        r_fingerprint, p_fingerprint = fingerprint(spc=rxn.r_species[0]), fingerprint(spc=rxn.p_species[0])
-        unique_r_keys, unique_p_keys = list(), list()
-        for r_key, r_val in r_fingerprint.items():
-            for p_key, p_val in p_fingerprint.items():
-                if are_adj_elements_in_agreement(r_val, p_val):
-                    break
-            else:
-                unique_r_keys.append(r_key)
-        for p_key, p_val in p_fingerprint.items():
-            for r_key, r_val in r_fingerprint.items():
-                if are_adj_elements_in_agreement(r_val, p_val):
-                    break
-            else:
-                unique_p_keys.append(p_key)
-        sorted_symbols_r = sorted([r_fingerprint[key]['self'] for key in unique_r_keys])
-        sorted_symbols_p = sorted([p_fingerprint[key]['self'] for key in unique_p_keys])
-        if len(unique_r_keys) == len(unique_p_keys) == 2 and sorted_symbols_r == sorted_symbols_p:
-            if len(set(sorted_symbols_p)) == 2:
-                # Only two unique elements, easy to match.
-                if r_fingerprint[unique_r_keys[0]]['self'] == p_fingerprint[unique_p_keys[0]]['self']:
-                    pairs = [(unique_r_keys[0], unique_p_keys[0]), (unique_r_keys[1], unique_p_keys[1])]
-                else:
-                    pairs = [(unique_r_keys[0], unique_p_keys[1]), (unique_r_keys[1], unique_p_keys[0])]
-            else:
-                # Two elements of the same type. Use DFS graph traversal to pair them.
-                candidate_0 = iterative_dfs(r_fingerprint,
-                                            p_fingerprint,
-                                            unique_r_keys[0],
-                                            unique_p_keys[0],
-                                            allow_first_key_pair_to_disagree=True,
-                                            )
-                candidate_1 = iterative_dfs(r_fingerprint,
-                                            p_fingerprint,
-                                            unique_r_keys[0],
-                                            unique_p_keys[1],
-                                            allow_first_key_pair_to_disagree=True,
-                                            )
-                if bool(candidate_0 is None) != bool(candidate_1 is None):
-                    if candidate_1 is None:
-                        pairs = [(unique_r_keys[0], unique_p_keys[0]), (unique_r_keys[1], unique_p_keys[1])]
-                    else:
-                        pairs = [(unique_r_keys[0], unique_p_keys[1]), (unique_r_keys[1], unique_p_keys[0])]
-        if pairs is not None:
-            r_copy = rxn.r_species[0].copy()
-            p_copy = rxn.p_species[0].copy()
-            extra_bond_in_reactant = False
-            if sum([len(v) for k, v in r_fingerprint[pairs[0][0]].items() if k not in RESERVED_FINGERPRINT_KEYS]) > \
-                    sum([len(v) for k, v in p_fingerprint[pairs[0][1]].items() if k not in RESERVED_FINGERPRINT_KEYS]):
-                extra_bond_in_reactant = True
-            if extra_bond_in_reactant:
-                try:
-                    bond = r_copy.mol.get_bond(r_copy.mol.atoms[unique_r_keys[0]], r_copy.mol.atoms[unique_r_keys[1]])
-                except ValueError:
-                    success = False
-                else:
-                    r_copy.mol.remove_bond(bond)
-                    r_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            else:
-                try:
-                    bond = p_copy.mol.get_bond(p_copy.mol.atoms[unique_p_keys[0]], p_copy.mol.atoms[unique_p_keys[1]])
-                except ValueError:
-                    success = False
-                else:
-                    p_copy.mol.remove_bond(bond)
-                    p_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                for bond in atom.bonds.values():
-                    bond.order = 1
-            if success:
-                return map_two_species(r_copy, p_copy, map_type='list', backend=backend)
-
-    # Fallback to the general mapping algorithm.
-    return map_two_species(rxn.r_species[0], rxn.p_species[0], map_type='list', backend=backend)
-
-
-# Family-specific mapping functions:
-
-
-def map_h_abstraction(rxn: 'ARCReaction',
-                      backend: str = 'ARC',
-                      db: Optional['RMGDatabase'] = None,
-                      ) -> Optional[List[int]]:
-    """
-    Map a hydrogen abstraction or a disproportionation reaction (they are principally similar for mapping).
-
-    Strategy:
-        H_Abstraction: Map species R(*1)-H(*2) to species R(*1)j and map species R(*3)j to species R(*3)-H(*2).
-        Disprop: Map species R(*1)j to species R(*1)-H(*4) and map species R(*3)j-R(*2)-H(*4) to species R(*3)=R(*2).
-        Use scissors to map the backbone.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    disprop = False
-    if not check_family_for_mapping_function(rxn=rxn, db=db, family='H_Abstraction'):
-        if check_family_for_mapping_function(rxn=rxn, db=db, family='Disproportionation'):
-            disprop = True
-        else:
-            return None
-
-    atom_labels = ('*1', '*2', '*3') if not disprop else ('*2', '*4', '*1')  # (H, H-anchor, attacking rad)
-
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
-                                                                                      rmg_reaction=rmg_reactions[0])
-    r_h_index = r_label_dict[atom_labels[1]]
-    p_h_index = p_label_dict[atom_labels[1]]
-    len_r1, len_p1 = rxn.r_species[0].number_of_atoms, rxn.p_species[0].number_of_atoms
-    r1_h2 = 0 if r_h_index < len_r1 else 1  # Identify R(*1)-H(*2), it's either reactant 0 or reactant 1.
-    r3 = 1 - r1_h2  # Identify R(*3) in the reactants.
-    r3_h2 = 0 if p_h_index < len_p1 else 1  # Identify R(*3)-H(*2), it's either product 0 or product 1.
-    r1 = 1 - r3_h2  # Identify R(*1) in the products.
-
-    spc_r1_h2 = ARCSpecies(label='R1-H2',
-                           mol=rxn.r_species[r1_h2].mol.copy(deep=True),
-                           xyz=rxn.r_species[r1_h2].get_xyz(),
-                           bdes=[(r_label_dict[atom_labels[0]] + 1 - r1_h2 * len_r1,
-                                  r_label_dict[atom_labels[1]] + 1 - r1_h2 * len_r1)],  # Mark the R(*1)-H(*2) bond for scission.
-                           )
-    spc_r1_h2.final_xyz = spc_r1_h2.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
-    try:
-        spc_r1_h2_cuts = spc_r1_h2.scissors(sort_atom_labels=True)
-    except SpeciesError:
-        return None
-    spc_r1_h2_cut = [spc for spc in spc_r1_h2_cuts if spc.label != 'H'][0] \
-        if any(spc.label != 'H' for spc in spc_r1_h2_cuts) else spc_r1_h2_cuts[0]  # Treat H2 as well :)
-    spc_r3_h2 = ARCSpecies(label='R3-H2',
-                           mol=rxn.p_species[r3_h2].mol.copy(deep=True),
-                           xyz=rxn.p_species[r3_h2].get_xyz(),
-                           bdes=[(p_label_dict[atom_labels[2]] + 1 - r3_h2 * len_p1,
-                                  p_label_dict[atom_labels[1]] + 1 - r3_h2 * len_p1)],  # Mark the R(*3)-H(*2) bond for scission.
-                           )
-    spc_r3_h2.final_xyz = spc_r3_h2.get_xyz()
-    try:
-        spc_r3_h2_cuts = spc_r3_h2.scissors(sort_atom_labels=True)
-    except SpeciesError:
-        return None
-    spc_r3_h2_cut = [spc for spc in spc_r3_h2_cuts if spc.label != 'H'][0] \
-        if any(spc.label != 'H' for spc in spc_r3_h2_cuts) else spc_r3_h2_cuts[0]  # Treat H2 as well :)
-    map_1 = map_two_species(spc_r1_h2_cut, rxn.p_species[r1], backend=backend)
-    map_2 = map_two_species(rxn.r_species[r3], spc_r3_h2_cut, backend=backend)
-
-    result = {r_h_index: p_h_index}
-    for r_increment, p_increment, map_i, j in zip([r1_h2 * len_r1, r3 * len_r1],
-                                                  [r1 * len_p1, r3_h2 * len_p1],
-                                                  [map_1, map_2],
-                                                  [0, 1]):
-        for i, entry in enumerate(map_i):
-            r_index = i + r_increment + (1 - j) * int(i + r_increment >= r_h_index)
-            p_index = entry + p_increment + j * int(i + p_increment >= p_h_index)
-            result[r_index] = p_index
-    return [val for key, val in sorted(result.items(), key=lambda item: item[0])]
-
-
-def map_ho2_elimination_from_peroxy_radical(rxn: 'ARCReaction',
-                                            backend: str = 'ARC',
-                                            db: Optional['RMGDatabase'] = None,
-                                            ) -> Optional[List[int]]:
-    """
-    Map an HO2 elimination from peroxy radical reaction.
-    Strategy: Remove the O(*3), O(*4), and H(*5) atoms from the reactant and map to the R(*1)=R(*2) product.
-    Note that two consecutive scissions must be performed.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    rxn_fwd, flipped = rxn.copy(), False
-    if len(rxn.r_species) == 2 and len(rxn.p_species) == 1:
-        rxn_fwd = rxn_fwd.flip_reaction()
-        flipped = True
-
-    if rxn_fwd.family is None and db is not None:
-        rxn_fwd.determine_family(rmg_database=db, save_order=True)
-    if not check_family_for_mapping_function(rxn=rxn_fwd, db=db, family='HO2_Elimination_from_PeroxyRadical'):
-        return None
-
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
-                                                                                      rmg_reaction=rmg_reactions[0])
-
-    r_o3_index = r_label_dict['*3']
-    r_o4_index = r_label_dict['*4']
-    r_h5_index = r_label_dict['*5']
-    # Identify R(*1)=R(*2), it's either product 0 or product 1:
-    r1dr2 = 0 if any(bond.order == 2 for bond in rxn_fwd.p_species[0].mol.get_all_edges()) else 1
-
-    mol_r_mod = rxn_fwd.r_species[0].mol.copy(deep=True)
-    mol_r_mod.clear_labeled_atoms()
-    xyz_r_mod = rxn_fwd.r_species[0].get_xyz().copy()
-    vertex_indices = sorted([r_o3_index, r_o4_index, r_h5_index], reverse=True)
-    for vertex_index in vertex_indices:
-        for adj_atom in mol_r_mod.vertices[vertex_index].edges.keys():
-            adj_atom.increment_radical()
-        mol_r_mod.remove_vertex(mol_r_mod.vertices[vertex_index])
-    mol_r_mod.update_multiplicity()
-    xyz_r_mod['symbols'] = tuple(symbol for i, symbol in enumerate(xyz_r_mod['symbols']) if i not in vertex_indices)
-    xyz_r_mod['isotopes'] = tuple(isotope for i, isotope in enumerate(xyz_r_mod['isotopes']) if i not in vertex_indices)
-    xyz_r_mod['coords'] = tuple(coord for i, coord in enumerate(xyz_r_mod['coords']) if i not in vertex_indices)
-    spc_r_mod = ARCSpecies(label='R', mol=mol_r_mod, xyz=xyz_r_mod)
-    spc_r_mod.final_xyz = xyz_r_mod  # .set_dihedral() requires the .final_xyz attribute.
-
-    inc_vals = 3 if r1dr2 == 1 else None
-    map_1 = map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend, inc_vals=inc_vals)
-
-    if map_2 is None:
-        return None
-
-    # Different dihedral angles in the reactant and product will make mapping H atoms hard.
-    # Fix dihedrals between each 4 heavy atom sequences.
-    spc_r_mod.determine_rotors()
-    if spc_r_mod.rotors_dict is not None:
-        for rotor in spc_r_mod.rotors_dict.values():
-            torsion = rotor['torsion']
-            if spc_r_mod.mol.atoms[torsion[0]].is_non_hydrogen() and spc_r_mod.mol.atoms[torsion[1]].is_non_hydrogen():
-                spc_r_mod.set_dihedral(scan=convert_list_index_0_to_1(torsion),
-                                       deg_abs=calculate_dihedral_angle(coords=rxn_fwd.p_species[r1dr2].get_xyz(),
-                                                                        torsion=[map_1[t] for t in torsion]),
-                                       chk_rotor_list=False)
-                spc_r_mod.final_xyz = spc_r_mod.initial_xyz
-        map_2 = map_two_species(spc_r_mod, rxn_fwd.p_species[r1dr2], backend=backend, inc_vals=inc_vals)
-
-    # Add mapping for the missing O(*3)-O(*4)-H(*5) atoms.
-    new_map, added_ho2_atoms = list(), list()
-    star_map = {r_o3_index: '*3', r_o4_index: '*4', r_h5_index: '*5'}
-    for i, entry in enumerate(map_2):
-        for j in [i + len(added_ho2_atoms), i + 1 + len(added_ho2_atoms), i + 2 + len(added_ho2_atoms)]:
-            # Check three consecutive indices, we don't know whether the HO2 atoms are mapped consecutively or not.
-            if j in star_map.keys() and j not in added_ho2_atoms:
-                new_map.append(p_label_dict[star_map[j]])
-                added_ho2_atoms.append(j)
-            else:
-                break
-        new_map.append(entry)
-
-    # Add mapping for the missing O(*3)-O(*4)-H(*5) atoms that may come at the end of the map.
-    for j in range(len(rxn_fwd.r_species[0].mol.atoms) - len(new_map)):
-        new_map.append(p_label_dict[star_map[len(new_map)]])
-
-    return flip_map(atom_map=new_map) if flipped else new_map
-
-
-def map_intra_h_migration(rxn: 'ARCReaction',
-                          backend: str = 'ARC',
-                          db: Optional['RMGDatabase'] = None,
-                          ) -> Optional[List[int]]:
-    """
-    Map an intra hydrogen migration reaction.
-    Strategy: Remove the *3 H atom from both the reactant and product to have the same backbone.
-    Map the backbone and add the (known) *3 H atom.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
-
-    Returns:
-        Optional[List[int]]:
-            Entry indices are running atom indices of the reactants,
-            corresponding entry values are running atom indices of the products.
-    """
-    if not check_family_for_mapping_function(rxn=rxn, db=db, family='intra_H_migration'):
-        return None
-    rxn_fwd, flipped = rxn.copy(), False
-
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
-                                                                                      rmg_reaction=rmg_reactions[0])
-    r_2_index, r_h_index = r_label_dict['*2'], r_label_dict['*3']
-    for neighboring_atom in rxn_fwd.r_species[0].mol.atoms[r_2_index].edges.keys():
-        if rxn_fwd.r_species[0].mol.atoms.index(neighboring_atom) == r_h_index:
-            break
-    else:
-        rxn_fwd = rxn_fwd.flip_reaction()
-        flipped = True
-        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_fwd, backend=backend)
-        r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_fwd,
-                                                                                          rmg_reaction=rmg_reactions[0])
-        r_2_index, r_h_index = r_label_dict['*2'], r_label_dict['*3']
-    for neighboring_atom in rxn_fwd.r_species[0].mol.atoms[r_2_index].edges.keys():
-        if rxn_fwd.r_species[0].mol.atoms.index(neighboring_atom) == r_h_index:
-            break
-    else:
-        logger.warning(f'Intra H migration reaction {rxn} is behaving unexpectedly, could not detect bond between '
-                       f'H*3 and R*2 from either direction.')
-        return None
-
-    p_h_index = p_label_dict['*3']
-
-    spc_r = ARCSpecies(label='R',
-                       mol=rxn_fwd.r_species[0].mol.copy(deep=True),
-                       xyz=rxn_fwd.r_species[0].get_xyz(),
-                       bdes=[(r_label_dict['*2'] + 1, r_label_dict['*3'] + 1)],  # Mark the R(*2)-H(*3) bond for scission.
-                       )
-    spc_r.final_xyz = spc_r.get_xyz()  # Scissors requires the .final_xyz attribute to be populated.
-    try:
-        spc_r_dot = [spc for spc in spc_r.scissors(sort_atom_labels=True) if spc.label != 'H'][0]
-    except SpeciesError:
-        return None
-    spc_p = ARCSpecies(label='P',
-                       mol=rxn_fwd.p_species[0].mol.copy(deep=True),
-                       xyz=rxn_fwd.p_species[0].get_xyz(),
-                       bdes=[(p_label_dict['*1'] + 1, p_label_dict['*3'] + 1)],  # Mark the R(*1)-H(*3) bond for scission.
-                       )
-    spc_p.final_xyz = spc_p.get_xyz()
-    try:
-        spc_p_dot = [spc for spc in spc_p.scissors(sort_atom_labels=True) if spc.label != 'H'][0]
-    except SpeciesError:
-        return None
-    map_ = map_two_species(spc_r_dot, spc_p_dot, backend=backend)
-
-    new_map = list()
-    if r_h_index == len(map_):
-        new_map = map_ + [p_h_index]
-    else:
-        for i, entry in enumerate(map_):
-            if i == r_h_index:
-                new_map.append(p_h_index)
-            new_map.append(entry if entry < p_h_index else entry + 1)
-
-    return flip_map(atom_map=new_map) if flipped else new_map
-
-
-# Mapping functions:
-
-
-def check_family_for_mapping_function(rxn: 'ARCReaction',
-                                      family: str,
-                                      db: Optional['RMGDatabase'] = None,
-                                      verbose: bool = True,
-                                      ) -> bool:
-    """
-    Check that the actual reaction family and the desired reaction family are the same.
-
-    Args:
-        rxn (ARCReaction): An ARCReaction object instance.
-        family (str): The desired reaction family to check for.
-        db (RMGDatabase, optional): The RMG database instance.
-        verbose (bool): Whether to print a warning if the reaction does not match the family.
-
-    Returns:
-        bool: Whether the reaction family and the desired ``family`` are consistent.
-    """
-    if rxn.family is None:
-        rmgdb.determine_family(reaction=rxn, db=db)
-    if rxn.family is None or rxn.family.label != family:
-        if verbose:
-            logger.warning(f'Reaction {rxn} does not belong to family {family}.')
-        return False
-    return True
-
-
 def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReaction',
                                                          rmg_reaction: 'TemplateReaction',
                                                          ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
     """
     Get the RMG reaction atom labels and the corresponding 0-indexed atom indices
     for all labeled atoms in a TemplateReaction.
-
     Args:
         arc_reaction (ARCReaction): An ARCReaction object instance.
         rmg_reaction (TemplateReaction): A respective RMG family TemplateReaction object instance.
-
     Returns:
         Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
             The tuple entries relate to reactants and products.
@@ -522,8 +54,8 @@ def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReact
     if not hasattr(rmg_reaction, 'labeled_atoms') or not rmg_reaction.labeled_atoms:
         return None, None
 
-    for spc in rmg_reaction.reactants + rmg_reaction.products:
-        generate_resonance_structures(spc)
+    for mol in rmg_reaction.reactants + rmg_reaction.products:
+        mol.generate_resonance_structures(save_order=True)
 
     r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction)
 
@@ -555,13 +87,11 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
     """
     Map the species pairs in an ARC reaction to those in a respective RMG reaction
     which is defined in the same direction.
-
     Args:
         arc_reaction (ARCReaction): An ARCReaction object instance.
         rmg_reaction (Union[Reaction, TemplateReaction]): A respective RMG family TemplateReaction object instance.
         concatenate (bool, optional): Whether to return isomorphic species as a single list (``True``, default),
                                       or to return isomorphic species separately (``False``).
-
     Returns:
         Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
             The first tuple entry refers to reactants, the second to products.
@@ -584,9 +114,9 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
                 if not isinstance(rmg_spc, Species):
                     raise ValueError(f'Expected an RMG object instances of Molecule or Species, '
                                      f'got {rmg_obj} which is a {type(rmg_obj)}.')
-                generate_resonance_structures(rmg_spc)
+                rmg_spc.generate_resonance_structures(save_order=True)
                 rmg_spc_based_on_arc_spc = Species(molecule=arc_spc.mol_list)
-                generate_resonance_structures(rmg_spc_based_on_arc_spc)
+                rmg_spc_based_on_arc_spc.generate_resonance_structures(save_order=True)
                 if rmg_spc.is_isomorphic(rmg_spc_based_on_arc_spc, save_order=True):
                     if i in spc_map.keys() and concatenate:
                         spc_map[i].append(j)
@@ -608,13 +138,11 @@ def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
     in the sense that they represent degenerate reaction sites that are indifferentiable in 2D.
     Bridges between RMG reaction templates and ARC's 3D TS structures.
     Running indices in the returned structure relate to reactant_0 + reactant_1 + ...
-
     Args:
         arc_reaction ('ARCReaction'): The ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-
     Returns:
-        List[List[int]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
+        Optional[List[List[int]]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
     """
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction, backend=backend)
     dicts = [get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(rmg_reaction=rmg_reaction,
@@ -639,12 +167,10 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
     A helper function for getting RMG reactions from an ARC reaction.
     This function calls ``map_two_species()`` so that each species in the RMG reaction is correctly mapped
     to the corresponding species in the ARC reaction. It does not attempt to map reactants to products.
-
     Args:
         arc_reaction (ARCReaction): The ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
         db (RMGDatabase, optional): The RMG database instance.
-
     Returns:
         Optional[List[TemplateReaction]]:
             The respective RMG TemplateReaction object instances (considering resonance structures).
@@ -655,8 +181,8 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
         return None
     if not arc_reaction.family.save_order:
         raise ValueError('Must have the save_order attribute of the family set to True.')
-    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol for spc in arc_reaction.r_species],
-                                                           products=[spc.mol for spc in arc_reaction.p_species],
+    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol.copy(deep=True) for spc in arc_reaction.r_species],
+                                                           products=[spc.mol.copy(deep=True) for spc in arc_reaction.p_species],
                                                            prod_resonance=True,
                                                            delete_labels=False,
                                                            relabel_atoms=False,
@@ -699,9 +225,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
     Map the atoms in spc1 to the atoms in spc2.
     All indices are 0-indexed.
     If a dict type atom map is returned, it could conveniently be used to map ``spc_2`` -> ``spc_1`` by doing::
-
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
-
     Args:
         spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
         spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
@@ -711,7 +235,6 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
         inc_vals (int, optional): An optional integer by which all values in the atom map list will be incremented.
         verbose (bool, optional): Whether to use logging.
-
     Returns:
         Optional[Union[List[int], Dict[int, int]]]:
             The atom map. By default, a list is returned.
@@ -757,14 +280,6 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
         candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
-        if candidates is None or len(candidates) == 0:
-            consider_chirality = not consider_chirality
-            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
-            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
-            if candidates is None or len(candidates) == 0:
-                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
-                return None
         if not len(candidates):
             if allow_backend_shift:
                 backend = 'QCElemental'
@@ -816,10 +331,8 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
 def get_arc_species(spc: Union[ARCSpecies, Species, Molecule]) -> ARCSpecies:
     """
     Convert an object to an ARCSpecies object.
-
     Args:
         spc (Union[ARCSpecies, Species, Molecule]): An input object.
-
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
     """
@@ -839,13 +352,11 @@ def create_qc_mol(species: Union[ARCSpecies, Species, Molecule, List[Union[ARCSp
                   ) -> Optional[QCMolecule]:
     """
     Create a single QCMolecule object instance from ARCSpecies object instance(s).
-
     Args:
         species (List[Union[ARCSpecies, Species, Molecule]]): Entries are ARCSpecies / RMG Species / RMG Molecule
                                                               object instances.
         charge (int, optional): The overall charge of the surface.
         multiplicity (int, optional): The overall electron multiplicity of the surface.
-
     Returns:
         Optional[QCMolecule]: The respective QCMolecule object instance.
     """
@@ -880,12 +391,10 @@ def check_species_before_mapping(spc_1: ARCSpecies,
                                  ) -> bool:
     """
     Perform general checks before mapping two species.
-
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
         verbose (bool, optional): Whether to use logging.
-
     Returns:
         bool: ``True`` if all checks passed, ``False`` otherwise.
     """
@@ -933,10 +442,8 @@ def check_species_before_mapping(spc_1: ARCSpecies,
 def get_bonds_dict(spc: ARCSpecies) -> Dict[str, int]:
     """
     Get a dictionary of bonds by elements in the species ignoring bond orders.
-
     Args:
         spc (ARCSpecies): The species to examine.
-
     Returns:
         Dict[str, int]: Keys are 'A-B' strings of element symbols sorted alphabetically (e.g., 'C-H' or 'H-O'),
                         values are the number of such bonds (ignoring bond order).
@@ -957,11 +464,9 @@ def fingerprint(spc: ARCSpecies,
     For any heavy atom in the ``spc`` its element (``self``) will be determined,
     the element types and numbers of adjacent atoms are determined,
     and any chirality information will be determined if relevant.
-
     Args:
         spc (ARCSpecies): The input species.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
-
     Returns:
         Dict[int, Dict[str, List[int]]]: Keys are indices of heavy atoms, values are dicts. keys are element symbols,
                                          values are indices of adjacent atoms corresponding to this element.
@@ -977,8 +482,6 @@ def fingerprint(spc: ARCSpecies,
                 for key, val in chirality_dict.items():
                     if i in key:
                         atom_fingerprint['chirality'] = val
-            # if atom_1.label:
-            #     atom_fingerprint['label'] = atom_1.label
             for atom_2 in atom_1.edges.keys():
                 if atom_2.element.symbol not in atom_fingerprint .keys():
                     atom_fingerprint[atom_2.element.symbol] = list()
@@ -993,24 +496,20 @@ def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[
                                        ) -> List[Dict[int, int]]:
     """
     Identify candidate ordering of heavy atoms (only) that could potentially be superimposed.
-
     Args:
         fingerprint_1 (Dict[int, Dict[str, Union[str, List[int]]]]): Adjacent element dict for species 1.
         fingerprint_2 (Dict[int, Dict[str, Union[str, List[int]]]]): Adjacent element dict for species 2.
-
     Returns:
         List[Dict[int, int]]: Entries are superimposable candidate dicts. Keys are atom indices of heavy atoms
                               of species 1, values are potentially mapped atom indices of species 2.
     """
     candidates = list()
-    for key_1 in fingerprint_1.keys():
-        for key_2 in fingerprint_2.keys():
+    for key_1, val_1 in fingerprint_1.items():
+        for key_2, val_2 in fingerprint_2.items():
             # Try all combinations of heavy atoms.
             result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
             if result is not None:
                 candidates.append(result)
-    if len(candidates) == 0:
-        return None
     return prune_identical_dicts(candidates)
 
 
@@ -1021,11 +520,9 @@ def are_adj_elements_in_agreement(fingerprint_1: Dict[str, Union[str, List[int]]
     Check whether two dictionaries representing adjacent elements are in agreement
     w.r.t. the type and number of adjacent elements.
     Also checks the identity of the parent ("self") element.
-
     Args:
           fingerprint_1 (Dict[str, List[int]]): Adjacent elements dictionary 1.
           fingerprint_2 (Dict[str, List[int]]): Adjacent elements dictionary 2.
-
     Returns:
         bool: ``True`` if the two dicts represent identical adjacent elements, ``False`` otherwise.
     """
@@ -1053,7 +550,6 @@ def iterative_dfs(fingerprint_1: Dict[int, Dict[str, List[int]]],
     A depth first search (DFS) graph traversal algorithm to determine possible superimposable ordering of heavy atoms.
     This is an iterative and not a recursive algorithm since Python doesn't have a great support for recursion
     since it lacks Tail Recursion Elimination and because there is a limit of recursion stack depth (by default is 1000).
-
     Args:
         fingerprint_1 (Dict[int, Dict[str, List[int]]]): Adjacent elements dictionary 1 (graph 1).
         fingerprint_2 (Dict[int, Dict[str, List[int]]]): Adjacent elements dictionary 2 (graph 2).
@@ -1061,7 +557,6 @@ def iterative_dfs(fingerprint_1: Dict[int, Dict[str, List[int]]],
         key_2 (int): The starting index for graph 2.
         allow_first_key_pair_to_disagree (bool, optional): ``True`` to not enforce agreement between the fingerprint
                                                            of ``key_1`` and ``key_2``.
-
     Returns:
         Optional[Dict[int, int]]: ``None`` if this is an invalid superimposable candidate. Keys are atom indices of
                                   heavy atoms of species 1, values are potentially mapped atom indices of species 2.
@@ -1099,21 +594,21 @@ def iterative_dfs(fingerprint_1: Dict[int, Dict[str, List[int]]],
 def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
     """
     Return a list of unique dictionaries.
-
     Args:
         dicts_list (List[dict]): A list of dicts to prune.
-
     Returns:
         List[dict]: A list of unique dicts.
     """
     new_dicts_list = list()
-    num_of_items = len(dicts_list[0].keys())
     for new_dict in dicts_list:
+        unique = True
         for existing_dict in new_dicts_list:
-            if len([new_val for new_key, new_val in new_dict.items()
-                    if new_key in existing_dict.keys() and existing_dict[new_key] == new_val]) == num_of_items:
-                break
-        else:
+            if unique:
+                for new_key, new_val in new_dict.items():
+                    if new_key not in existing_dict.keys() or new_val == existing_dict[new_key]:
+                        unique = False
+                        break
+        if unique:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 
@@ -1121,10 +616,8 @@ def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
 def remove_gaps_from_values(data: Dict[int, int]) -> Dict[int, int]:
     """
     Return a dictionary of integer keys and values with consecutive values starting at 0.
-
     Args:
         data (Dict[int, int]): A dictionary of integers as keys and values.
-
     Returns:
         Dict[int, int]: A dictionary of integers as keys and values with consecutive values starting at 0.
     """
@@ -1142,12 +635,10 @@ def fix_dihedrals_by_backbone_mapping(spc_1: ARCSpecies,
                                       ) -> Tuple[ARCSpecies, ARCSpecies]:
     """
     Fix the dihedral angles of two mapped species to align them.
-
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
         backbone_map (Dict[int, int]): The backbone map.
-
     Returns:
         Tuple[ARCSpecies, ARCSpecies]: The corresponding species with aligned dihedral angles.
     """
@@ -1179,7 +670,6 @@ def get_backbone_dihedral_deviation_score(spc_1: ARCSpecies,
     """
     Determine a deviation score for dihedral angles of torsions.
     We don't consider here "terminal" torsions, just pure backbone torsions.
-
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
@@ -1197,7 +687,6 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
     """
     Determine the dihedral angles of the backbone torsions of two backbone mapped species.
     The output has the following format::
-
         torsions = [{'torsion 1': [0, 1, 2, 3],  # The first torsion in terms of species 1 indices.
                      'torsion 2': [5, 7, 2, 4],  # The first torsion in terms of species 2 indices.
                      'angle 1': 60.0,  # The corresponding dihedral angle to 'torsion 1'.
@@ -1205,12 +694,10 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
                     },
                     {}, ...  # The second torsion, and so on.
                    ]
-
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
         backbone_map (Dict[int, int]): The backbone map.
-
     Returns:
         List[Dict[str, Union[float, List[int]]]]: The corresponding species with aligned dihedral angles.
     """
@@ -1242,11 +729,9 @@ def map_lists(list_1: List[float],
     Map two lists with equal lengths of floats by proximity of entries.
     Assuming no two entries in a list are identical.
     Note: values are treated as cyclic in a 0-360 range (i.e., 1 is closer to 259 than to 5)!
-
     Args:
         list_1 (List[float]): List 1.
         list_2 (List[float]): List 2.
-
     Returns:
         Dict[int, int]: The lists map. Keys correspond to entry indices in ``list_1``,
                         Values correspond to respective entry indices in ``list_2``.
@@ -1274,20 +759,16 @@ def map_hydrogens(spc_1: ARCSpecies,
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
     If more than one hydrogen atom is bonded to a given heavy atom forming a "terminal" internal rotor,
     an internal rotation will be attempted to find the closest match, e.g., in cases such as::
-
         C -- H1     |         H1
          \          |       /
           H2        |     C -- H2
-
     To avoid mapping H2 to H1 due to small RMSD, but H1 to H2 although the RMSD is huge.
     Further, we assume that each H has but one covalent bond, and that there are maximum 4 hydrogen atoms per heavy atom
     (e.g., CH4 or SiH4).
-
     Args:
         spc_1 (ARCSpecies): Species 1.
         spc_2 (ARCSpecies): Species 2.
         backbone_map (Dict[int, int]): The backbone map.
-
     Returns:
         Dict[int, int]: The atom map. Keys are 0-indices in ``spc_1``, values are corresponding 0-indices in ``spc_2``.
     """
@@ -1385,6 +866,37 @@ def map_hydrogens(spc_1: ARCSpecies,
     return atom_map
 
 
+def check_atom_map(rxn) -> bool:
+    """
+    A helper function for testing a reaction atom map.
+    Tests that element symbols are ordered correctly.
+    Tests that the elements in the atom map are unique, so that the function is one to one.
+    Note: These are necessary but not sufficient conditions.
+    Args:
+        rxn (ARCReaction): The reaction to examine.
+    
+    Returns: bool
+        Whether the atom mapping makes sense.
+    """
+    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
+        return False
+    r_elements, p_elements = list(), list()
+    for r_species in rxn.r_species:
+        r_elements.extend(list(r_species.get_xyz()['symbols']))
+    for p_species in rxn.p_species:
+        p_elements.extend(list(p_species.get_xyz()['symbols']))
+    for i, map_i in enumerate(rxn.atom_map):
+        if r_elements[i] != p_elements[map_i]:
+            break
+    for i in range(len(unique(rxn.atom_map))):
+        if unique(rxn.atom_map)[i] != i:
+            return False
+
+    else:
+        # Did not break, the mapping makes sense.
+        return True
+
+
 def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpecies,
                                                                    spc_2: ARCSpecies,
                                                                    heavy_atom_1: 'Atom',
@@ -1395,7 +907,6 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
                                                                    ) -> Dict[int, int]:
     """
     Map hydrogen atoms around one end of a specific torsion (or pseudo-torsion) by matching dihedral angles.
-
     Args:
           spc_1 (ARCSpecies): Species 1.
           spc_2 (ARCSpecies): Species 2.
@@ -1406,7 +917,6 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
           find_torsion_end_to_map (bool, optional): Whether to automatically identify the side of the torsion that
                                                     requires mapping. If ``False``, the last atom, ``torsion[-1]``
                                                     is assumed to be on the side that requires mapping.
-
     Returns:
         Dict[int, int]: The updated atom map.
     """
@@ -1436,10 +946,8 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
 def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
     """
     Flip an atom map so that the products map to the reactants.
-
     Args:
         atom_map (List[int]): The atom map in a list format.
-
     Returns:
         Optional[List[int]]: The flipped atom map.
     """
@@ -1451,3 +959,359 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
     if any(entry < 0 for entry in flipped_map):
         raise ValueError(f'Cannot flip the atom map {atom_map}')
     return flipped_map
+
+
+def prepare_reactants_and_products_for_scissors(rxn: 'ARCReaction',
+                                                r_label_dict: dict,
+                                                p_label_dict: dict,
+                                                ) -> Tuple[List[ARCSpecies], List[ARCSpecies], List[int], List[int]]:
+    """
+    Prepares the species to be scissored.
+    Args:
+        rxn: ARC reaction object to be mapped
+        r_label_dict: the labels of the reactants
+        p_label_dict: the labels of the products
+    Returns:
+            The species in the reactants and products where a bond was broken or formed.
+    """
+
+    breaks = list()
+    forms = list()
+    actions = rxn.family.forward_recipe.actions
+    for action in actions:
+        if action[0].lower() == "BREAK_BOND".lower():
+            breaks.append(action)
+        elif action[0].lower() == "FORM_BOND".lower():
+            forms.append(action)
+    reactants, products, loc_r, loc_p = [0]*len(rxn.r_species), [0]*len(rxn.p_species), [0]*len(rxn.r_species), [0]*len(rxn.p_species)
+    for broken_bond in breaks:
+        location = 0
+        index = 0
+        for reactant in rxn.r_species:
+            if not r_label_dict[broken_bond[1]] < reactant.number_of_atoms + index:
+                location += 1
+                index += reactant.number_of_atoms
+            else:
+                if loc_r[location] >= 1:
+                    loc_r[location] += 1
+                    reactants[location].bdes += [(r_label_dict[broken_bond[1]] + 1 - index, r_label_dict[broken_bond[3]] + 1 - index)]
+                else:
+                    loc_r[location] += 1
+                    reactants[location] = ARCSpecies(label="".join(sorted(
+                        [key_by_val(r_label_dict, r_label_dict[broken_bond[1]]),
+                         key_by_val(p_label_dict, p_label_dict[broken_bond[3]])])),
+                    mol = reactant.mol.copy(deep=True),
+                    xyz = reactant.get_xyz(),
+                    bdes = [(r_label_dict[broken_bond[1]] + 1 - index,
+                             r_label_dict[broken_bond[3]] + 1 - index)])
+
+                    for mol1, mol2 in zip(reactants[location].mol.atoms, reactant.mol.atoms):
+                        mol1.label = mol2.label
+                    break
+
+    for formed_bond in forms:
+        location = 0
+        index = 0
+        for product in rxn.p_species:
+            if not p_label_dict[formed_bond[1]] < product.number_of_atoms + index:
+                location += 1
+                index += product.number_of_atoms
+            else:
+                if loc_p[location] >= 1:
+                    loc_p[location]+=1
+                    products[location].bdes += [(p_label_dict[formed_bond[1]] + 1 - index, p_label_dict[formed_bond[3]] + 1 - index)]
+                else:
+                    loc_p[location] += 1
+                    products[location] = ARCSpecies(label="".join(sorted(
+                        [key_by_val(p_label_dict, p_label_dict[formed_bond[1]]),
+                        key_by_val(p_label_dict, p_label_dict[formed_bond[3]])])),
+                    mol = product.mol.copy(deep=True),
+                    xyz = product.get_xyz(),
+                    bdes = [(p_label_dict[formed_bond[1]] + 1 - index,
+                            p_label_dict[formed_bond[3]] + 1 - index)])
+                    for mol1, mol2 in zip(products[location].mol.atoms, product.mol.atoms):
+                        mol1.label = mol2.label
+                    break
+    for index, value in enumerate(loc_r):
+        if value == 0:
+            reactants[index] = rxn.r_species[index]
+
+    for index, value in enumerate(loc_p):
+        if value == 0:
+            products[index] = rxn.p_species[index]
+
+    return reactants, products, loc_r, loc_p
+
+
+def make_bond_changes(rxn: 'ARCReaction',
+                      r_cuts: List[ARCSpecies],
+                      r_label_dict: Dict):
+
+    """
+    Makes the bond change before matching the reactants and products
+    Ags:
+        rxn: An ARCReaction object
+        r_cuts: the cut products
+        r_label_dict: the dictionary object the find the relevant location.
+    Returns:
+        None if there are no bond changes, r_cuts with a muted ARCSpecies in the relevant location
+    """
+    for action in rxn.family.forward_recipe.actions:
+        if action[0].lower() == "CHANGE_BOND".lower():
+            indicies = r_label_dict[action[1]],r_label_dict[action[3]]
+            for r_cut in r_cuts:
+                if indicies[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indicies[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
+                    atom1, atom2 = 0,0
+                    for atom in r_cut.mol.atoms:
+                        if int(atom.label) == indicies[0]:
+                            atom1 = atom
+                        elif int(atom.label) == indicies[1]:
+                            atom2 = atom
+                    atom1.decrement_radical()
+                    atom2.decrement_radical()
+                    r_cut.mol.get_bond(atom1,atom2).order += action[2]
+                    r_cut.mol.update()
+
+
+def assign_labels_to_products(rxn: 'ARCReaction',
+                              p_label_dict: dict):
+    """
+    Add the indices to the reactants and products.
+    Args:
+        rxn: ARCReaction object to be mapped
+        p_label_dict: the labels of the products
+        Consider changing in rmgpy.
+    Returns:
+        Adding labels to the atoms of the reactants and products, to be identified later.
+    """
+
+    atom_index = 0
+    for product in rxn.p_species:
+        for atom in product.mol.atoms:
+            if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
+                atom.label = key_by_val(p_label_dict,atom_index)
+            atom_index+=1
+
+
+def cut_species_for_mapping(reactants: List[ARCSpecies],
+                            products: List[ARCSpecies],
+                            loc_r: List[int],
+                            loc_p: List[int],
+                            ) -> Optional[Tuple[List[ARCSpecies], List[ARCSpecies]]]:
+    """
+    A function for scissoring the reactants and products, as a preparation for atom mapping.
+    Args:
+        reactants: A list of the ARCSpecies for scission
+        products: A list of the ARCSpecies for scission
+        loc_r: A list of the location and number of cuts that is required.
+        loc_p: A list of the location and number of cuts that is required.
+    Returns:
+        A list of scissored reactants and products.
+    """
+    r_cuts, p_cuts=list(), list()
+    for index, reactant in zip(loc_r, reactants):
+        if index==1:
+            try:
+                reactant.final_xyz=reactant.get_xyz()
+                cuts=reactant.scissors()
+                r_cuts+=cuts
+            except SpeciesError:
+                return None
+        elif index>1:
+            bdes = reactant.bdes
+            new_r = ARCSpecies(label="scissors", mol=reactant.mol.copy(deep=True))
+            for bde in bdes:
+                new_r.bdes = [bde]
+                new_r.final_xyz = new_r.get_xyz()
+                try:
+                    cuts=new_r.scissors()
+                except SpeciesError:
+                    return None
+                if len(cuts) == 1:
+                    new_r = cuts[0]
+                else:
+                    new_r, second = find_main_cut_product(cuts, reactant, bde)
+                    r_cuts += [second]
+            r_cuts += [new_r]
+        else:
+            r_cuts.append(reactant)
+
+    for index,product in zip(loc_p,products):
+        if index==1:
+            try:
+                product.final_xyz = product.get_xyz()
+                cuts = product.scissors()
+                if len(cuts) == 1: #only H2 and cyclic species for now, todo: modify to include cyclic species.
+                    cuts.append(ARCSpecies(label= cuts[0].label, mol=cuts[0].mol.copy(deep=True)))
+                    labels = [atom.label for atom in product.mol.atoms]
+                    cuts[-1].mol.atoms[0].label = labels[1] if cuts[0].mol.atoms[0].label == labels[0] else labels[0]
+                p_cuts += cuts
+            except SpeciesError:
+                return None
+        elif index > 1:
+            bdes = product.bdes
+            new_p = ARCSpecies(label="scissors", mol=product.mol.copy(deep=True))
+            for bde in bdes:
+                new_p.bdes = [bde]
+                new_p.final_xyz = new_p.get_xyz()
+                try:
+                    cuts = new_p.scissors()
+                except SpeciesError:
+                    return None
+                if len(cuts) == 1:
+                    new_p = cuts[0]
+                else:
+                    new_p, second = find_main_cut_product(cuts, product, bde)
+                    p_cuts += [second]
+            p_cuts += [new_p]
+        else:
+            p_cuts.append(product)
+
+    return r_cuts, p_cuts
+
+
+def find_main_cut_product(cuts: List["ARCSpecies"],
+                          reactant: "ARCSpecies",
+                          bde: Tuple[int]
+                          )->Tuple["ARCSpecies", "ARCSpecies"]:
+    """
+    Differentiate the main product from scissors product.
+    Strategy: use the other BDE, if the indices of the atoms are in the bdes, it should be able to cut there.
+    
+    Args:
+        cuts: The cut products
+        reactant: The reactant with multiple bdes
+        bde: the BDE used for scissors.
+    
+    Returns:
+        Tuple["ARCSpecies", "ARCSpecies"] in the correct order.
+    """
+    list_atom_labels_cuts_0 = [int(atom.label)+1 for atom in cuts[0].mol.atoms]
+    bdes = reactant.bdes
+    for bd in bdes:
+        if bd == bde:
+            continue
+        elif bd[0] not in list_atom_labels_cuts_0:
+            return cuts[1], cuts[0]
+    
+    return cuts[0], cuts[1]
+
+
+def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
+    """
+    A helper function, updates the xyz values of each species after cutting. This is important, since the
+    scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
+    Args:
+        spcs: the scission products that needs to be updated
+    Returns:
+        new: A newely generated copies of the ARCSpecies, with updated xyz
+    """
+    new = list()
+    for spc in spcs:
+        new_spc = ARCSpecies(label="copy", mol =spc.mol.copy(deep=True))
+        new_spc.final_xyz = new_spc.get_xyz() or spc.get_xyz()
+        new.append(new_spc)
+    return new
+
+
+def r_cut_p_cut_isomorphic(reactant, product):
+    """
+    A function for checking if the reactant and product are the same molecule.
+    Args:
+        reactant: an ARCSpecies. might be as a result of scissors() 
+        product: an ARCSpecies. might be as a result of scissors()
+    Returns:
+        bool: ``True`` if they are isomorphic, ``False`` otherwise.
+    """
+    res1 = reactant.mol.copy(deep=True).generate_resonance_structures(save_order = True)
+    for res in res1:
+        if product.mol.is_isomorphic(res, save_order=True):
+            return True
+    return False
+
+
+def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
+                                               p_cuts: List[ARCSpecies]
+                                               )-> List[Tuple[ARCSpecies,ARCSpecies]]:
+    """
+    A function for matching reactants and products in scissored products.
+    Args:
+        r_cuts: A list of the scissored species in the reactants
+        p_cuts: A list of the scissored species in the reactants
+    Returns:
+        a list of paired reactant and products, to be sent to map_two_species.
+    """
+    pairs = []
+    for reactant_cut in r_cuts:
+        for product_cut in p_cuts:
+            if r_cut_p_cut_isomorphic(reactant_cut, product_cut):
+                pairs.append((reactant_cut, product_cut))
+                p_cuts.remove(product_cut) # Just in case there are two of the same species in the list, matching them by order.
+                break
+    return pairs
+
+
+def map_pairs(pairs):
+    """A function that maps the mached species together
+    Args:
+        pairs: A list of the pairs of reactants and species
+    Returns:
+        A list of the mapped species
+    """
+
+    maps=list()
+    for pair in pairs:
+        maps.append(map_two_species(pair[0],pair[1]))
+
+    return maps
+
+
+def label_species_atoms(spcs):
+    index=0
+    for spc in spcs:
+        for atom in spc.mol.atoms:
+            atom.label = str(index)
+            index+=1
+
+
+def glue_maps(maps,pairs_of_reactant_and_products):
+    """
+    a function that joins together the maps from the parts of the reaction.
+    Args:
+        rxn: ARCReaction that requires atom mapping
+        maps: The list of all maps of the isomorphic cuts.
+    Returns:
+        an Atom Map of the compleate reaction.
+    """
+    am_dict = dict()
+    for _map, pair in zip(maps,pairs_of_reactant_and_products):
+        r_atoms = pair[0].mol.atoms
+        p_atoms = pair[1].mol.atoms
+        for map_index,r_atom in zip(_map,r_atoms):
+            am_dict[int(r_atom.label)] = int(p_atoms[map_index].label)
+    return [val for key, val in sorted(am_dict.items(), key=lambda item: item[0])]
+
+
+def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
+    """A helper function determining whether or not the scission site opens a cycle.
+        Args:
+            spc1: ARCSpecies with a bdes
+        Returns:
+            True if the scission site is on a ring, None if the speceis is unlabeled, False otherwise"""
+    if not any([atom.label for atom in spc.mol.atoms]):
+        raise ValueError("cuts_on_cycle_of_labeled_mol recives labeled ARCSpecies only, got an unlabeld species")
+    
+    if not spc.mol.is_cyclic():
+        return False
+
+    k = spc.mol.get_deterministic_sssr()
+    labels = [[] for i in range(len(k))]
+    for index, cycle in enumerate(k):
+        for atom in cycle:
+            labels[index].append(int(atom.label))
+    
+    for bde in spc.bdes:
+        for cycle in labels:
+            if bde[0]-1 in cycle and bde[1]-1 in cycle:
+                return True
+    return False
