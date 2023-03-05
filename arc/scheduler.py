@@ -1169,6 +1169,8 @@ class Scheduler(object):
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
                     if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
+                if recent_opt_job is not None:
+                    recent_opt_job.rename_output_file()
                 self.post_sp_actions(label=label,
                                      sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
                                      level=level,
