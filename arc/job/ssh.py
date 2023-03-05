@@ -284,13 +284,15 @@ class SSHClient(object):
                 running_job_ids.append(job_id)
         return running_job_ids
 
-    def submit_job(self, remote_path: str) -> Tuple[str, int]:
+    def submit_job(self, remote_path: str,
+                   recursion: bool = False,
+                   ) -> Tuple[Optional[str], Optional[str]]:
         """
         Submit a job to the server.
 
         Args:
-            remote_path (str): The remote path contains the input file
-                               and the submission script.
+            remote_path (str): The remote path contains the input file and the submission script.
+            recursion (bool, optional): Whether this call is within a recursion.
 
         Returns: Tuple[str, int]
             - A string indicate the status of job submission.
@@ -309,6 +311,12 @@ class SSHClient(object):
                 if 'Requested node configuration is not available' in line:
                     logger.warning('User may be requesting more resources than are available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
+                if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
+                    logger.warning(f'Max number of submitted jobs was reached, sleeping...')
+                    time.sleep(5 * 60)
+                    self.submit_job(remote_path=remote_path, recursion=True)
+        if recursion:
+            return None, None
         elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
         elif servers[self.server]['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
