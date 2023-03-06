@@ -9,7 +9,7 @@ dependencies:
   - graphviz
   - matplotlib >=1.5
   - networkx
-  - anaconda::numpy >=1.24
+  - conda-forge::numpy >=1.24
   - pandas
   - python >=3.10
   - pyyaml
