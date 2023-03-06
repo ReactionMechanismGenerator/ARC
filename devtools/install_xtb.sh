@@ -30,7 +30,7 @@ else
     source "$CONDA_BASE/etc/profile.d/conda.sh"
 fi
 
-$COMMAND_PKG create -n xtb_env python=3.7 -y
+$COMMAND_PKG create -n xtb_env python=3.7  -c conda-forge -y
 # Activate the environment
 if [ "$COMMAND_PKG" == "micromamba" ]; then
     micromamba activate xtb_env
@@ -40,4 +40,4 @@ fi
 
 $COMMAND_PKG install -c conda-forge xtb -y
 $COMMAND_PKG install -c anaconda pyyaml -y
-$COMMAND_PKG deactivate
+$COMMAND_PKG activate base
