@@ -317,13 +317,13 @@ class SSHClient(object):
                     self.submit_job(remote_path=remote_path, recursion=True)
         if recursion:
             return None, None
-        elif servers[self.server]['cluster_soft'].lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
-        elif servers[self.server]['cluster_soft'].lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() == 'slurm' and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
-        elif servers[self.server]['cluster_soft'].lower() == 'pbs':
+        elif cluster_soft.lower() == 'pbs':
             job_id = stdout[0].split('.')[0]
-        elif servers[self.server]['cluster_soft'].lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+        elif cluster_soft.lower() == 'htcondor' and 'submitting' in stdout[0].lower():
             # Submitting job(s).
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
