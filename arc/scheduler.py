@@ -1453,15 +1453,23 @@ class Scheduler(object):
         and if so spawn the respective TSG jobs.
         Don't spawn TS jobs if the multiplicity of the reaction could not be determined.
         """
+        print('in 1456 spawn_ts_jobs')
         for rxn in self.rxn_list:
+            print(f'considering rxn {rxn}')
             rxn.check_done_opt_r_n_p()
+            print(f'rxn.done_opt_r_n_p: {rxn.done_opt_r_n_p}, not rxn.ts_species.tsg_spawned: {not rxn.ts_species.tsg_spawned}, rxn.multiplicity: {rxn.multiplicity}')
             if rxn.done_opt_r_n_p and not rxn.ts_species.tsg_spawned:
                 if rxn.multiplicity is None:
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
+                    print(f'1467 ts_adapters: {ts_adapters}')
                     for method in ts_adapters:
+                        print(f'method: {method}')
+                        print(f'method in all_families_ts_adapters: {method in all_families_ts_adapters}, rxn.family: {rxn.family}')
+                        print(f'rxn.family.label in list(ts_adapters_by_rmg_family.keys(): {rxn.family.label in list(ts_adapters_by_rmg_family.keys())}')
+                        print(f'method in ts_adapters_by_rmg_family[rxn.family.label]: {method in ts_adapters_by_rmg_family[rxn.family.label]}')
                         if method in all_families_ts_adapters or \
                                 (rxn.family is not None
                                  and rxn.family.label in list(ts_adapters_by_rmg_family.keys())

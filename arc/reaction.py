@@ -623,8 +623,10 @@ class ARCReaction(object):
         are populated, and flag ``self.done_opt_r_n_p`` as ``True`` if they are.
         Useful to know when to spawn TS search jobs.
         """
+        print('Reaction 626 in check_done_opt_r_n_p')
         if not self.done_opt_r_n_p:
             self.done_opt_r_n_p = all(spc.final_xyz is not None for spc in self.r_species + self.p_species)
+        print(self.done_opt_r_n_p)
 
     def check_atom_balance(self,
                            ts_xyz: Optional[dict] = None,
