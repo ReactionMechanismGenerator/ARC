@@ -222,6 +222,7 @@ def submit_job(path: str,
                cluster_soft: Optional[str] = None,
                submit_cmd: Optional[str] = None,
                submit_filename: Optional[str] = None,
+               recursion: bool = False,
                ) -> Tuple[Optional[str], Optional[str]]:
     """
     Submit a job.
@@ -231,19 +232,31 @@ def submit_job(path: str,
         cluster_soft (str, optional): The server cluster software.
         submit_cmd (str, optional): The submit command.
         submit_filename (str, optional): The submit script file name.
+        recursion (bool, optional): Whether this call is within a recursion.
 
     Returns:
         Tuple[Optional[str], Optional[str]]: job_status, job_id
     """
+    cluster_soft = cluster_soft or servers['local']['cluster_soft']
     job_status, job_id = '', ''
-    submit_cmd = submit_cmd or submit_command[servers['local']['cluster_soft']]
-    submit_filename = submit_filename or submit_filenames[servers['local']['cluster_soft']]
+    submit_cmd = submit_cmd or submit_command[cluster_soft]
+    submit_filename = submit_filename or submit_filenames[cluster_soft]
     cmd = f"cd {path}; {submit_cmd} {submit_filename}"
     stdout, stderr = execute_command(cmd)
     if not len(stdout):
         time.sleep(10)
         stdout, stderr = execute_command(cmd)
-    if not len(stdout):
+    if stderr:
+        if cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr):
+            logger.warning(f'Max number of submitted jobs was reached, sleeping...')
+            time.sleep(5 * 60)
+            submit_job(path=path,
+                       cluster_soft=cluster_soft,
+                       submit_cmd=submit_cmd,
+                       submit_filename=submit_filename,
+                       recursion=True,
+                       )
+    if not len(stdout) or recursion:
         return None, None
     if len(stderr) > 0 or len(stdout) == 0:
         logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')
@@ -268,7 +281,8 @@ def _determine_job_id(stdout: List[str],
         str: The determined job ID.
     """
     job_id = ''
-    cluster_soft = cluster_soft or servers['local']['cluster_soft'].lower()
+    cluster_soft = cluster_soft or servers['local']['cluster_soft']
+    cluster_soft = cluster_soft.lower() if cluster_soft is not None else None
     if cluster_soft in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
         job_id = stdout[0].split()[2]
     elif cluster_soft == 'slurm' and 'submitted' in stdout[0].lower():
