@@ -177,6 +177,8 @@ class TestTorchANIAdapter(unittest.TestCase):
         self.job_7.execute()
         self.assertAlmostEqual(self.job_6.freqs[-1], 3756.57643, places=3)
         self.assertGreater(self.job_7.freqs[-1], 3800)
+        self.assertEqual(len(self.job_7.freqs), self.job_7.species[0].mol.get_num_atoms()*3-5)
+        self.assertEqual(len(self.job_6.freqs), self.job_6.species[0].mol.get_num_atoms()*3-5)
 
     @work_in_progress
     def test_ts_freqs(self):
