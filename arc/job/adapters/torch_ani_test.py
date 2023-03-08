@@ -162,7 +162,7 @@ class TestTorchANIAdapter(unittest.TestCase):
         results = read_yaml_file(path=self.job_10.local_path_to_output_file)
         self.assertEqual(list(results.keys()), ['force_constants', 'freqs', 'hessian', 'modes', 'reduced_masses'])
         self.assertEqual(len(results['force_constants']), 3*self.job_10.species[0].mol.get_num_atoms())
-        self.assertEqual(len(results['freqs']), 3*self.job_10.species[0].mol.get_num_atoms()-5)
+        self.assertEqual(len(results['freqs']), 3*self.job_10.species[0].mol.get_num_atoms())
         self.assertEqual(len(results['hessian'][0][0]), 3*self.job_10.species[0].mol.get_num_atoms())
         self.assertEqual(len(results['hessian'][0]), 3*self.job_10.species[0].mol.get_num_atoms())
         self.assertEqual(len(results['modes'][0][0]), 3)
@@ -177,6 +177,8 @@ class TestTorchANIAdapter(unittest.TestCase):
         self.job_7.execute()
         self.assertAlmostEqual(self.job_6.freqs[-1], 3756.57643, places=3)
         self.assertGreater(self.job_7.freqs[-1], 3800)
+        self.assertEqual(len(self.job_7.freqs), self.job_7.species[0].mol.get_num_atoms()*3-5)
+        self.assertEqual(len(self.job_6.freqs), self.job_6.species[0].mol.get_num_atoms()*3-5)
 
     @work_in_progress
     def test_ts_freqs(self):

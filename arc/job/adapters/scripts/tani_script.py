@@ -10,7 +10,6 @@ import argparse
 import os
 import yaml
 
-import numpy as np
 from ase import Atoms
 from ase.constraints import FixInternals
 from ase.optimize import BFGS
@@ -154,7 +153,6 @@ def run_vibrational_analysis(xyz: dict = None,
     hessian = torchani.utils.hessian(coordinates, energies=energies)
     freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDU')
     freqs = freqs.numpy()
-    freqs = freqs[~np.isnan(freqs)]
     results = {'hessian': hessian.tolist(),
                'freqs': freqs.tolist(),
                'modes': modes.tolist(),
