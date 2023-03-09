@@ -4009,6 +4009,10 @@ H       2.16336803    0.09985803    0.03295192
         self.assertAlmostEqual(cm_y, -0.4880, 3)
         self.assertAlmostEqual(cm_z, -0.1603, 3)
 
+        self.assertIsInstance(cm_x, float)
+        self.assertIsInstance(cm_y, float)
+        self.assertIsInstance(cm_z, float)
+
         xyz = """C	1.1714680	-0.4048940	0.0000000
 C	0.0000000	0.5602500	0.0000000
 O	-1.1945070	-0.2236470	0.0000000
