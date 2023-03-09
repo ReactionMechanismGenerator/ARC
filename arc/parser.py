@@ -739,6 +739,8 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
             xyz = content["xyz"]
         elif "opt_xyz" in content.keys():
             xyz = content["opt_xyz"]
+        if isinstance(xyz, str):
+            xyz = str_to_xyz(xyz)
     else:
         record = False
         for line in lines:
