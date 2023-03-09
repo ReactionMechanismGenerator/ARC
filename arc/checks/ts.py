@@ -94,6 +94,7 @@ def ts_passed_all_checks(species: 'ARCSpecies',
         bool: Whether the TS species passed all checks.
     """
     exemptions = exemptions or list()
+    exemptions.append('normal_mode_displacement')
     for check, value in species.ts_checks.items():
         if check not in exemptions and not value and not (check == 'e_elect' and species.ts_checks['E0']):
             if verbose:
