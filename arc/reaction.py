@@ -18,7 +18,6 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_str,
                                    )
 from arc.mapping.driver import map_reaction
-from arc.mapping.engine import flip_map
 from arc.species.species import ARCSpecies, check_atom_balance, check_label
 
 if TYPE_CHECKING:
@@ -153,7 +152,14 @@ class ARCReaction(object):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            self._atom_map = map_reaction(rxn=self)
+            for backend in ["ARC", "QCElemental"]:
+                _atom_map = map_reaction(rxn=self, backend=backend)
+                if _atom_map is not None:
+                    self._atom_map = _atom_map
+                    break
+                logger.error(f"The requested ARC reaction {self}, and it's reverse, could not be atom mapped using {backend}.")
+        if self._atom_map is None:
+            logger.error(f"The requested ARC reaction {self} could not be atom mapped.")
         return self._atom_map
 
     @atom_map.setter
