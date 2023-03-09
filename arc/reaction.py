@@ -909,10 +909,10 @@ class ARCReaction(object):
         Get the mass of all elements of a reaction. Uses the atom order of the reactants.
 
         Returns:
-            List[float]: The RMS of the normal mode displacements.
+            List[float]: The masses of all elements in the reactants.
         """
         masses = list()
-        for reactant in self.r_species:
+        for reactant in self.get_reactants_and_products()[0]:
             for atom in reactant.mol.atoms:
                 masses.append(get_element_mass(atom.element.symbol)[0])
         return masses
