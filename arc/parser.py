@@ -475,17 +475,21 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
         if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
             done = True
         elif 'Optimization completed' in lines[i]:
-            while len(lines) and 'Input orientation:' not in lines[i]:
+            while i < len(lines) + 10 and 'Input orientation:' not in lines[i] or 'Forces (Hartrees/Bohr)' in lines [i + 7]:
                 i += 1
                 if 'Error termination via' in lines[i]:
                     return traj
             i += 5
-            xyz_str = ''
+            xyz_str, skip_traj = '', False
             while len(lines) and '--------------------------------------------' not in lines[i]:
+                if 'DIIS: error' in lines[i]:
+                    skip_traj = True
+                    break
                 splits = lines[i].split()
                 xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                 i += 1
-            traj.append(str_to_xyz(xyz_str))
+            if not skip_traj:
+                traj.append(str_to_xyz(xyz_str))
         i += 1
     return traj
 

@@ -421,6 +421,13 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(len(traj_3), 45)
         self.assertEqual(traj_3[0]['symbols'], ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'))
 
+        path_4 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'TS_scan.out')
+        traj_4 = parser.parse_1d_scan_coords(path_4)
+        self.assertEqual(len(traj_4), 8)  # output file trimmed
+        self.assertEqual(traj_4[0]['symbols'], ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                                'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                                'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
