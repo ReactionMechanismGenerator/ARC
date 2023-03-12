@@ -1708,6 +1708,9 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertTrue(almost_equal_lists(self.rxn3.get_element_mass(),
                                            [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224, 1.00782503224,
                                             1.00782503224, 1.00782503224, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn5.get_element_mass(),
+                                           [14.00307400443, 1.00782503224, 1.00782503224,
+                                            14.00307400443, 1.00782503224, 1.00782503224]))
 
     def test_get_bonds(self):
         """Test the get_bonds() method."""
