@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
+from rmgpy.data.kinetics.family import TemplateReaction
 from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
@@ -30,7 +31,6 @@ from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calcu
 
 
 if TYPE_CHECKING:
-    from rmgpy.data.kinetics.family import TemplateReaction
     from rmgpy.data.rmg import RMGDatabase
     from rmgpy.molecule.molecule import Atom
     from rmgpy.reaction import Reaction
@@ -504,7 +504,7 @@ def check_family_for_mapping_function(rxn: 'ARCReaction',
 
 
 def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReaction',
-                                                         rmg_reaction: 'TemplateReaction',
+                                                         rmg_reaction: TemplateReaction,
                                                          ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
     """
     Get the RMG reaction atom labels and the corresponding 0-indexed atom indices
@@ -549,7 +549,7 @@ def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReact
 
 
 def map_arc_rmg_species(arc_reaction: 'ARCReaction',
-                        rmg_reaction: Union['Reaction', 'TemplateReaction'],
+                        rmg_reaction: Union['Reaction', TemplateReaction],
                         concatenate: bool = True,
                         ) -> Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
     """
@@ -634,7 +634,7 @@ def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
 def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
                                         backend: str = 'ARC',
                                         db: Optional['RMGDatabase'] = None,
-                                        ) -> Optional[List['TemplateReaction']]:
+                                        ) -> Optional[List[TemplateReaction]]:
     """
     A helper function for getting RMG reactions from an ARC reaction.
     This function calls ``map_two_species()`` so that each species in the RMG reaction is correctly mapped
@@ -661,6 +661,11 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
                                                            delete_labels=False,
                                                            relabel_atoms=False,
                                                            )
+    if not len(rmg_reactions) and arc_reaction.rmg_reaction is not None:
+        rmg_reactions = [TemplateReaction(family=arc_reaction.family,
+                                          reactants=[spc.molecule[0] for spc in arc_reaction.rmg_reaction.reactants],
+                                          products=[spc.molecule[0] for spc in arc_reaction.rmg_reaction.products],
+                                          )]
     for rmg_reaction in rmg_reactions:
         r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
         ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
