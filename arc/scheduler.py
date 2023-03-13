@@ -3325,7 +3325,8 @@ class Scheduler(object):
 
             # rerun conformer job at higher level for all conformers
             for conformer in range(0, num_of_conformers):
-
+                if conformer >= len(self.species_dict[label].conformers_before_opt):
+                    break
                 # initial xyz before troubleshooting
                 xyz = self.species_dict[label].conformers_before_opt[conformer]
 
