@@ -1113,7 +1113,7 @@ def _add_nth_atom_to_coords(zmat: dict,
                       cd_length * math.sin(bcd_angle) * math.sin(abcd_dihedral)])
         d = m.dot(d)  # Rotate the coordinate system into the reference frame of orientation defined by A, B, C.
         # Add the coordinates of atom C to the resulting atom D:
-        coords.append((d[0] + coords[c_index][0], d[1] + coords[c_index][1], d[2] + coords[c_index][2]))
+        coords.append((float(d[0] + coords[c_index][0]), float(d[1] + coords[c_index][1]), float(d[2] + coords[c_index][2])))
     return coords
 
 

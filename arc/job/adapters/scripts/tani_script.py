@@ -329,9 +329,9 @@ def main():
     device = input_dict["device"]
     model = None
     if input_dict["model"].lower() == 'ani1ccx':
-        model = torchani.models.ani1ccx(periodic_table_index=True).to(device)
+        model = torchani.models.ANI1ccx(periodic_table_index=True).to(device)
     elif input_dict["model"].lower() =='ani1x':
-        model = torchani.models.ani1x(periodic_table_index=True).to(device)
+        model = torchani.models.ANI1x(periodic_table_index=True).to(device)
     elif input_dict["model"].lower() == 'ani2x' or model is None:
         model = torchani.models.ANI2x(periodic_table_index=True).to(device)
 
@@ -345,7 +345,7 @@ def main():
         forces = run_force(xyz=xyz, device=device, model=model)
         save_output_file(path = str(args.yml_path), key="force", val=forces)
 
-    elif job_type in ['opt', 'conformers', 'optfreq']:
+    elif job_type in ['opt', 'conformers', 'directed_scan', 'optfreq']:
         constraints = input_dict["constraints"] if "constraints" in input_dict.keys() else None
         opt_xyz = run_opt(xyz=xyz, constraints=constraints, fmax=input_dict["fmax"], model=model,
                           steps=input_dict["steps"] if "steps" in input_dict.keys() else None, engine=input_dict["engine"])

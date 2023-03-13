@@ -237,8 +237,12 @@ class TorchANIAdapter(JobAdapter):
         self._log_job_execution()
 
         if self.level is not None and self.level.args is not None and any(key in self.level.args for key in ["model", "device", "fmax", "engine", "steps"]):
-                    for key in self.level.args:    
+                    for key in self.level.args:  
                         tani_default_options_dict.update({key : self.level.args[key]})
+        if self.args is not None and self.args["keyword"] is not None \
+            and any(key in self.args["keyword"] for key in ["model", "device", "fmax", "engine", "steps"]):
+                for key in self.args["keyword"]:
+                    tani_default_options_dict.update({key : self.args["keyword"][key]})
 
         if not self.check_settings(tani_default_options_dict):
             logger.error(f'given wrong settings in input: {self.level.args} or '

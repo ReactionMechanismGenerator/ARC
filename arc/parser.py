@@ -233,6 +233,8 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
         content = read_yaml_file(path)
         if isinstance(content, dict) and 'xyz' in content.keys():
             return content['xyz']
+        if isinstance(content, dict) and 'opt_xyz' in content.keys():
+            return content['opt_xyz']
     software = identify_ess(path)
     xyz_str = ''
     if software == 'xtb':
@@ -737,6 +739,8 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
             xyz = content["xyz"]
         elif "opt_xyz" in content.keys():
             xyz = content["opt_xyz"]
+        if isinstance(xyz, str):
+            xyz = str_to_xyz(xyz)
     else:
         record = False
         for line in lines:

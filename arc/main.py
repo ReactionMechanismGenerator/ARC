@@ -996,10 +996,11 @@ class ARC(object):
                     default_flag = ' (default)'
                 else:
                     default_flag = ''
-                self.opt_level = Level(repr=self.opt_level)
                 logger.info(f'Geometry optimization:{default_flag} {self.opt_level}')
             else:
                 logger.warning("Not performing geometry optimization, since it was not requested by the user.")
+            if self.opt_level:
+                self.opt_level = Level(repr=self.opt_level)
 
             if self.job_types['freq']:
                 if not self.freq_level:
@@ -1011,10 +1012,11 @@ class ARC(object):
                         info = ' (default)'
                 else:
                     info = ''
-                self.freq_level = Level(repr=self.freq_level)
                 logger.info(f'Frequencies:{info} {self.freq_level}')
             else:
                 logger.warning("Not performing frequency calculation, since it was not requested by the user.")
+            if self.freq_level:
+                self.freq_level = Level(repr=self.freq_level)
 
             if self.job_types['sp']:
                 if not self.sp_level:
@@ -1022,10 +1024,11 @@ class ARC(object):
                     default_flag = ' (default)'
                 else:
                     default_flag = ''
-                self.sp_level = Level(repr=self.sp_level)
                 logger.info(f'Energy:{default_flag} {self.sp_level}')
             else:
                 logger.warning("Not performing single point energy calculation, since it was not requested by the user.")
+            if self.sp_level:
+                self.sp_level = Level(repr=self.sp_level)
 
             if self.job_types['rotors']:
                 if not self.scan_level:
@@ -1037,13 +1040,14 @@ class ARC(object):
                         info = ' (default)'
                 else:
                     info = ''
-                self.scan_level = Level(repr=self.scan_level)
                 logger.info(f'Rotor scans:{info} {self.scan_level}')
             else:
                 logger.warning("Not performing rotor scans, since it was not requested by the user. This might "
                                "compromise finding the best conformer, as dihedral angles won't be corrected. "
                                "Also, the calculated thermodynamic properties and rate coefficients "
                                "will be less accurate.")
+            if self.scan_level:
+                self.scan_level = Level(repr=self.scan_level)
 
             if self.job_types['irc']:
                 if not self.irc_level:
@@ -1051,10 +1055,11 @@ class ARC(object):
                     default_flag = ' (default)'
                 else:
                     default_flag = ''
-                self.irc_level = Level(repr=self.irc_level)
                 logger.info(f'IRC:{default_flag} {self.irc_level}')
             else:
                 logger.warning("Not running IRC computations, since it was not requested by the user.")
+            if self.irc_level:
+                self.irc_level = Level(repr=self.irc_level)
 
             if self.job_types['orbitals']:
                 if not self.orbitals_level:
@@ -1062,10 +1067,11 @@ class ARC(object):
                     default_flag = ' (default)'
                 else:
                     default_flag = ''
-                self.orbitals_level = Level(repr=self.orbitals_level)
                 logger.info(f'Orbitals:{default_flag} {self.orbitals_level}')
             else:
                 logger.debug("Not running molecular orbitals visualization, since it was not requested by the user.")
+            if self.orbitals_level:
+                self.orbitals_level = Level(repr=self.orbitals_level)
 
         if not self.job_types['fine'] and (self.opt_level is not None and self.opt_level.method_type == 'dft'
                                            or self.composite_method is not None):

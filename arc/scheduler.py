@@ -424,7 +424,10 @@ class Scheduler(object):
                     if self.job_types['sp']:
                         self.run_sp_job(species.label)
                     if self.job_types['rotors']:
-                        self.run_sp_job(species.label)
+                        self.run_sp_job(species.label, level = self.scan_level)
+                        if not self.job_types['opt']: # The user provided an optimized coordinets
+                            self.run_scan_jobs(species.label)
+
                 elif ((species.initial_xyz is not None or species.final_xyz is not None)
                         or species.is_ts and species.rxn_label is None) and not self.testing:
                     # For restarting purposes: check before running jobs whether they were already terminated
@@ -764,6 +767,8 @@ class Scheduler(object):
             args['shift'] = shift
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
+        if level_of_theory is not None and level_of_theory.args is not None:
+            args.update(level_of_theory.args)
 
         job = job_factory(job_adapter=job_adapter,
                           project=self.project,

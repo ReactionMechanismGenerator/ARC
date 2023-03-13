@@ -32,8 +32,9 @@ from arc.common import (extremum_list,
                         get_close_tuple,
                         get_logger,
                         is_notebook,
+                        is_str_float,
                         save_yaml_file,
-                        sort_two_lists_by_the_first)
+                        sort_two_lists_by_the_first,)
 from arc.exceptions import InputError, SanitizationError
 from arc.level import Level
 from arc.parser import parse_trajectory
@@ -1145,7 +1146,13 @@ def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
     plt.xticks(np.arange(min_angle, min_angle + 361, step=60))
     plt.ylabel('Electronic energy (kJ/mol)')
     if label is not None:
-        original_dihedral_str = f' from {original_dihedral:.1f}$^o$' if original_dihedral is not None else ''
+        if isinstance(original_dihedral, str):
+            if is_str_float(original_dihedral):
+                original_dihedral = float(original_dihedral)
+        if isinstance(original_dihedral, float):
+            original_dihedral_str = f' from {original_dihedral:.1f}$^o$' if original_dihedral is not None else ''
+        else:
+            original_dihedral_str = ""
         plt.title(f'{label} 1D scan of {scan}{original_dihedral_str}')
     plt.tight_layout()
 
