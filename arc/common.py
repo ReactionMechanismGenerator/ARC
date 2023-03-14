@@ -1665,3 +1665,31 @@ def dfs(mol: Molecule,
             stack.append(mol.atoms.index(atom))
     visited = sorted(visited) if sort_result else visited
     return visited
+
+def is_xyz_mol_match(mol: 'Molecule',
+                     xyz: dict) -> bool:
+    """
+    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    used in _scissors to match xyz and the cut products.
+    This function only checks the molecular formula.
+
+    Args:
+        mol: rmg Molecule object
+        xyz: coordinates of the cut product
+    
+    Returns:
+        bool: ``True`` if the xyz and molecule match, ``False`` otherwise
+    """
+    element_dict_mol = mol.get_element_count()
+
+    element_dict_xyz = dict()
+    for atom in xyz['symbols']:
+        if atom in element_dict_xyz:
+            element_dict_xyz[atom] += 1
+        else:
+            element_dict_xyz[atom] = 1
+
+    for element, count in element_dict_mol.items():
+        if element not in element_dict_xyz or element_dict_xyz[element] != count:
+           return False
+    return True
