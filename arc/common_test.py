@@ -13,6 +13,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+from random import shuffle
 
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
@@ -1236,22 +1237,25 @@ class TestCommon(unittest.TestCase):
         common.safe_copy_file(source=source_path, destination=destination_path)
         os.remove(destination_path)
 
-    def test_sort_atoms_in_decending_label_order(self):
-        """tests the sort_atoms_in_decending_label_order function"""
+    def test_sort_atoms_in_descending_label_order(self):
+        """tests the sort_atoms_in_descending_label_order function"""
         mol = Molecule(smiles="C1CCCC1")
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
-        random.shuffle(mol.atoms)
-        common.sort_atoms_in_descending_label_order(mol)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_descending_label_order(mol=mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
         mol = Molecule(smiles="NC1=NC=NC2=C1N=CN2")
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
-        random.shuffle(mol.atoms)
-        common.sort_atoms_in_descending_label_order(mol)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_descending_label_order(mol=mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
+        mol = Molecule(smiles = "C")
+        mol.atoms[0].label = "a"
+        self.assertIsNone(common.sort_atoms_in_descending_label_order(mol=mol))
 
     def test_check_r_n_p_symbols_between_rmg_and_arc_rxns(self):
         """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
