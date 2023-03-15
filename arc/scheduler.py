@@ -564,10 +564,15 @@ class Scheduler(object):
                             break
                     elif 'opt' in job_name:
                         # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
+                        logger.info(f'\n\n\nDEBUG: checking job {job_name}')
                         job = self.job_dict[label]['opt'][job_name]
+                        logger.info(f'DEBUG: job ID is {job.job_id}, server job IDs: {self.server_job_ids}')
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            logger.info(f'DEBUG: Seems like this opt job is done, lets end it...')
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            logger.info(f'DEBUG: successful_server_termination: {successful_server_termination}')
                             if successful_server_termination:
+                                logger.info('Job was successfully terminated\n\n\n')
                                 success = self.parse_opt_geo(label=label, job=job)
                                 if success:
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
