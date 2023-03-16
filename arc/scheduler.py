@@ -566,7 +566,9 @@ class Scheduler(object):
                         # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
                         logger.info(f'\n\n\nDEBUG: checking job {job_name}')
                         job = self.job_dict[label]['opt'][job_name]
-                        logger.info(f'DEBUG: job ID is {job.job_id}, server job IDs: {self.server_job_ids}')
+                        logger.info(f'DEBUG: job ID is {job.job_id}, of type {type(job.job_id)}, '
+                                    f'Is in server job IDs? {job.job_id in self.server_job_ids}'
+                                    f'\nserver job IDs:\n{self.server_job_ids}')
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             logger.info(f'DEBUG: Seems like this opt job is done, lets end it...')
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
