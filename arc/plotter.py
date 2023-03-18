@@ -765,7 +765,7 @@ def save_thermo_lib(species_list: list,
         lib_path = os.path.join(path, 'thermo', f'{name}.py')
         thermo_library = ThermoLibrary(name=name, long_desc=lib_long_desc)
         for i, spc in enumerate(species_list):
-            if spc.thermo is not None:
+            if spc.thermo is not None and spc.include_in_thermo_lib:
                 spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
                                                f'optical isomers: {spc.optical_isomers}\n'
                 spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
