@@ -8,12 +8,12 @@ This module contains unit tests for ARC's common module
 import copy
 import datetime
 import os
-import random
 import time
 import unittest
 
 import numpy as np
 import pandas as pd
+from random import shuffle
 
 from rmgpy.molecule.molecule import Molecule
 from rmgpy.species import Species
@@ -22,7 +22,7 @@ import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 from arc.rmgdb import make_rmg_database_object, load_families_only
-from arc.species.mapping import get_rmg_reactions_from_arc_reaction
+from arc.mapping.engine import get_rmg_reactions_from_arc_reaction
 import arc.species.converter as converter
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -897,7 +897,6 @@ class TestCommon(unittest.TestCase):
         globalized_string = common.globalize_path(string=string, project_directory='~/Code/runs/run_1/')
         self.assertEqual(globalized_string, '    project_directory: ~/Code/runs/run_1/')
 
-
     def test_estimate_orca_mem_cpu_requirement(self):
         """Test estimating memory and cpu requirements for an Orca job."""
         num_heavy_atoms_0 = 0
@@ -1238,22 +1237,25 @@ class TestCommon(unittest.TestCase):
         common.safe_copy_file(source=source_path, destination=destination_path)
         os.remove(destination_path)
 
-    def test_sort_atoms_in_decending_label_order(self):
-        """tests the sort_atoms_in_decending_label_order function"""
+    def test_sort_atoms_in_descending_label_order(self):
+        """tests the sort_atoms_in_descending_label_order function"""
         mol = Molecule(smiles="C1CCCC1")
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
-        random.shuffle(mol.atoms)
-        common.sort_atoms_in_descending_label_order(mol)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_descending_label_order(mol=mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
         mol = Molecule(smiles="NC1=NC=NC2=C1N=CN2")
         for index, atom in enumerate(mol.atoms):
             atom.label = str(index)
-        random.shuffle(mol.atoms)
-        common.sort_atoms_in_descending_label_order(mol)
+        shuffle(mol.atoms)
+        common.sort_atoms_in_descending_label_order(mol=mol)
         for index, atom in enumerate(mol.atoms):
             self.assertEqual(str(index), atom.label)
+        mol = Molecule(smiles = "C")
+        mol.atoms[0].label = "a"
+        self.assertIsNone(common.sort_atoms_in_descending_label_order(mol=mol))
 
     def test_check_r_n_p_symbols_between_rmg_and_arc_rxns(self):
         """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
@@ -1331,6 +1333,42 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(visited, [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
         visited = common.dfs(mol=mol, start=21)
         self.assertEqual(visited, [5, 18, 19, 20, 21])
+    
+    def test_is_xyz_mol_match(self):
+        """test the is_xyz_mol_match function"""
+        xyz1 = {'coords': ((0.9177905887, 0.5194617797, 0.0),
+            (1.8140204898, 1.0381941417, 0.0),
+            (-0.4763167868, 0.7509348722, 0.0),
+            (0.999235086, -0.7048575683, 0.0),
+            (-1.4430010939, 0.0274543367, 0.0),
+            (-0.6371484821, -0.7497769134, 0.0),
+            (-2.0093636431, 0.0331190314, -0.8327683174),
+            (-2.0093636431, 0.0331190314, 0.8327683174)),
+            'isotopes': (14, 1, 1, 14, 14, 1, 1, 1),
+            'symbols': ('N', 'H', 'H', 'N', 'N', 'H', 'H', 'H')}
+        mols = converter.molecules_from_xyz(xyz1)
+        mol1 = mols[0] or mols[1]
+        self.assertTrue(common.is_xyz_mol_match(mol1, xyz1))
+        mol2 = Molecule(smiles = "CCCC")
+        self.assertFalse(common.is_xyz_mol_match(mol2, xyz1))
+        xyz2 = {'coords': ((-1.917881683438569, -0.2559899676506647, -0.18387537398950518),
+            (-0.46613900647877093, -0.5015648201803543, -0.5627969270693719),
+            (0.46613896124631365, 0.5015651413962865, 0.11351208539519701),
+            (1.9178817615848325, 0.2559897963130066, -0.2654088973727458),
+            (-2.2384553065778596, 0.7457958651105412, -0.4871989751724505),
+            (-2.06265761472002, -0.35084272427108437, 0.8970458843864058),
+            (-2.567308636432751, -0.9848304423976812, -0.6788069909092624),
+            (-0.3618598454997, -0.4315366161604987, -1.6518340624292893),
+            (-0.18705172809174478, -1.521998299852992, -0.27538426879116396),
+            (0.3618591035654003, 0.43153688022623043, 1.2025494067409448),
+            (0.18705199598927585, 1.5219988047901418, -0.17390048059784674),
+            (2.238454802004582, -0.7457965095921628, 0.037914346099216116),
+            (2.0626580972825423, 0.3508433121264869, -1.3463299029756333),
+            (2.5673090995664274, 0.9848295801427642, 0.22952353914113932)),
+            'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+            'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        self.assertFalse(common.is_xyz_mol_match(mol1, xyz2))
+        self.assertTrue(common.is_xyz_mol_match(mol2, xyz2))
 
     @classmethod
     def tearDownClass(cls):

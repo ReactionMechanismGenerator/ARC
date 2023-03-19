@@ -913,7 +913,9 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertIn(rxn_1.atom_map[1], [0, 1])
         for index in [2, 3, 4, 5, 6, 7]:
             self.assertIn(rxn_1.atom_map[index], [2, 3, 4, 5, 6, 16])
-        self.assertEqual(rxn_1.atom_map[8:], [7, 8, 9, 10, 13, 11, 12, 14, 15])
+        self.assertEqual(rxn_1.atom_map[8:12], [7, 8, 9, 10])
+        self.assertIn(tuple(rxn_1.atom_map[12:15]), itertools.permutations([13, 11, 12]))
+        self.assertIn(rxn_1.atom_map[15:], [[14, 15], [15, 14]])
         heuristics_1 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_1],
                                          testing=True,
@@ -933,7 +935,12 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                        ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz)])
         rxn_2.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(rxn_2.family.label, 'H_Abstraction')
-        self.assertEqual(rxn_2.atom_map, [11, 10, 9, 16, 15, 14, 12, 13, 0, 1, 2, 3, 6, 4, 5, 7, 8])
+        self.assertEqual(rxn_2.atom_map[:2], [11, 10])
+        self.assertIn(tuple(rxn_2.atom_map[2:5]), itertools.permutations([9, 16, 15]))
+        self.assertIn(tuple(rxn_2.atom_map[5:8]), itertools.permutations([12, 13, 14]))
+        self.assertEqual(rxn_2.atom_map[8:12], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn_2.atom_map[12:15]), itertools.permutations([4, 5, 6]))
+        self.assertIn(tuple(rxn_2.atom_map[15:]), itertools.permutations([7, 8]))
         heuristics_2 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_2],
                                          testing=True,
@@ -952,7 +959,13 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
                                        ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz)])
         rxn_3.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_3.atom_map, [7, 8, 9, 10, 13, 11, 12, 14, 15, 1, 0, 16, 6, 5, 4, 2, 3])
+        self.assertEqual(rxn_3.atom_map[:4], [7, 8, 9, 10])
+        self.assertIn(tuple(rxn_3.atom_map[4:7]), itertools.permutations([11, 12, 13]))
+        self.assertIn(tuple(rxn_3.atom_map[7:9]), itertools.permutations([14, 15]))
+        self.assertEqual(rxn_3.atom_map[9:11], [1, 0])
+        self.assertIn(tuple(rxn_3.atom_map[11:14]), itertools.permutations([16, 5, 6]))
+        self.assertIn(tuple(rxn_3.atom_map[14:]), itertools.permutations([3, 4, 2]))
+
         heuristics_3 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_3],
                                          testing=True,
@@ -971,7 +984,12 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             p_species=[ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz),
                                        ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz)])
         rxn_4.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_4.atom_map, [0, 1, 2, 3, 6, 4, 5, 7, 8, 11, 10, 9, 16, 15, 14, 12, 13])
+        self.assertEqual(rxn_4.atom_map[:4], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn_4.atom_map[4:7]), itertools.permutations([4, 5, 6]))
+        self.assertIn(tuple(rxn_4.atom_map[7:9]), itertools.permutations([7, 8]))
+        self.assertEqual(rxn_4.atom_map[9:11], [11, 10])
+        self.assertIn(tuple(rxn_4.atom_map[11:14]), itertools.permutations([9, 15, 16]))
+        self.assertIn(tuple(rxn_4.atom_map[14:]), itertools.permutations([12, 13, 14 ]))
         heuristics_4 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn_4],
                                          testing=True,
@@ -1093,9 +1111,29 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                      reactant_2=reactant_2,
                                      reactants_reversed=True,
                                      )
-        expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
-                            11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 3, 19: 1, 21: 4, 23: 0,
-                            25: 7, 26: 6, 28: 5, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+        # To determine if this test fails for atom-mapping related reasons, use the following xyz:
+        # xyz_7 = {'coords': ((-0.11052302098955041, -0.5106945989206113, -2.3628726319919022),
+        #     (-0.11052302098955041, -0.5106945989206113, -1.16140301180269),
+        #     (-0.11052302098955023, -0.5106945989206112, 0.3150305498367847),
+        #     (1.2448888490560643, -0.9827789526552368, 0.8404002762169092),
+        #     (-0.4375559903969747, 0.8159552435098156, 0.8744100775429131),
+        #     (-0.7036838926552011, 1.8955361195204183, 1.3296134184916002),
+        #     (-0.11052302098955026, -0.5106945989206114, -3.4285156134952786),
+        #     (-1.0248180325342278, -1.3649565013173555, 0.7257981498364177),
+        #     (1.4854985838822663, -1.9838179319127962, 0.46442407690321375),
+        #     (1.2491645770965545, -1.0250999599192192, 1.9356267705316639),
+        #     (-0.939726019056252, 2.853070310535801, 1.733355993511537)),
+        # 'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1),
+        # 'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        # To generate a reaction, and check it's atom mapping!
+        # Another mapping option to try is:
+        # expected_new_map = {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
+        #                     11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 3, 19: 1, 21: 4, 23: 0,
+        #                     25: 7, 26: 6, 28: 5, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+        expected_new_map =  {0: 12, 1: 13, 2: 'X24', 3: 14, 4: 15, 5: 16, 6: 'X25', 7: 17, 8: 'X26', 9: 18, 10: 19,
+                             11: 20, 12: 21, 13: 22, 14: 'X27', 15: 23, 16: 'X28', 17: 2, 18: 1, 19: 3, 21: 0, 23: 4,
+                             25: 5, 26: 6, 28: 7, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
+
         self.assertEqual(new_map, expected_new_map)
 
     def test_get_new_map_based_on_zmat_1(self):

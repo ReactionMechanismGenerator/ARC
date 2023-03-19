@@ -1665,3 +1665,51 @@ def dfs(mol: Molecule,
             stack.append(mol.atoms.index(atom))
     visited = sorted(visited) if sort_result else visited
     return visited
+
+
+def sort_atoms_in_descending_label_order(mol: 'Molecule')-> None:
+    """
+    If all atoms in the molecule object has a label, This function reassign the 
+    .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
+    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
+    then the function will return the new atom with the order [1, 4, 7, 32]
+
+    Args:
+        mol: An rmg Molecule object, with labeld atoms
+    """
+    if any(atom.label is None for atom in mol.atoms):
+        return None
+    try:
+        mol.atoms = sorted(mol.atoms, key = lambda x: int(x.label))
+    except ValueError:
+        logger.warning(f"Some atom(s) in molecule.atoms are not integers.\nGot {[atom.label for atom in mol.atoms]}")
+        return None
+
+
+def is_xyz_mol_match(mol: 'Molecule',
+                     xyz: dict) -> bool:
+    """
+    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    used in _scissors to match xyz and the cut products.
+    This function only checks the molecular formula.
+
+    Args:
+        mol: rmg Molecule object
+        xyz: coordinates of the cut product
+    
+    Returns:
+        bool: ``True`` if the xyz and molecule match, ``False`` otherwise
+    """
+    element_dict_mol = mol.get_element_count()
+
+    element_dict_xyz = dict()
+    for atom in xyz['symbols']:
+        if atom in element_dict_xyz:
+            element_dict_xyz[atom] += 1
+        else:
+            element_dict_xyz[atom] = 1
+
+    for element, count in element_dict_mol.items():
+        if element not in element_dict_xyz or element_dict_xyz[element] != count:
+           return False
+    return True
