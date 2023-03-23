@@ -131,7 +131,7 @@ htmlhelp_basename = 'ARCdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
-
+imgmath_latex = 'latex'
 latex_elements = {
     # The paper size ('letterpaper' or 'a4paper').
     #
