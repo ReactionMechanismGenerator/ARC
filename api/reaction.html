@@ -1,0 +1,886 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>arc.reaction &mdash; ARC 1.1.0 Documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="arc.scheduler" href="scheduler.html" />
+    <link rel="prev" title="arc.species.zmat" href="zmat.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> ARC
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.1
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">ARC’s API</a> &raquo;</li>
+        
+      <li>arc.reaction</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/api/reaction.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <section id="module-arc.reaction">
+<span id="arc-reaction"></span><span id="reaction"></span><h1>arc.reaction<a class="headerlink" href="#module-arc.reaction" title="Permalink to this heading">¶</a></h1>
+<p>A module for representing a reaction.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">arc.reaction.</span></span><span class="sig-name descname"><span class="pre">ARCReaction</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reactants</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">products</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p_species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rmg_reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Reaction</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_xyz_guess</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preserve_param_in_scan</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction" title="Permalink to this definition">¶</a></dt>
+<dd><p>A class for representing a chemical reaction.</p>
+<p>Either give reactants and products (just list of labels corresponding to <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a>),
+a reaction label, or an RMG Reaction object.
+If the reactants and products in the RMG Reaction aren’t ARCSpecies, they will be created.</p>
+<p>The ARCReaction object stores the labels corresponding to the reactants, products and TS ARCSpecies objects
+as self.reactants, self.products, and self.ts_label, respectively.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The reaction’s label in the format <cite>r1 + r2 &lt;=&gt; p1 + p2</cite>
+(or unimolecular on either side, as appropriate).</p></li>
+<li><p><strong>reactants</strong> (<em>List</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – A list of reactant <em>labels</em> corresponding to an <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a>.</p></li>
+<li><p><strong>products</strong> (<em>List</em><em>[</em><em>str</em><em>]</em><em>, </em><em>optional</em>) – A list of product <em>labels</em> corresponding to an <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a>.</p></li>
+<li><p><strong>r_species</strong> (<em>List</em><em>[</em><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>]</em><em>, </em><em>optional</em>) – A list of reactants <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> objects.</p></li>
+<li><p><strong>p_species</strong> (<em>List</em><em>[</em><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>]</em><em>, </em><em>optional</em>) – A list of products <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> objects.</p></li>
+<li><p><strong>ts_label</strong> (<em>str</em><em>, </em><em>optional</em>) – The <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> label of the respective TS.</p></li>
+<li><p><strong>rmg_reaction</strong> (<em>Reaction</em><em>, </em><em>optional</em>) – An RMG Reaction class.</p></li>
+<li><p><strong>ts_xyz_guess</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of TS XYZ user guesses, each in a string format.</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em><em>, </em><em>optional</em>) – The reaction surface multiplicity. A trivial guess will be made unless provided.</p></li>
+<li><p><strong>charge</strong> (<em>int</em><em>, </em><em>optional</em>) – The reaction surface charge.</p></li>
+<li><p><strong>reaction_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – A dictionary to create this object from (used when restarting ARC).</p></li>
+<li><p><strong>species_list</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of ARCSpecies entries for matching reactants and products
+to existing species.</p></li>
+<li><p><strong>preserve_param_in_scan</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are length two iterables of atom indices (1-indexed)
+between which distances and dihedrals of these pivots must be
+preserved. Used for identification of rotors which break a TS.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.label">
+<span class="sig-name descname"><span class="pre">label</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.label" title="Permalink to this definition">¶</a></dt>
+<dd><p>The reaction’s label in the format <cite>r1 + r2 &lt;=&gt; p1 + p2</cite>
+(or unimolecular on either side, as appropriate).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.family">
+<span class="sig-name descname"><span class="pre">family</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.family" title="Permalink to this definition">¶</a></dt>
+<dd><p>The RMG kinetic family, if applicable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>KineticsFamily</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.family_own_reverse">
+<span class="sig-name descname"><span class="pre">family_own_reverse</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.family_own_reverse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Whether the RMG family is its own reverse.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.reactants">
+<span class="sig-name descname"><span class="pre">reactants</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.reactants" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of reactants labels corresponding to an <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.products">
+<span class="sig-name descname"><span class="pre">products</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.products" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of products labels corresponding to an <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.r_species">
+<span class="sig-name descname"><span class="pre">r_species</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.r_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of reactants <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> objects.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.p_species">
+<span class="sig-name descname"><span class="pre">p_species</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.p_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of products <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> objects.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.ts_species">
+<span class="sig-name descname"><span class="pre">ts_species</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.ts_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>The <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> corresponding to the reaction’s TS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.dh_rxn298">
+<span class="sig-name descname"><span class="pre">dh_rxn298</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.dh_rxn298" title="Permalink to this definition">¶</a></dt>
+<dd><p>The heat of reaction at 298K.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.kinetics">
+<span class="sig-name descname"><span class="pre">kinetics</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.kinetics" title="Permalink to this definition">¶</a></dt>
+<dd><p>The high pressure limit rate coefficient calculated by ARC.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Arrhenius</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_kinetics">
+<span class="sig-name descname"><span class="pre">rmg_kinetics</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_kinetics" title="Permalink to this definition">¶</a></dt>
+<dd><p>The kinetics generated by RMG, for reality-check.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Arrhenius</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_reaction">
+<span class="sig-name descname"><span class="pre">rmg_reaction</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_reaction" title="Permalink to this definition">¶</a></dt>
+<dd><p>An RMG Reaction class.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Reaction</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_reactions">
+<span class="sig-name descname"><span class="pre">rmg_reactions</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_reactions" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of RMG Reaction objects with RMG rates for comparisons.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.long_kinetic_description">
+<span class="sig-name descname"><span class="pre">long_kinetic_description</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.long_kinetic_description" title="Permalink to this definition">¶</a></dt>
+<dd><p>A description for the species entry in the thermo library outputted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.ts_xyz_guess">
+<span class="sig-name descname"><span class="pre">ts_xyz_guess</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.ts_xyz_guess" title="Permalink to this definition">¶</a></dt>
+<dd><p>A list of TS XYZ user guesses, each in a string format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.multiplicity">
+<span class="sig-name descname"><span class="pre">multiplicity</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.multiplicity" title="Permalink to this definition">¶</a></dt>
+<dd><p>The reaction surface multiplicity. A trivial guess will be made unless provided.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.charge">
+<span class="sig-name descname"><span class="pre">charge</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.charge" title="Permalink to this definition">¶</a></dt>
+<dd><p>The reaction surface charge.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.index">
+<span class="sig-name descname"><span class="pre">index</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.index" title="Permalink to this definition">¶</a></dt>
+<dd><p>An auto-generated index associating the ARCReaction object with the
+corresponding TS <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.ts_label">
+<span class="sig-name descname"><span class="pre">ts_label</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.ts_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>The <a class="reference internal" href="species.html#species"><span class="std std-ref">ARCSpecies</span></a> label of the respective TS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.preserve_param_in_scan">
+<span class="sig-name descname"><span class="pre">preserve_param_in_scan</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.preserve_param_in_scan" title="Permalink to this definition">¶</a></dt>
+<dd><p>Entries are length two iterables of atom indices (1-indexed) between which
+distances and dihedrals of these pivots must be preserved.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.atom_map">
+<span class="sig-name descname"><span class="pre">atom_map</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.atom_map" title="Permalink to this definition">¶</a></dt>
+<dd><p>An atom map, mapping the reactant atoms to the product atoms.
+I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.done_opt_r_n_p">
+<span class="sig-name descname"><span class="pre">done_opt_r_n_p</span></span><a class="headerlink" href="#arc.reaction.ARCReaction.done_opt_r_n_p" title="Permalink to this definition">¶</a></dt>
+<dd><p>Whether the optimization of all reactants and products is complete.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.arc_species_from_rmg_reaction">
+<span class="sig-name descname"><span class="pre">arc_species_from_rmg_reaction</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.arc_species_from_rmg_reaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.arc_species_from_rmg_reaction" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for generating the ARC Species (.r_species and .p_species) from the RMG Reaction object</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.as_dict">
+<span class="sig-name descname"><span class="pre">as_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reset_atom_ids</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.as_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.as_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reset_atom_ids</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to reset the atom IDs in the .mol Molecule attribute of reactant
+and product species. Useful when copying the object to avoid duplicate
+atom IDs between different object instances.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The dictionary representation of the object instance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id0">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">atom_map</span></span><a class="headerlink" href="#id0" title="Permalink to this definition">¶</a></dt>
+<dd><p>The reactants to products atom map</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id1">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">charge</span></span><a class="headerlink" href="#id1" title="Permalink to this definition">¶</a></dt>
+<dd><p>The net electric charge of the reaction PES</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.check_atom_balance">
+<span class="sig-name descname"><span class="pre">check_atom_balance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ts_xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_error</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.check_atom_balance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.check_atom_balance" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check atom balance between reactants, TSs, and product wells.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ts_xyz</strong> (<em>Optional</em><em>[</em><em>dict</em><em>]</em>) – An alternative TS xyz to check.
+If unspecified, user guesses and the ts_species will be checked.</p></li>
+<li><p><strong>raise_error</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to raise an error if an imbalance is found.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ReactionError</strong> – If not all wells and TSs are atom balanced.
+    The exception is not raised if <code class="docutils literal notranslate"><span class="pre">raise_error</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Whether all wells and TSs are atom balanced.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.check_attributes">
+<span class="sig-name descname"><span class="pre">check_attributes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.check_attributes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.check_attributes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check that the Reaction object is defined correctly</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.check_done_opt_r_n_p">
+<span class="sig-name descname"><span class="pre">check_done_opt_r_n_p</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.check_done_opt_r_n_p"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.check_done_opt_r_n_p" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check whether the <code class="docutils literal notranslate"><span class="pre">final_xyz</span></code> attributes of all <code class="docutils literal notranslate"><span class="pre">r_species</span></code> and <code class="docutils literal notranslate"><span class="pre">p_species</span></code>
+are populated, and flag <code class="docutils literal notranslate"><span class="pre">self.done_opt_r_n_p</span></code> as <code class="docutils literal notranslate"><span class="pre">True</span></code> if they are.
+Useful to know when to spawn TS search jobs.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.copy">
+<span class="sig-name descname"><span class="pre">copy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.copy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.copy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a copy of this object instance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A copy of this object instance.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#arc.reaction.ARCReaction" title="arc.reaction.ARCReaction">ARCReaction</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.determine_family">
+<span class="sig-name descname"><span class="pre">determine_family</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmg_database</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_order</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.determine_family"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.determine_family" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine the RMG family.
+Populates the .family, and .family_own_reverse attributes.
+A wrapper for the rmgdb determine_reaction_family() function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmg_database</strong> (<em>RMGDatabase</em>) – The RMGDatabase object instance.</p></li>
+<li><p><strong>save_order</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to retain atomic order of the RMG <code class="docutils literal notranslate"><span class="pre">reaction</span></code> object instance.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.flip_reaction">
+<span class="sig-name descname"><span class="pre">flip_reaction</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.flip_reaction"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.flip_reaction" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a copy of this object instance with flipped reactants and products.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A copy of this object instance with flipped reactants and products.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#arc.reaction.ARCReaction" title="arc.reaction.ARCReaction">ARCReaction</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.from_dict">
+<span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reaction_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.from_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.from_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for loading this object from a dictionary in a YAML file for restarting ARC.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_bonds">
+<span class="sig-name descname"><span class="pre">get_bonds</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_bonds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_bonds" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the connectivity of the reactants and products.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A length-2 tuple is which entries represent reactants and product information, respectively.
+Each entry is a list of tuples, each represents a bond and contains sorted atom indices.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[List[Tuple[int, int]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_element_mass">
+<span class="sig-name descname"><span class="pre">get_element_mass</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_element_mass"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_element_mass" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the mass of all elements of a reaction. Uses the atom order of the reactants.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The masses of all elements in the reactants.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>List[float]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_expected_changing_bonds">
+<span class="sig-name descname"><span class="pre">get_expected_changing_bonds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r_label_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_expected_changing_bonds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_expected_changing_bonds" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the expected forming and breaking bonds from the RMG reaction template.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>r_label_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em>]</em>) – The RMG reaction atom labels and corresponding atom indices
+of atoms in a TemplateReaction.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of tuples of atom indices representing breaking and forming bonds.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_number_of_atoms_in_reaction_zone">
+<span class="sig-name descname"><span class="pre">get_number_of_atoms_in_reaction_zone</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_number_of_atoms_in_reaction_zone"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_number_of_atoms_in_reaction_zone" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the number of atoms that participate in the reaction zone according to the reaction’s RMG recipe.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The number of atoms that participate in the reaction zone.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_products_xyz">
+<span class="sig-name descname"><span class="pre">get_products_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">return_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'str'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_products_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_products_xyz" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a combined string/dict representation of the cartesian coordinates of all product species.
+The resulting coordinates are ordered as the reactants using an atom map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>return_format</strong> (<em>str</em>) – Either <code class="docutils literal notranslate"><span class="pre">'dict'</span></code> to return a dict format or <code class="docutils literal notranslate"><span class="pre">'str'</span></code> to return a string format.
+Default: <code class="docutils literal notranslate"><span class="pre">'str'</span></code>.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Union[dict, str]</dt><dd><p>The combined cartesian coordinates.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_reactants_and_products">
+<span class="sig-name descname"><span class="pre">get_reactants_and_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_copies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Species</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Species</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_reactants_and_products"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_reactants_and_products" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of reactant and product species including duplicate species, if any.
+The species could either be <code class="docutils literal notranslate"><span class="pre">ARCSpecies</span></code> or <code class="docutils literal notranslate"><span class="pre">RMGSpecies</span></code> object instance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>arc</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return the species as ARCSpecies (<code class="docutils literal notranslate"><span class="pre">True</span></code>) or as RMG Species (<code class="docutils literal notranslate"><span class="pre">False</span></code>).</p></li>
+<li><p><strong>return_copies</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return unique object instances using the copy() method.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The reactants and products.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[List[Union[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>, Species]], List[Union[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>, Species]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_reactants_xyz">
+<span class="sig-name descname"><span class="pre">get_reactants_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">return_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'str'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_reactants_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_reactants_xyz" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a combined string/dict representation of the cartesian coordinates of all reactant species.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>return_format</strong> (<em>str</em>) – Either <code class="docutils literal notranslate"><span class="pre">'dict'</span></code> to return a dict format or <code class="docutils literal notranslate"><span class="pre">'str'</span></code> to return a string format.
+Default: <code class="docutils literal notranslate"><span class="pre">'str'</span></code>.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Union[dict, str]</dt><dd><p>The combined cartesian coordinates.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_rxn_charge">
+<span class="sig-name descname"><span class="pre">get_rxn_charge</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_rxn_charge"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_rxn_charge" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for determining the surface charge</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_rxn_multiplicity">
+<span class="sig-name descname"><span class="pre">get_rxn_multiplicity</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_rxn_multiplicity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_rxn_multiplicity" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for determining the surface multiplicity</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_single_mapped_product_xyz">
+<span class="sig-name descname"><span class="pre">get_single_mapped_product_xyz</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_single_mapped_product_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_single_mapped_product_xyz" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The corresponding ARCSpecies object with mapped coordinates.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_species_count">
+<span class="sig-name descname"><span class="pre">get_species_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">well</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_species_count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_species_count" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the number of times a species participates in the reactants or products well.
+Either <code class="docutils literal notranslate"><span class="pre">species</span></code> or <code class="docutils literal notranslate"><span class="pre">label</span></code> must be given.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – The species to check.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The species label.</p></li>
+<li><p><strong>well</strong> (<em>int</em><em>, </em><em>optional</em>) – Either <code class="docutils literal notranslate"><span class="pre">0</span></code> or <code class="docutils literal notranslate"><span class="pre">1</span></code> for the reactants or products well, respectively.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The number of occurrences of this species in the respective well.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.is_isomerization">
+<span class="sig-name descname"><span class="pre">is_isomerization</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.is_isomerization"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.is_isomerization" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine whether this is an isomerization reaction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Whether this is an isomerization reaction.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="id4">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">multiplicity</span></span><a class="headerlink" href="#id4" title="Permalink to this definition">¶</a></dt>
+<dd><p>The electron spin multiplicity of the reaction PES</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.remove_dup_species">
+<span class="sig-name descname"><span class="pre">remove_dup_species</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.remove_dup_species"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.remove_dup_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make sure each species is considered only once in reactants, products, r_species, and p_species.
+The same species in the reactants/products is considered through get_species_count().</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_reaction_from_arc_species">
+<span class="sig-name descname"><span class="pre">rmg_reaction_from_arc_species</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.rmg_reaction_from_arc_species"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_reaction_from_arc_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for generating the RMG Reaction object from ARCSpecies
+Used for determining the family.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_reaction_from_str">
+<span class="sig-name descname"><span class="pre">rmg_reaction_from_str</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reaction_string</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.rmg_reaction_from_str"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_reaction_from_str" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for regenerating the RMG Reaction object from a string representation</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.rmg_reaction_to_str">
+<span class="sig-name descname"><span class="pre">rmg_reaction_to_str</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.rmg_reaction_to_str"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.rmg_reaction_to_str" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for dumping the RMG Reaction object as a string for the YAML restart dictionary</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.set_label_reactants_products">
+<span class="sig-name descname"><span class="pre">set_label_reactants_products</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.set_label_reactants_products"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.set_label_reactants_products" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for settings the label, reactants, and products attributes for a Reaction</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.reaction.remove_dup_species">
+<span class="sig-prename descclassname"><span class="pre">arc.reaction.</span></span><span class="sig-name descname"><span class="pre">remove_dup_species</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#remove_dup_species"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.remove_dup_species" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove duplicate species from a species list.
+Used when assigning r_species and p_species.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>species_list</strong> (<em>List</em><em>[</em><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>]</em>) – The species list to process.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of species without duplicates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List[<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies">ARCSpecies</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="scheduler.html" class="btn btn-neutral float-right" title="arc.scheduler" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="zmat.html" class="btn btn-neutral float-left" title="arc.species.zmat" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018-2023, Alon Grinberg Dana
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

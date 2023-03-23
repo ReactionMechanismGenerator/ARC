@@ -1,0 +1,781 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>arc.plotter &mdash; ARC 1.1.0 Documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="arc.processor" href="processor.html" />
+    <link rel="prev" title="arc.parser" href="parser.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> ARC
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.1
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">ARC’s API</a> &raquo;</li>
+        
+      <li>arc.plotter</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/api/plotter.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <section id="module-arc.plotter">
+<span id="arc-plotter"></span><span id="plotter"></span><h1>arc.plotter<a class="headerlink" href="#module-arc.plotter" title="Permalink to this heading">¶</a></h1>
+<p>A module for plotting and saving output files such as RMG libraries.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.auto_label">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">auto_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rects</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#auto_label"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.auto_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Attach a text label above each bar in <code class="docutils literal notranslate"><span class="pre">rects</span></code>, displaying its height.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.check_xyz_species_for_drawing">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">check_xyz_species_for_drawing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#check_xyz_species_for_drawing"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.check_xyz_species_for_drawing" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for checking the coordinates before drawing them.
+Either <code class="docutils literal notranslate"><span class="pre">xyz</span></code> or <code class="docutils literal notranslate"><span class="pre">species</span></code> must be given. If both are given, <code class="docutils literal notranslate"><span class="pre">xyz</span></code> gets precedence.
+If <code class="docutils literal notranslate"><span class="pre">species</span></code> is given, xys will be taken from it or cheaply generated for it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – The 3D coordinates in any form.</p></li>
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – A species to take the coordinates from.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>InputError</strong> – If neither <code class="docutils literal notranslate"><span class="pre">xyz</span></code> nor <code class="docutils literal notranslate"><span class="pre">species</span></code> are given.</p></li>
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">species</span></code> is of wrong type.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: dict</dt><dd><p>The coordinates to plot.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.clean_scan_results">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">clean_scan_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">results</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#clean_scan_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.clean_scan_results" title="Permalink to this definition">¶</a></dt>
+<dd><p>Filter noise of high energy points if the value distribution is such that removing the top 10% points
+results in values which are significantly lower. Useful for scanning methods which occasionally give
+extremely high energies by mistake.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>results</strong> (<em>dict</em>) – The directed snan results dictionary. Keys are dihedral tuples, values are energies.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A filtered results dictionary.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.draw_3d">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_3d"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_3d" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws the molecule in a “3D-balls” style.
+Saves an image if a species and <code class="docutils literal notranslate"><span class="pre">project_directory</span></code> are provided.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>str</em><em>, </em><em>dict</em><em>, </em><em>optional</em>) – The coordinates to display.</p></li>
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – xyz coordinates will be taken from the species.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em>) – ARC’s project directory to save the image in.</p></li>
+<li><p><strong>save_only</strong> (<em>bool</em>) – Whether to only save an image without plotting it, <code class="docutils literal notranslate"><span class="pre">True</span></code> to only save.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.draw_kinetics_plots">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_kinetics_plots</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_min</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_max</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_kinetics_plots"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_kinetics_plots" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws plots of calculated rate coefficients and RMG’s estimates.
+<cite>rxn_list</cite> has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rxn_list</strong> (<em>list</em>) – Reactions with a .kinetics attribute calculated by ARC
+and an .rmg_reactions list with RMG rates.</p></li>
+<li><p><strong>T_min</strong> (<em>tuple</em>) – The minimum temperature to consider, e.g., (500, ‘K’).</p></li>
+<li><p><strong>T_max</strong> (<em>tuple</em>) – The maximum temperature to consider, e.g., (3000, ‘K’).</p></li>
+<li><p><strong>T_count</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of temperature points between <code class="docutils literal notranslate"><span class="pre">T_min</span></code> and <code class="docutils literal notranslate"><span class="pre">T_max</span></code>.</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the project’s output folder.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.draw_parity_plot">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_parity_plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">var_arc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_rmg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var_units</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_parity_plot"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_parity_plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draw a parity plot.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>var_arc</strong> (<em>list</em>) – The variable calculated by ARC.</p></li>
+<li><p><strong>var_rmg</strong> (<em>list</em>) – The variable estimated by RMG.</p></li>
+<li><p><strong>labels</strong> (<em>list</em>) – Species labels corresponding to the data in <code class="docutils literal notranslate"><span class="pre">var_arc</span></code> and <code class="docutils literal notranslate"><span class="pre">var_rmg</span></code>.</p></li>
+<li><p><strong>var_label</strong> (<em>str</em>) – The variable name.</p></li>
+<li><p><strong>var_units</strong> (<em>str</em>) – The variable units.</p></li>
+<li><p><strong>pp</strong> (<em>PdfPages</em><em>, </em><em>optional</em>) – Used for storing the image as a multi-page PFD file.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.draw_structure">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_structure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'show_sticks'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_atom_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_structure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_structure" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for drawing a molecular structure using either show_sticks or draw_3d.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>str</em><em>, </em><em>optional</em>) – The xyz coordinates to plot in string format.</p></li>
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – A species from which to extract the xyz coordinates to plot.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em><em>, </em><em>optional</em>) – A directory for saving the image (only supported for draw_3d).</p></li>
+<li><p><strong>method</strong> (<em>str</em><em>, </em><em>optional</em>) – The method to use, either ‘show_sticks’, ‘draw_3d’, or ‘scatter’.</p></li>
+<li><p><strong>show_atom_indices</strong> (<em>bool</em>) – whether to display atom indices on the 3D image.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.draw_thermo_parity_plots">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_thermo_parity_plots</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_thermo_parity_plots"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_thermo_parity_plots" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws parity plots of calculated thermo and RMG’s estimates.
+Saves a thermo.info file if a <code class="docutils literal notranslate"><span class="pre">path</span></code> is specified.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_list</strong> (<em>list</em>) – Species to compare.</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the project’s output folder.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.get_text_positions">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">get_text_positions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_height</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#get_text_positions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.get_text_positions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the positions of plot annotations to avoid overlapping.
+Source: <a class="reference external" href="https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations">stackoverflow</a>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.log_bde_report">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">log_bde_report</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bde_report</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spc_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#log_bde_report"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.log_bde_report" title="Permalink to this definition">¶</a></dt>
+<dd><p>Prettify the report for bond dissociation energies. Log and save to file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<em>str</em>) – The file path.</p></li>
+<li><p><strong>bde_report</strong> (<em>dict</em>) – The BDE report dictionary. Keys are species labels, values are species BDE dictionaries.
+In the second level dict, keys are pivot tuples, values are energies in kJ/mol.</p></li>
+<li><p><strong>spc_dict</strong> (<em>dict</em>) – The species dictionary.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.log_kinetics">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">log_kinetics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#log_kinetics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.log_kinetics" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logging kinetics from an Arkane output file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path to the folder containing the relevant Arkane output file.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.log_thermo">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">log_thermo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#log_thermo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.log_thermo" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logging thermodata from an Arkane output file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path to the folder containing the relevant Arkane output file.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_1d_rotor_scan">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_1d_rotor_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angles</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">array</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">array</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">results</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'degrees'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_dihedral</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_1d_rotor_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_1d_rotor_scan" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots a 1D rotor PES for energy vs. angles. Either <code class="docutils literal notranslate"><span class="pre">angles</span></code> and <code class="docutils literal notranslate"><span class="pre">energies</span></code> or <code class="docutils literal notranslate"><span class="pre">results</span></code> must be given.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>angles</strong> (<em>Union</em><em>[</em><em>list</em><em>, </em><em>tuple</em><em>, </em><em>np.array</em><em>]</em><em>, </em><em>optional</em>) – Dihedral angles.</p></li>
+<li><p><strong>energies</strong> (<em>Union</em><em>[</em><em>list</em><em>, </em><em>tuple</em><em>, </em><em>np.array</em><em>]</em><em>, </em><em>optional</em>) – The energies in kJ/mol.</p></li>
+<li><p><strong>results</strong> (<em>dict</em><em>, </em><em>optional</em>) – The results dictionary, dihedrals are assumed to be in degrees (not radians).</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The folder path for saving the rotor scan image and comments.</p></li>
+<li><p><strong>scan</strong> (<em>Union</em><em>[</em><em>list</em><em>, </em><em>tuple</em><em>]</em><em>, </em><em>optional</em>) – The pivotal atoms of the scan.</p></li>
+<li><p><strong>comment</strong> (<em>str</em><em>, </em><em>optional</em>) – Reason for invalidating this rotor.</p></li>
+<li><p><strong>units</strong> (<em>str</em><em>, </em><em>optional</em>) – The <code class="docutils literal notranslate"><span class="pre">angle</span></code> units, either ‘degrees’ or ‘radians’.</p></li>
+<li><p><strong>original_dihedral</strong> (<em>float</em><em>, </em><em>optional</em>) – The actual dihedral angle of this torsion before the scan.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The species label.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>InputError</strong> – If neither <cite>angles`</cite> and <code class="docutils literal notranslate"><span class="pre">energies</span></code> nor <code class="docutils literal notranslate"><span class="pre">results</span></code> were given.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_2d_rotor_scan">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_2d_rotor_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">results</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmap</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Blues'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">90</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mark_lowest_conformations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_dihedrals</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_2d_rotor_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_2d_rotor_scan" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot a 2D rotor scan.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>results</strong> (<em>dict</em>) – <p>The results dictionary, dihedrals are assumed to be in degrees (not radians).
+This dictionary has the following structure:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s1">&#39;directed_scan_type&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">str</span><span class="p">,</span> <span class="n">used</span> <span class="k">for</span> <span class="n">the</span> <span class="n">fig</span> <span class="n">name</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;scans&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">list</span><span class="p">,</span> <span class="n">entries</span> <span class="n">are</span> <span class="n">lists</span> <span class="n">of</span> <span class="n">torsion</span> <span class="n">indices</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;directed_scan&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">dict</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">keys</span> <span class="n">are</span> <span class="n">tuples</span> <span class="n">of</span> <span class="s1">&#39;</span><span class="si">{0:.2f}</span><span class="s1">&#39;</span> <span class="n">formatted</span> <span class="n">dihedrals</span><span class="p">,</span>
+                  <span class="n">values</span> <span class="n">are</span> <span class="n">dictionaries</span> <span class="k">with</span> <span class="n">the</span> <span class="n">following</span> <span class="n">keys</span> <span class="ow">and</span> <span class="n">values</span><span class="p">:</span>
+                  <span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">float</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">kJ</span><span class="o">/</span><span class="n">mol</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># only this is used here</span>
+                   <span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">dict</span><span class="o">&gt;</span><span class="p">,</span>
+                   <span class="s1">&#39;is_isomorphic&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">bool</span><span class="o">&gt;</span><span class="p">,</span>
+                   <span class="s1">&#39;trsh&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">list</span><span class="p">,</span> <span class="n">job</span><span class="o">.</span><span class="n">ess_trsh_methods</span><span class="o">&gt;</span><span class="p">}</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The folder path to save this 2D image.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The species label.</p></li>
+<li><p><strong>cmap</strong> (<em>str</em><em>, </em><em>optional</em>) – The color map to use. See optional arguments below.</p></li>
+<li><p><strong>resolution</strong> (<em>int</em><em>, </em><em>optional</em>) – The image resolution to produce.</p></li>
+<li><p><strong>mark_lowest_conformations</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to add a marker at the lowest conformers.
+<code class="docutils literal notranslate"><span class="pre">True</span></code> to add, default is <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>original_dihedrals</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are dihedral degrees of the conformer used for the scan.
+If given, the conformer will be marked on the plot with a red dot.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">results</span></code> if of wrong type.</p></li>
+<li><p><strong>InputError</strong> – If <code class="docutils literal notranslate"><span class="pre">results</span></code> does not represent a 2D rotor.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Optional arguments for cmap:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Accent</span><span class="p">,</span> <span class="n">Accent_r</span><span class="p">,</span> <span class="n">Blues</span><span class="p">,</span> <span class="n">Blues_r</span><span class="p">,</span> <span class="n">BrBG</span><span class="p">,</span> <span class="n">BrBG_r</span><span class="p">,</span> <span class="n">BuGn</span><span class="p">,</span> <span class="n">BuGn_r</span><span class="p">,</span> <span class="n">BuPu</span><span class="p">,</span> <span class="n">BuPu_r</span><span class="p">,</span> <span class="n">CMRmap</span><span class="p">,</span> <span class="n">CMRmap_r</span><span class="p">,</span> <span class="n">Dark2</span><span class="p">,</span> <span class="n">Dark2_r</span><span class="p">,</span>
+<span class="n">GnBu</span><span class="p">,</span> <span class="n">GnBu_r</span><span class="p">,</span> <span class="n">Greens</span><span class="p">,</span> <span class="n">Greens_r</span><span class="p">,</span> <span class="n">Greys</span><span class="p">,</span> <span class="n">Greys_r</span><span class="p">,</span> <span class="n">OrRd</span><span class="p">,</span> <span class="n">OrRd_r</span><span class="p">,</span> <span class="n">Oranges</span><span class="p">,</span> <span class="n">Oranges_r</span><span class="p">,</span> <span class="n">PRGn</span><span class="p">,</span> <span class="n">PRGn_r</span><span class="p">,</span> <span class="n">Paired</span><span class="p">,</span>
+<span class="n">Paired_r</span><span class="p">,</span> <span class="n">Pastel1</span><span class="p">,</span> <span class="n">Pastel1_r</span><span class="p">,</span> <span class="n">Pastel2</span><span class="p">,</span> <span class="n">Pastel2_r</span><span class="p">,</span> <span class="n">PiYG</span><span class="p">,</span> <span class="n">PiYG_r</span><span class="p">,</span> <span class="n">PuBu</span><span class="p">,</span> <span class="n">PuBuGn</span><span class="p">,</span> <span class="n">PuBuGn_r</span><span class="p">,</span> <span class="n">PuBu_r</span><span class="p">,</span> <span class="n">PuOr</span><span class="p">,</span> <span class="n">PuOr_r</span><span class="p">,</span>
+<span class="n">PuRd</span><span class="p">,</span> <span class="n">PuRd_r</span><span class="p">,</span> <span class="n">Purples</span><span class="p">,</span> <span class="n">Purples_r</span><span class="p">,</span> <span class="n">RdBu</span><span class="p">,</span> <span class="n">RdBu_r</span><span class="p">,</span> <span class="n">RdGy</span><span class="p">,</span> <span class="n">RdGy_r</span><span class="p">,</span> <span class="n">RdPu</span><span class="p">,</span> <span class="n">RdPu_r</span><span class="p">,</span> <span class="n">RdYlBu</span><span class="p">,</span> <span class="n">RdYlBu_r</span><span class="p">,</span> <span class="n">RdYlGn</span><span class="p">,</span> <span class="n">RdYlGn_r</span><span class="p">,</span>
+<span class="n">Reds</span><span class="p">,</span> <span class="n">Reds_r</span><span class="p">,</span> <span class="n">Set1</span><span class="p">,</span> <span class="n">Set1_r</span><span class="p">,</span> <span class="n">Set2</span><span class="p">,</span> <span class="n">Set2_r</span><span class="p">,</span> <span class="n">Set3</span><span class="p">,</span> <span class="n">Set3_r</span><span class="p">,</span> <span class="n">Spectral</span><span class="p">,</span> <span class="n">Spectral_r</span><span class="p">,</span> <span class="n">Wistia</span><span class="p">,</span> <span class="n">Wistia_r</span><span class="p">,</span> <span class="n">YlGn</span><span class="p">,</span> <span class="n">YlGnBu</span><span class="p">,</span>
+<span class="n">YlGnBu_r</span><span class="p">,</span> <span class="n">YlGn_r</span><span class="p">,</span> <span class="n">YlOrBr</span><span class="p">,</span> <span class="n">YlOrBr_r</span><span class="p">,</span> <span class="n">YlOrRd</span><span class="p">,</span> <span class="n">YlOrRd_r</span><span class="p">,</span> <span class="n">afmhot</span><span class="p">,</span> <span class="n">afmhot_r</span><span class="p">,</span> <span class="n">autumn</span><span class="p">,</span> <span class="n">autumn_r</span><span class="p">,</span> <span class="n">binary</span><span class="p">,</span> <span class="n">binary_r</span><span class="p">,</span>
+<span class="n">bone</span><span class="p">,</span> <span class="n">bone_r</span><span class="p">,</span> <span class="n">brg</span><span class="p">,</span> <span class="n">brg_r</span><span class="p">,</span> <span class="n">bwr</span><span class="p">,</span> <span class="n">bwr_r</span><span class="p">,</span> <span class="n">cividis</span><span class="p">,</span> <span class="n">cividis_r</span><span class="p">,</span> <span class="n">cool</span><span class="p">,</span> <span class="n">cool_r</span><span class="p">,</span> <span class="n">coolwarm</span><span class="p">,</span> <span class="n">coolwarm_r</span><span class="p">,</span> <span class="n">copper</span><span class="p">,</span> <span class="n">copper_r</span><span class="p">,</span>
+<span class="n">cubehelix</span><span class="p">,</span> <span class="n">cubehelix_r</span><span class="p">,</span> <span class="n">flag</span><span class="p">,</span> <span class="n">flag_r</span><span class="p">,</span> <span class="n">gist_earth</span><span class="p">,</span> <span class="n">gist_earth_r</span><span class="p">,</span> <span class="n">gist_gray</span><span class="p">,</span> <span class="n">gist_gray_r</span><span class="p">,</span> <span class="n">gist_heat</span><span class="p">,</span> <span class="n">gist_heat_r</span><span class="p">,</span>
+<span class="n">gist_ncar</span><span class="p">,</span> <span class="n">gist_ncar_r</span><span class="p">,</span> <span class="n">gist_rainbow</span><span class="p">,</span> <span class="n">gist_rainbow_r</span><span class="p">,</span> <span class="n">gist_stern</span><span class="p">,</span> <span class="n">gist_stern_r</span><span class="p">,</span> <span class="n">gist_yarg</span><span class="p">,</span> <span class="n">gist_yarg_r</span><span class="p">,</span> <span class="n">gnuplot</span><span class="p">,</span>
+<span class="n">gnuplot2</span><span class="p">,</span> <span class="n">gnuplot2_r</span><span class="p">,</span> <span class="n">gnuplot_r</span><span class="p">,</span> <span class="n">gray</span><span class="p">,</span> <span class="n">gray_r</span><span class="p">,</span> <span class="n">hot</span><span class="p">,</span> <span class="n">hot_r</span><span class="p">,</span> <span class="n">hsv</span><span class="p">,</span> <span class="n">hsv_r</span><span class="p">,</span> <span class="n">inferno</span><span class="p">,</span> <span class="n">inferno_r</span><span class="p">,</span> <span class="n">jet</span><span class="p">,</span> <span class="n">jet_r</span><span class="p">,</span> <span class="n">magma</span><span class="p">,</span>
+<span class="n">magma_r</span><span class="p">,</span> <span class="n">nipy_spectral</span><span class="p">,</span> <span class="n">nipy_spectral_r</span><span class="p">,</span> <span class="n">ocean</span><span class="p">,</span> <span class="n">ocean_r</span><span class="p">,</span> <span class="n">pink</span><span class="p">,</span> <span class="n">pink_r</span><span class="p">,</span> <span class="n">plasma</span><span class="p">,</span> <span class="n">plasma_r</span><span class="p">,</span> <span class="n">prism</span><span class="p">,</span> <span class="n">prism_r</span><span class="p">,</span>
+<span class="n">rainbow</span><span class="p">,</span> <span class="n">rainbow_r</span><span class="p">,</span> <span class="n">seismic</span><span class="p">,</span> <span class="n">seismic_r</span><span class="p">,</span> <span class="n">spring</span><span class="p">,</span> <span class="n">spring_r</span><span class="p">,</span> <span class="n">summer</span><span class="p">,</span> <span class="n">summer_r</span><span class="p">,</span> <span class="n">tab10</span><span class="p">,</span> <span class="n">tab10_r</span><span class="p">,</span> <span class="n">tab20</span><span class="p">,</span> <span class="n">tab20_r</span><span class="p">,</span>
+<span class="n">tab20b</span><span class="p">,</span> <span class="n">tab20b_r</span><span class="p">,</span> <span class="n">tab20c</span><span class="p">,</span> <span class="n">tab20c_r</span><span class="p">,</span> <span class="n">terrain</span><span class="p">,</span> <span class="n">terrain_r</span><span class="p">,</span> <span class="n">viridis</span><span class="p">,</span> <span class="n">viridis_r</span><span class="p">,</span> <span class="n">winter</span><span class="p">,</span> <span class="n">winter_r</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_2d_scan_bond_dihedral">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_2d_scan_bond_dihedral</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">results</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmap</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Blues'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resolution</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">90</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">font_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">15</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">figsize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">(12,</span> <span class="pre">8)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_dihedrals</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_2d_scan_bond_dihedral"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_2d_scan_bond_dihedral" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot a 2D scan where one coordinate is bond length and another is a dihedral angle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>results</strong> (<em>dict</em>) – <p>The results dictionary, dihedrals are assumed to be in degrees (not radians).
+This dictionary has the following structure:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s1">&#39;directed_scan_type&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">str</span><span class="p">,</span> <span class="n">used</span> <span class="k">for</span> <span class="n">the</span> <span class="n">fig</span> <span class="n">name</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;scans&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">list</span><span class="p">,</span> <span class="n">entries</span> <span class="n">are</span> <span class="n">lists</span> <span class="n">of</span> <span class="n">torsion</span> <span class="n">indices</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;directed_scan&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">dict</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">keys</span> <span class="n">are</span> <span class="n">tuples</span> <span class="n">of</span> <span class="s1">&#39;</span><span class="si">{0:.2f}</span><span class="s1">&#39;</span> <span class="n">formatted</span> <span class="n">dihedrals</span><span class="p">,</span>
+                  <span class="n">values</span> <span class="n">are</span> <span class="n">dictionaries</span> <span class="k">with</span> <span class="n">the</span> <span class="n">following</span> <span class="n">keys</span> <span class="ow">and</span> <span class="n">values</span><span class="p">:</span>
+                  <span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">float</span><span class="p">,</span> <span class="n">energy</span> <span class="ow">in</span> <span class="n">kJ</span><span class="o">/</span><span class="n">mol</span><span class="o">&gt;</span><span class="p">,</span>  <span class="c1"># only this is used here</span>
+                   <span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">dict</span><span class="o">&gt;</span><span class="p">,</span>
+                   <span class="s1">&#39;is_isomorphic&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">bool</span><span class="o">&gt;</span><span class="p">,</span>
+                   <span class="s1">&#39;trsh&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">list</span><span class="p">,</span> <span class="n">job</span><span class="o">.</span><span class="n">ess_trsh_methods</span><span class="o">&gt;</span><span class="p">}</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The folder path to save this 2D image.</p></li>
+<li><p><strong>label</strong> (<em>str</em><em>, </em><em>optional</em>) – The species label.</p></li>
+<li><p><strong>cmap</strong> (<em>str</em><em>, </em><em>optional</em>) – The color map to use. See optional arguments below.</p></li>
+<li><p><strong>resolution</strong> (<em>int</em><em>, </em><em>optional</em>) – The image resolution to produce.</p></li>
+<li><p><strong>font_size</strong> (<em>float</em><em>, </em><em>optional</em>) – The sfont size for the figure.</p></li>
+<li><p><strong>figsize</strong> (<em>tuple</em><em>, </em><em>optional</em>) – The size (width, height) of the resulting figure.</p></li>
+<li><p><strong>original_dihedrals</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are dihedral degrees of the conformer used for the scan.
+If given, the conformer will be marked on the plot with a red dot.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">results</span></code> if of wrong type.</p></li>
+<li><p><strong>InputError</strong> – If <code class="docutils literal notranslate"><span class="pre">results</span></code> does not represent a 2D rotor.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Optional arguments for cmap::</dt><dd><p>Accent, Accent_r, Blues, Blues_r, BrBG, BrBG_r, BuGn, BuGn_r, BuPu, BuPu_r, CMRmap, CMRmap_r, Dark2, Dark2_r,
+GnBu, GnBu_r, Greens, Greens_r, Greys, Greys_r, OrRd, OrRd_r, Oranges, Oranges_r, PRGn, PRGn_r, Paired,
+Paired_r, Pastel1, Pastel1_r, Pastel2, Pastel2_r, PiYG, PiYG_r, PuBu, PuBuGn, PuBuGn_r, PuBu_r, PuOr, PuOr_r,
+PuRd, PuRd_r, Purples, Purples_r, RdBu, RdBu_r, RdGy, RdGy_r, RdPu, RdPu_r, RdYlBu, RdYlBu_r, RdYlGn, RdYlGn_r,
+Reds, Reds_r, Set1, Set1_r, Set2, Set2_r, Set3, Set3_r, Spectral, Spectral_r, Wistia, Wistia_r, YlGn, YlGnBu,
+YlGnBu_r, YlGn_r, YlOrBr, YlOrBr_r, YlOrRd, YlOrRd_r, afmhot, afmhot_r, autumn, autumn_r, binary, binary_r,
+bone, bone_r, brg, brg_r, bwr, bwr_r, cividis, cividis_r, cool, cool_r, coolwarm, coolwarm_r, copper, copper_r,
+cubehelix, cubehelix_r, flag, flag_r, gist_earth, gist_earth_r, gist_gray, gist_gray_r, gist_heat, gist_heat_r,
+gist_ncar, gist_ncar_r, gist_rainbow, gist_rainbow_r, gist_stern, gist_stern_r, gist_yarg, gist_yarg_r, gnuplot,
+gnuplot2, gnuplot2_r, gnuplot_r, gray, gray_r, hot, hot_r, hsv, hsv_r, inferno, inferno_r, jet, jet_r, magma,
+magma_r, nipy_spectral, nipy_spectral_r, ocean, ocean_r, pink, pink_r, plasma, plasma_r, prism, prism_r,
+rainbow, rainbow_r, seismic, seismic_r, spring, spring_r, summer, summer_r, tab10, tab10_r, tab20, tab20_r,
+tab20b, tab20b_r, tab20c, tab20c_r, terrain, terrain_r, viridis, viridis_r, winter, winter_r</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_3d_mol_as_scatter">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_3d_mol_as_scatter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_h</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_plot</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_3d_mol_as_scatter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_3d_mol_as_scatter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws the molecule as scattered balls in space according to the supplied xyz coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>str</em>) – The xyz coordinates.</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – A directory path to save the generated figure in.</p></li>
+<li><p><strong>plot_h</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to plot hydrogen atoms as well. <code class="docutils literal notranslate"><span class="pre">True</span></code> to plot them.</p></li>
+<li><p><strong>show_plot</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to show the plot. <code class="docutils literal notranslate"><span class="pre">True</span></code> to show.</p></li>
+<li><p><strong>name</strong> (<em>str</em><em>, </em><em>optional</em>) – A name to be added to the saved file name.</p></li>
+<li><p><strong>index</strong> (<em>int</em><em>, </em><em>optional</em>) – The index type (0 or 1) for printing atom numbers. Pass None to avoid printing numbers.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_torsion_angles">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_torsion_angles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">torsion_angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions_sampling_points</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wells_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e_conformers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_torsion_angles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_torsion_angles" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plot the torsion angles of the generated conformers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>torsion_angles</strong> (<em>dict</em>) – Keys are torsions, values are lists of corresponding angles.</p></li>
+<li><p><strong>torsions_sampling_points</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsions, values are sampling points.</p></li>
+<li><p><strong>wells_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsions, values are lists of wells.
+Each entry in such a list is a well dictionary with the following keys:
+<code class="docutils literal notranslate"><span class="pre">start_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">end_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">start_angle</span></code>, <code class="docutils literal notranslate"><span class="pre">end_angle</span></code>, and <code class="docutils literal notranslate"><span class="pre">angles</span></code>.</p></li>
+<li><p><strong>e_conformers</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are conformers corresponding to the sampling points with FF energies.</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Energy threshold, plotted as a dashed horizontal line.</p></li>
+<li><p><strong>plot_path</strong> (<em>str</em><em>, </em><em>optional</em>) – The path for saving the plot.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.plot_ts_guesses_by_e_and_method">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">plot_ts_guesses_by_e_and_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#plot_ts_guesses_by_e_and_method"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.plot_ts_guesses_by_e_and_method" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save a figure comparing all TS guesses by electronic energy and imaginary frequency.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The TS Species to consider.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path for saving the figure.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_conformers_file">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_conformers_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyzs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level_of_theory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><span class="pre">Level</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_ts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ts_methods</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">im_freqs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_conformers_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_conformers_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save the conformers before or after optimization.
+If energies are given, the conformers are considered to be optimized.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>project_directory</strong> (<em>str</em>) – The path to the project’s directory.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>xyzs</strong> (<em>list</em>) – Entries are dict-format xyz coordinates of conformers.</p></li>
+<li><p><strong>level_of_theory</strong> (<em>Union</em><em>[</em><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><em>Level</em></a><em>, </em><em>str</em><em>]</em>) – The level of theory used for the conformers’ optimization.</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em><em>, </em><em>optional</em>) – The species multiplicity, used for perceiving the molecule.</p></li>
+<li><p><strong>charge</strong> (<em>int</em><em>, </em><em>optional</em>) – The species charge, used for perceiving the molecule.</p></li>
+<li><p><strong>is_ts</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether the species represents a TS. True if it does.</p></li>
+<li><p><strong>energies</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are energies corresponding to the conformer list in kJ/mol.
+If not given (None) then the Species.conformer_energies are used instead.</p></li>
+<li><p><strong>ts_methods</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are method names used to generate the TS guess.</p></li>
+<li><p><strong>im_freqs</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries lists of imaginary frequencies.</p></li>
+<li><p><strong>log_content</strong> (<em>bool</em>) – Whether to log the content of the conformers file. <code class="docutils literal notranslate"><span class="pre">True</span></code> to log, default is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_geo">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_geo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">format_</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'all'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_geo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_geo" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save a geometry file.
+If <code class="docutils literal notranslate"><span class="pre">species</span></code> is given, .final_xyz will be saved if it is not None, otherwise .initial_xyz will be used.
+If <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is given, it gets precedence over <code class="docutils literal notranslate"><span class="pre">species</span></code>.
+Either <code class="docutils literal notranslate"><span class="pre">species</span></code> or <code class="docutils literal notranslate"><span class="pre">xyz</span></code> must be specified. Either <code class="docutils literal notranslate"><span class="pre">project_directory</span></code> or <code class="docutils literal notranslate"><span class="pre">path</span></code> must be specified.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The species with the geometry attributes.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The xyz coordinates to save in a string format.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em><em>, </em><em>optional</em>) – The project directory where the species folder is located.</p></li>
+<li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – A specific directory path for saving the files.</p></li>
+<li><p><strong>filename</strong> (<em>str</em><em>, </em><em>optional</em>) – A name for the file to save (without suffix).</p></li>
+<li><p><strong>format</strong> (<em>str</em><em>, </em><em>optional</em>) – The format to save. Either ‘xyz’, ‘gjf’ or ‘all’ for both.</p></li>
+<li><p><strong>comment</strong> (<em>str</em><em>, </em><em>optional</em>) – A comment to be stored in the XYZ file after the number of atoms line.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>InputError</strong> – If neither species nor xyz were given. Or if neither project_directory nor path were given.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_irc_traj_animation">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_irc_traj_animation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">irc_f_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">irc_r_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_irc_traj_animation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_irc_traj_animation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save an IRC trajectory animation file showing the entire reaction coordinate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>irc_f_path</strong> (<em>str</em>) – The forward IRC computation.</p></li>
+<li><p><strong>irc_r_path</strong> (<em>str</em>) – The reverse IRC computation.</p></li>
+<li><p><strong>out_path</strong> (<em>str</em>) – The path to the output file.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_kinetics_lib">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_kinetics_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_kinetics_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_kinetics_lib" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save an RMG kinetics library of all reactions in <cite>rxn_list</cite> in the supplied <cite>path</cite>.
+<cite>rxn_list</cite> is a list of ARCReaction objects.
+<cite>name</cite> is the library’s name (or project’s name).
+<cite>long_desc</cite> is a multiline string with level of theory description.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_nd_rotor_yaml">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_nd_rotor_yaml</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_nd_rotor_yaml"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_nd_rotor_yaml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save a text file summarizing a rotor scan, useful for brute force scans.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>results</strong> (<em>dict</em>) – The respective scan dictionary to save.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path of the file to be saved.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_rotor_text_file">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_rotor_text_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energies</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_rotor_text_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_rotor_text_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save a text file summarizing a rotor scan, useful for brute force scans.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>angles</strong> (<em>list</em>) – The dihedral angles in degrees.</p></li>
+<li><p><strong>energies</strong> (<em>list</em>) – The respective scan energies in kJ/mol.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path of the file to be saved.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>InputError</strong> – If energies and angles are not the same length.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_thermo_lib">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_thermo_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#save_thermo_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_thermo_lib" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save an RMG thermo library of all species</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_list</strong> (<em>list</em>) – Entries are ARCSpecies objects to be saved in the library.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The file path where the library should be created.</p></li>
+<li><p><strong>name</strong> (<em>str</em>) – The library’s name (or project’s name).</p></li>
+<li><p><strong>lib_long_desc</strong> (<em>str</em>) – A multiline string with level of theory description.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.save_transport_lib">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_transport_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_transport_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_transport_lib" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save an RMG transport library of all species in <cite>species_list</cite> in the supplied <cite>path</cite>.
+<cite>name</cite> is the library’s name (or project’s name).
+<cite>long_desc</cite> is a multiline string with level of theory description.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.show_sticks">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">show_sticks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_atom_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#show_sticks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.show_sticks" title="Permalink to this definition">¶</a></dt>
+<dd><p>Draws the molecule in a “sticks” style according to the supplied xyz coordinates.
+Returns whether successful of not. If successful, saves the image using draw_3d.
+Either <code class="docutils literal notranslate"><span class="pre">xyz</span></code> or <code class="docutils literal notranslate"><span class="pre">species</span></code> must be specified.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>str</em><em>, </em><em>dict</em><em>, </em><em>optional</em>) – The coordinates to display.</p></li>
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – xyz coordinates will be taken from the species.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em>) – ARC’s project directory to save a draw_3d image in.</p></li>
+<li><p><strong>show_atom_indices</strong> (<em>bool</em>) – whether to display atom indices on the 3D image.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: bool</dt><dd><p>Whether the show_sticks drawing was successful. <code class="docutils literal notranslate"><span class="pre">True</span></code> if it was.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.text_plotter">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">text_plotter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">txt_height</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#text_plotter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.text_plotter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Annotate a plot and add an arrow.
+Source: <a class="reference external" href="https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations">stackoverflow</a>.</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="processor.html" class="btn btn-neutral float-right" title="arc.processor" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="parser.html" class="btn btn-neutral float-left" title="arc.parser" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018-2023, Alon Grinberg Dana
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

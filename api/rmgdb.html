@@ -1,0 +1,389 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>arc.rmgdb &mdash; ARC 1.1.0 Documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="arc.common" href="common.html" />
+    <link rel="prev" title="arc.processor" href="processor.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../index.html" class="icon icon-home"> ARC
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.1
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="index.html">ARC’s API</a> &raquo;</li>
+        
+      <li>arc.rmgdb</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="../_sources/api/rmgdb.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <section id="module-arc.rmgdb">
+<span id="arc-rmgdb"></span><span id="rmgdb"></span><h1>arc.rmgdb<a class="headerlink" href="#module-arc.rmgdb" title="Permalink to this heading">¶</a></h1>
+<p>A module for working with the RMG database.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.determine_family">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">determine_family</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="reaction.html#arc.reaction.ARCReaction" title="arc.reaction.ARCReaction"><span class="pre">ARCReaction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">RMGDatabase</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/rmgdb.html#determine_family"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.determine_family" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine the RMG reaction family for an ARC reaction.
+A wrapper for ARCReaction.determine_family().
+This wrapper is useful because it makes a new instance of the rmgdb if needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>reaction</strong> (<em>'ARCReaction'</em>) – An ARCReaction object instance.</p></li>
+<li><p><strong>db</strong> (<em>RMGDatabase</em><em>, </em><em>optional</em>) – The RMG database instance.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.determine_reaction_family">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">determine_reaction_family</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Reaction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_order</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">KineticsFamily</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#determine_reaction_family"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.determine_reaction_family" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine the RMG kinetic family for a given <code class="docutils literal notranslate"><span class="pre">ARCReaction</span></code> object instance.
+Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> if no family found or more than one family found.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>reaction</strong> (<em>Reaction</em>) – The RMG Reaction object.</p></li>
+<li><p><strong>save_order</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to retain atomic order of the RMG <code class="docutils literal notranslate"><span class="pre">reaction</span></code> object instance.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[Optional[KineticsFamily], bool]</dt><dd><ul class="simple">
+<li><p>The corresponding RMG reaction’s family. <code class="docutils literal notranslate"><span class="pre">None</span></code> if no family was found or more than one family were found.</p></li>
+<li><p>Whether the family is its own reverse. <code class="docutils literal notranslate"><span class="pre">True</span></code> if it is.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.determine_rmg_kinetics">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">determine_rmg_kinetics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Reaction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dh_rxn298</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Reaction</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#determine_rmg_kinetics"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.determine_rmg_kinetics" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determine kinetics for <cite>reaction</cite> (an RMG Reaction object) from RMG’s database, if possible.
+Assigns a list of all matching entries from both libraries and families.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>reaction</strong> (<em>Reaction</em>) – The RMG Reaction object.</p></li>
+<li><p><strong>dh_rxn298</strong> (<em>float</em>) – The heat of reaction at 298 K in J/mol.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: List[Reaction]</dt><dd><p>All matching RMG reactions (both libraries and families) with a populated <code class="docutils literal notranslate"><span class="pre">.kinetics</span></code> attribute.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.get_family">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">get_family</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">KineticsFamily</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#get_family"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.get_family" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a KineticsFamily object instance corresponding to the input family <code class="docutils literal notranslate"><span class="pre">label</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The label of the desired family.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The desired family object instance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[‘KineticsFamily’]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.load_families_only">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">load_families_only</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kinetics_families</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'default'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/rmgdb.html#load_families_only"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.load_families_only" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for loading kinetic families from RMG’s database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>kinetics_families</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>list</em><em>]</em><em>, </em><em>optional</em>) – Specific kinetics families to load.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.load_rmg_database">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">load_rmg_database</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">thermo_libraries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction_libraries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kinetics_families</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'default'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_thermo_libs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">load_kinetic_libs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_nist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#load_rmg_database"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.load_rmg_database" title="Permalink to this definition">¶</a></dt>
+<dd><p>A helper function for loading the RMG database.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>thermo_libraries</strong> (<em>list</em><em>, </em><em>optional</em>) – Specific thermodynamic libraries to load (<code class="docutils literal notranslate"><span class="pre">None</span></code> will load all).</p></li>
+<li><p><strong>reaction_libraries</strong> (<em>list</em><em>, </em><em>optional</em>) – Specific kinetics libraries to load (<code class="docutils literal notranslate"><span class="pre">None</span></code> will load all).</p></li>
+<li><p><strong>kinetics_families</strong> (<em>list</em><em>, </em><em>str</em><em>, </em><em>optional</em>) – Specific kinetics families to load
+(either a list or ‘default’, ‘all’, ‘none’)</p></li>
+<li><p><strong>load_thermo_libs</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to load thermodynamic libraries, <code class="docutils literal notranslate"><span class="pre">True</span></code> to load.</p></li>
+<li><p><strong>load_kinetic_libs</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to load kinetics libraries, <code class="docutils literal notranslate"><span class="pre">True</span></code> to load.</p></li>
+<li><p><strong>include_nist</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to include the NIST kinetics libraries,
+<code class="docutils literal notranslate"><span class="pre">True</span></code> to include, default is <code class="docutils literal notranslate"><span class="pre">False</span></code></p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.loop_families">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">loop_families</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Reaction</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">KineticsFamily</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#loop_families"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.loop_families" title="Permalink to this definition">¶</a></dt>
+<dd><p>Loop through kinetic families and return a list of tuples of (family, degenerate_reactions)
+corresponding to <code class="docutils literal notranslate"><span class="pre">reaction</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rmgdb</strong> (<em>RMGDatabase</em>) – The RMG database instance.</p></li>
+<li><p><strong>reaction</strong> (<em>Reaction</em>) – The RMG Reaction object instance.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: List[Tuple[‘KineticsFamily’, list]]</dt><dd><p>Entries are tuples of a corresponding RMG KineticsFamily instance and a list of degenerate reactions.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.make_rmg_database_object">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">make_rmg_database_object</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">RMGDatabase</span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#make_rmg_database_object"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.make_rmg_database_object" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make a clean RMGDatabase object.</p>
+<dl class="simple">
+<dt>Returns: RMGDatabase</dt><dd><p>A clean RMG database object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="common.html" class="btn btn-neutral float-right" title="arc.common" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="processor.html" class="btn btn-neutral float-left" title="arc.processor" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018-2023, Alon Grinberg Dana
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

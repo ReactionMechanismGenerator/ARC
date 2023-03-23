@@ -1,8 +1,0 @@
-project: test_globalizing_paths
-output:
-  spc:
-    paths:
-      composite: ''
-      freq: /gpfs/workspace/users/user/runs/ARC/Soup/R_Add_HCN/calcs/Species/HCN/freq_a38229/output.out
-  restart: 'Restarted ARC at 2020-02-28 12:51:14.446086; '
-  warnings: ''

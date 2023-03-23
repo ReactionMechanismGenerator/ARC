@@ -1,6 +1,0 @@
-# This is the minimal ARC example, and the smallest input file
-project: minimal
-
-species:
-  - label: H2
-    smiles: '[H][H]'

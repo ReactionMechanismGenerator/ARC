@@ -1,0 +1,629 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>arc.job.local &mdash; ARC 1.1.0 Documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="../../../_static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/underscore.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="../../../_static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="../../../index.html" class="icon icon-home"> ARC
+          
+
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                1.1
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/index.html">ARC’s API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../licence.html">Licence</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ARC</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../../index.html">Module code</a> &raquo;</li>
+        
+      <li>arc.job.local</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for arc.job.local</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A module for running jobs on the local machine.</span>
+<span class="sd">When transitioning to Python 3, use</span>
+<span class="sd">`subprocess.run() &lt;https://docs.python.org/3/library/subprocess.html#subprocess.run&gt;`_</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">shutil</span>
+<span class="kn">import</span> <span class="nn">subprocess</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">get_logger</span>
+<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">SettingsError</span>
+<span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span> <span class="nn">arc.job.ssh</span> <span class="kn">import</span> <span class="n">check_job_status_in_stdout</span>
+
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
+
+<span class="n">servers</span><span class="p">,</span> <span class="n">check_status_command</span><span class="p">,</span> <span class="n">submit_command</span><span class="p">,</span> <span class="n">submit_filenames</span><span class="p">,</span> <span class="n">delete_command</span><span class="p">,</span> <span class="n">output_filenames</span> <span class="o">=</span> \
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;check_status_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_filenames&#39;</span><span class="p">],</span>\
+    <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;delete_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;output_filenames&#39;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="execute_command"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.execute_command">[docs]</a><span class="k">def</span> <span class="nf">execute_command</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]],</span>
+                    <span class="n">shell</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="n">no_fail</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                    <span class="n">executable</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Execute a command.</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">        If ``no_fail`` is ``True``, then a warning is logged and ``False`` is returned</span>
+<span class="sd">        so that the calling function can debug the situation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        command (Union[str, List[str]]): An array of string commands to send.</span>
+<span class="sd">        shell (bool, optional): Specifies whether the command should be executed using bash instead of Python.</span>
+<span class="sd">        no_fail (bool, optional): If ``True`` then ARC will not crash if an error is encountered.</span>
+<span class="sd">        executable (str, optional): Select a specific shell to run with, e.g., &#39;/bin/bash&#39;.</span>
+<span class="sd">                                    Default shell of the subprocess command is &#39;/bin/sh&#39;.</span>
+
+<span class="sd">    Returns: Tuple[list, list]:</span>
+<span class="sd">        - A list of lines of standard output stream.</span>
+<span class="sd">        - A list of lines of the standard error stream.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">error</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">command</span> <span class="o">=</span> <span class="p">[</span><span class="n">command</span><span class="p">]</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39; &amp;&amp; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">command</span><span class="p">)]</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">max_times_to_try</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">30</span>
+    <span class="n">sleep_time</span> <span class="o">=</span> <span class="mi">60</span>  <span class="c1"># Seconds</span>
+    <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">max_times_to_try</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">executable</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">completed_process</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="n">shell</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">completed_process</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="n">shell</span><span class="p">,</span> <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">executable</span><span class="o">=</span><span class="n">executable</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">_format_stdout</span><span class="p">(</span><span class="n">completed_process</span><span class="o">.</span><span class="n">stdout</span><span class="p">),</span> <span class="n">_format_stdout</span><span class="p">(</span><span class="n">completed_process</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">error</span> <span class="o">=</span> <span class="n">e</span>  <span class="c1"># Store the error so we can raise a SettingsError if needed.</span>
+            <span class="k">if</span> <span class="n">no_fail</span><span class="p">:</span>
+                <span class="n">_output_command_error_message</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">_output_command_error_message</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">e</span><span class="p">,</span> <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;ARC is sleeping for </span><span class="si">{</span><span class="n">sleep_time</span> <span class="o">*</span> <span class="n">i</span><span class="si">}</span><span class="s1"> seconds before retrying.</span><span class="se">\n</span><span class="s1">Please check whether &#39;</span>
+                             <span class="sa">f</span><span class="s1">&#39;this is a server issue by executing the command manually on the server.&#39;</span><span class="p">)</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;ZZZZZ..... ZZZZZ.....&#39;</span><span class="p">)</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">sleep_time</span> <span class="o">*</span> <span class="n">i</span><span class="p">)</span>  <span class="c1"># In seconds</span>
+                <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="c1"># If unsuccessful:</span>
+    <span class="k">raise</span> <span class="n">SettingsError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The command &quot;</span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s1">&quot; is erroneous, got: </span><span class="se">\n</span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s1">&#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">This maybe either a server issue or the command is wrong.&#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">To check if this is a server issue, please run the command on server and restart ARC.&#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">To correct the command, modify settings.py&#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Tips: use &quot;which&quot; command to locate cluster software commands on server.&#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Example: type &quot;which sbatch&quot; on a server running Slurm to find the correct &#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;sbatch path required in the submit_command dictionary.&#39;</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">_output_command_error_message</span><span class="p">(</span><span class="n">command</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                                  <span class="n">error</span><span class="p">:</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CalledProcessError</span><span class="p">,</span>
+                                  <span class="n">logging_func</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">,</span> <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">],</span>
+                                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Formats and logs the error message returned from a command at the desired logging level</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        command (List[str]): The command that threw the error.</span>
+<span class="sd">        error (subprocess.CalledProcessError): The exception caught by python from subprocess.</span>
+<span class="sd">        logging_func: ``logging.warning`` or ``logging.error`` as a function object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="s1">&#39;The server command is erroneous.&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Tried to submit the following command:</span><span class="se">\n</span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="s1">&#39;And got the following status (cmd, message, output, return code)&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">cmd</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="n">error</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">logging_func</span><span class="p">(</span><span class="n">error</span><span class="o">.</span><span class="n">returncode</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_format_stdout</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Format the stdout as a list of unicode strings</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        stdout (bytes): The standard output.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List(str): The decoded lines from stdout.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">lines</span><span class="p">,</span> <span class="n">list_of_strs</span> <span class="o">=</span> <span class="n">stdout</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">:</span>
+        <span class="n">list_of_strs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">list_of_strs</span>
+
+
+<div class="viewcode-block" id="check_job_status"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.check_job_status">[docs]</a><span class="k">def</span> <span class="nf">check_job_status</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Possible status values: ``before_submission``, ``running``, ``errored on node xx``, ``done``</span>
+<span class="sd">    Status line formats:</span>
+
+<span class="sd">    OGE::</span>
+
+<span class="sd">        540420 0.45326 xq1340b    user_name       r     10/26/2018 11:08:30 long1@node18.cluster</span>
+
+<span class="sd">    Slurm::</span>
+
+<span class="sd">        14428     debug xq1371m2   user_name  R 50-04:04:46      1 node06</span>
+
+<span class="sd">    PBS (taken from zeldo.dow.com)::</span>
+<span class="sd">                                                                                         Req&#39;d       Req&#39;d       Elap</span>
+<span class="sd">        Job ID                  Username    Queue    Jobname         SessID  NDS   TSK   Memory      Time    S   Time</span>
+<span class="sd">        ----------------------- ----------- -------- --------------- ------ ----- ------ --------- --------- - ---------</span>
+<span class="sd">        2016614.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20</span>
+<span class="sd">        2016616.zeldo.local     u780444     workq    scan.pbs         75380     1     10       --  730:00:00 R  00:00:20</span>
+
+<span class="sd">    HTCondor (using ARC&#39;s modified condor_q command)::</span>
+
+<span class="sd">        3261.0 R 10 28161 a2719 56</span>
+<span class="sd">        3263.0 R 10 28161 a2721 23</span>
+<span class="sd">        3268.0 R 10 28161 a2726 18</span>
+<span class="sd">        3269.0 R 10 28161 a2727 17</span>
+<span class="sd">        3270.0 P 10 28161 a2728 23</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">server</span> <span class="o">=</span> <span class="s1">&#39;local&#39;</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">check_status_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span>
+    <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">check_job_status_in_stdout</span><span class="p">(</span><span class="n">job_id</span><span class="o">=</span><span class="n">job_id</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span> <span class="n">server</span><span class="o">=</span><span class="n">server</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="delete_job"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.delete_job">[docs]</a><span class="k">def</span> <span class="nf">delete_job</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Deletes a running job.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">delete_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">success</span> <span class="o">=</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">no_fail</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Detected possible error when trying to delete job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1">. Checking to see if the job is &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;still running...&#39;</span><span class="p">)</span>
+        <span class="n">running_jobs</span> <span class="o">=</span> <span class="n">check_running_jobs_ids</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">job_id</span> <span class="ow">in</span> <span class="n">running_jobs</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1"> was scheduled for deletion, but the deletion command has appeared to errored. &#39;</span>
+                         <span class="sa">f</span><span class="s1">&#39;The job is still running.&#39;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not delete job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1"> is no longer running.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="check_running_jobs_ids"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.check_running_jobs_ids">[docs]</a><span class="k">def</span> <span class="nf">check_running_jobs_ids</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check which jobs are still running on the server for this user.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List[str]: List of job IDs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">cluster_soft</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;slurm&#39;</span><span class="p">,</span> <span class="s1">&#39;oge&#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">,</span> <span class="s1">&#39;pbs&#39;</span><span class="p">,</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Server cluster software </span><span class="si">{</span><span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> is not supported.&quot;</span><span class="p">)</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">check_status_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span>
+    <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">running_job_ids</span> <span class="o">=</span> <span class="n">parse_running_jobs_ids</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="n">cluster_soft</span><span class="o">=</span><span class="n">cluster_soft</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">running_job_ids</span></div>
+
+
+<div class="viewcode-block" id="parse_running_jobs_ids"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.parse_running_jobs_ids">[docs]</a><span class="k">def</span> <span class="nf">parse_running_jobs_ids</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                           <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A helper function for parsing job IDs from the stdout of a job status command.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        stdout (List[str]): The stdout of a job status command.</span>
+<span class="sd">        cluster_soft (Optional[str]): The cluster software.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List(str): List of job IDs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">cluster_soft</span> <span class="ow">or</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="n">i_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;slurm&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s1">&#39;oge&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;pbs&#39;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">}</span>
+    <span class="n">split_by_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;slurm&#39;</span><span class="p">:</span> <span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="s1">&#39;oge&#39;</span><span class="p">:</span> <span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">:</span> <span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="s1">&#39;pbs&#39;</span><span class="p">:</span> <span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">:</span> <span class="s1">&#39;.&#39;</span><span class="p">}</span>
+    <span class="n">running_job_ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">status_line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="n">i_dict</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]:</span>
+            <span class="n">job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">split_by_dict</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">job_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1">&#39;</span>  <span class="c1"># job_id is sometimes a byte, this transforms b&#39;bytes&#39; into &quot;b&#39;bytes&#39;&quot;</span>
+            <span class="k">if</span> <span class="s2">&quot;b&#39;&quot;</span> <span class="ow">in</span> <span class="n">job_id</span><span class="p">:</span>
+                <span class="n">job_id</span> <span class="o">=</span> <span class="n">job_id</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;b&#39;&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">running_job_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">running_job_ids</span></div>
+
+
+<div class="viewcode-block" id="submit_job"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.submit_job">[docs]</a><span class="k">def</span> <span class="nf">submit_job</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+               <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">submit_cmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">submit_filename</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="n">recursion</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+               <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Submit a job.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        path (str): The job&#39;s folder path, where the submit script is located (just the folder path, w/o the filename).</span>
+<span class="sd">        cluster_soft (str, optional): The server cluster software.</span>
+<span class="sd">        submit_cmd (str, optional): The submit command.</span>
+<span class="sd">        submit_filename (str, optional): The submit script file name.</span>
+<span class="sd">        recursion (bool, optional): Whether this call is within a recursion.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple[Optional[str], Optional[str]]: job_status, job_id</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">cluster_soft</span> <span class="ow">or</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span>
+    <span class="n">job_status</span><span class="p">,</span> <span class="n">job_id</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">submit_cmd</span> <span class="o">=</span> <span class="n">submit_cmd</span> <span class="ow">or</span> <span class="n">submit_command</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]</span>
+    <span class="n">submit_filename</span> <span class="o">=</span> <span class="n">submit_filename</span> <span class="ow">or</span> <span class="n">submit_filenames</span><span class="p">[</span><span class="n">cluster_soft</span><span class="p">]</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;cd </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">; </span><span class="si">{</span><span class="n">submit_cmd</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">submit_filename</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">10</span><span class="p">)</span>
+        <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;slurm&#39;</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="s1">&#39;AssocMaxSubmitJobLimit&#39;</span> <span class="ow">in</span> <span class="n">err_line</span> <span class="k">for</span> <span class="n">err_line</span> <span class="ow">in</span> <span class="n">stderr</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Max number of submitted jobs was reached, sleeping...&#39;</span><span class="p">)</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">5</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+            <span class="n">submit_job</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span>
+                       <span class="n">cluster_soft</span><span class="o">=</span><span class="n">cluster_soft</span><span class="p">,</span>
+                       <span class="n">submit_cmd</span><span class="o">=</span><span class="n">submit_cmd</span><span class="p">,</span>
+                       <span class="n">submit_filename</span><span class="o">=</span><span class="n">submit_filename</span><span class="p">,</span>
+                       <span class="n">recursion</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                       <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span> <span class="ow">or</span> <span class="n">recursion</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stderr</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Got the following error when trying to submit job:</span><span class="se">\n</span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="n">job_status</span> <span class="o">=</span> <span class="s1">&#39;errored&#39;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">job_id</span> <span class="o">=</span> <span class="n">_determine_job_id</span><span class="p">(</span><span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span> <span class="n">cluster_soft</span><span class="o">=</span><span class="n">cluster_soft</span><span class="p">)</span>
+    <span class="n">job_status</span> <span class="o">=</span> <span class="s1">&#39;running&#39;</span> <span class="k">if</span> <span class="n">job_id</span> <span class="k">else</span> <span class="n">job_status</span>
+    <span class="k">return</span> <span class="n">job_status</span><span class="p">,</span> <span class="n">job_id</span></div>
+
+
+<span class="k">def</span> <span class="nf">_determine_job_id</span><span class="p">(</span><span class="n">stdout</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+                      <span class="n">cluster_soft</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+                      <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine the job ID right after it was submitted from the stdout.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        stdout (List[str]): The stdout got from submitting a job.</span>
+<span class="sd">        cluster_soft (str, optional): The server cluster software.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: The determined job ID.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">job_id</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">cluster_soft</span> <span class="ow">or</span> <span class="n">servers</span><span class="p">[</span><span class="s1">&#39;local&#39;</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">if</span> <span class="n">cluster_soft</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">cluster_soft</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;oge&#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;submitted&#39;</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;slurm&#39;</span> <span class="ow">and</span> <span class="s1">&#39;submitted&#39;</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">3</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;pbs&#39;</span><span class="p">:</span>
+        <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;htcondor&#39;</span> <span class="ow">and</span> <span class="s1">&#39;submitting&#39;</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">())</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)):</span>
+            <span class="n">job_id</span> <span class="o">=</span> <span class="n">stdout</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unrecognized cluster software: </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">job_id</span>
+
+
+<div class="viewcode-block" id="get_last_modified_time"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.get_last_modified_time">[docs]</a><span class="k">def</span> <span class="nf">get_last_modified_time</span><span class="p">(</span><span class="n">file_path_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                           <span class="n">file_path_2</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the last modified time of ``file_path_1`` if the file exists,</span>
+<span class="sd">    else returns the last modified time of ``file_path_2`` if the file exists.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        file_path_1 (str): The path to file 1.</span>
+<span class="sd">        file_path_2 (str, optional): The path to file 2.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">timestamp</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">file_path_1</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">timestamp</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">file_path_1</span><span class="p">)</span><span class="o">.</span><span class="n">st_mtime</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IOError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+            <span class="k">pass</span>
+    <span class="k">if</span> <span class="n">timestamp</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">file_path_2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">timestamp</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="n">file_path_2</span><span class="p">)</span><span class="o">.</span><span class="n">st_mtime</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">IOError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="n">timestamp</span><span class="p">)</span> <span class="k">if</span> <span class="n">timestamp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="write_file"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.write_file">[docs]</a><span class="k">def</span> <span class="nf">write_file</span><span class="p">(</span><span class="n">file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">file_string</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Write ``file_string`` as the file&#39;s content in ``file_path``.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        file_path (str): The file path.</span>
+<span class="sd">        file_string (str): The content to be written into the file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">file_string</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="rename_output"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.rename_output">[docs]</a><span class="k">def</span> <span class="nf">rename_output</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                  <span class="n">software</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Rename the output file to &quot;output.out&quot; for consistency between software.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        local_file_path (str): The full path to the output.out file.</span>
+<span class="sd">        software (str): The software used for the job by which the original output file name was determined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">software</span> <span class="o">=</span> <span class="n">software</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">)</span> \
+                <span class="ow">and</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">),</span> <span class="n">output_filenames</span><span class="p">[</span><span class="n">software</span><span class="p">])):</span>
+            <span class="c1"># Wait for file to be transferred on the server (the head node might be busy).</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">break</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Nothing to rename.</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">),</span> <span class="n">output_filenames</span><span class="p">[</span><span class="n">software</span><span class="p">])):</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">src</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">local_file_path</span><span class="p">),</span> <span class="n">output_filenames</span><span class="p">[</span><span class="n">software</span><span class="p">]),</span> <span class="n">dst</span><span class="o">=</span><span class="n">local_file_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="change_mode"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.change_mode">[docs]</a><span class="k">def</span> <span class="nf">change_mode</span><span class="p">(</span><span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                <span class="n">file_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                <span class="n">recursive</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
+                <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Change the mode of a file or a directory.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mode (str): The mode change to be applied, can be either octal or symbolic.</span>
+<span class="sd">        file_name (str): The path to the file or the directory to be changed.</span>
+<span class="sd">        recursive (bool, optional): Whether to recursively change the mode to all files</span>
+<span class="sd">                                    under a directory. ``True`` for recursively change.</span>
+<span class="sd">        path (str, optional): The directory path at which the command will be executed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">recursive</span> <span class="o">=</span> <span class="s1">&#39; -R&#39;</span> <span class="k">if</span> <span class="n">recursive</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+    <span class="n">command</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s1">&#39;cd </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="n">path</span> <span class="k">else</span> <span class="p">[]</span>
+    <span class="n">command</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;chmod</span><span class="si">{</span><span class="n">recursive</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">execute_command</span><span class="p">(</span><span class="n">command</span><span class="o">=</span><span class="n">command</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="delete_all_local_arc_jobs"><a class="viewcode-back" href="../../../api/local.html#arc.job.local.delete_all_local_arc_jobs">[docs]</a><span class="k">def</span> <span class="nf">delete_all_local_arc_jobs</span><span class="p">(</span><span class="n">jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Delete all ARC-spawned jobs (with job name starting with `a` and a digit) from the local server.</span>
+<span class="sd">    Make sure you know what you&#39;re doing, so unrelated jobs won&#39;t be deleted...</span>
+<span class="sd">    Useful when terminating ARC while some (ghost) jobs are still running.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        jobs (List[Union[str, int]], optional): Specific ARC job IDs to delete.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">server</span> <span class="o">=</span> <span class="s1">&#39;local&#39;</span>
+    <span class="k">if</span> <span class="n">server</span> <span class="ow">in</span> <span class="n">servers</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Deleting all ARC jobs from local server...&#39;</span><span class="p">)</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="n">check_status_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span>
+        <span class="n">stdout</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">no_fail</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">status_line</span> <span class="ow">in</span> <span class="n">stdout</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#39; a\d+&#39;</span><span class="p">,</span> <span class="n">status_line</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">s</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">job_name</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">group</span><span class="p">()[</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+                <span class="n">server_job_id</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="k">if</span> <span class="n">jobs</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">job_name</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;slurm&#39;</span><span class="p">:</span>
+                        <span class="n">server_job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">delete_job</span><span class="p">(</span><span class="n">server_job_id</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;pbs&#39;</span><span class="p">:</span>
+                        <span class="n">server_job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">delete_job</span><span class="p">(</span><span class="n">server_job_id</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;oge&#39;</span><span class="p">,</span> <span class="s1">&#39;sge&#39;</span><span class="p">]:</span>
+                        <span class="n">delete_job</span><span class="p">(</span><span class="n">job_name</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">cluster_soft</span> <span class="o">==</span> <span class="s1">&#39;htcondor&#39;</span><span class="p">:</span>
+                        <span class="n">server_job_id</span> <span class="o">=</span> <span class="n">status_line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">delete_job</span><span class="p">(</span><span class="n">server_job_id</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unrecognized cluster software </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+                    <span class="n">aux_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39; (</span><span class="si">{</span><span class="n">server_job_id</span><span class="si">}</span><span class="s1"> on server)&#39;</span> <span class="k">if</span> <span class="n">server_job_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;deleted job </span><span class="si">{</span><span class="n">job_name</span><span class="si">}{</span><span class="n">aux_text</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">done.&#39;</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018-2023, Alon Grinberg Dana
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
