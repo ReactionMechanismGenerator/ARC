@@ -847,11 +847,15 @@ ARC uses statistical mechanics software packages (e.g., Arkane) to compute rate 
 the results of quantum chemistry calculations. By default, ARC instructs the statmech programs to compute rate
 coefficients in the modified three-parameter Arrhenius equation format:
 
-  .. math :: k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)
+.. math::
+
+   k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)
 
 Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:
 
-  .. math :: k(T) = A \exp \left( -\frac{E_a}{RT} \right)
+.. math::
+
+   k(T) = A \exp \left( -\frac{E_a}{RT} \right)
 
 by setting the ``three_params`` attribute to ``False`` (it is ``True`` by default). For example::
 

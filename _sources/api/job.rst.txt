@@ -1,7 +1,7 @@
 .. _job:
 
-arc.job.job
+arc.job
 ===========
 
-.. automodule:: arc.job.job
+.. automodule:: arc.job
     :members:

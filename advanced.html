@@ -975,16 +975,12 @@ All flags can be combined with the optional <code class="docutils literal notran
 <p>ARC uses statistical mechanics software packages (e.g., Arkane) to compute rate coefficients for chemical reactions from
 the results of quantum chemistry calculations. By default, ARC instructs the statmech programs to compute rate
 coefficients in the modified three-parameter Arrhenius equation format:</p>
-<blockquote>
-<div><div class="math">
-<p><span class="math">k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)</span></p>
-</div></div></blockquote>
-<p>Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:</p>
-<blockquote>
-<div><div class="math">
-<p><span class="math">k(T) = A \exp \left( -\frac{E_a}{RT} \right)</span></p>
-</div></div></blockquote>
-<p>by setting the <code class="docutils literal notranslate"><span class="pre">three_params</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default). For example:</p>
+<div class="math">
+<p><img src="_images/math/e010542136fb8ad219a70747e0d68fea0de202a7.png" alt="k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)"/></p>
+</div><p>Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:</p>
+<div class="math">
+<p><img src="_images/math/65c258feec6808325490782dac7df28d797a63c8.png" alt="k(T) = A \exp \left( -\frac{E_a}{RT} \right)"/></p>
+</div><p>by setting the <code class="docutils literal notranslate"><span class="pre">three_params</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default). For example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">use_classical_arrhenius_eqn_for_rate_calc_demo</span>
 <span class="n">three_params</span><span class="p">:</span> <span class="kc">False</span>
 </pre></div>
