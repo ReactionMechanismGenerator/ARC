@@ -26,7 +26,7 @@ travis_setup:
 	@git clone --single-branch --branch gh-pages --origin official https://${GH_TOKEN}@github.com/ReactionMechanismGenerator/ARC.git $(BUILDDIR)/html
 
 html:
-	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html -v
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 

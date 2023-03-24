@@ -26,44 +26,47 @@ jobs:
         python-version: 3.7
         use-mamba: true
 
-      - name: Install codecov
-        run: mamba install -y -c conda-forge codecov
+    - name: Update environment
+      run: |
+        mamba env update -n arc_env -f environment.yml
+        conda list
 
-      - name: Install dependencies
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          mamba activate arc_env
-          cd ..
-          git clone https://github.com/ReactionMechanismGenerator/RMG-Py
-          cd RMG-Py
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          make
-          cd ..
-          git clone https://github.com/ReactionMechanismGenerator/RMG-database
-          cd ARC
-          mamba deactivate
-          make gcn-cpu
-          cd ..
-          echo $(pwd)
-          mamba activate arc_env
-          mamba list
+    - name: Install LaTeX
+      run: |
+        sudo apt install texlive-latex-base -y
+        sudo apt-get install texlive-latex-extra -y
+        sudo apt-get install -y dvipng
 
-      - name: Compile docs
-        run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          mamba activate arc_env
-          cd ..
-          cd RMG-Py
-          export PYTHONPATH=$PYTHONPATH:$(pwd)
-          cd ..
-          cd ARC
-          cd docs
-          make html
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3.7.3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/build/html/
+    - name: Install codecov
+      run: mamba install -y -c conda-forge codecov
+
+    - name: Install dependencies
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        conda activate arc_env
+        cd ..
+        git clone https://github.com/ReactionMechanismGenerator/RMG-database
+        git clone https://github.com/ReactionMechanismGenerator/RMG-Py
+        cd RMG-Py
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        make
+        cd ../ARC/
+        conda deactivate
+
+    - name: Compile docs
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        conda activate arc_env
+        cd ../RMG-Py
+        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        cd ../ARC/docs/
+        make html
+
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v3.7.3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/build/html/
 
 # https://github.com/marketplace/actions/github-pages-action
