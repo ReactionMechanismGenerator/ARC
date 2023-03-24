@@ -425,7 +425,7 @@ class Scheduler(object):
                         self.run_sp_job(species.label)
                     if self.job_types['rotors']:
                         self.run_sp_job(species.label, level = self.scan_level)
-                        if not self.job_types['opt']: # The user provided an optimized coordinets
+                        if not self.job_types['opt']: # The user provided an optimized coordinates
                             self.run_scan_jobs(species.label)
 
                 elif ((species.initial_xyz is not None or species.final_xyz is not None)
@@ -437,10 +437,12 @@ class Scheduler(object):
                     if self.composite_method:
                         # composite-related restart
                         if not self.output[species.label]['job_types']['composite'] \
-                                and 'composite' not in list(self.job_dict[species.label].keys()):
+                                and 'composite' not in list(self.job_dict[species.label].keys())\
+                                and not os.path.isfile(self.output[species.label]['paths']['geo']):
                             # doing composite; composite hasn't finished and is not running; spawn composite
                             self.run_composite_job(species.label)
-                        elif 'composite' not in list(self.job_dict[species.label].keys()):
+                        elif 'composite' not in list(self.job_dict[species.label].keys()) \
+                                and species.irc_label is None:
                             # composite is done; do other jobs
                             if not self.output[species.label]['job_types']['freq'] \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
