@@ -1247,6 +1247,8 @@ class Scheduler(object):
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             for i, rotor in self.species_dict[label].rotors_dict.items():
+                if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
+                    continue
                 # Since this function is relevant for in multiple cases, all cases are listed for debugging
                 # [have not started] success = None, and scan_path = ''
                 # [first time calculating] success = None, and scan_path = ''
@@ -1277,7 +1279,7 @@ class Scheduler(object):
                         continue
                 directed_scan_type = rotor['directed_scan_type'] if 'directed_scan_type' in rotor else ''
 
-                if directed_scan_type:
+                if directed_scan_type != 'ess':
                     # This is a directed scan.
                     # Check that this job isn't already running on the server (from a restarted project).
                     if 'directed_scan' not in self.job_dict[label].keys():
