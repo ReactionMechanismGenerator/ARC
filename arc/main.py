@@ -1106,6 +1106,7 @@ class ARC(object):
             if '//' in self.level_of_theory:
                 sp, opt = self.level_of_theory.split('//')
             else:
+                self.level_of_theory = Level(repr=self.level_of_theory)
                 sp = opt = self.level_of_theory
             sp = Level(repr=sp)
             opt = Level(repr=opt)
