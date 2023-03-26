@@ -130,7 +130,8 @@ def determine_ess_status(output_path: str,
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
                         additional_info = forward_lines[len(forward_lines) - i - 2]
                         if 'No data on chk file' in additional_info \
-                                or 'Basis set data is not on the checkpoint file' in additional_info:
+                                or 'Basis set data is not on the checkpoint file' in additional_info \
+                                or 'Error in GetGes' in additional_info:
                             keywords = ['CheckFile']
                             error = additional_info.rstrip()
                         elif 'GL301' in keywords:
