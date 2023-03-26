@@ -1415,7 +1415,7 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
             logger.warning(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
         try:
             set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
-        except SpeciesError as e:
+        except (ConverterError, SpeciesError) as e:
             logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
                            f'following error:\n{e}')
 
