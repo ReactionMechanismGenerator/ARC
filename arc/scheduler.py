@@ -425,7 +425,7 @@ class Scheduler(object):
                         self.run_sp_job(species.label)
                     if self.job_types['rotors']:
                         self.run_sp_job(species.label, level = self.scan_level)
-                        if not self.job_types['opt']: # The user provided an optimized coordinets
+                        if not self.job_types['opt']: # The user provided an optimized coordinates
                             self.run_scan_jobs(species.label)
 
                 elif ((species.initial_xyz is not None or species.final_xyz is not None)
@@ -437,10 +437,12 @@ class Scheduler(object):
                     if self.composite_method:
                         # composite-related restart
                         if not self.output[species.label]['job_types']['composite'] \
-                                and 'composite' not in list(self.job_dict[species.label].keys()):
+                                and 'composite' not in list(self.job_dict[species.label].keys())\
+                                and not os.path.isfile(self.output[species.label]['paths']['geo']):
                             # doing composite; composite hasn't finished and is not running; spawn composite
                             self.run_composite_job(species.label)
-                        elif 'composite' not in list(self.job_dict[species.label].keys()):
+                        elif 'composite' not in list(self.job_dict[species.label].keys()) \
+                                and species.irc_label is None:
                             # composite is done; do other jobs
                             if not self.output[species.label]['job_types']['freq'] \
                                     and 'freq' not in list(self.job_dict[species.label].keys()) \
@@ -767,7 +769,7 @@ class Scheduler(object):
             args['shift'] = shift
         if scan_trsh:
             args['keyword']['scan_trsh'] = scan_trsh
-        if level_of_theory is not None and level_of_theory.args is not None:
+        if isinstance(level_of_theory, Level) and level_of_theory.args is not None:
             args.update(level_of_theory.args)
 
         job = job_factory(job_adapter=job_adapter,
@@ -1247,6 +1249,8 @@ class Scheduler(object):
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
             for i, rotor in self.species_dict[label].rotors_dict.items():
+                if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
+                    continue
                 # Since this function is relevant for in multiple cases, all cases are listed for debugging
                 # [have not started] success = None, and scan_path = ''
                 # [first time calculating] success = None, and scan_path = ''
@@ -1277,7 +1281,7 @@ class Scheduler(object):
                         continue
                 directed_scan_type = rotor['directed_scan_type'] if 'directed_scan_type' in rotor else ''
 
-                if directed_scan_type:
+                if directed_scan_type != 'ess':
                     # This is a directed scan.
                     # Check that this job isn't already running on the server (from a restarted project).
                     if 'directed_scan' not in self.job_dict[label].keys():
