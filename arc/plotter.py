@@ -1138,7 +1138,9 @@ def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
     marker_color, line_color = plt.cm.viridis([0.1, 0.9])
     fig = plt.figure(figsize=(4, 3), dpi=120)
     plt.subplot(1, 1, 1)
-    plt.plot(angles, energies, '.-', markerfacecolor=marker_color,
+    sort = np.argsort(angles)
+    plt.plot(np.array(angles)[sort], np.array(energies)[sort],
+             '.-', markerfacecolor=marker_color,
              markeredgecolor=marker_color, color=line_color)
     plt.xlabel('Dihedral angle increment (degrees)')
     min_angle = int(np.ceil(min(angles) / 10.0)) * 10
