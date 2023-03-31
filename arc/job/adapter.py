@@ -792,7 +792,7 @@ class JobAdapter(ABC):
         if self.dihedrals is not None:
             job_dict['dihedrals'] = self.dihedrals
         job_dict['ess_settings'] = self.ess_settings
-        if self.ess_trsh_methods:
+        if isinstance(self.ess_trsh_methods, list) and self.ess_trsh_methods:
             job_dict['ess_trsh_methods'] = self.ess_trsh_methods
         job_dict['execution_type'] = self.execution_type
         if self.fine:
@@ -815,15 +815,15 @@ class JobAdapter(ABC):
             job_dict['rotor_index'] = self.rotor_index
         if self.server is not None:
             job_dict['server'] = self.server
-        if self.server_nodes:
+        if isinstance(self.server_nodes, dict) and self.server_nodes:
             job_dict['server_nodes'] = self.server_nodes
         if self.species is not None:
             job_dict['species_labels'] = [species.label for species in self.species]
-        if self.torsions:
+        if self.torsions is not None:
             job_dict['torsions'] = self.torsions
-        if self.tsg:
+        if self.tsg is not None:
             job_dict['tsg'] = self.tsg
-        if self.xyz:
+        if self.xyz is not None:
             job_dict['xyz'] = xyz_to_str(self.xyz)
         return job_dict
 
