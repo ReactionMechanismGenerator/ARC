@@ -54,6 +54,14 @@ servers = {
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
+    'azure': {
+        'cluster_soft': 'Slurm',
+        'address': '74.235.227.55',
+        'un': 'azureuser',
+        'key': '/home/calvin/.ssh/ubuntu-image_key.pem',
+        'cpus': 16,
+        'memory': 32,
+    },
     'local': {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
@@ -68,10 +76,10 @@ global_ess_settings = {
     'cfour': 'local',
     'gaussian': ['local', 'server2'],
     'gcn': 'local',
-    'molpro': ['local', 'server2'],
+    'molpro': ['local', 'server2', 'azure'],
     'onedmin': 'server1',
-    'orca': 'local',
-    'qchem': 'server1',
+    'orca': ['local','azure'],
+    'qchem': ['server1','azure'],
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',
@@ -172,16 +180,16 @@ output_filenames = {'cfour': 'output.out',
                     'openbabel':'output.yml',
                     }
 
-default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
-                            'ts_guesses': 'wb97xd/def2svp',
-                            'opt': 'wb97xd/def2tzvp',  # good default for Gaussian
+default_levels_of_theory = {'conformer': 'wb97xd/def2-svp',  # it's recommended to choose a method with dispersion
+                            'ts_guesses': 'wb97xd/def-2svp',
+                            'opt': 'wb97xd/def2-tzvp',  # good default for Gaussian
                             # 'opt': 'wb97m-v/def2tzvp',  # good default for QChem
-                            'freq': 'wb97xd/def2tzvp',  # should be the same level as opt (to calc freq at min E)
-                            'scan': 'wb97xd/def2tzvp',  # should be the same level as freq (to project out rotors)
+                            'freq': 'wb97xd/def2-tzvp',  # should be the same level as opt (to calc freq at min E)
+                            'scan': 'wb97xd/def2-tzvp',  # should be the same level as freq (to project out rotors)
                             'sp': 'ccsd(t)-f12/cc-pvtz-f12',  # This should be a level for which BAC is available
                             # 'sp': 'b3lyp/6-311+g(3df,2p)',
-                            'irc': 'wb97xd/def2tzvp',  # should be the same level as opt
-                            'orbitals': 'wb97x-d3/def2tzvp',  # save orbitals for visualization
+                            'irc': 'wb97xd/def2-tzvp',  # should be the same level as opt
+                            'orbitals': 'wb97x-d3/def2-tzvp',  # save orbitals for visualization
                             'scan_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             'freq_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
                             'irc_for_composite': 'B3LYP/CBSB7',  # This is the frequency level of CBS-QB3
