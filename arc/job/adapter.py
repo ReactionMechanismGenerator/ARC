@@ -547,7 +547,8 @@ class JobAdapter(ABC):
             # Parentheses don't play well in folder names:
             species_name_remote = self.species_label.replace('(', '_').replace(')', '_')
             path = servers[self.server].get('path', '').lower()
-            path = os.path.join(path, servers[self.server]['un']) if path else ''
+            local_un_path = os.path.join(path, servers[self.server].get('local_un', ''))
+            path = local_un_path if local_un_path !='' else (os.path.join(path, servers[self.server]['un']) if path else '')
             self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
                                             species_name_remote, self.job_name)
 
