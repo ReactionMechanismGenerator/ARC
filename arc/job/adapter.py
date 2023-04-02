@@ -492,6 +492,8 @@ class JobAdapter(ABC):
             # here we're hard-coding ARC for Pharos, a Green Group server at MIT.
             # If your server has different node architectures, implement something similar here.
             architecture = '\n#$ -l harpertown' if self.cpu_cores <= 8 else '\n#$ -l magnycours'
+        
+
 
         submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
             else pipe_submit[self.server]
@@ -500,7 +502,8 @@ class JobAdapter(ABC):
                 name=self.job_server_name,
                 un=servers[self.server]['un'],
                 t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
-                memory=int(self.submit_script_memory) if (isinstance(self.submit_script_memory, int) or isinstance(self.submit_script_memory, float)) else self.submit_script_memory,
+                memory=int(self.submit_script_memory),
+                nodes=servers[self.server].get('server_nodes', 1),
                 cpus=self.cpu_cores,
                 architecture=architecture,
                 max_task_num=self.workers,
