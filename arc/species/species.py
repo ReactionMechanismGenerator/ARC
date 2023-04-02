@@ -1532,7 +1532,7 @@ class ARCSpecies(object):
 
         if self.mol is not None:
             if len(self.mol.atoms) != len(xyz['symbols']):
-                raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
+                raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml.
             mol_s, mol_b = molecules_from_xyz(xyz=xyz,
