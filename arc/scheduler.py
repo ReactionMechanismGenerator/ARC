@@ -896,12 +896,12 @@ class Scheduler(object):
 
         if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
             original_mem = job.job_memory_gb
-            if job.job_status[1]['error'] == 'Insufficient job memory.':
+            if 'insufficient job memory' in job.job_status[1]['error'].lower():
                 job.job_memory_gb *= 3
                 logger.warning(f'Job {job.job_name} errored because of insufficient memory. '
                                f'Was {original_mem} GB, rerunning job with {job.job_memory_gb} GB.')
                 self._run_a_job(job=job, label=label)
-            elif 'Memory requested is too high' in job.job_status[1]['error']:
+            elif 'memory requested is too high' in job.job_status[1]['error'].lower():
                 used_mem = None
                 if 'used only' in job.job_status[1]['error']:
                     used_mem = int(job.job_status[1]['error'][-2])
@@ -3205,19 +3205,9 @@ class Scheduler(object):
             conformer (int, optional): The conformer index.
         """
         if not self.trsh_ess_jobs:
-            logger.warning(f'Not troubleshooting failed {label} job {job.job_name}. To enable troubleshooting, set the '
-                           f'"trsh_ess_jobs" to "True".')
+            logger.warning(f'Not troubleshooting failed {label} job {job.job_name}. '
+                           f'To enable troubleshooting, set the "trsh_ess_jobs" argument to "True".')
             return None
-
-        # Troubleshoot not enough memory:
-        if job.additional_job_info is not None:
-            if 'memory exceeded' in job.additional_job_info:
-                job.job_memory_gb *= 5
-                self._run_a_job(job=job,
-                                label=label,
-                                rerun=True,
-                                )
-                return None
 
         level_of_theory = Level(repr=level_of_theory)
         logger.info('\n')
