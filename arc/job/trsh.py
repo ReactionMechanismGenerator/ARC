@@ -893,13 +893,14 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
-        elif 'Memory' in job_status['keywords'] and 'memory' not in ess_trsh_methods and server is not None:
+        elif 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
-            memory = min(memory_gb * 2, max_mem * 0.9)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
-                        f'instead of {memory_gb} GB')
-            ess_trsh_methods.append('memory')
+            memory = min(memory_gb * 2, max_mem * 0.95)
+            if memory > memory_gb:
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
+                            f'instead of {memory_gb} GB')
+                ess_trsh_methods.append('memory')
         else:
             couldnt_trsh = True
 
