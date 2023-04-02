@@ -39,7 +39,7 @@ def check_connections(function: Callable[..., Any]) -> Callable[..., Any]:
     def decorator(*args, **kwargs) -> Any:
         self = args[0]
         if self._ssh is None:  # not sure if some status may cause False
-            self._sftp, self._ssh = self.connect()
+            self._sftp, self._ssh = self._connect()
         # test connection, reference:
         # https://stackoverflow.com/questions/
         # 20147902/how-to-know-if-a-paramiko-ssh-channel-is-disconnected
@@ -317,13 +317,13 @@ class SSHClient(object):
                     self.submit_job(remote_path=remote_path, recursion=True)
         if recursion:
             return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
-        elif cluster_soft.lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
         elif cluster_soft.lower() == 'pbs':
             job_id = stdout[0].split('.')[0]
-        elif cluster_soft.lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+        elif cluster_soft.lower() == 'htcondor' and stdout and 'submitting' in stdout[0].lower():
             # Submitting job(s).
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
