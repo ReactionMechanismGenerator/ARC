@@ -926,11 +926,11 @@ class Scheduler(object):
                 job.job_status[1]['status'] = 'errored'
                 logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
                                f'file path {job.local_path_to_output_file}.')
-            elif job.job_type not in ['orbitals']:
-                job.ess_trsh_methods.append('restart_due_to_file_not_found')
-                logger.warning(f'Did not find the output file of job {job.job_name} with path '
-                               f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
-                self._run_a_job(job=job, label=label)
+                if job.job_type not in ['orbitals']:
+                    job.ess_trsh_methods.append('restart_due_to_file_not_found')
+                    logger.warning(f'Did not find the output file of job {job.job_name} with path '
+                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
+                    self._run_a_job(job=job, label=label)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             return False
