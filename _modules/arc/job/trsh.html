@@ -172,6 +172,7 @@
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">re</span>
 
 <span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">check_torsion_change</span><span class="p">,</span>
                         <span class="n">determine_ess</span><span class="p">,</span>
@@ -526,7 +527,12 @@
                     <span class="c1"># e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.</span>
                     <span class="c1"># Increase memory to 996.31 Mwords.` (w/o the line break)</span>
                     <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Memory&#39;</span><span class="p">]</span>
-                    <span class="n">error</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Additional memory required: </span><span class="si">{</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s1"> MW&#39;</span>
+                    <span class="k">for</span> <span class="n">line0</span> <span class="ow">in</span> <span class="n">reverse_lines</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="s1">&#39; For full I/O&#39;</span> <span class="ow">in</span> <span class="n">line0</span> <span class="ow">and</span> <span class="s1">&#39;increase memory by&#39;</span> <span class="ow">in</span> <span class="n">line0</span> <span class="ow">and</span> <span class="s1">&#39;Mwords to&#39;</span> <span class="ow">in</span> <span class="n">line0</span><span class="p">:</span>
+                            <span class="n">memory_increase</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;[\d.]+&quot;</span><span class="p">,</span> <span class="n">line0</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                            <span class="n">error</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Additional memory required: </span><span class="si">{</span><span class="n">memory_increase</span><span class="si">}</span><span class="s2"> MW&quot;</span>
+                            <span class="k">break</span>
+                    <span class="n">error</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Additional memory required: </span><span class="si">{</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s1"> MW&#39;</span> <span class="k">if</span> <span class="s1">&#39;error&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">locals</span><span class="p">()</span> <span class="k">else</span> <span class="n">error</span>
                     <span class="k">break</span>
                 <span class="k">elif</span> <span class="s1">&#39;insufficient memory available - require&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="c1"># e.g.: `insufficient memory available - require              228765625  have</span>
