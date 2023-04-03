@@ -1316,6 +1316,11 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+    
+    def remove_remote_files(self):
+        if self.server != 'local':
+            with SSHClient(self.server) as ssh:
+                ssh.remove_dir(self.remote_path)
 
     def save_output_file(self,
                          key: Optional[str] = None,

@@ -489,6 +489,18 @@ class SSHClient(object):
         command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
 
+    def remove_dir(self, remote_path: str) -> None:
+        """
+        Remove a directory on the server.
+        Args:
+            remote_path (str): The path to the directory to be removed on the remote server.
+        """
+        command = f'rm -r "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot remove dir for the given path ({remote_path}).\nGot: {stderr}')
+
     def _check_file_exists(self,
                            remote_file_path: str,
                            ) -> bool:
