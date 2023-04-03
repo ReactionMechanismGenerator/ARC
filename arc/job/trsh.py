@@ -1140,8 +1140,8 @@ def trsh_job_on_server(server: str,
 
     # find available node
     logger.error('Troubleshooting by changing node.')
-    ssh = SSHClient(server)
-    nodes = ssh.list_available_nodes()
+    with SSHClient(server) as ssh:
+        nodes = ssh.list_available_nodes()
     for node in nodes:
         if node not in server_nodes:
             server_nodes.append(node)
@@ -1164,7 +1164,7 @@ def trsh_job_on_server(server: str,
         insert_line_num = 5
     else:
         # Other software?
-        logger.denug(f'Unknown cluster software {cluster_soft} is encountered when '
+        logger.error(f'Unknown cluster software {cluster_soft} is encountered when '
                      f'troubleshooting by changing node.')
         return None, False
     for i, line in enumerate(content):
