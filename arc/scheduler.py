@@ -29,6 +29,7 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
+                            JobError,
                             SanitizationError,
                             SchedulerError,
                             SpeciesError,
@@ -894,7 +895,7 @@ class Scheduler(object):
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
                 job.determine_job_status()  # Also downloads the output file.
-            except IOError:
+            except (IOError, JobError) as e:
                 if job.job_type not in ['orbitals']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
@@ -960,6 +961,7 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+            job.remove_remote_files()
             self.save_restart_dict()
             return True
 
