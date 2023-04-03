@@ -359,7 +359,6 @@ def determine_ess_status(output_path: str,
                     keywords = ['IGNORE_ERROR in the ORBITAL directive']
                     error = 'Unconverged'
                     break
-
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)

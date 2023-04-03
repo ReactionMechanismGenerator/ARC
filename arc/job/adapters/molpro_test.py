@@ -40,13 +40,13 @@ class TestMolproAdapter(unittest.TestCase):
         """Test assigning number of cpu's and memory"""
         self.job_1.cpu_cores = 48
         self.job_1.input_file_memory = None
-        self.job_1.submit_script_memory = None
+        self.job_1.submit_script_memory = 14
         self.job_1.set_cpu_and_mem()
         self.assertEqual(self.job_1.cpu_cores, 48)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
-        expected_memory = math.ceil(14 * 128 / 48)
+        expected_memory = math.ceil((1E8/(8E8 /(14 * 1E9)))/1E6)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
 
     def test_write_input_file(self):
@@ -55,7 +55,7 @@ class TestMolproAdapter(unittest.TestCase):
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
-memory,38,m;
+memory,1750,m;
 file,1,file1.int    !allocate permanent integral file
 file,2,file2.wfu    !allocate permanent wave-function (dump) file
 
