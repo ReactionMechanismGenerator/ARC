@@ -344,6 +344,19 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(memory, 96.0)
+        
+        # Molpro: Insuffienct Memory 3 Test
+        path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
+        status, keywords, error, line = trsh.determine_ess_status(output_path=path,
+                                                                  species_label='TS',
+                                                                  job_type='sp')
+        job_status = {'keywords': keywords, 'error': error}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertEqual(memory, 62.0)
 
         # Test Orca
         # Orca: test 1
