@@ -1743,7 +1743,7 @@ class Scheduler(object):
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
             if len(self.species_dict[label].conformers) > 1:
-                self.job_dict[label]['conformers'] = dict()
+                #self.job_dict[label]['conformers'] = dict()
                 for i, xyz in enumerate(self.species_dict[label].conformers):
                     self.run_job(label=label,
                                  xyz=xyz,
