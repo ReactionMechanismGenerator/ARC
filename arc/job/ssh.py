@@ -71,7 +71,7 @@ class SSHClient(object):
     def __init__(self, server: str = '') -> None:
         if server == '':
             raise ValueError('A server name must be specified')
-        if server not in servers.keys():
+        if (server not in servers.keys() and server is not None):
             raise ValueError(f'Server name "{server}" is invalid. Currently defined servers are: {list(servers.keys())}')
         self.server = server
         self.address = servers[server]['address']
