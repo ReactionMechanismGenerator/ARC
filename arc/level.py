@@ -15,6 +15,9 @@ from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, stand
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
+import pandas as pd
+from fuzzywuzzy import process
+
 
 logger = get_logger()
 
@@ -110,6 +113,8 @@ class Level(object):
         if self.software is None:
             # it wasn't set by the user, try determining it
             self.deduce_software()
+
+        self.software_input_matching()
 
     def __eq__(self, other: Level) -> bool:
         """
@@ -551,6 +556,25 @@ class Level(object):
             for ess in supported_ess:
                 if ess in ess_methods and self.method in ess_methods[ess]:
                     self.compatible_ess.append(ess)
+    
+    def software_input_matching(self):
+        
+        # Read dataframe of software basis sets
+        software_methods = pd.read_csv(os.path.join(ARC_PATH, 'data', 'basis_sets.csv'))
+        
+        # First column is the software, second column is the basis set, third column is the description
+        # if the software set by the user is in the dataframe, then we filter the dataframe to only include that software
+        # and then we check if the basis set is in the dataframe. If not, we attempt to fuzzywuzzy match the basis set
+        
+        if self.software in software_methods['software'].values:
+            software_methods = software_methods[software_methods['software'] == self.software]
+            if self.basis in software_methods['basis_set'].values:
+                return self.basis
+            else:
+                basis_match = process.extract(self.basis, software_methods['basis_set'].values, limit=1)
+                if basis_match[0][1] < 80:
+                    raise ValueError(f"Unsupported basis in QChem: {self.basis}")
+                self.basis = basis_match[0][0]
 
 
 def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
