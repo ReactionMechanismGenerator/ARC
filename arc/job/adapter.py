@@ -1329,6 +1329,9 @@ class JobAdapter(ABC):
             self.execute()
     
     def remove_remote_files(self):
+        """
+        Remove the remote files.
+        """
         if self.server != 'local':
             with SSHClient(self.server) as ssh:
                 ssh.remove_dir(self.remote_path)
