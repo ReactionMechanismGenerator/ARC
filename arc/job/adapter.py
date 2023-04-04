@@ -935,8 +935,19 @@ class JobAdapter(ABC):
                             logger.warning(e)
             for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
                 if os.path.isfile(local_file_path):
-                    with open(local_file_path, 'r') as f:
-                        lines = f.readlines()
+                    with open(local_file_path, 'rb') as f:
+                        # Read the file
+                        first_bytes = f.read()
+                        # Check if the bytes contain a null byte
+                        has_null_byte = b'\x00' in first_bytes
+                        # Use the appropriate mode based on whether the file is binary or not
+                        mode = 'rb' if has_null_byte else 'r'
+                        # Read the file contents using the determined mode
+                        lines = first_bytes.decode('utf-8')
+                    if mode == 'r':
+                        with open(local_file_path, 'r') as f:
+                            lines = f.readlines()
+
                     content += ''.join([line for line in lines])
                     content += '\n'
         else:
