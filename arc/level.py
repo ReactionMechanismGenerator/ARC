@@ -558,13 +558,22 @@ class Level(object):
                     self.compatible_ess.append(ess)
     
     def software_input_matching(self):
+        """
+        Check if the user specified software is compatible with the level of theory. If not, try to match the software with
+        similar methods. If no match is found, raise an error.
+
+        Matching is done by comparing the user specified software with the software in the basis_sets.csv file.
+
+        Raises:
+            ValueError: If the software is not compatible with the level of theory.
+        """
         
-        # Read dataframe of software basis sets
+        # Read DataFrame of software basis sets
         software_methods = pd.read_csv(os.path.join(ARC_PATH, 'data', 'basis_sets.csv'))
         
         # First column is the software, second column is the basis set, third column is the description
-        # if the software set by the user is in the dataframe, then we filter the dataframe to only include that software
-        # and then we check if the basis set is in the dataframe. If not, we attempt to fuzzywuzzy match the basis set
+        # if the software set by the user is in the DataFrame, then we filter the DataFrame to only include that software
+        # and then we check if the basis set is in the DataFrame. If not, we attempt to fuzzywuzzy match the basis set
         
         if self.software in software_methods['software'].values:
             software_methods = software_methods[software_methods['software'] == self.software]

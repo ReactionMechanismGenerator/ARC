@@ -209,6 +209,14 @@ class TestLevel(unittest.TestCase):
         self.assertIsNone(level_2.compatible_ess)
         level_2.determine_compatible_ess()
         self.assertEqual(sorted(level_2.compatible_ess), sorted(['gaussian', 'qchem', 'terachem']))
+        
+    def test_fuzzymatching_software_basis(self):
+        """ Test the fuzzymatching_software_basis() method"""
+        
+        level_1 = Level(method='CCSD(T)', basis='cc-pvtz', software='qchem')
+        self.assertEqual(level_1.fuzzymatching_software_basis(), 'qchem')
+        
+
 
 
 if __name__ == '__main__':
