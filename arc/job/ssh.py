@@ -279,7 +279,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
-                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
                 running_job_ids.append(job_id)
         return running_job_ids
