@@ -37,7 +37,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
 
-# job_type_1: 'opt', 'ts', 'sp', 'freq'.
+# job_type_1: 'opt', 'ts', 'sp', 'freq','irc'.
 # job_type_2: reserved for 'optfreq'.
 # fine: '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5\n   XC_GRID SG-3'
 # unrestricted: 'False' or 'True' for restricted / unrestricted
@@ -49,7 +49,8 @@ $rem
    JOBTYPE       ${job_type_1}
    METHOD        ${method}
    UNRESTRICTED  ${unrestricted}
-   BASIS         ${basis}${fine}${keywords}${constraint}${scan_trsh}${block}
+   BASIS         ${basis}${fine}${keywords}${constraint}${scan_trsh}${block}${irc}
+   IQMOL_FCHK    TRUE
 $end
 ${job_type_2}
 ${scan}
@@ -204,6 +205,7 @@ class QChemAdapter(JobAdapter):
                     'block',
                     'scan',
                     'constraint',
+                    'irc'
                     ]:
             input_dict[key] = ''
         input_dict['basis'] = self.level.basis or ''
@@ -271,7 +273,21 @@ class QChemAdapter(JobAdapter):
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
                 input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
-            input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
+            input_dict['job_type_1'] = 'rpath'
+            # IRC variabls are
+            # RPATH_COORDS - 0 for mass-weighted[Default], 1 for cartesian, 2 for z-matrix
+            # RPATH_DIRECTION - 1 for Descend in the positive direction of the eigen mode. [Default], -1 for Ascend in the negative direction of the eigen mode.
+            # RPATH_MAX_CYCLES - Maximum number of cycles to perform. [Default: 20]
+            # RPATH_MAX_STEPSIZE - Specifies the maximum step size to be taken (in 0.001 a.u.). [Default: 150 -> 0.15 a.u.]
+            # RPATH_TOL_DISPLACEMENT - Specifies the convergence threshold for the step.
+            #                          If a step size is chosen by the algorithm that is smaller than this, the path is deemed to have reached the minimum. [Default: 5000 -> 0.005 a.u.]
+            # RPATH_PRINT - Specifies the print level [Default: 2] Higher values give less output.
+            input_dict['irc'] = "\n   RPATH_COORDS 1" \
+                                "\n   RPATH_DIRECTION 1" \
+                                "\n   RPATH_MAX_CYCLES 20" \
+                                "\n   RPATH_MAX_STEPSIZE 150" \
+                                "\n   RPATH_TOL_DISPLACEMENT 5000" \
+                                "\n   RPATH_PRINT 2" # Specifies the print level
 
         if self.constraints:
             input_dict['constraint'] = '\n    CONSTRAINT\n'
