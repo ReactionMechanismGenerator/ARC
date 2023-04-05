@@ -504,12 +504,23 @@ class Level(object):
             self.software = 'orca'
 
         # Gaussian
-        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'irc' \
+        if self.method_type == 'composite' or job_type == 'composite' \
                 or any([sum(['iop' in value.lower() for value in subdict.values()]) for subdict in self.args.values()]):
             if 'gaussian' not in supported_ess:
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
+
+
+        # QChem & Gaussian for IRC jobs
+        if job_type == 'irc':
+            if 'qchem' in supported_ess:
+                self.software = 'qchem'
+            elif 'gaussian' in supported_ess:
+                self.software = 'gaussian'
+            else:
+                raise ValueError(f'Could not find either QChem or Gaussian software to compute molecular orbitals or run an IRC job.\n'
+                                f'levels_ess is:\n{levels_ess}')
 
         # TorchANI
         if 'torchani' in self.method:
@@ -575,14 +586,30 @@ class Level(object):
         # if the software set by the user is in the DataFrame, then we filter the DataFrame to only include that software
         # and then we check if the basis set is in the DataFrame. If not, we attempt to fuzzywuzzy match the basis set
         
+        #Matching pattern for basis set - not spelling errors
+        #pattern = r'[-_a-zA-Z]+'
+
         if self.software in software_methods['software'].values:
             software_methods = software_methods[software_methods['software'] == self.software]
             if self.basis in software_methods['basis_set'].values:
                 return self.basis
             else:
-                basis_match = process.extract(self.basis, software_methods['basis_set'].values, limit=1)
-                if basis_match[0][1] < 80:
-                    raise ValueError(f"Unsupported basis in QChem: {self.basis}")
+                # If hyphen exists, remove it and try to match again
+                self.basis = self.basis.replace('-', '')
+                basis_match = process.extractBests(self.basis, software_methods['basis_set'].values, score_cutoff=99)
+                # ratio = fuzz.WRatio(self.basis, software_methods['basis_set'].values, regex=pattern)
+                if len(basis_match)>1:
+                    raise ValueError(f"Cannot match basis in {self.software}: {self.basis} as there are too many matches. Please check the basis set.")
+                elif len(basis_match) == 0:
+                    # Add a loop that puts a hyphen in different places in the basis set and tries to match again
+                    # If it still doesn't match, then raise an error
+                    for i in range(1, len(self.basis)):
+                        basis_match = process.extractBests(self.basis[:i] + '-' + self.basis[i:], software_methods['basis_set'].values, score_cutoff=99)
+                        if len(basis_match) == 1:
+                            break
+                    if len(basis_match) == 0:
+                        raise ValueError(f"Unsupported basis in {self.software}: {self.basis}. Please check the basis set.")
+                logger.info(f"Changing basis set from {self.basis} to {basis_match[0][0]} to match {self.software}")
                 self.basis = basis_match[0][0]
 
 
