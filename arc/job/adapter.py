@@ -493,8 +493,6 @@ class JobAdapter(ABC):
             # If your server has different node architectures, implement something similar here.
             architecture = '\n#$ -l harpertown' if self.cpu_cores <= 8 else '\n#$ -l magnycours'
         
-
-
         submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
             else pipe_submit[self.server]
         try:
@@ -1332,7 +1330,7 @@ class JobAdapter(ABC):
         """
         Remove the remote files.
         """
-        if self.server != 'local':
+        if (self.server != 'local' and self.server is not None):
             with SSHClient(self.server) as ssh:
                 ssh.remove_dir(self.remote_path)
 
