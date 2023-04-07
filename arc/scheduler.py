@@ -523,7 +523,9 @@ class Scheduler(object):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
-                                self.parse_conformer(job=job, label=label, i=i)
+                                troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
+                                if troubleshooting_conformer:
+                                    break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
@@ -1845,6 +1847,9 @@ class Scheduler(object):
             job (JobAdapter): The conformer job object.
             label (str): The TS species label.
             i (int): The conformer index.
+
+        Returns:
+            bool: Whether the conformer job is being troubleshooted by running a new job.
         """
         if job.job_status[1]['status'] == 'done':
             xyz = parser.parse_geometry(path=job.local_path_to_output_file)
@@ -1868,6 +1873,8 @@ class Scheduler(object):
             logger.warning(f'Conformer {i} for {label} did not converge.')
             if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
+                return True
+        return False
 
     def determine_most_stable_conformer(self, label):
         """
