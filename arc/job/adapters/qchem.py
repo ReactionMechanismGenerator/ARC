@@ -273,21 +273,42 @@ class QChemAdapter(JobAdapter):
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
                 input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
-            input_dict['job_type_1'] = 'rpath'
-            # IRC variabls are
-            # RPATH_COORDS - 0 for mass-weighted[Default], 1 for cartesian, 2 for z-matrix
-            # RPATH_DIRECTION - 1 for Descend in the positive direction of the eigen mode. [Default], -1 for Ascend in the negative direction of the eigen mode.
-            # RPATH_MAX_CYCLES - Maximum number of cycles to perform. [Default: 20]
-            # RPATH_MAX_STEPSIZE - Specifies the maximum step size to be taken (in 0.001 a.u.). [Default: 150 -> 0.15 a.u.]
-            # RPATH_TOL_DISPLACEMENT - Specifies the convergence threshold for the step.
-            #                          If a step size is chosen by the algorithm that is smaller than this, the path is deemed to have reached the minimum. [Default: 5000 -> 0.005 a.u.]
-            # RPATH_PRINT - Specifies the print level [Default: 2] Higher values give less output.
-            input_dict['irc'] = "\n   RPATH_COORDS 1" \
-                                "\n   RPATH_DIRECTION 1" \
-                                "\n   RPATH_MAX_CYCLES 20" \
-                                "\n   RPATH_MAX_STEPSIZE 150" \
-                                "\n   RPATH_TOL_DISPLACEMENT 5000" \
-                                "\n   RPATH_PRINT 2" # Specifies the print level
+            # input_dict['job_type_1'] = 'rpath'
+            # # IRC variabls are
+            # # RPATH_COORDS - 0 for mass-weighted[Default], 1 for cartesian, 2 for z-matrix
+            # # RPATH_DIRECTION - 1 for Descend in the positive direction of the eigen mode. [Default], -1 for Ascend in the negative direction of the eigen mode.
+            # # RPATH_MAX_CYCLES - Maximum number of cycles to perform. [Default: 20]
+            # # RPATH_MAX_STEPSIZE - Specifies the maximum step size to be taken (in 0.001 a.u.). [Default: 150 -> 0.15 a.u.]
+            # # RPATH_TOL_DISPLACEMENT - Specifies the convergence threshold for the step.
+            # #                          If a step size is chosen by the algorithm that is smaller than this, the path is deemed to have reached the minimum. [Default: 5000 -> 0.005 a.u.]
+            # # RPATH_PRINT - Specifies the print level [Default: 2] Higher values give less output.
+            # if self.irc_direction == 'forward':
+            #     irc_direction_value = 1
+            # elif self.irc_direction == 'reverse':
+            #     irc_direction_value = -1
+            # input_dict['irc'] = "\n   RPATH_COORDS 1" \
+            #                     f"\n   RPATH_DIRECTION {irc_direction_value}" \
+            #                     "\n   RPATH_MAX_CYCLES 20" \
+            #                     "\n   RPATH_MAX_STEPSIZE 150" \
+            #                     "\n   RPATH_TOL_DISPLACEMENT 5000" \
+            #                     "\n   RPATH_PRINT 2"\
+            #                     f"\n   SCF_GUESS     read" \
+            input_dict['job_type_1'] = 'freq'
+            if self.irc_direction == 'forward':
+                irc_direction_value = 1
+            elif self.irc_direction == 'reverse':
+                irc_direction_value = -1
+            input_dict['job_type_2'] = f"\n\n@@@\n$molecule\nread\n$end\n$rem" \
+                                        f"\n   JOBTYPE       rpath" \
+                                        f"\n   BASIS        {self.level.basis}" \
+                                        f"\n   METHOD        {self.level.method}" \
+                                        f"\n   RPATH_DIRECTION {irc_direction_value}" \
+                                        "\n   RPATH_MAX_CYCLES 20" \
+                                        "\n   RPATH_MAX_STEPSIZE 150" \
+                                        "\n   RPATH_TOL_DISPLACEMENT 5000" \
+                                        "\n   RPATH_PRINT 2"\
+                                        f"\n   SCF_GUESS     read" \
+                                        f"\n$end\n"
 
         if self.constraints:
             input_dict['constraint'] = '\n    CONSTRAINT\n'
@@ -344,7 +365,7 @@ class QChemAdapter(JobAdapter):
             self.files_to_download.append(self.get_file_property_dictionary(
                 file_name=output_filenames[self.job_adapter]))
             # 2.3. checkfile
-            self.files_to_download.append(self.get_file_property_dictionary(file_name='orbitals.fchk'))
+            self.files_to_download.append(self.get_file_property_dictionary(file_name='input.fchk'))
 
     def set_additional_file_paths(self) -> None:
         """
