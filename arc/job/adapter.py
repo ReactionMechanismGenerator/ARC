@@ -498,7 +498,7 @@ class JobAdapter(ABC):
         try:
             submit_script = submit_script.format(
                 name=self.job_server_name,
-                un=servers[self.server]['un'],
+                un=servers[self.server].get('local_un', 'un'),
                 t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
                 memory=int(self.submit_script_memory),
                 nodes=servers[self.server].get('server_nodes', 1),
