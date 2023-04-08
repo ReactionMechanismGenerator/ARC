@@ -784,23 +784,41 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
             ess_file = False
 
     if ess_file:
-        if not isinstance(log, GaussianLog):
+        if isinstance(log, GaussianLog):
+            traj = list()
+            done = False
+            i = 0
+            while not done:
+                if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+                    done = True
+                elif 'Input orientation:' in lines[i]:
+                    i += 5
+                    xyz_str = ''
+                    while len(lines) and '--------------------------------------------' not in lines[i]:
+                        splits = lines[i].split()
+                        xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                        i += 1
+                    traj.append(str_to_xyz(xyz_str))
+                i += 1
+        elif isinstance(log, QChemLog):
+            traj = list()
+            done = False
+            i = 0
+            while not done:
+                if i >= len(lines) or 'Thank you very much for using Q-Chem.' in lines[i]:
+                    done = True
+                elif 'Standard Nuclear Orientation (Angstroms)' in lines[i]:
+                    i += 4
+                    xyz_str = ''
+                    while len(lines) and '--------------------------------------------' not in lines[i]:
+                        splits = lines[i].split()
+                        xyz_str += f'{str(splits[1])}  {splits[2]}  {splits[3]}  {splits[4]}\n'
+                        i += 1
+                    traj.append(str_to_xyz(xyz_str))
+                i += 1
+
+        elif type(log) not in [GaussianLog, QChemLog]:
             raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
-        traj = list()
-        done = False
-        i = 0
-        while not done:
-            if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
-                done = True
-            elif 'Input orientation:' in lines[i]:
-                i += 5
-                xyz_str = ''
-                while len(lines) and '--------------------------------------------' not in lines[i]:
-                    splits = lines[i].split()
-                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
-                    i += 1
-                traj.append(str_to_xyz(xyz_str))
-            i += 1
 
     else:
         # this is not an ESS output file, probably an XYZ format file with several Cartesian coordinates
