@@ -568,43 +568,42 @@ def check_job_status_in_stdout(job_id: int,
         stdout = stdout.splitlines()
     for status_line in stdout:
         if str(job_id) in status_line:
-            break
-    else:
-        return 'done'
-    if servers[server]['cluster_soft'].lower() == 'slurm':
-        status = status_line.split()[4]
-        status_time = status_line.split()[5]
-        minutes, seconds = map(int, status_time.split(':'))
-        node_id = status_line.split()[7]
-        # Sometimes the node has stopped responding during configuration
-        # Usually a node takes approx 10 mins to configure. We shall wait for 15 mins
-        if status.lower() == 'cf' and minutes >= 15:
-            # Run a command to check if the node is still responding
-            with SSHClient(server) as ssh:
-                stdout, _ = ssh._send_command_to_server(f'scontrol show node {node_id}', remote_path='')
-                if 'NOT_RESPONDING' in stdout:
+            if servers[server]['cluster_soft'].lower() == 'slurm':
+                status = status_line.split()[4]
+                status_time = status_line.split()[5]
+                minutes, seconds = map(int, status_time.split(':'))
+                node_id = status_line.split()[7]
+                # Sometimes the node has stopped responding during configuration
+                # Usually a node takes approx 10 mins to configure. We shall wait for 15 mins
+                if status.lower() == 'cf' and minutes >= 15:
+                    # Run a command to check if the node is still responding
+                    with SSHClient(server) as ssh:
+                        stdout, _ = ssh._send_command_to_server(f'scontrol show node {node_id}', remote_path='')
+                        if 'NOT_RESPONDING' in stdout:
+                            return 'errored'
+                if status.lower() in ['r', 'qw', 't', 'cg', 'pd','cf']:
+                    return 'running'
+                elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
                     return 'errored'
-        if status.lower() in ['r', 'qw', 't', 'cg', 'pd','cf']:
-            return 'running'
-        elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'pbs':
-        status = status_line.split()[-2]
-        if status.lower() in ['r', 'q', 'c', 'e', 'w']:
-            return 'running'
-        elif status.lower() in ['h', 's']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't']:
-            return 'running'
-        elif status.lower() in ['e']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'htcondor':
-        return 'running'
-    else:
-        raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+            elif servers[server]['cluster_soft'].lower() == 'pbs':
+                status = status_line.split()[-2]
+                if status.lower() in ['r', 'q', 'c', 'e', 'w']:
+                    return 'running'
+                elif status.lower() in ['h', 's']:
+                    return 'errored'
+            elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
+                status = status_line.split()[4]
+                if status.lower() in ['r', 'qw', 't']:
+                    return 'running'
+                elif status.lower() in ['e']:
+                    return 'errored'
+            elif servers[server]['cluster_soft'].lower() == 'htcondor':
+                return 'running'
+            else:
+                raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
+        else:
+            return 'done'
 
 def delete_all_arc_jobs(server_list: list,
                         jobs: Optional[List[str]] = None,
