@@ -553,7 +553,7 @@ class ARC(object):
         logger.info('\n')
         for rxn in self.reactions:
             if not isinstance(rxn, ARCReaction):
-                raise ValueError(f'All reactions be ARCReaction objects. Got {type(rxn)}')
+                raise ValueError(f'All reactions must be ARCReaction objects. Got {type(rxn)}')
         self.scheduler = Scheduler(project=self.project,
                                    species_list=self.species,
                                    rxn_list=self.reactions,

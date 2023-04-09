@@ -1011,7 +1011,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                     d3=d3,
                     reactants_reversed=reactants_reversed,
                 )
-            except ValueError as e:
+            except (ValueError, IndexError) as e:
                 logger.error(f'Could not generate a guess using Heuristics for H abstraction reaction, got:\n{e}')
 
             if xyz_guess is not None and not colliding_atoms(xyz_guess):
