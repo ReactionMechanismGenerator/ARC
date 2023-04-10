@@ -211,6 +211,15 @@ class QChemAdapter(JobAdapter):
         input_dict['basis'] = self.level.basis or ''
         input_dict['charge'] = self.charge
         input_dict['method'] = self.level.method
+        # If method ends with D3, then we need to remove it and add the D3 as a keyword. Need to account for -D3
+        if input_dict['method'].endswith('D3') or input_dict['method'].endswith('-D3'):
+            input_dict['method'] = input_dict['method'][:-2]
+            # Remove the - if it exists
+            if input_dict['method'].endswith('-'):
+                input_dict['method'] = input_dict['method'][:-1]
+            # DFT_D - FALSE, EMPIRICAL_GRIMME, EMPIRICAL_CHG, D3_ZERO, D3_BJ, D3_CSO, D3_ZEROM, D3_BJM, D3_OP,D3 [Default: None]
+            # TODO: Add support for other D3 options. Check if the user has specified a D3 option in the level of theory
+            input_dict['keywords'] = "\n DFT_D D3"
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
