@@ -81,7 +81,8 @@ def determine_ess_status(output_path: str,
         if len(lines) < 5:
             return 'errored', ['NoOutput'], 'Log file could not be read', ''
         forward_lines = tuple(lines)
-        reverse_lines = tuple(lines[::-1])
+        #reverse_lines = tuple(lines[::-1])
+        reverse_lines = reversed(lines)
 
         if software == 'gaussian':
             for line in forward_lines[-1:-20:-1]:
@@ -196,14 +197,14 @@ def determine_ess_status(output_path: str,
                     # These are **normal** lines that we should not capture:
                     # "SCF converges when DIIS error is below 1.0E-08", or
                     # "Cycle       Energy         DIIS Error"
-                    keywords = ['SCF', 'DIIS']
-                    error = 'SCF failed'
-                    break
+                   keywords = ['SCF', 'DIIS']
+                   error = 'SCF failed'
+                   break
                 elif 'Invalid charge/multiplicity combination' in line:
                     raise SpeciesError(f'The multiplicity and charge combination for species '
                                        f'{species_label} are wrong.')
                 if 'opt' in job_type or 'conformer' in job_type or 'ts' in job_type:
-                    if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
+                    if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line or 'Maximum optimization cycles reached' in line:
                         keywords = ['MaxOptCycles']
                         error = 'Maximum optimization cycles reached.'
                         break
