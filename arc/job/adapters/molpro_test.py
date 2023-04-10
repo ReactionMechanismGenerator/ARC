@@ -106,7 +106,7 @@ uccsd(t)-f12;
                                   'source': 'path',
                                   'make_x': False},
                                  ]
-        job_1_files_to_download = [{'file_name': 'input.out',
+        job_1_files_to_download = [{'file_name':'output.out',
                                     'local': os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]),
                                     'remote': os.path.join(self.job_1.remote_path, output_filenames[self.job_1.job_adapter]),
                                     'source': 'path',
