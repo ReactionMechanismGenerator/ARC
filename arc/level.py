@@ -609,7 +609,7 @@ class Level(object):
                             break
                     if len(basis_match) == 0:
                         raise ValueError(f"Unsupported basis in {self.software}: {self.basis}. Please check the basis set.")
-                logger.info(f"Changing basis set from {self.basis} to {basis_match[0][0]} to match {self.software}")
+                logger.debug(f"Changing basis set from {self.basis} to {basis_match[0][0]} to match {self.software}")
                 self.basis = basis_match[0][0]
 
 
