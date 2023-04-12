@@ -59,3 +59,4 @@ dependencies:
   - pytables
   - anaconda::pytest
   - conda-forge::pytest-cov
+  - conda-forge::fuzzywuzzy
