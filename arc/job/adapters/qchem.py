@@ -222,7 +222,7 @@ class QChemAdapter(JobAdapter):
             input_dict['keywords'] = "\n DFT_D D3"
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
-        input_dict['rsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'].keys() else ''
+        input_dict['trsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'].keys() else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
         # In QChem the attribute is called "unrestricted", so the logic is in reverse than in other adapters
