@@ -107,7 +107,15 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'index': 0,
                           'FF energy': 0,
                           'source': 'CHEAT_SHEET',
-                          'torsion_dihedrals': {}}}
+                          'torsion_dihedrals': {}},
+               '[CH2]': {'xyz': converter.str_to_xyz("""C  0.0	0.000000  0.1051320
+                                                        H  0.0  0.988263 -0.3153960
+                                                        H  0.0 -0.988263 -0.3153960"""),
+                          'index': 0,  # Singlet CH2 forms the same H-C-H angle as triplet CH2
+                          'FF energy': 0,
+                          'source': 'CHEAT_SHEET',
+                          'torsion_dihedrals': {}},
+               }
 
 
 def generate_conformers(mol_list: Union[List[Molecule], Molecule],
