@@ -2720,6 +2720,34 @@ class TestTSGuess(unittest.TestCase):
                           'imaginary_freqs', 'conformer_index', 'successful_irc', 'successful_normal_mode',
                           'initial_xyz', 'opt_xyz'])
 
+    def test_process_xyz(self):
+        """Test the process_xyz() method"""
+        # path
+        tsg_1 = TSGuess(method='user guess 1', xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out'))
+        self.assertEqual(tsg_1.initial_xyz['symbols'], ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'))
+
+        # str
+        xyz_str = """N      -0.44735300    0.68014700   -0.09089500
+                     H      -0.45117100    1.14212100    0.81470100
+                     H       0.67466500    0.38087400   -0.23231200
+                     N      -1.22855900   -0.47112100   -0.00376900
+                     H      -1.81591200   -0.50329100    0.81549900
+                     H      -1.78227800   -0.57066300   -0.84167400
+                     N       1.90970800   -0.14857900   -0.07003300
+                     H       1.74001300   -0.84912300    0.66973800"""
+        tsg_2 = TSGuess(method='user guess 2', xyz=xyz_str)
+        self.assertEqual(tsg_2.initial_xyz['symbols'], ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'))
+
+        # dict
+        xyz_dict = {'symbols': ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'),
+                    'isotopes': (14, 1, 1, 14, 1, 1, 14, 1),
+                    'coords': ((-0.447353, 0.680147, -0.090895), (-0.451171, 1.142121, 0.814701),
+                               (0.674665, 0.380874, -0.232312), (-1.228559, -0.471121, -0.003769),
+                               (-1.815912, -0.503291, 0.815499), (-1.782278, -0.570663, -0.841674),
+                               (1.909708, -0.148579, -0.070033), (1.740013, -0.849123, 0.669738))}
+        tsg_3 = TSGuess(method='user guess 3', xyz=xyz_dict)
+        self.assertEqual(tsg_3.initial_xyz['symbols'], ('N', 'H', 'H', 'N', 'H', 'H', 'N', 'H'))
+
     def test_get_xyz(self):
         """Test the get_xyz() method"""
         self.assertIsNone(self.tsg1.get_xyz())

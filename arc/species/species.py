@@ -1532,7 +1532,7 @@ class ARCSpecies(object):
 
         if self.mol is not None:
             if len(self.mol.atoms) != len(xyz['symbols']):
-                raise SpeciesError(f'The number of atoms in the molecule and in the cartesian coordinates is different.'
+                raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml.
             mol_s, mol_b = molecules_from_xyz(xyz=xyz,
@@ -2201,14 +2201,11 @@ class TSGuess(object):
             xyz (dict, str): The coordinates in a dict/string form or a path to a file containing the coordinates.
 
         Raises:
-            InputError: If xyz is of wrong type.
+            InputError: If xyz is of the wrong type.
         """
         if xyz is not None:
             if not isinstance(xyz, (dict, str)):
-                raise InputError(f'xyz must be either a dictionary or string, '
-                                 f'got:\n{xyz}\nwhich is a {type(xyz)}')
-            if isinstance(xyz, str):
-                xyz = parse_xyz_from_file(xyz) if os.path.isfile(xyz) else str_to_xyz(xyz)
+                raise InputError(f'xyz must be either a dictionary or string, got:\n{xyz}\nwhich is a {type(xyz)}')
             self.initial_xyz = check_xyz_dict(xyz)
 
     def get_xyz(self,
