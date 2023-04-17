@@ -500,7 +500,7 @@ class JobAdapter(ABC):
                 name=self.job_server_name,
                 un=servers[self.server]['un'],
                 t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
-                memory=int(self.submit_script_memory),
+                memory=int(self.submit_script_memory) if isinstance(self.submit_script_memory, int) else self.submit_script_memory,
                 cpus=self.cpu_cores,
                 architecture=architecture,
                 max_task_num=self.workers,
@@ -764,7 +764,7 @@ class JobAdapter(ABC):
             self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         if cluster_software in ['pbs']:
             # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E8  # in Bytes
+            self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E6  # in Bytes
         elif cluster_software in ['slurm']:
             # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB

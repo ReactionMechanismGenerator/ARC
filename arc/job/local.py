@@ -256,6 +256,15 @@ def submit_job(path: str,
                        submit_filename=submit_filename,
                        recursion=True,
                        )
+        if cluster_soft.lower() == 'pbs' and  any('qsub: would exceed' in err_line for err_line in stderr):
+            logger.warning(f'Max number of submitted jobs was reached, sleeping...')
+            time.sleep(5 * 60)
+            submit_job(path=path,
+                       cluster_soft=cluster_soft,
+                       submit_cmd=submit_cmd,
+                       submit_filename=submit_filename,
+                       recursion=True,
+                       )
     if not len(stdout) or recursion:
         return None, None
     if len(stderr) > 0 or len(stdout) == 0:
