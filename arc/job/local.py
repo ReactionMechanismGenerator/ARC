@@ -265,6 +265,8 @@ def submit_job(path: str,
                        submit_filename=submit_filename,
                        recursion=True,
                        )
+        elif cluster_soft.lower() == 'pbs' and any('qsub: Illegal attribute or resource value' in err_line for err_line in stderr):
+            raise ValueError(f'Got the following error when trying to submit job:\n{stderr}. Please check your submit script')
     if not len(stdout) or recursion:
         return None, None
     if len(stderr) > 0 or len(stdout) == 0:
