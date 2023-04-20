@@ -831,6 +831,24 @@ it is not necessarily the first atom in the corresponding xyz with map value 0.<
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.zmat.remove_1st_atom_references">
+<span class="sig-prename descclassname"><span class="pre">arc.species.zmat.</span></span><span class="sig-name descname"><span class="pre">remove_1st_atom_references</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">zmat</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/species/zmat.html#remove_1st_atom_references"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.zmat.remove_1st_atom_references" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove references for the 1st atom (index 0) in the zmat in all coords and respective vars
+from the 5th atom (index 4) on. I.e., the 2nd, 3rd, and 4th atoms can include references to the 1st atom.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>zmat</strong> (<em>dict</em>) – The zmat to process.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated zmat.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.zmat.up_param">
 <span class="sig-prename descclassname"><span class="pre">arc.species.zmat.</span></span><span class="sig-name descname"><span class="pre">up_param</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">increment</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">increment_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/arc/species/zmat.html#up_param"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.zmat.up_param" title="Permalink to this definition">¶</a></dt>
 <dd><p>Increase the indices represented by a zmat parameter.</p>
