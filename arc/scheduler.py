@@ -919,7 +919,7 @@ class Scheduler(object):
                 job.job_memory_gb = used_mem * 4.5 if used_mem is not None else job.job_memory_gb * 0.5
                 self._run_a_job(job=job, label=label)
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['MaxOptCyycles']:
+        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['MaxOptCycles']:
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None)
 
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
@@ -3244,7 +3244,7 @@ class Scheduler(object):
                                f'log file:\n"{job.job_status[1]["line"]}".'
         logger.warning(warning_message)
 
-        if self.species_dict[label].is_ts:
+        if self.species_dict[label].is_ts and conformer is not None:
             xyz = self.species_dict[label].ts_guesses[conformer].get_xyz()
         elif conformer is not None:
             xyz = self.species_dict[label].conformers[conformer]
