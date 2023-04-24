@@ -919,9 +919,6 @@ class Scheduler(object):
                 job.job_memory_gb = used_mem * 4.5 if used_mem is not None else job.job_memory_gb * 0.5
                 self._run_a_job(job=job, label=label)
 
-        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['MaxOptCycles']:
-            self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None)
-
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
@@ -1883,7 +1880,11 @@ class Scheduler(object):
                     logger.debug(f'Energy for conformer {i} of {label} is None')
         else:
             logger.warning(f'Conformer {i} for {label} did not converge.')
-            if job.times_rerun == 0 and self.trsh_ess_jobs:
+            if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['MaxOptCycles'] and job.times_rerun == 0:
+                job.times_rerun += 1
+                self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None) 
+                return True
+            elif job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
                 return True
         return False
