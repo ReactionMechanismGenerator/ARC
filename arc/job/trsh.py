@@ -92,6 +92,12 @@ def determine_ess_status(output_path: str,
                     if 'l9999.exe' in line or 'link 9999' in line:
                         keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                         error = 'Unconverged'
+                        for line0 in reverse_lines:
+                            if 'Leave Link  601' in line0:
+                                keywords.append('SymmError')
+                                error = 'Gaussian is using molecular symmetry which is possibly preventing conversion'
+                                break
+                        break
                     elif 'l101.exe' in line:
                         keywords = ['InputError', 'GL101']
                         error = 'The blank line after the coordinate section is missing, ' \
@@ -901,6 +907,11 @@ def trsh_ess_job(label: str,
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
+        elif 'SymmError' in job_status['keywords'] and 'nosymm' not in ess_trsh_methods:
+            # try running w/o considering symmetry
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using nosymm')
+            ess_trsh_methods.append('nosymm')
+            trsh_keyword = 'nosymm'
         else:
             couldnt_trsh = True
 

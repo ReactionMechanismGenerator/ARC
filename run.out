@@ -1,0 +1,136 @@
+#BIND_OUTPUT version: 3.0
+
+
+
+#---------------------- SYMMETRY ANALYSIS ----------------------
+
+1 Elements are present. They are:
+  1 Identity.
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4, 5 -> 5, 
+
+Here are the  Non-Redundant Elements which are present:
+Identity.
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 4 -> 4, 5 -> 5, 
+
+;-----------------------------------------------------------------
+Allocating approximately    11.01 Kbytes (    0.01 Meg).
+Each matrix is:     0.00 meg.
+
+; Number of orbitals
+#Num_Orbitals: 13
+Error value from Diagonalization (0 is good): 0
+
+#	******* Energies (in eV)  and Occupation Numbers *******
+1:--->  -14.5231  [2.000 Electrons]
+2:--->  -13.4341  [2.000 Electrons]
+3:--->  -13.4337  [2.000 Electrons]
+4:--->  -13.4334  [2.000 Electrons]
+5:--->     -6.56  [0.000 Electrons]
+6:--->     -6.56  [0.000 Electrons]
+7:--->     -6.56  [0.000 Electrons]
+8:--->     -6.56  [0.000 Electrons]
+9:--->     -6.56  [0.000 Electrons]
+10:--->     -4.84  [0.000 Electrons]
+11:--->     -4.84  [0.000 Electrons]
+12:--->     -4.84  [0.000 Electrons]
+13:--->    6.5838  [0.000 Electrons]
+Total_Energy: -109.649
+
+# Characters of wavefunctions with respect to symmetry operations present.
+;              1 
+   1:--->  1.000 
+   2:--->  1.000 
+   3:--->  1.000 
+   4:--->  1.000 
+   5:--->  1.000 
+   6:--->  1.000 
+   7:--->  1.000 
+   8:--->  1.000 
+   9:--->  1.000 
+  10:--->  1.000 
+  11:--->  1.000 
+  12:--->  1.000 
+  13:--->  1.000 
+
+;   Reduced Mulliken Overlap Population Matrix for  8.000 electrons:
+
+              1        2        3        4        5      
+  1        0.0712    
+  2        0.1032      1.8860    
+  3        0.1032      -0.0047     1.8860    
+  4        0.1032      -0.0047     -0.0047     1.8860    
+  5        0.1032      -0.0047     -0.0047     -0.0047     1.8860    
+
+;    Net Atomic Charges for  8.000 electrons:
+1 HF: 3.722358
+2 H: -0.930590
+3 H: -0.930593
+4 H: -0.930582
+5 H: -0.930594
+;      Total Charge is: -0.000000
+
+
+; 		q-q-q-q-q-q-q-q  Charge Matrix q-q-q-q-q-q-q-q
+
+;   Reduced Charge Matrix Independant of Occupation
+      1        2        3        4        5        6        7      
+   1  0.1388  0.0000  0.0000  0.0000  1.0000  1.0000  1.0000
+   2  0.2154  0.0112  0.3528  0.3859  0.0000  0.0000  0.0000
+   3  0.2153  0.2257  0.4898  0.0345  0.0000  0.0000  0.0000
+   4  0.2151  0.6983  0.0496  0.0022  0.0000  0.0000  0.0000
+   5  0.2154  0.0648  0.1078  0.5773  0.0000  0.0000  0.0000
+      8        9        10       11       12       13     
+   1  1.0000  1.0000  1.0000  1.0000  1.0000  0.8612
+   2  0.0000  0.0000  0.0000  0.0000  0.0000  0.0347
+   3  0.0000  0.0000  0.0000  0.0000  0.0000  0.0347
+   4  0.0000  0.0000  0.0000  0.0000  0.0000  0.0347
+   5  0.0000  0.0000  0.0000  0.0000  0.0000  0.0347
+
+
+ Sorting 13 crystal orbitals.
+
+
+# ******** Extended Hueckel Parameters ********
+;  FORMAT  quantum number orbital: Hii, <c1>, exponent1, <c2>, <exponent2>
+
+ATOM: HF   Atomic number: 72  # Valence Electrons: 4
+	6S:    -4.8400     1.5270
+	6P:    -4.8400     0.0000
+	5D:    -6.5600     1.0000     0.0000     0.0000     0.0000
+ATOM: H   Atomic number: 1  # Valence Electrons: 1
+	1S:   -13.6000     1.3000
+
+### TOTAL DENSITY OF STATES 
+26 states are present.
+#BEGIN CURVE
+1.000000 -14.523149
+3.000000 -13.434103
+5.000000 -6.560000
+3.000000 -4.840000
+1.000000 6.583804
+#END CURVE
+# END OF DOS
+
+
+;  The Fermi Level was determined for 1 K points based on
+;     an ordering of 13 crystal orbitals occupied by 8.000000 electrons
+;      in the unit cell (8.000000 electrons total)
+#Fermi_Energy:  -13.433422
+#Average Energy:  -109.648684 eV
+
+# Atomic Orbital Occupations
+;        s      px      py      pz    dx2-y2    dz2     dxy     dxz     dyz
+1 HF  0.2776  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+2 H  1.9306  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+3 H  1.9306  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+4 H  1.9306  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+5 H  1.9306  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+
+# AVERAGE NET CHARGES
+1 HF 3.722358
+2 H -0.930590
+3 H -0.930593
+4 H -0.930582
+5 H -0.930594
+There are a total of 8.000000 electrons.
+Done!

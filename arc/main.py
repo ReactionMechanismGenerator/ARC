@@ -338,13 +338,18 @@ class ARC(object):
                     raise InputError(f'Missing label on RMG Species object {spc}')
                 indices_to_pop.append(i)
                 is_ts = spc.label[:2] == 'TS' and all(char.isdigit() for char in spc.label[2:])
-                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc)
+                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc, compute_thermo=self.compute_thermo)
                 converted_species.append(arc_spc)
             elif isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
+                if not self.compute_thermo:
+                    spc['compute_thermo'] = False
                 converted_species.append(ARCSpecies(species_dict=spc))
-            elif not isinstance(spc, ARCSpecies):
+            elif isinstance(spc, ARCSpecies):
+                if not self.compute_thermo:
+                    spc.compute_thermo = False
+            else:
                 raise ValueError(f'A species should either be an RMG Species object, an ARCSpecies object, '
                                  f'or a dictionary representation of the later.\nGot: {type(spc)} for {spc}')
         for i in reversed(range(len(self.species))):  # pop from the end, so other indices won't change

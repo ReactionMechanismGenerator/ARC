@@ -1449,7 +1449,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
                        'lone_pairs': atom.lone_pairs,
                        'id': atom.id,
                        'props': atom.props,
-                       'atomtype': atom.atomtype.label,
+                       'atomtype': atom.atomtype.label if atom.atomtype is not None else None,
                        'edges': {atom_2.id: bond.order
                                  for atom_2, bond in atom.edges.items()},
                        } for atom in mol.atoms],
@@ -1524,7 +1524,7 @@ def generate_resonance_structures(object_: Union['Species', Molecule],
                                                        filter_structures=filter_structures,
                                                        save_order=save_order,
                                                        )
-    except (AtomTypeError, ILPSolutionError, ResonanceError, TypeError, ValueError):
+    except (AtomTypeError, ILPSolutionError, KeyError, ResonanceError, TypeError, ValueError):
         pass
     return result
 
