@@ -375,6 +375,7 @@ class Scheduler(object):
                                 xyz=user_guess,
                                 rmg_reaction=rxn.rmg_reaction,
                                 index=len(rxn.ts_species.ts_guesses),
+                                success=True,
                                 )
                     )
                 rxn.check_atom_balance()
