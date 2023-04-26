@@ -1011,9 +1011,12 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else self.unique_species_labels
         log_info_printed = False
         for label in labels_to_consider:
+            print(f'label: {label}')
             print(self.species_dict[label].is_ts, self.species_dict[label].tsg_spawned, not self.species_dict[label].ts_conf_spawned,
                   all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses]),
                   any([tsg.success for tsg in self.species_dict[label].ts_guesses]))
+            print(f':TSGs: {self.species_dict[label].ts_guesses}')
+            print('now:')
             for tsg in self.species_dict[label].ts_guesses:
                 logger.info('TSG:')
                 logger.info(tsg)
