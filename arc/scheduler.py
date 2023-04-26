@@ -3193,19 +3193,22 @@ class Scheduler(object):
             else:
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
-                if previous_job_num >= 0 and job.fine:
-                    previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
-                    if not previous_job.fine and previous_job.job_status[0] == 'done' \
-                            and previous_job.job_status[1]['status'] == 'done':
-                        # The present job with a fine grid failed in the ESS calculation.
-                        # A *previous* job without a fine grid terminated successfully on the server and ESS.
-                        # So use the xyz determined w/o the fine grid, and output an error message to alert users.
-                        logger.error(f'Optimization job for {label} with a fine grid terminated successfully '
-                                     f'on the server, but crashed during calculation. NOT running with fine '
-                                     f'grid again.')
-                        self.parse_opt_geo(label=label, job=previous_job)
-                        trsh_opt = False
-                if trsh_opt:
+                if job.times_rerun > 0 and job.fine and job.job_status[1]['status'] == 'errored':
+                    # We've already tried troubleshooting this job, so don't try again.
+                    trsh_opt = False
+                    if previous_job_num >= 0 and job.fine:
+                        previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
+                        if not previous_job.fine and previous_job.job_status[0] == 'done' \
+                                and previous_job.job_status[1]['status'] == 'done':
+                            # The present job with a fine grid failed in the ESS calculation.
+                            # A *previous* job without a fine grid terminated successfully on the server and ESS.
+                            # So use the xyz determined w/o the fine grid, and output an error message to alert users.
+                            logger.error(f'Optimization job for {label} with a fine grid terminated successfully '
+                                        f'on the server, but crashed during calculation. NOT running with fine '
+                                        f'grid again.')
+                            self.parse_opt_geo(label=label, job=previous_job)
+                            trsh_opt = False
+                elif trsh_opt:
                     self.troubleshoot_ess(label=label,
                                           job=job,
                                           level_of_theory=self.opt_level)
