@@ -48,6 +48,7 @@ class ARCReaction(object):
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
+        xyz (list, optional): Identical to `ts_xyz_guess`, used as a shortcut.
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
         reaction_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
@@ -95,6 +96,7 @@ class ARCReaction(object):
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
                  ts_xyz_guess: Optional[list] = None,
+                 xyz: Optional[list] = None,
                  multiplicity: Optional[int] = None,
                  charge: Optional[int] = None,
                  reaction_dict: Optional[dict] = None,
@@ -113,7 +115,7 @@ class ARCReaction(object):
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
-        self.ts_xyz_guess = ts_xyz_guess or list()
+        self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
         self._charge = charge
