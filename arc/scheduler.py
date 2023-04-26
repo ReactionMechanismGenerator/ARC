@@ -604,6 +604,7 @@ class Scheduler(object):
                             if successful_server_termination:
                                 success = self.parse_composite_geo(label=label, job=job)
                                 if success:
+                                    print('spawning post opt jobs after composite')
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
                             self.timer = False
                             break
@@ -1009,6 +1010,9 @@ class Scheduler(object):
         labels_to_consider = labels if labels is not None else self.unique_species_labels
         log_info_printed = False
         for label in labels_to_consider:
+            print(self.species_dict[label].is_ts, self.species_dict[label].tsg_spawned, not self.species_dict[label].ts_conf_spawned,
+                  all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses]),
+                  any([tsg.success for tsg in self.species_dict[label].ts_guesses]))
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
@@ -1041,6 +1045,7 @@ class Scheduler(object):
                     and not self.species_dict[label].ts_conf_spawned \
                     and all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses]) \
                     and any([tsg.success for tsg in self.species_dict[label].ts_guesses]):
+                print('RUNNING CONFS FOR TS')
                 # This is a TS Species for which all TSGs were spawned, but conformers haven't been spawned,
                 # and all tsg.success flags contain a values (either ``True`` or ``False``), so they are done.
                 # We're ready to spawn conformer jobs for this TS Species
@@ -1383,15 +1388,17 @@ class Scheduler(object):
             job_name (str): The opt job name (used for differentiating between ``opt`` and ``optfreq`` jobs).
         """
         composite = 'composite' in job_name  # Whether this was a composite job
-
+        print(f'post opt for {label}, composite = {composite}')
         # Check whether this was originally a composite method that was troubleshooted as 'opt'.
         if not composite and self.composite_method:
             self.run_composite_job(label)
+            print('return 1')
             return None
 
         # Check whether this is a composite job but wasn't originally so (probably troubleshooted as such).
         if composite and not self.composite_method:
             self.run_opt_job(label, fine=self.fine_only)
+            print('return 2')
             return None
 
         # Spawn IRC if requested and if relevant.
@@ -1461,6 +1468,7 @@ class Scheduler(object):
                                             if species.number_of_atoms > 1])
 
         # Check whether any reaction was waiting for this species to spawn TS search jobs.
+        print(f'is_ts: {self.species_dict[label].is_ts}')
         if not self.species_dict[label].is_ts:
             self.spawn_ts_jobs()
 
@@ -1470,8 +1478,11 @@ class Scheduler(object):
         and if so spawn the respective TSG jobs.
         Don't spawn TS jobs if the multiplicity of the reaction could not be determined.
         """
+        print('in spawn_ts_jobs')
         for rxn in self.rxn_list:
+            print(rxn)
             rxn.check_done_opt_r_n_p()
+            print(f'done_opt_r_n_p: {rxn.done_opt_r_n_p}, tsg_spawned: {rxn.ts_species.tsg_spawned}')
             if rxn.done_opt_r_n_p and not rxn.ts_species.tsg_spawned:
                 if rxn.multiplicity is None:
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
@@ -1489,6 +1500,8 @@ class Scheduler(object):
                                          tsg=tsg_index,
                                          )
                             tsg_index += 1
+                print(rxn.ts_species.ts_guesses)
+                print(all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses))
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
