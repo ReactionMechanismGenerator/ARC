@@ -1015,7 +1015,9 @@ class Scheduler(object):
                   all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses]),
                   any([tsg.success for tsg in self.species_dict[label].ts_guesses]))
             for tsg in self.species_dict[label].ts_guesses:
+                logger.info('TSG:')
                 logger.info(tsg)
+                print(str(tsg))
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
