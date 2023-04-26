@@ -1449,7 +1449,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
                        'lone_pairs': atom.lone_pairs,
                        'id': atom.id,
                        'props': atom.props,
-                       'atomtype': atom.atomtype.label if atom.atomtype is not None else None,
+                       'atomtype': atom.atomtype.label if atom.atomtype is not None else,
                        'edges': {atom_2.id: bond.order
                                  for atom_2, bond in atom.edges.items()},
                        } for atom in mol.atoms],
