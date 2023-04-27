@@ -3209,6 +3209,7 @@ class Scheduler(object):
                             self.parse_opt_geo(label=label, job=previous_job)
                             trsh_opt = False
                 elif trsh_opt:
+                    job.times_rerun += 1
                     self.troubleshoot_ess(label=label,
                                           job=job,
                                           level_of_theory=self.opt_level)

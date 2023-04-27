@@ -911,17 +911,29 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using max_cycles')
             ess_trsh_methods.append('max_cycles')
             trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
+            if 'DIIS_GDM' in ess_trsh_methods:
+                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
+            if 'SYM_IGNORE' in ess_trsh_methods:
+                trsh_keyword += '\n   SYM_IGNORE     True'
         elif 'SCF' in job_status['keywords'] and 'DIIS_GDM' not in ess_trsh_methods:
             # change the SCF algorithm and increase max SCF cycles
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using the DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('DIIS_GDM')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
+            if 'SYM_IGNORE' in ess_trsh_methods:
+                trsh_keyword += '\n   SYM_IGNORE     True'
+            if 'max_cycles' in ess_trsh_methods:
+                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
         elif 'SYM_IGNORE' not in ess_trsh_methods:  # symmetry - look in manual, no symm if fails
             # change the SCF algorithm and increase max SCF cycles
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using SYM_IGNORE as well as the '
                         f'DIIS_GDM SCF algorithm')
             ess_trsh_methods.append('SYM_IGNORE')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
+            if 'max_cycles' in ess_trsh_methods:
+                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
+            if 'DIIS_GDM' in ess_trsh_methods:
+                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
         else:
             couldnt_trsh = True
 
