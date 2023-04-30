@@ -2323,8 +2323,9 @@ class Scheduler(object):
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
-                        self.switch_ts(label)
-                        switch_ts = True
+                        logger.info('\n\nContinuing with this TS even though it did not pass the NMD check (ts2 branch)\n\n')
+                        # self.switch_ts(label)
+                        # switch_ts = True
                 if wrong_freq_message in self.output[label]['warnings']:
                     self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
