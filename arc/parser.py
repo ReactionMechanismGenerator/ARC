@@ -231,10 +231,11 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
         raise InputError(f'Could not find file {path}')
     if path.endswith('.yml'):
         content = read_yaml_file(path)
-        if isinstance(content, dict) and 'xyz' in content.keys():
-            return content['xyz']
-        if isinstance(content, dict) and 'opt_xyz' in content.keys():
-            return content['opt_xyz']
+        if isinstance(content, dict):
+            if 'xyz' in content.keys():
+                return content['xyz'] if isinstance(content['xyz'], dict) else str_to_xyz(content['xyz'])
+            elif 'opt_xyz' in content.keys():
+                return content['opt_xyz'] if isinstance(content['opt_xyz'], dict) else str_to_xyz(content['opt_xyz'])
     software = identify_ess(path)
     xyz_str = ''
     if software == 'xtb':
