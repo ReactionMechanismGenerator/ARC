@@ -319,13 +319,8 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
         """
         Set the input_file_memory attribute.
         """
-        # Molpro's memory is per cpu core and in MW (mega word; 1 MW ~= 8 MB; 1 GB = 128 MW)
-        # https://www.molpro.net/pipermail/molpro-user/2010-April/003723.html
-        # In the link, they describe the conversion of 100,000,000 Words (100Mword) is equivalent to
-        # 800,000,000 bytes (800 mb). 
-        # Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords] 
-        # The division by 1E6 is for converting into MWords
-        self.input_file_memory = math.ceil((1E8/(8E8 /(self.job_memory_gb * 1E9)))/1E6)
+        # Molpro's memory is per cpu core and in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
+        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
         
     def execute_incore(self):
         """
