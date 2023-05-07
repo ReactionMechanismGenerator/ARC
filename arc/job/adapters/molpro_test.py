@@ -46,16 +46,29 @@ class TestMolproAdapter(unittest.TestCase):
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
-        expected_memory = math.ceil((1E8/(8E8 /(14 * 1E9)))/1E6)
-        self.assertEqual(self.job_1.input_file_memory, expected_memory)
+        self.job_1.input_file_memory = None
+        self.job_1.cpu_cores = 48
+        self.job_1.set_input_file_memory()
+        self.assertEqual(self.job_1.input_file_memory, 40)
+
+        self.job_1.cpu_cores = 8
+        self.job_1.set_input_file_memory()
+        self.assertEqual(self.job_1.input_file_memory, 235)
+
+        self.job_1.input_file_memory = None
+        self.job_1.cpu_cores = 1
+        self.job_1.set_input_file_memory()
+        self.assertEqual(self.job_1.input_file_memory, 1880)
 
     def test_write_input_file(self):
         """Test writing Gaussian input files"""
+        self.job_1.cpu_cores = 48
+        self.job_1.set_input_file_memory()
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
-memory,1750,m;
+memory,40,m;
 file,1,file1.int    !allocate permanent integral file
 file,2,file2.wfu    !allocate permanent wave-function (dump) file
 
