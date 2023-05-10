@@ -160,6 +160,7 @@ class Scheduler(object):
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
+        only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -248,6 +249,7 @@ class Scheduler(object):
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: List[str] = None,
+                 only_process: bool = False,
                  ) -> None:
 
         self.project = project
@@ -486,7 +488,7 @@ class Scheduler(object):
                     species.ts_conf_spawned = True
         self.save_restart = True
         self.timer = True
-        if not self.testing:
+        if not self.testing and not only_process:
             self.schedule_jobs()
 
     def schedule_jobs(self):
