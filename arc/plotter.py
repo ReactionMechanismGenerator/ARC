@@ -781,7 +781,7 @@ def save_thermo_lib(species_list: list,
                                               thermo=spc.thermo,
                                               shortDesc=spc.thermo.comment,
                                               longDesc=spc.long_thermo_description)
-                except (InvalidAdjacencyListError, DatabaseError, ValueError) as e:
+                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
                     logger.error(f'Could not save species {spc.label} in the thermo library, got:')
                     logger.info(e)
             else:
@@ -810,7 +810,7 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                                                  transport=spc.transport_data,
                                                  shortDesc=spc.thermo.comment,
                                                  longDesc=description)
-                except (InvalidAdjacencyListError, ValueError) as e:
+                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
                     logger.error(f'Could not save species {spc.label} in the transport library, got:')
                     logger.info(e)
                 logger.info(f'\n\nTransport properties for {spc.label}:')
