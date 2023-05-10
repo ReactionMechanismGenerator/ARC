@@ -2718,17 +2718,19 @@ class Scheduler(object):
                         # Record actions, only if the method is valid.
                         self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
 
-                if not invalidate:
-                    # the rotor scan is good, calculate the symmetry number
-                    self.species_dict[label].rotors_dict[job.rotor_index]['success'] = True
-                    self.species_dict[label].rotors_dict[job.rotor_index]['symmetry'] = determine_rotor_symmetry(
-                        label=label,
-                        pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
-                        rotor_path=job.local_path_to_output_file)[0]
-                    logger.info(
-                        f'Rotor scan {self.species_dict[label].rotors_dict[job.rotor_index]["scan"]} between pivots '
-                        f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} for {label} '
-                        f'has symmetry {self.species_dict[label].rotors_dict[job.rotor_index]["symmetry"]}')
+            if invalidate:
+                self.species_dict[label].rotors_dict[job.rotor_index]['success'] = False
+                self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] = invalidation_reason
+            else:
+                self.species_dict[label].rotors_dict[job.rotor_index]['success'] = True
+                self.species_dict[label].rotors_dict[job.rotor_index]['symmetry'] = determine_rotor_symmetry(
+                    label=label,
+                    pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
+                    rotor_path=job.local_path_to_output_file)[0]
+                logger.info(
+                    f'Rotor scan {self.species_dict[label].rotors_dict[job.rotor_index]["scan"]} between pivots '
+                    f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} for {label} '
+                    f'has symmetry {self.species_dict[label].rotors_dict[job.rotor_index]["symmetry"]}')
         else:
             # This is an ND scan, pass for now as it is currently not used for computing Q.
             pass
