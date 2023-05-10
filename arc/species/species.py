@@ -342,6 +342,7 @@ class ARCSpecies(object):
         self._radius = None
         self.mol = mol
         self.mol_list = None
+        self.adjlist = adjlist
         self.multiplicity = multiplicity
         self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
@@ -629,6 +630,8 @@ class ARCSpecies(object):
         species_dict['number_of_rotors'] = self.number_of_rotors
         if self.external_symmetry is not None:
             species_dict['external_symmetry'] = self.external_symmetry
+        if self.adjlist is not None:
+            species_dict['adjlist'] = self.adjlist
         if self.irc_label is not None:
             species_dict['irc_label'] = self.irc_label
         if self.optical_isomers is not None:
@@ -770,6 +773,7 @@ class ARCSpecies(object):
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
         self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict \
             else False if self.is_ts else None
+        self.adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
         if self.is_ts:
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
