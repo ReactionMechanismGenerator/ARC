@@ -1324,6 +1324,7 @@ class Scheduler(object):
                                      level_of_theory=self.scan_level,
                                      job_type='scan',
                                      torsions=torsions,
+                                     rotor_index=i,
                                      )
 
     def run_irc_job(self, label, irc_direction='forward'):
