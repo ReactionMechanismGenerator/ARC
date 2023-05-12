@@ -334,7 +334,7 @@ for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, aut
 
 paths = list()
 paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'arc_env', 'bin', 'xtb'))
+                            'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'xtb'))
@@ -349,7 +349,7 @@ for xtb_path in paths:
         break
 
 arc_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'arc_env', 'bin', 'python')
+                            'xtb_env', 'bin', 'python')
 arc_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
 arc_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'python')
 arc_pypath_4 = os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'python')
