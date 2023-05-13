@@ -3,10 +3,12 @@ channels:
   - defaults
   - rmg
   - conda-forge
+  - cantera
+  - anaconda
 dependencies:
   - cairo
   - cairocffi
-  - rmg::cantera >=2.3.0
+  - cantera::cantera=2.6
   - conda-forge::cclib >=1.7.0
   - rmg::chemprop
   - coolprop
@@ -25,9 +27,8 @@ dependencies:
   - mpmath
   - rmg::muq2
   - networkx
-  - nose
   - rmg::numdifftools
-  - numpy >=1.10.0
+  - numpy==1.20.1
   - conda-forge::openbabel >= 3
   - pandas
   - psutil
@@ -57,5 +58,4 @@ dependencies:
   - mako
   - pytables
   - anaconda::pytest
-  - conda-forge::xtb
   - conda-forge::pytest-cov
