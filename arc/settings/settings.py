@@ -335,13 +335,9 @@ for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, aut
 paths = list()
 paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
                             'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'bin', 'xtb'))
 paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 for xtb_path in paths:
     if os.path.isfile(xtb_path):
