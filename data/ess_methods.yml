@@ -67,6 +67,7 @@ gaussian: # see https://gaussian.com/overlay3/#iop_(3/74) for more info on g16 m
   - ccsd(t)
   - cis
   - bd
+  - bd(t)
   - cbs-4m  # composite
   - cbs-qb3
   - cbs-qb3-paraskevas  # has different BAC in Arkane
@@ -115,6 +116,8 @@ molpro:  # see https://www.molpro.net/info/release/doc/manual/node261.html for m
   - CCSD-F12
   - CCSD(T)-F12
   - MRCI-F12
+  - MRCI
+  - CASSCF
   - CISD
   - QCISD
   - VPT2
@@ -127,6 +130,8 @@ molpro:  # see https://www.molpro.net/info/release/doc/manual/node261.html for m
   - CCSD(T)
   - CCSDT
   - CCSDT(Q)
+  - BCCD
+  - BCCD(T)
 terachem:  # see http://www.petachem.com/doc/userguide.pdf for more info on terachem methods
   - rhf
   - svwn
@@ -199,4 +204,3 @@ openbabel:
   - gaff
   - uff
   - ghemical
-
