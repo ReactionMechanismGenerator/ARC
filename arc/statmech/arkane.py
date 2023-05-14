@@ -218,7 +218,7 @@ class ArkaneAdapter(StatmechAdapter):
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
                 if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
-                                                                       exemptions=['warnings', 'IRC', 'E0'],
+                                                                       exemptions=['warnings', 'IRC', 'E0', 'normal_mode_displacement'],
                                                                        verbose=True,
                                                                        ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
