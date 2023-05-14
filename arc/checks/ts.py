@@ -114,6 +114,11 @@ def check_ts_energy(reaction: 'ARCReaction',
         reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
     """
+    # Check whether E0 values are already known, e.g. from Arkane species YAML files
+    check_rxn_e0(reaction=reaction)
+    if reaction.ts_species.ts_checks['E0']:
+        return
+
     r_e_elect = None if any([spc.e_elect is None for spc in reaction.r_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=0) for spc in reaction.r_species)
     p_e_elect = None if any([spc.e_elect is None for spc in reaction.p_species]) \
@@ -186,7 +191,7 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
     considered_labels = list()
     rxn_copy = reaction.copy()
     for species in rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]:
-        if species.label in considered_labels:
+        if species.label in considered_labels or species.e0:
             continue
         considered_labels.append(species.label)
         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
@@ -201,18 +206,32 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    r_e0 = sum_list_entries([r.e0 for r in rxn_copy.r_species],
-                            multipliers=[rxn_copy.get_species_count(species=r, well=0) for r in rxn_copy.r_species])
-    p_e0 = sum_list_entries([p.e0 for p in rxn_copy.p_species],
-                            multipliers=[rxn_copy.get_species_count(species=p, well=1) for p in rxn_copy.p_species])
-    if any(e0 is None for e0 in [r_e0, p_e0, rxn_copy.ts_species.e0]) \
-            or r_e0 >= rxn_copy.ts_species.e0 or p_e0 >= rxn_copy.ts_species.e0:
-        reaction.ts_species.ts_checks['E0'] = False
+    e0_pass = check_rxn_e0(reaction=rxn_copy)
+    if not e0_pass:
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
         return True  # Switch TS.
-    reaction.ts_species.ts_checks['E0'] = True
     return False  # Don't switch TS.
+
+
+def check_rxn_e0(reaction: 'ARCReaction') -> Optional[bool]:
+    """
+    Checking the E0 values between wells and a TS in a ``reaction``, assuming that E0 values are available.
+
+    Returns:
+        Optional[bool]: Whether the Ts E0 is above both R and P E0 wells.
+    """
+    r_e0 = sum_list_entries([r.e0 for r in reaction.r_species],
+                            multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
+    p_e0 = sum_list_entries([p.e0 for p in reaction.p_species],
+                            multipliers=[reaction.get_species_count(species=p, well=1) for p in reaction.p_species])
+    if any(e0 is None for e0 in [r_e0, p_e0, reaction.ts_species.e0]):
+        return None
+    if r_e0 >= reaction.ts_species.e0 or p_e0 >= reaction.ts_species.e0:
+        reaction.ts_species.ts_checks['E0'] = False
+        return False
+    reaction.ts_species.ts_checks['E0'] = True
+    return True
 
 
 def check_normal_mode_displacement(reaction: 'ARCReaction',
