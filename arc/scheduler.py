@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_rxn_e0, check_irc_species_and_rxn
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn, compute_and_check_rxn_e0
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -2455,14 +2455,14 @@ class Scheduler(object):
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[spc_label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
-                switch_ts = check_rxn_e0(reaction=rxn,
-                                         species_dict=self.species_dict,
-                                         project_directory=self.project_directory,
-                                         kinetics_adapter=self.kinetics_adapter,
-                                         output=self.output,
-                                         sp_level=self.sp_level if not self.composite_method else self.composite_method,
-                                         freq_scale_factor=self.freq_scale_factor,
-                                         )
+                switch_ts = compute_and_check_rxn_e0(reaction=rxn,
+                                                     species_dict=self.species_dict,
+                                                     project_directory=self.project_directory,
+                                                     kinetics_adapter=self.kinetics_adapter,
+                                                     output=self.output,
+                                                     sp_level=self.sp_level if not self.composite_method else self.composite_method,
+                                                     freq_scale_factor=self.freq_scale_factor,
+                                                     )
                 if switch_ts is True:
                     logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
                                 f'Switching TS.\n')

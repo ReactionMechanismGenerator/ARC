@@ -154,14 +154,14 @@ def check_ts_energy(reaction: 'ARCReaction',
         reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
 
-def check_rxn_e0(reaction: 'ARCReaction',
-                 species_dict: dict,
-                 project_directory: str,
-                 kinetics_adapter: str,
-                 output: dict,
-                 sp_level: 'Level',
-                 freq_scale_factor: float = 1.0,
-                 ) -> Optional[bool]:
+def compute_and_check_rxn_e0(reaction: 'ARCReaction',
+                             species_dict: dict,
+                             project_directory: str,
+                             kinetics_adapter: str,
+                             output: dict,
+                             sp_level: 'Level',
+                             freq_scale_factor: float = 1.0,
+                             ) -> Optional[bool]:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
 
