@@ -38,6 +38,10 @@ else
     conda activate xtb_env
 fi
 
-$COMMAND_PKG install -c conda-forge xtb -y
+# Install xtb
+$COMMAND_PKG install -n xtb_env -c conda-forge  xtb=6.3.3 -y
+
+# Install pyyaml
 $COMMAND_PKG install -c anaconda pyyaml -y
-$COMMAND_PKG activate base
+
+$COMMAND_PKG deactivate
