@@ -1,0 +1,6 @@
+name: ob_env
+channels:
+  - conda-forge
+dependencies:
+  - openbabel
+  - pyyaml
