@@ -32,4 +32,4 @@ fi
 
 $COMMAND_PKG clean -a -y
 echo creating tani_env
-$COMMAND_PKG env create -f devtools/tani.yml
+$COMMAND_PKG env create -f devtools/tani_environment.yml
