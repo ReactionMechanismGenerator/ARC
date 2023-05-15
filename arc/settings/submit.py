@@ -13,9 +13,7 @@ incore_commands = {
     'xtb_gsm': ['micromamba activate xtb_env',
                 './gsm.orca',
                 ],
-    'sella': ['micromamba activate sella_env',
-              'python sella_runner.py',
-              ],
+    'sella': ['/opt/conda/envs/sella_env/bin/python sella_runner.py'],
 }
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
