@@ -1,0 +1,128 @@
+name: Update cache
+
+on:
+  schedule:
+    - cron: "0 0 */7 * *"
+  push:
+    branches:
+      - main
+
+jobs:
+  update_cache:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+          shell: bash -el {0}
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v3
+        
+      - name: Cache RMG
+        id: cache-rmg
+        uses: actions/cache@v2
+        with:
+            path: RMG-Py
+            key: ${{ runner.os }}-rmg-main
+
+      - name: Checkout RMG
+        uses: actions/checkout@v3
+        with:
+            repository: ReactionMechanismGenerator/RMG-Py
+            path: RMG-Py
+            ref: main
+            fetch-depth: 1
+
+      - name: Cache RMG-database
+        id: cache-rmg-db
+        uses: actions/cache@v2
+        with:
+            path: RMG-database
+            key: ${{ runner.os }}-rmgdb-main
+
+      - name: Checkout RMG-database
+        uses: actions/checkout@v3
+        with:
+            repository: ReactionMechanismGenerator/RMG-database
+            path: RMG-database
+            ref: main
+            fetch-depth: 1
+        
+      - name: Cache AutoTST
+        id: cache-autotst
+        uses: actions/cache@v2
+        with:
+            path: AutoTST
+            key: ${{ runner.os }}-autotst-main
+            restore-keys: |
+                ${{ runner.os }}-autotst-
+      - name: Checkout AutoTST
+        if: steps.cache-autotst.outputs.cache-hit != 'true'
+        uses: actions/checkout@v3
+        with:
+            repository: ReactionMechanismGenerator/AutoTST
+            path: AutoTST
+            ref: main
+            fetch-depth: 1
+    
+      - name: Cache TS-GCN
+        id: cache-tsgcn
+        uses: actions/cache@v2
+        with:
+            path: TS-GCN
+            key: ${{ runner.os }}-tsgcn-main
+            restore-keys: |
+                ${{ runner.os }}-tsgcn-
+      - name: Checkout TS-GCN
+        if: steps.cache-tsgcn.outputs.cache-hit != 'true'
+        uses: actions/checkout@v3
+        with:
+            repository: ReactionMechanismGenerator/TS-GCN
+            path: TS-GCN
+            ref: main
+            fetch-depth: 1
+        
+      - name: Cache KinBot
+        id: cache-kinbot
+        uses: actions/cache@v2
+        with:
+            path: KinBot
+            key: ${{ runner.os }}-kinbot-2.0.6
+            restore-keys: |
+                ${{ runner.os }}-kinbot-
+    
+      - name: Checkout Kinbot 2.0.6
+        if: steps.cache-kinbot.outputs.cache-hit != 'true'
+        uses: actions/checkout@v3
+        with:
+            repository: zadorlab/KinBot
+            path: KinBot
+            ref: v2.0.6
+            fetch-depth: 1
+    
+      - name: Cache Packages Packages
+        uses: actions/cache@v2
+        env:
+            CACHE_NUMBER: 0
+        with:
+            path: ~/conda_pkgs_dir
+            key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+      - name: Setup ARC Env
+        uses: conda-incubator/setup-miniconda@v2
+        with:
+            miniforge-variant: Mambaforge
+            miniforge-version: latest
+            activate-environment: arc_env
+            use-mamba: true
+    
+      - name: Cache ARC env
+        uses: actions/cache@v2
+        with:
+            path: ${{ env.CONDA }}/envs
+            key: conda-${{ runner.os }}--${{ runner.arch }}--${{ env.CACHE_NUMBER}}
+        env:
+            # Increase this value to reset cache if etc/example-environment.yml has not changed
+            CACHE_NUMBER: 0
+        id: cache-arc-env
+      - name: Update environment
+        run: mamba env update -n arc_env -f environment.yml
+        if: steps.cache-arc-env.outputs.cache-hit != 'true'
