@@ -13,9 +13,7 @@ incore_commands = {
     'xtb_gsm': ['micromamba activate xtb_env',
                 './gsm.orca',
                 ],
-    'sella': ['CONDA_BASE=$(conda info --base)',
-              'source $CONDA_BASE/etc/profile.d/conda.sh',
-              'conda activate sella_env',
+    'sella': ['micromamba activate sella_env',
               'python sella_runner.py',
               ],
 }
