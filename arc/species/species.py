@@ -1520,6 +1520,8 @@ class ARCSpecies(object):
             xyz (dict, optional): Alternative coordinates to use.
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
         """
+        if self.is_ts:
+            return None
         if xyz is None:
             xyz = self.get_xyz(generate=get_cheap, return_format='dict')
         if xyz is None:
