@@ -10,9 +10,7 @@ incore_commands = {
     'xtb': [
             'bash input.sh',
             ],
-    'xtb_gsm': ['CONDA_BASE=$(conda info --base)',
-                'source $CONDA_BASE/etc/profile.d/conda.sh',
-                'conda activate xtb_env',
+    'xtb_gsm': ['micromamba activate xtb_env',
                 './gsm.orca',
                 ],
     'sella': ['CONDA_BASE=$(conda info --base)',
