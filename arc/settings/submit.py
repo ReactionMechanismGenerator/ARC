@@ -7,9 +7,7 @@ incore_commands = {
     'gaussian': ['g16 < input.gjf > input.log',
                  'formchk check.chk check.fchk',
                  ],
-    'xtb': ['CONDA_BASE=$(conda info --base)',
-            'source $CONDA_BASE/etc/profile.d/conda.sh',
-            'conda activate xtb_env',
+    'xtb': [
             'bash input.sh',
             ],
     'xtb_gsm': ['CONDA_BASE=$(conda info --base)',
