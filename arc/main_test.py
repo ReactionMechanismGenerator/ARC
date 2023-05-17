@@ -72,6 +72,7 @@ class TestARC(unittest.TestCase):
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
                    three_params=False,
+                   ts_adapters=['heuristics', 'AutoTST', 'GCN', 'xtb_gsm'],
                    )
         arc0.freq_level.args['keyword']['general'] = 'scf=(NDump=30)'
         restart_dict = arc0.as_dict()
@@ -160,7 +161,8 @@ class TestARC(unittest.TestCase):
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
                          'thermo_adapter': 'arkane',
-                         'three_params': False}
+                         'three_params': False,
+                         'ts_adapters': ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']}
         # import pprint  # left intentionally for debugging
         # print(pprint.pprint(restart_dict))
         self.assertEqual(restart_dict, expected_dict)
@@ -474,6 +476,23 @@ class TestARC(unittest.TestCase):
             self.assertIsInstance(arc.sp_level, Level)
             self.assertIsInstance(arc.opt_level, Level)
             self.assertIsInstance(arc.freq_level, Level)
+
+    def test_unknown_ts_adapter(self):
+        """
+        Tests that ARC raises an error when unknown TS adapters are given.
+        """
+        spc1 = ARCSpecies(label='spc1',
+                          smiles='CC',
+                          compute_thermo=False,
+                          )
+        with self.assertRaises(InputError):
+            arc0 = ARC(project='arc_test',
+                       job_types=self.job_types1,
+                       species=[spc1],
+                       level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                       three_params=False,
+                       ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
+                       )
 
     @classmethod
     def tearDownClass(cls):

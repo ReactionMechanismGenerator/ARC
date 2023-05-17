@@ -38,6 +38,7 @@ from arc.common import (VERSION,
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
 from arc.level import Level
+from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
@@ -153,6 +154,7 @@ class ARC(object):
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
                                  Only used for restarting.
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
+        ts_adapters (list, optional): Entries represent different TS adapters.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -218,6 +220,7 @@ class ARC(object):
         three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
                              format (``True``) or classical two-parameter Arrhenius equation format (``False``).
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        ts_adapters (list): Entries represent different TS adapters.
     """
 
     def __init__(self,
@@ -263,6 +266,7 @@ class ARC(object):
                  thermo_adapter: str = 'Arkane',
                  three_params: bool = True,
                  trsh_ess_jobs: bool = True,
+                 ts_adapters: List[str] = None,
                  ts_guess_level: Optional[Union[str, dict, Level]] = None,
                  verbose=logging.INFO,
                  ):
@@ -315,6 +319,10 @@ class ARC(object):
         self.bac_type = bac_type
         self.arkane_level_of_theory = Level(repr=arkane_level_of_theory) if arkane_level_of_theory is not None else None
         self.freq_scale_factor = freq_scale_factor
+        self.ts_adapters = ts_adapters
+        for ts_adapter in self.ts_adapters or list():
+            if ts_adapter.lower() not in _registered_job_adapters.keys():
+                raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
@@ -465,6 +473,8 @@ class ARC(object):
             restart_dict['conformer_level'] = self.conformer_level.as_dict()
         if self.dont_gen_confs:
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
+        if self.ts_adapters:
+            restart_dict['ts_adapters'] = self.ts_adapters
         restart_dict['e_confs'] = self.e_confs
         restart_dict['ess_settings'] = self.ess_settings
         if self.freq_level is not None:
@@ -581,6 +591,7 @@ class ARC(object):
                                    dont_gen_confs=self.dont_gen_confs,
                                    trsh_ess_jobs=self.trsh_ess_jobs,
                                    fine_only=self.fine_only,
+                                   ts_adapters=self.ts_adapters,
                                    )
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)

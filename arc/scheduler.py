@@ -65,11 +65,9 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ, default_job_settings, \
-    default_job_types, rotor_scan_resolution, ts_adapters, max_rotor_trsh = \
+    default_job_types, rotor_scan_resolution, default_ts_adapters, max_rotor_trsh = \
     settings['LOWEST_MAJOR_TS_FREQ'], settings['HIGHEST_MAJOR_TS_FREQ'], settings['default_job_settings'], \
     settings['default_job_types'], settings['rotor_scan_resolution'], settings['ts_adapters'], settings['max_rotor_trsh']
-
-ts_adapters = [ts_adapter.lower() for ts_adapter in ts_adapters]
 
 
 class Scheduler(object):
@@ -161,6 +159,7 @@ class Scheduler(object):
         kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        ts_adapters (list, optional): Entries represent different TS adapters.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -214,6 +213,7 @@ class Scheduler(object):
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        ts_adapters (list): Entries represent different TS adapters.
     """
 
     def __init__(self,
@@ -247,6 +247,7 @@ class Scheduler(object):
                  trsh_ess_jobs: Optional[bool] = True,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
+                 ts_adapters: List[str] = None,
                  ) -> None:
 
         self.project = project
@@ -275,6 +276,8 @@ class Scheduler(object):
         self.trsh_ess_jobs = trsh_ess_jobs
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
+        self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
+        self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
         self.output = dict()
 
         self.species_dict, self.rxn_dict = dict(), dict()
@@ -1474,7 +1477,7 @@ class Scheduler(object):
                 else:
                     rxn.ts_species.tsg_spawned = True
                     tsg_index = 0
-                    for method in ts_adapters:
+                    for method in self.ts_adapters:
                         if method in all_families_ts_adapters or \
                                 (rxn.family is not None
                                  and rxn.family.label in list(ts_adapters_by_rmg_family.keys())
