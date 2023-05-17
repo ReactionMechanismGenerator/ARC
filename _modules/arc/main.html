@@ -202,6 +202,7 @@
 <span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span><span class="p">,</span> <span class="n">SpeciesError</span>
 <span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
 <span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
+<span class="kn">from</span> <span class="nn">arc.job.factory</span> <span class="kn">import</span> <span class="n">_registered_job_adapters</span>
 <span class="kn">from</span> <span class="nn">arc.job.ssh</span> <span class="kn">import</span> <span class="n">SSHClient</span>
 <span class="kn">from</span> <span class="nn">arc.processor</span> <span class="kn">import</span> <span class="n">process_arc_project</span>
 <span class="kn">from</span> <span class="nn">arc.reaction</span> <span class="kn">import</span> <span class="n">ARCReaction</span>
@@ -317,6 +318,7 @@
 <span class="sd">        output (dict, optional): Output dictionary with status and final QM file paths for all species.</span>
 <span class="sd">                                 Only used for restarting.</span>
 <span class="sd">        running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.</span>
+<span class="sd">        ts_adapters (list, optional): Entries represent different TS adapters.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
@@ -382,6 +384,7 @@
 <span class="sd">        three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation</span>
 <span class="sd">                             format (``True``) or classical two-parameter Arrhenius equation format (``False``).</span>
 <span class="sd">        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
+<span class="sd">        ts_adapters (list): Entries represent different TS adapters.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -427,6 +430,7 @@
                  <span class="n">thermo_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Arkane&#39;</span><span class="p">,</span>
                  <span class="n">three_params</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">trsh_ess_jobs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                 <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">ts_guess_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">verbose</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
                  <span class="p">):</span>
@@ -479,6 +483,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="o">=</span> <span class="n">bac_type</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="o">=</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="n">arkane_level_of_theory</span><span class="p">)</span> <span class="k">if</span> <span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="n">freq_scale_factor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="n">ts_adapters</span>
+        <span class="k">for</span> <span class="n">ts_adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">ts_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_registered_job_adapters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unknown TS adapter: &quot;</span><span class="si">{</span><span class="n">ts_adapter</span><span class="si">}</span><span class="s1">&quot;&#39;</span><span class="p">)</span>
 
         <span class="c1"># attributes related to level of theory specifications</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">level_of_theory</span> <span class="o">=</span> <span class="n">level_of_theory</span>
@@ -629,6 +637,8 @@
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;conformer_level&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">conformer_level</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dont_gen_confs</span><span class="p">:</span>
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;dont_gen_confs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dont_gen_confs</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">:</span>
+            <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;ts_adapters&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span>
         <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;e_confs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">e_confs</span>
         <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;ess_settings&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -745,6 +755,7 @@
                                    <span class="n">dont_gen_confs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">dont_gen_confs</span><span class="p">,</span>
                                    <span class="n">trsh_ess_jobs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span><span class="p">,</span>
                                    <span class="n">fine_only</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fine_only</span><span class="p">,</span>
+                                   <span class="n">ts_adapters</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">,</span>
                                    <span class="p">)</span>
 
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;status.yml&#39;</span><span class="p">),</span> <span class="n">content</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
