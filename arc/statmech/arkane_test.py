@@ -56,6 +56,22 @@ class TestArkaneAdapter(unittest.TestCase):
                                      sp_level=Level('gfn2'),
                                      )
 
+    def test__str__(self):
+        """Test the __str__ function"""
+        for arkane in [self.arkane_1, self.arkane_2, self.arkane_3]:
+            repr = arkane.__str__()
+            self.assertIn('ArkaneAdapter(', repr)
+            self.assertIn(f'output_directory={arkane.output_directory}, ', repr)
+            self.assertIn(f'bac_type={arkane.bac_type}, ', repr)
+            self.assertIn(f'freq_scale_factor={arkane.freq_scale_factor}, ', repr)
+            self.assertIn(f'species={arkane.species}, ', repr)
+            self.assertIn(f'reaction={arkane.reaction}, ', repr)
+            self.assertIn(f'T_min={arkane.T_min}, ', repr)
+            self.assertIn(f'T_max={arkane.T_max}, ', repr)
+            self.assertIn(f'T_count={arkane.T_count})', repr)
+            if arkane.sp_level is not None:
+                self.assertIn(f'sp_level={arkane.sp_level.simple()}', repr)
+    
     def test_arkane_has_en_corr(self):
         """Test the arkane_has_en_corr() function"""
         self.arkane_1.sp_level = Level('CBS-QB3')
