@@ -531,6 +531,36 @@ H      -1.69381305    0.40788834    0.90078104"""
                           224.0, 232.0, 240.0, 248.0, 256.0, 264.0, 272.0, 280.0, 288.0, 296.0, 304.0, 312.0, 320.0,
                           328.0, 336.0, 344.0, 352.0])
 
+        path4 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'NH2NO_forward.out')
+        energies_4, angles_4 = parser.parse_1d_scan_energies(path=path4)
+        expected_energies = np.array([0.00000000e+00, 2.86439409e-01, 1.90899307e+00, 5.77996180e+00,
+                                      1.21921833e+01, 2.07854969e+01, 3.08778186e+01, 4.16617363e+01,
+                                      5.22686376e+01, 6.19510347e+01, 7.00687416e+01, 7.61076039e+01,
+                                      7.95644683e+01, 7.99855880e+01, 7.62834389e+01, 4.93829743e+00,
+                                      1.55454009e+00, 2.36497151e-01, 4.77315871e-03, 2.47138302e-01,
+                                      1.56465089e+00, 4.93070711e+00, 1.08852121e+01, 1.93352075e+01,
+                                      2.98411898e+01, 4.17066560e+01, 5.40963426e+01, 6.60663220e+01,
+                                      7.66282248e+01, 8.46853824e+01, 8.92406115e+01, 8.88176619e+01,
+                                      1.22182651e+01, 5.74857395e+00, 1.90325373e+00, 2.82109960e-01,
+                                      1.56742341e-03], np.float64)
+        np.testing.assert_almost_equal(energies_4, expected_energies)
+        self.assertEqual(len(angles_4), 37)
+
+        path5 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'NH2NO_reverse.out')
+        energies_5, angles_5 = parser.parse_1d_scan_energies(path=path5)
+        expected_energies = np.array([5.75772119e-03, 2.92173501e-01, 1.91467203e+00, 5.78556199e+00,
+                                      1.21977100e+01, 2.07909632e+01, 3.08832560e+01, 4.16671553e+01,
+                                      5.22740803e+01, 6.19565168e+01, 7.00742814e+01, 7.61132146e+01,
+                                      7.95701657e+01, 7.99913877e+01, 7.62893857e+01, 4.94425994e+00,
+                                      1.56011927e+00, 2.42527924e-01, 1.06779079e-02, 2.52882895e-01,
+                                      1.57022745e+00, 4.93633618e+00, 1.08907887e+01, 1.93407001e+01,
+                                      2.98465984e+01, 4.17120278e+01, 5.41017196e+01, 6.60717174e+01,
+                                      7.66336150e+01, 8.46910351e+01, 8.92461697e+01, 8.88234669e+01,
+                                      1.21832251e+01, 5.78097524e+00, 1.85099053e+00, 2.79644615e-01,
+                                      0.00000000e+00], np.float64)
+        np.testing.assert_almost_equal(energies_5, expected_energies)
+        self.assertEqual(len(angles_5), 37)
+
     def test_parse_nd_scan_energies(self):
         """Test parsing an ND scan output file"""
         path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_2D_relaxed_OCdOO.log')
