@@ -30,6 +30,7 @@ from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
 from arc.parser import (parse_1d_scan_coords,
+                        parse_1d_scan_energies,
                         parse_normal_mode_displacement,
                         parse_scan_args,
                         parse_scan_conformers,
@@ -1536,3 +1537,77 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
 
     return invalidate, invalidation_reason, message, actions
+
+
+def iron_1d_scan(scan_path_1: str,
+                 scan_path_2: str,
+                 ) -> Optional[str]:
+    """
+    "Iron" out a 1D scan.
+    Sometimes scans have large gaps, e.g. due to a coupled inversion mode.
+    This function takes two scans performed at opposite directions and creates a single continuous scan out of them.
+    Gaps are bridged using values from the scan which is continuous, other values are averaged.
+
+    Args:
+        scan_path_1 (str): A path to a 1D scan in the forward direction.
+        scan_path_2 (str): A path to a 1D scan in the reverse direction at the same resolution as the forward scan.
+
+    Returns:
+        Optional[str]:: A path to a fixed scan file in a format Arkane can read.
+    """
+    if not os.path.isfile(scan_path_1) or not os.path.isfile(scan_path_2):
+        logger.error(f'Could not find one or both of the scan files:\n{scan_path_1}\n{scan_path_2}')
+        return None
+    energies_1, angles_1 = parse_1d_scan_energies(scan_path_1)
+    energies_2, angles_2 = parse_1d_scan_energies(scan_path_2)
+    if any(len(energies_1) != len(lst) for lst in [energies_2, angles_1, angles_2]) or len(energies_1) < 10:
+        logger.error(f'wrong energies and degrees lengths: '
+                     f'{len(energies_1)}, {len(angles_1)}, {len(energies_2)}, {len(angles_2)}')
+        return None
+
+
+
+
+def identify_1d_scan_gaps(energies: List[float],
+                          tolerance
+                          ) -> Optional[List[int]]:
+    """
+    Identify gaps in the scan.
+
+    Args:
+        energies (List[float]): Entries are scan energies in kJ/mol.
+
+    Returns:
+
+    """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
