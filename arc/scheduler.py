@@ -633,9 +633,9 @@ class Scheduler(object):
                     elif 'scan' in job_name and 'directed' not in job_name:
                         job = self.job_dict[label]['scan'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            job = self.job_dict[label]['scan'][job_name]
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination and job.directed_scan_type == 'ess':
+                            if successful_server_termination \
+                                    and (job.directed_scan_type is None or job.directed_scan_type == 'ess'):
                                 self.check_scan_job(label=label, job=job)
                             self.timer = False
                             break
@@ -1324,6 +1324,7 @@ class Scheduler(object):
                                      level_of_theory=self.scan_level,
                                      job_type='scan',
                                      torsions=torsions,
+                                     rotor_index=i,
                                      )
 
     def run_irc_job(self, label, irc_direction='forward'):
@@ -2718,17 +2719,19 @@ class Scheduler(object):
                         # Record actions, only if the method is valid.
                         self.species_dict[label].rotors_dict[job.rotor_index]['trsh_methods'].append(actions)
 
-                if not invalidate:
-                    # the rotor scan is good, calculate the symmetry number
-                    self.species_dict[label].rotors_dict[job.rotor_index]['success'] = True
-                    self.species_dict[label].rotors_dict[job.rotor_index]['symmetry'] = determine_rotor_symmetry(
-                        label=label,
-                        pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
-                        rotor_path=job.local_path_to_output_file)[0]
-                    logger.info(
-                        f'Rotor scan {self.species_dict[label].rotors_dict[job.rotor_index]["scan"]} between pivots '
-                        f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} for {label} '
-                        f'has symmetry {self.species_dict[label].rotors_dict[job.rotor_index]["symmetry"]}')
+            if invalidate:
+                self.species_dict[label].rotors_dict[job.rotor_index]['success'] = False
+                self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] = invalidation_reason
+            else:
+                self.species_dict[label].rotors_dict[job.rotor_index]['success'] = True
+                self.species_dict[label].rotors_dict[job.rotor_index]['symmetry'] = determine_rotor_symmetry(
+                    label=label,
+                    pivots=self.species_dict[label].rotors_dict[job.rotor_index]['pivots'],
+                    rotor_path=job.local_path_to_output_file)[0]
+                logger.info(
+                    f'Rotor scan {self.species_dict[label].rotors_dict[job.rotor_index]["scan"]} between pivots '
+                    f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} for {label} '
+                    f'has symmetry {self.species_dict[label].rotors_dict[job.rotor_index]["symmetry"]}')
         else:
             # This is an ND scan, pass for now as it is currently not used for computing Q.
             pass
