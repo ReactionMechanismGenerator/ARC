@@ -32,21 +32,13 @@ fi
 
 # clone the repo in the parent directory
 echo "Creating the Sella environment..."
-$COMMAND_PKG create -n sella_env python=3.7 -c conda-forge -y
+$COMMAND_PKG env create -f devtools/sella_environment.yml
 # Activate the environment
 if [ "$COMMAND_PKG" == "micromamba" ]; then
     micromamba activate sella_env
 else
     conda activate sella_env
 fi
-
-$COMMAND_PKG  install -c conda-forge xtb-python -y
-$COMMAND_PKG  install -c conda-forge pyyaml -y
-$COMMAND_PKG  install -c anaconda pandas -y
-$COMMAND_PKG  install -c conda-forge ase -y
-$COMMAND_PKG  install -c conda-forge ncurses
-$COMMAND_PKG  install -c anaconda pip -y
-$BASE/envs/sella_env/bin/pip install sella
 
 cd $BASE/envs/sella_env || exit
 mkdir -p ./etc/conda/activate.d

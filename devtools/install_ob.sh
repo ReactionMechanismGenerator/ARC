@@ -18,7 +18,7 @@ else
 fi
 
 $COMMAND_PKG clean -a -y
-$COMMAND_PKG env create -n ob_env conda-forge::openbabel
+$COMMAND_PKG env create -f devtools/ob_environment.yml
 # Activate the environment
 if [ "$COMMAND_PKG" == "micromamba" ]; then
     micromamba activate ob_env
@@ -26,5 +26,3 @@ else
     conda activate ob_env
 fi
 
-$COMMAND_PKG install -c conda-forge pyyaml
-$COMMAND_PKG deactivate

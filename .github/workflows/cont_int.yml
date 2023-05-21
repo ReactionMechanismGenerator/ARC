@@ -17,60 +17,217 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash -el {0}
 
     steps:
-    - uses: actions/checkout@v2
+    - name: Checkout ARC
+      uses: actions/checkout@v3
 
-    - name: Setup Mambaforge Python 3.7
+    - name: Clean Ubuntu Image
+      run: |
+        sudo apt-get purge -y \
+          '^llvm-.*' \
+          'php.*' \
+          '^mongodb-.*' \
+          '^mysql-.*' \
+          azure-cli \
+          google-cloud-sdk \
+          google-chrome-stable \
+          firefox \
+          powershell \
+          microsoft-edge-stable \
+          mono-devel
+        sudo apt-get autoremove -y
+        sudo apt-get clean
+
+    - name: Cache RMG-Py
+      id: cache-rmg-py
+      uses: actions/cache@v2
+      with:
+        path: RMG-Py
+        key: ${{ runner.os }}-rmg-main
+        restore-keys: |
+          ${{ runner.os }}-rmg-
+
+    - name: Checkout RMG-py
+      if: steps.cache-rmg-py.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: ReactionMechanismGenerator/RMG-Py
+        path: RMG-Py
+        ref: main
+        fetch-depth: 1
+
+    - name: Cache RMG-database
+      id: cache-rmg-db
+      uses: actions/cache@v2
+      with:
+          path: RMG-database
+          key: ${{ runner.os }}-rmgdb-main
+          restore-keys: |
+            ${{ runner.os }}-rmgdb-
+    - name: Checkout RMG-database
+      if: steps.cache-rmg-db.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: ReactionMechanismGenerator/RMG-database
+        path: RMG-database
+        ref: main
+        fetch-depth: 1
+
+    - name: Cache AutoTST
+      id: cache-autotst
+      uses: actions/cache@v2
+      with:
+          path: AutoTST
+          key: ${{ runner.os }}-autotst-main
+          restore-keys: |
+            ${{ runner.os }}-autotst-
+    - name: Checkout AutoTST
+      if: steps.cache-autotst.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: ReactionMechanismGenerator/AutoTST
+        path: AutoTST
+        ref: main
+        fetch-depth: 1
+
+    - name: Cache TS-GCN
+      id: cache-tsgcn
+      uses: actions/cache@v2
+      with:
+          path: TS-GCN
+          key: ${{ runner.os }}-tsgcn-main
+          restore-keys: |
+            ${{ runner.os }}-tsgcn-
+    - name: Checkout TS-GCN
+      if: steps.cache-tsgcn.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: ReactionMechanismGenerator/TS-GCN
+        path: TS-GCN
+        ref: main
+        fetch-depth: 1
+    
+    - name: Cache KinBot
+      id: cache-kinbot
+      uses: actions/cache@v2
+      with:
+          path: KinBot
+          key: ${{ runner.os }}-kinbot-2.0.6
+          restore-keys: |
+            ${{ runner.os }}-kinbot-
+
+    - name: Checkout Kinbot 2.0.6
+      if: steps.cache-kinbot.outputs.cache-hit != 'true'
+      uses: actions/checkout@v3
+      with:
+        repository: zadorlab/KinBot
+        path: KinBot
+        ref: v2.0.6
+        fetch-depth: 1
+
+    - name: Cache Packages Packages
+      uses: actions/cache@v2
+      env:
+        CACHE_NUMBER: 0
+      with:
+        path: ~/conda_pkgs_dir
+        key:
+          ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+    - name: Setup ARC Env
       uses: conda-incubator/setup-miniconda@v2
       with:
-        environment-file: environment.yml
-        miniforge-variant: Mambaforge
-        miniforge-version: latest
-        activate-environment: arc_env
-        python-version: 3.7
-        use-mamba: true
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          activate-environment: arc_env
+          use-mamba: true
 
+    - name: Cache ARC env
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.CONDA }}/envs/arc_env
+        key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ env.CACHE_NUMBER}}
+      env:
+        # Increase this value to reset cache if etc/example-environment.yml has not changed
+        CACHE_NUMBER: 0
+      id: cache-arc-env
     - name: Update environment
-      run: |
-        mamba env update -n arc_env -f environment.yml
-        conda list
+      run: mamba env update -n arc_env -f environment.yml
+      if: steps.cache-arc-env.outputs.cache-hit != 'true'
 
     - name: Install codecov
       run: mamba install -y -c conda-forge codecov
 
-    - name: Install dependencies
+    - name: Cythonize RMG-Py
       run: |
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        conda activate arc_env
-        cd ..
-        git clone https://github.com/ReactionMechanismGenerator/RMG-Py
         cd RMG-Py
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
         make
         cd ..
-        git clone https://github.com/ReactionMechanismGenerator/RMG-database
-        cd ARC
-        source ~/.bashrc
-        make install-all
-        source ~/.bashrc
-        conda activate arc_env
-        echo $PYTHONPATH
-        conda list
-
-    - name: Lint with flake8
+  
+    - name: Set ARC Path
       run: |
-        mamba install flake8
-        mamba config --append channels anaconda
-        # stop the build if there are Python syntax errors or undefined names
-        python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        
+    - name: Install AutoTST
+      run: |
+        cd AutoTST
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        mamba env create -f environment.yml
+        mamba install -n tst_env -c anaconda yaml -y
+        cd ..
+    
+    - name: Install TS-GCN
+      run: |
+        cd TS-GCN
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        bash devtools/create_env_cpu.sh
+        mamba env update -n ts_gcn -f environment.yml
+        cd ..
+    
+    - name: Install KinBot
+      run: |
+        cd KinBot
+        conda activate arc_env
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
+        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        python setup.py build
+        python setup.py install
+        cd ..
 
+    - name: Install OpenBabel
+      run: |
+        mamba env create -f devtools/ob_environment.yml
+
+    - name: Install Sella
+      run: |
+        mamba env create -f devtools/sella_environment.yml
+
+    - name: Install Torch Ani
+      run: |
+        mamba env create -f devtools/tani_environment.yml
+  
+    - name: Install XTB
+      run: |
+        mamba env create -f devtools/xtb_environment.yml
+    
     - name: Test with pytest
+      shell: bash -el {0} 
       run: |
         source ~/.bashrc
         conda activate arc_env
@@ -83,5 +240,12 @@ jobs:
         conda activate arc_env
         make test-functional
 
-    - name: Code coverage
-      run: codecov
+    - name: Code Coverage
+      uses: codecov/codecov-action@v3
+      with:
+        token: f259713a-7f1d-4e9c-b140-bb3bb371d3ef
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        verbose: true
+        fail_ci_if_error: true
