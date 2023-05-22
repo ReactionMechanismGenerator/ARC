@@ -851,11 +851,11 @@ def trsh_ess_job(label: str,
         couldnt_trsh = True
 
     elif software == 'gaussian':
-        if 'CheckFile' in job_status['keywords'] and 'checkfie=None' not in ess_trsh_methods:
+        if 'CheckFile' in job_status['keywords'] and 'checkfile=None' not in ess_trsh_methods:
             # The checkfile doesn't match the new basis set, remove it and rerun the job.
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                         '"Basis set data is not on the checkpoint file" by removing the checkfile.')
-            ess_trsh_methods.append('checkfie=None')
+            ess_trsh_methods.append('checkfile=None')
             remove_checkfile = True
         elif 'InternalCoordinateError' in job_status['keywords'] \
                 and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
@@ -863,36 +863,52 @@ def trsh_ess_job(label: str,
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using opt=cartesian with nosyym')
             ess_trsh_methods.append('cartesian')
             trsh_keyword = 'opt=(cartesian,nosymm)'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
             # try a fine grid for SCF and integral
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using a fine grid')
             ess_trsh_methods.append('fine')
             fine = True
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
             # try both qc and nosymm
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm)')
             ess_trsh_methods.append('scf=(qc,nosymm)')
             trsh_keyword = 'scf=(qc,nosymm)'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
             # Allows dynamic dumping for up to N SCF iterations (slower conversion)
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(NDump=30)')
             ess_trsh_methods.append('scf=(NDump=30)')
             trsh_keyword = 'scf=(NDump=30)'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'SCF' in job_status['keywords'] and 'scf=NoDIIS' not in ess_trsh_methods:
             # Switching off Pulay's Direct Inversion
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=NoDIIS')
             ess_trsh_methods.append('scf=NoDIIS')
             trsh_keyword = 'scf=NoDIIS'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'SCF' in job_status['keywords'] and 'scf=nosymm' not in ess_trsh_methods:
             # try running w/o considering symmetry
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=nosymm')
             ess_trsh_methods.append('scf=nosymm')
             trsh_keyword = 'scf=nosymm'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         elif 'int=(Acc2E=14)' not in ess_trsh_methods:  # does not work in g03
             # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
             ess_trsh_methods.append('int=(Acc2E=14)')
             trsh_keyword = 'int=(Acc2E=14)'
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
+            if 'SCF' in job_status['keywords'] or 'scf=nosymm' in ess_trsh_methods:
+                shift = 'scf=nosymm'
         elif 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
             # Increase memory allocation
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
@@ -901,6 +917,8 @@ def trsh_ess_job(label: str,
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
+            if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+                remove_checkfile = True
         else:
             couldnt_trsh = True
 
