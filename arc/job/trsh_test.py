@@ -292,7 +292,7 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
-        self.assertFalse(remove_checkfile)
+        self.assertTrue(remove_checkfile)
         self.assertEqual(trsh_keyword, 'opt=(cartesian,nosymm)')
 
         # Test Q-Chem
