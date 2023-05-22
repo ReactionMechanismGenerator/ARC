@@ -574,9 +574,8 @@ class ARCSpecies(object):
                 self._number_of_heavy_atoms = len([symbol for symbol in self.get_xyz()['symbols'] if symbol != 'H'])
             elif self.is_ts:
                 for ts_guess in self.ts_guesses:
-                    if ts_guess.xyz is not None:
-                        self._number_of_heavy_atoms = \
-                            len([line for line in ts_guess.xyz.splitlines() if line.split()[0] != 'H'])
+                    if ts_guess.get_xyz() is not None:
+                        self._number_of_heavy_atoms = len([symbol for symbol in ts_guess.get_xyz()['symbols'] if symbol != 'H'])
         return self._number_of_heavy_atoms
 
     @number_of_heavy_atoms.setter
