@@ -154,7 +154,7 @@ class TestGaussianAdapter(unittest.TestCase):
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0) scf=xqc  
+#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0) scf=xqc   
 
 spc1
 
@@ -172,7 +172,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc   
 
 spc1
 
@@ -190,7 +190,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc   
 
 ethanol
 
@@ -224,7 +224,7 @@ block
 %mem=14336mb
 %NProcShared=8
 
-#P  uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc  
+#P  uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc   
 
 birad_singlet
 
@@ -242,7 +242,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc   
 
 anion
 
@@ -260,7 +260,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc   
 
 IRC
 

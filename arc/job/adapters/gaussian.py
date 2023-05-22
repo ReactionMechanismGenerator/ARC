@@ -48,7 +48,7 @@ input_template = """${checkfile}
 %%mem=${memory}mb
 %%NProcShared=${cpus}
 
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion}
+#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion} ${trsh}
 
 ${label}
 
@@ -230,7 +230,13 @@ class GaussianAdapter(JobAdapter):
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
+        input_dict['trsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'] else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
+        if 'Acc2E=14' in input_dict['trsh']:
+            input_dict['trsh'] = input_dict['trsh'].replace('Acc2E=14', '')
+        if 'checkfile=None' in input_dict['trsh']:
+            input_dict['trsh'] = input_dict['trsh'].replace('checkfile=None', '')
+        integral_algorithm = 'Acc2E=14' if (self.args.get('trsh') and self.args['trsh'].get('trsh') and 'Acc2E=14' in self.args['trsh']['trsh']) else 'Acc2E=12'
 
         if self.level.basis is not None:
             input_dict['slash_1'] = '/'
@@ -265,7 +271,7 @@ class GaussianAdapter(JobAdapter):
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
-                    input_dict['fine'] = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+                    input_dict['fine'] = f'scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
                 if self.is_ts:
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
@@ -273,13 +279,13 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] = f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = 'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type == 'sp':
-            input_dict['job_type_1'] = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+            input_dict['job_type_1'] = f'scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
 
         elif self.job_type == 'scan':
             scans, scans_strings = list(), list()
@@ -297,7 +303,7 @@ class GaussianAdapter(JobAdapter):
 
             ts = 'ts, ' if self.is_ts else ''
             input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
-                                       f'integral=(grid=ultrafine, Acc2E=12)'
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
             input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
             for scan in scans_strings:
                 input_dict['scan'] += f'D {scan} S {int(360 / self.scan_res)} {self.scan_res:.1f}\n'
@@ -305,7 +311,7 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
+                input_dict['fine'] = f'scf=(direct) integral=(grid=ultrafine, {integral_algorithm})'
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
         for constraint_tuple in self.constraints:
