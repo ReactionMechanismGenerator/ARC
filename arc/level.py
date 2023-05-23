@@ -595,12 +595,12 @@ class Level(object):
                 return self.basis
             else:
                 # If hyphen exists, remove it and try to match again
-                self.basis = self.basis.replace('-', '')
                 basis_match = process.extractBests(self.basis, software_methods['basis_set'].values, score_cutoff=99)
                 # ratio = fuzz.WRatio(self.basis, software_methods['basis_set'].values, regex=pattern)
                 if len(basis_match)>1:
                     raise ValueError(f"Cannot match basis in {self.software}: {self.basis} as there are too many matches. Please check the basis set.")
                 elif len(basis_match) == 0:
+                    self.basis = self.basis.replace('-', '')
                     # Add a loop that puts a hyphen in different places in the basis set and tries to match again
                     # If it still doesn't match, then raise an error
                     for i in range(1, len(self.basis)):
