@@ -281,6 +281,7 @@ class QChemAdapter(JobAdapter):
             scan_string += '$end\n'
             if self.torsions is None or not len(self.torsions):
                 self.torsions = torsions_to_scans(scans, direction=-1)
+            input_dict['scan'] = scan_string
 
         elif self.job_type == 'irc':
             if self.fine:
