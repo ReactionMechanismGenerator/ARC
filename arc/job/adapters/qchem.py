@@ -229,7 +229,7 @@ class QChemAdapter(JobAdapter):
         input_dict['unrestricted'] = 'True' if not is_restricted(self) else 'False'
 
         # Job type specific options
-        if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals', 'scan']:
+        if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals']:
             input_dict['job_type_1'] = 'ts' if self.is_ts else 'opt'
             if self.fine:
                 input_dict['fine'] = '\n   GEOM_OPT_TOL_GRADIENT 15' \
@@ -239,7 +239,7 @@ class QChemAdapter(JobAdapter):
                     # Use a fine DFT grid, see 4.4.5.2 Standard Quadrature Grids, in
                     # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
                     input_dict['fine'] += '\n   XC_GRID 3'
-
+            
         elif self.job_type == 'freq':
             input_dict['job_type_1'] = 'freq'
 
@@ -262,6 +262,9 @@ class QChemAdapter(JobAdapter):
                                        f"\n$end\n"
 
         elif self.job_type == 'scan':
+            input_dict['job_type_1'] = 'pes_scan'
+            if self.fine:
+                input_dict['XC_GRID'] = '3'
             scans = list()
             if self.rotor_index is not None:
                 if self.species[0].rotors_dict \
