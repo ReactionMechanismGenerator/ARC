@@ -218,6 +218,7 @@ class GaussianAdapter(JobAdapter):
                     'scan',
                     'slash_1',
                     'slash_2',
+                    'trsh'
                     ]:
             input_dict[key] = ''
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''

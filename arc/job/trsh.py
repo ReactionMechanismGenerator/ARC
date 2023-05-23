@@ -857,6 +857,8 @@ def trsh_ess_job(label: str,
                         '"Basis set data is not on the checkpoint file" by removing the checkfile.')
             ess_trsh_methods.append('checkfile=None')
             remove_checkfile = True
+            if 'int=(Acc2E=14)' in ess_trsh_methods:
+                trsh_keyword='int=(Acc2E=14)'
         elif 'InternalCoordinateError' in job_status['keywords'] \
                 and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
             # try both cartesian and nosymm

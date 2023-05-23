@@ -283,7 +283,7 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(remove_checkfile)
         self.assertEqual(software, 'gaussian')
         self.assertEqual(memory, 16)
-        self.assertFalse(couldnt_trsh)
+        self.assertFalse(couldnt_trsh) 
 
         # Gaussian: test 2
         job_status = {'keywords': ['InternalCoordinateError']}
