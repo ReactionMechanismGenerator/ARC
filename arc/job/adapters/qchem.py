@@ -277,7 +277,7 @@ class QChemAdapter(JobAdapter):
             for scan in scans:
                 dihedral_1 = int(calculate_dihedral_angle(coords=self.xyz, torsion=scan, index=1))
                 scan_atoms_str = ' '.join([str(atom_index) for atom_index in scan])
-                scan_string += f'tors {scan_atoms_str} {dihedral_1} {dihedral_1 + 360.0} {self.scan_res}\n'
+                scan_string += f'tors {scan_atoms_str} {dihedral_1} {dihedral_1 - self.scan_res + 360%self.scan_res - (1 if 360%self.scan_res != 0 else 0)} {self.scan_res}\n'
             scan_string += '$end\n'
             if self.torsions is None or not len(self.torsions):
                 self.torsions = torsions_to_scans(scans, direction=-1)
