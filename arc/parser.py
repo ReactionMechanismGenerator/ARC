@@ -1248,7 +1248,11 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
         conformers.append(ics)
     # Concatenate ICs of conformers to a single table and remove redundant ICs
     scan_conformers = pd.concat([scan_ic_info] + conformers, axis=1)
-    red_ind = scan_conformers[scan_conformers.redundant == True].index
-    if not red_ind.empty:
-        scan_conformers.drop(red_ind, inplace=True)
+    try:
+        red_ind = scan_conformers[scan_conformers.redundant == True].index
+    except TypeError:
+        pass
+    else:
+        if not red_ind.empty:
+            scan_conformers.drop(red_ind, inplace=True)
     return scan_conformers
