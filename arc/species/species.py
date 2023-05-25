@@ -884,7 +884,7 @@ class ARCSpecies(object):
                     else:
                         self.rotors_dict[index][key] = val
 
-    def from_yml_file(self, label: str = None):
+    def from_yml_file(self, label: str = None) -> bool:
         """
         Load important species attributes such as label and final_xyz from an Arkane YAML file.
         Actual QM data parsing is done later when processing thermo and kinetics.
@@ -894,25 +894,35 @@ class ARCSpecies(object):
 
         Raises:
             ValueError: If the adjlist cannot be read.
+
+        Returns:
+            bool: Whether self.mol should be regenerated
         """
+        regen_mol = True
         rmg_spc = Species()
         arkane_spc = ArkaneSpecies(species=rmg_spc)
         # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
+        yml_content = read_yaml_file(self.yml_path)
         arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
         self.label = label if label is not None else arkane_spc.label
         self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
                                        numbers=arkane_spc.conformer.number.value)
-        if arkane_spc.adjacency_list is not None:
-            try:
-                self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
-                                                          raise_atomtype_exception=False)
-            except ValueError:
-                print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
-                raise
-        elif arkane_spc.inchi is not None:
-            self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
-        elif arkane_spc.smiles is not None:
-            self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
+        if 'mol' in yml_content:
+            self.mol = rmg_mol_from_dict_repr(representation=yml_content['mol'], is_ts=yml_content['is_ts'])
+            if self.mol is not None:
+                regen_mol = False
+        if regen_mol:
+            if arkane_spc.adjacency_list is not None:
+                try:
+                    self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                                                              raise_atomtype_exception=False)
+                except ValueError:
+                    print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
+                    raise
+            elif arkane_spc.inchi is not None:
+                self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
+            elif arkane_spc.smiles is not None:
+                self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
@@ -932,6 +942,7 @@ class ARCSpecies(object):
             self.mol_from_xyz()
         if self.e0 is None:
             self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+        return regen_mol
 
     def set_mol_list(self):
         """
