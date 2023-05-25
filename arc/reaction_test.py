@@ -480,6 +480,15 @@ class TestARCReaction(unittest.TestCase):
         rxn_1.determine_family(rmg_database=self.rmgdb)
         self.assertEqual(rxn_1.family.label, 'H_Abstraction')
 
+        # Test identifying the reaction family for with zwitterions read from Arkane YAML files
+        base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'HNNO+NH3O=H2NO+NH2NO')
+        rxn2 = ARCReaction(r_species=[ARCSpecies(label='HNNO', smiles='[O-][N+]=N', yml_path=os.path.join(base_path, 'HNNO.yml')),
+                                      ARCSpecies(label='NH3O', smiles='[O-][NH3+]', yml_path=os.path.join(base_path, 'NH3O.yml'))],
+                           p_species=[ARCSpecies(label='H2NO', smiles='N[O]', yml_path=os.path.join(base_path, 'H2NO.yml')),
+                                      ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
+        rxn2.determine_family(rmg_database=self.rmgdb)
+        self.assertEqual(rxn2.family.label, 'H_Abstraction')
+
     def test_charge_property(self):
         """Test determining charge"""
         self.assertEqual(self.rxn1.charge, 0)

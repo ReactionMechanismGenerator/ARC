@@ -1,0 +1,332 @@
+RMG_version: 3.1.0
+adjacency_list: |
+  1 O u0 p3 c-1 {2,S}
+  2 N u0 p0 c+1 {1,S} {3,S} {4,S} {5,S}
+  3 H u0 p0 c0 {2,S}
+  4 H u0 p0 c0 {2,S}
+  5 H u0 p0 c0 {2,S}
+charge: 0
+chemkin_thermo_string: |
+  NH3O                    H   3N   1O   1     G   298.000  2500.000  807.49      1
+   3.01462987E-01 1.48245827E-02-8.01027541E-06 2.14844634E-09-2.28543657E-13    2
+   7.18715445E+03 2.09658807E+01 3.72114996E+00-2.11592088E-03 2.34597828E-05    3
+  -2.38343720E-08 7.81608932E-12 6.63490361E+03 5.19921590E+00                   4
+class: ArkaneSpecies
+conformer:
+  E0:
+    class: ScalarQuantity
+    units: kJ/mol
+    value: 54.80690427825804
+  class: Conformer
+  coordinates:
+    class: ArrayQuantity
+    units: angstroms
+    value:
+      class: np_array
+      object:
+      - - 1.3247959999999999
+        - -0.025997999999999997
+        - -0.088278
+      - - -0.04055299999999999
+        - 0.000796
+        - 0.002702
+      - - -0.369211
+        - -0.165317
+        - 0.961799
+      - - -0.431558
+        - 0.904942
+        - -0.289036
+      - - -0.48320499999999994
+        - -0.714427
+        - -0.587205
+  mass:
+    class: ArrayQuantity
+    units: amu
+    value:
+      class: np_array
+      object:
+      - 15.99491461957
+      - 14.00307400443
+      - 1.00782503224
+      - 1.00782503224
+      - 1.00782503224
+  modes:
+  - class: IdealGasTranslation
+    mass:
+      class: ScalarQuantity
+      units: amu
+      value: 33.02146
+    quantum: false
+  - class: NonlinearRotor
+    inertia:
+      class: ArrayQuantity
+      units: amu*angstrom^2
+      value:
+        class: np_array
+        object:
+        - 2.735168237920405
+        - 18.78739343423896
+        - 18.78739343423896
+    quantum: false
+    rotationalConstant:
+      class: ArrayQuantity
+      units: cm^-1
+      value:
+        class: np_array
+        object:
+        - 6.163287807906703
+        - 0.8972840810703638
+        - 0.8972840810703638
+    symmetry: 3
+  - class: HarmonicOscillator
+    frequencies:
+      class: ArrayQuantity
+      units: cm^-1
+      value:
+        class: np_array
+        object:
+        - 958.5212650061
+        - 1146.0180438177
+        - 1146.0457063699
+        - 1517.152675409
+        - 1658.6604611881
+        - 1658.6673768261496
+        - 3257.2240277216997
+        - 3302.9225639561
+        - 3302.9502265083
+    quantum: true
+  number:
+    class: ArrayQuantity
+    value:
+      class: np_array
+      object:
+      - 8.0
+      - 7.0
+      - 1.0
+      - 1.0
+      - 1.0
+  optical_isomers: 1
+  spin_multiplicity: 1
+datetime: 2023-05-17 08:41
+energy_transfer_model:
+  T0:
+    class: ScalarQuantity
+    units: K
+    value: 300.0
+  alpha0:
+    class: ScalarQuantity
+    units: kJ/mol
+    value: 3.5886
+  class: SingleExponentialDown
+  n: 0.85
+formula: H3NO
+frequency_scale_factor: 0.995
+inchi: InChI=1S/H3NO/c1-2/h1H3
+inchi_key: GSWAOPJLTADLTN-UHFFFAOYSA-N
+is_ts: false
+label: NH3O
+level_of_theory:
+  basis: ccpvtzf12
+  class: LevelOfTheory
+  method: ccsd(t)f12
+  software: molpro
+model_chemistry: ccsd(t)f12/ccpvtzf12
+molecular_weight:
+  class: ScalarQuantity
+  units: amu
+  value: 33.03017452710261
+multiplicity: 1
+smiles: '[O-][NH3+]'
+thermo:
+  Cp0:
+    class: ScalarQuantity
+    units: J/(mol*K)
+    value: 33.257888
+  CpInf:
+    class: ScalarQuantity
+    units: J/(mol*K)
+    value: 108.08813599999999
+  Cpdata:
+    class: ArrayQuantity
+    units: J/(mol*K)
+    value:
+      class: np_array
+      object:
+      - 38.47783001694702
+      - 44.034306624834684
+      - 50.15711748819375
+      - 56.25596912104092
+      - 66.9449416404476
+      - 75.05816407002527
+      - 88.18077466974192
+      - 95.17161984134641
+      - 99.26909168479273
+  H298:
+    class: ScalarQuantity
+    units: kJ/mol
+    value: 64.9649762480133
+  S298:
+    class: ScalarQuantity
+    units: J/(mol*K)
+    value: 221.29161768540703
+  Tdata:
+    class: ArrayQuantity
+    units: K
+    value:
+      class: np_array
+      object:
+      - 300.0
+      - 400.0
+      - 500.0
+      - 600.0
+      - 800.0
+      - 1000.0
+      - 1500.0
+      - 2000.0
+      - 2500.0
+  Tmax:
+    class: ScalarQuantity
+    units: K
+    value: 2500.0
+  Tmin:
+    class: ScalarQuantity
+    units: K
+    value: 298.0
+  class: ThermoData
+thermo_data:
+  Cpdata:
+    class: ArrayQuantity
+    units: cal/(mol*K)
+    value:
+      class: np_array
+      object:
+      - 9.196422088180453
+      - 10.524451870180373
+      - 11.987838787809213
+      - 13.445499311912265
+      - 16.00022505746835
+      - 17.9393317566982
+      - 21.075710963131435
+      - 22.74656305959522
+      - 23.530018478992222
+  H298:
+    class: ScalarQuantity
+    units: kcal/mol
+    value: 15.52700197132249
+  S298:
+    class: ScalarQuantity
+    units: cal/(mol*K)
+    value: 52.88996598599594
+  Tdata:
+    class: ArrayQuantity
+    units: K
+    value:
+      class: np_array
+      object:
+      - 300.0
+      - 400.0
+      - 500.0
+      - 600.0
+      - 800.0
+      - 1000.0
+      - 1500.0
+      - 2000.0
+      - 2400.0
+  Tmax:
+    class: ScalarQuantity
+    units: K
+    value: 2500.0
+  Tmin:
+    class: ScalarQuantity
+    units: K
+    value: 298.0
+  class: ThermoData
+use_bond_corrections: true
+use_hindered_rotors: true
+xyz: |-
+  5
+  NH3O
+  O       1.32479600   -0.02599800   -0.08827800
+  N      -0.04055300    0.00079600    0.00270200
+  H      -0.36921100   -0.16531700    0.96179900
+  H      -0.43155800    0.90494200   -0.28903600
+  H      -0.48320500   -0.71442700   -0.58720500
+
+mol:
+  atom_order:
+  - -32745
+  - -32744
+  - -32743
+  - -32742
+  - -32741
+  atoms:
+  - atomtype: O0sc
+    charge: -1
+    edges:
+      -32744: 1.0
+    element:
+      isotope: -1
+      number: 8
+    id: -32745
+    label: ''
+    lone_pairs: 3
+    props:
+      inRing: false
+    radical_electrons: 0
+  - atomtype: N5sc
+    charge: 1
+    edges:
+      -32745: 1.0
+      -32743: 1.0
+      -32742: 1.0
+      -32741: 1.0
+    element:
+      isotope: -1
+      number: 7
+    id: -32744
+    label: ''
+    lone_pairs: 0
+    props:
+      inRing: false
+    radical_electrons: 0
+  - atomtype: H
+    charge: 0
+    edges:
+      -32744: 1.0
+    element:
+      isotope: -1
+      number: 1
+    id: -32743
+    label: ''
+    lone_pairs: 0
+    props:
+      inRing: false
+    radical_electrons: 0
+  - atomtype: H
+    charge: 0
+    edges:
+      -32744: 1.0
+    element:
+      isotope: -1
+      number: 1
+    id: -32742
+    label: ''
+    lone_pairs: 0
+    props:
+      inRing: false
+    radical_electrons: 0
+  - atomtype: H
+    charge: 0
+    edges:
+      -32744: 1.0
+    element:
+      isotope: -1
+      number: 1
+    id: -32741
+    label: ''
+    lone_pairs: 0
+    props:
+      inRing: false
+    radical_electrons: 0
+  multiplicity: 1
+  props: {}
