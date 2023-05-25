@@ -274,6 +274,15 @@ def submit_job(path: str,
         job_status = 'errored'
     else:
         job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
+        # Check if job was ACTUALLY submitted
+        if job_id not in check_running_jobs_ids():
+            logger.warning(f'Job was not actually submitted, trying again...')
+            submit_job(path=path,
+                       cluster_soft=cluster_soft,
+                       submit_cmd=submit_cmd,
+                       submit_filename=submit_filename,
+                       recursion=False,
+                       )
     job_status = 'running' if job_id else job_status
     return job_status, job_id
 
