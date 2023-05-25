@@ -160,6 +160,7 @@ def process_arc_project(thermo_adapter: str,
                     species_for_thermo_lib.append(species)
                 elif not species.e0_only and species not in unconverged_species:
                     unconverged_species.append(species)
+                plotter.augment_arkane_yml_file_with_mol_repr(species, output_directory)
             elif species.compute_thermo and not output_dict[species.label]['convergence'] \
                     and species not in unconverged_species:
                 unconverged_species.append(species)
