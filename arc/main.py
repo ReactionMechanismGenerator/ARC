@@ -156,6 +156,7 @@ class ARC(object):
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
         ts_adapters (list, optional): Entries represent different TS adapters.
         only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
+        ts_adapters (list, optional): Entries represent different TS adapters.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -223,6 +224,7 @@ class ARC(object):
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
         only_process (bool): Whether to only run statmech and process runs from a (restart) input file.
+        ts_adapters (list): Entries represent different TS adapters.
     """
 
     def __init__(self,
@@ -327,6 +329,10 @@ class ARC(object):
             if ts_adapter.lower() not in _registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
         self.only_process = only_process
+        self.ts_adapters = ts_adapters
+        for ts_adapter in self.ts_adapters or list():
+            if ts_adapter.lower() not in _registered_job_adapters.keys():
+                raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
@@ -481,6 +487,8 @@ class ARC(object):
             restart_dict['ts_adapters'] = self.ts_adapters
         if self.only_process:
             restart_dict['only_process'] = self.only_process
+        if self.ts_adapters:
+            restart_dict['ts_adapters'] = self.ts_adapters
         restart_dict['e_confs'] = self.e_confs
         restart_dict['ess_settings'] = self.ess_settings
         if self.freq_level is not None:

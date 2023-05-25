@@ -161,6 +161,7 @@ class Scheduler(object):
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
         only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
+        ts_adapters (list, optional): Entries represent different TS adapters.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
