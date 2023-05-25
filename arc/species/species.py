@@ -403,6 +403,7 @@ class ARCSpecies(object):
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
             self.tsg_spawned = False
+            regen_mol = True
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -410,7 +411,18 @@ class ARCSpecies(object):
 
             if self.yml_path is not None:
                 # a YAML path was given
-                self.from_yml_file(label)
+                regen_mol = self.from_yml_file(label)
+                if regen_mol:
+                    if adjlist:
+                        self.mol = Molecule().from_adjacency_list(adjlist=adjlist,
+                                                                  raise_atomtype_exception=False,
+                                                                  raise_charge_exception=False,
+                                                                  )
+                    elif inchi:
+                        self.mol = rmg_mol_from_inchi(inchi)
+                    elif smiles:
+                        self.mol = Molecule(smiles=smiles)
+                self.set_mol_list()
             elif self.rmg_species is not None:
                 # an RMG Species was given
                 if not isinstance(self.rmg_species, Species):
@@ -452,10 +464,11 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
-            # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
-                self.mol_from_xyz(get_cheap=False)
+            if regen_mol:
+                # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+                # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
+                if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
+                    self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
                 if self.mol is None:
