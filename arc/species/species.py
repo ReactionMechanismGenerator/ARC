@@ -299,6 +299,7 @@ class ARCSpecies(object):
                  include_in_thermo_lib: Optional[bool] = True,
                  consider_all_diastereomers: bool = True,
                  directed_rotors: Optional[dict] = None,
+                 e0: Optional[float] = None,
                  e0_only: bool = False,
                  external_symmetry: Optional[int] = None,
                  fragments: Optional[List[List[int]]] = None,
@@ -345,6 +346,7 @@ class ARCSpecies(object):
         self.adjlist = adjlist
         self.multiplicity = multiplicity
         self.number_of_radicals = number_of_radicals
+        self.e0 = e0
         self.external_symmetry = external_symmetry
         self.irc_label = irc_label
         self.occ = occ
