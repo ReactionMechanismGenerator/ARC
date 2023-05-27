@@ -278,6 +278,11 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 1,
                                           'number_of_rotors': 0},
                                          {'arkane_file': None,
+                                          'adjlist': """multiplicity 1
+1 N u0 p0 c+1 {2,D} {3,S} {4,S}
+2 N u0 p2 c-1 {1,D}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}""",
                                           'bond_corrections': {'H-N': 2, 'N=N': 1},
                                           'charge': 0,
                                           'cheap_conformer': 'N      -0.08201544    0.01567102    0.28740725\n'
