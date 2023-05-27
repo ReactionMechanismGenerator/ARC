@@ -590,8 +590,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             'initial_xyz': 'C      -0.94073000   -1.08641400   -0.13521400\nC      -0.33120900    0.27400500   -0.10738200\nC       1.03297600    0.48550500    0.47374300\nH      -0.34195200   -1.93903700    0.19367700\nH      -2.02636000   -1.19201700   -0.17452300\nH      -0.43853800   -0.46541200   -1.16876000\nH      -1.02644700    1.11801000   -0.14324700\nH       1.47599100    1.43717700    0.14587900\nH       1.72184900   -0.32388500    0.18160800\nH       1.00079200    0.49179200    1.58006000',
                             'final_xyz': 'C      -0.94403900   -1.08919600   -0.13528100\nC      -0.33161500    0.27504900   -0.10775400\nC       1.03465100    0.48772700    0.47568400\nH      -0.35007600   -1.93768200    0.18473700\nH      -2.02160800   -1.19512500   -0.17500700\nH      -0.44246400   -0.46665500   -1.16369500\nH      -1.02252600    1.11305500   -0.14369600\nH       1.47717100    1.43311000    0.14664900\nH       1.72023500   -0.31816900    0.18700200\nH       1.00664300    0.49760900    1.57720100',
                             'checkfile': '/storage/ce_dana/alongd/runs/ARC/debug13/calcs/TSs/TS0/opt_a24061/check.chk'},
-             'done_opt_r_n_p': True, 'family': 'intra_H_migration', 'family_own_reverse': True,
-             'long_kinetic_description': '', 'ts_xyz_guess': [], 'ts_label': 'TS0'}
+             'done_opt_r_n_p': True, 'family': 'intra_H_migration', 'family_own_reverse': True, 'ts_label': 'TS0'}
         rxn = ARCReaction(reaction_dict=rxn_dict)
         output = {'nC3H7': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
                                       'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),

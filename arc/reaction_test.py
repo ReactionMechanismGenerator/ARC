@@ -168,7 +168,6 @@ class TestARCReaction(unittest.TestCase):
                            'family_own_reverse': True,
                            'index': None,
                            'label': 'CH4 + OH <=> CH3 + H2O',
-                           'long_kinetic_description': '',
                            'multiplicity': 2,
                            'p_species': [{'arkane_file': None,
                                           'bond_corrections': {'C-H': 3},
@@ -247,16 +246,14 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['CH4', 'OH'],
                            'ts_label': None,
-                           'ts_xyz_guess': []}
+                           }
         self.assertEqual(rxn_dict_1, expected_dict_1)
 
         rxn_dict_6 = self.rxn6.as_dict()
         # The ``long_thermo_description`` attribute isn't deterministic (order could change)
         expected_dict_6 = {'charge': 0,
-                           'family_own_reverse': 0,
                            'index': None,
                            'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
-                           'long_kinetic_description': '',
                            'multiplicity': 1,
                            'p_species': [{'arkane_file': None,
                                           'bond_corrections': {'H-N': 3},
@@ -343,7 +340,7 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0}],
                            'reactants': ['N2H3', 'NH2'],
                            'ts_label': None,
-                           'ts_xyz_guess': []}
+                           }
         self.assertEqual(rxn_dict_6, expected_dict_6)
 
     def test_from_dict(self):
