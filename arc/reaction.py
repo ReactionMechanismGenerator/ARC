@@ -111,7 +111,7 @@ class ARCReaction(object):
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
         self.family = None
-        self.family_own_reverse = 0
+        self.family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
@@ -249,7 +249,8 @@ class ARCReaction(object):
             reaction_dict['rmg_reaction'] = self.rmg_reaction_to_str()
         if self.family is not None:
             reaction_dict['family'] = self.family.label
-        reaction_dict['family_own_reverse'] = self.family_own_reverse
+        if self.family_own_reverse:
+            reaction_dict['family_own_reverse'] = self.family_own_reverse
         reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         reaction_dict['label'] = self.label
         reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
@@ -276,7 +277,7 @@ class ARCReaction(object):
             self.family.save_order = True
         else:
             self.family = None
-        self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else 0
+        self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else False
         if 'rmg_reaction' in reaction_dict:
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
