@@ -1,0 +1,613 @@
+allow_nonisomorphic_2d: true
+arkane_level_of_theory:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+conformer_level:
+  basis: def2tzvp
+  compatible_ess:
+  - gaussian
+  method: wb97xd
+  method_type: dft
+  software: gaussian
+freq_level:
+  basis: def2tzvp
+  method: b2plypd3
+  method_type: dft
+  software: gaussian
+freq_scale_factor: 0.995
+irc_level:
+  basis: def2tzvp
+  method: b2plypd3
+  method_type: dft
+  software: gaussian
+job_types:
+  bde: false
+  conformers: true
+  fine: true
+  freq: true
+  irc: true
+  onedmin: false
+  opt: true
+  orbitals: false
+  rotors: true
+  sp: true
+opt_level:
+  basis: def2tzvp
+  method: b2plypd3
+  method_type: dft
+  software: gaussian
+output:
+  H2NO:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: 'Loaded from an Arkane YAML file; '
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conformers: false
+      fine: false
+      freq: false
+      irc: false
+      onedmin: false
+      opt: false
+      orbitals: false
+      rotors: true
+      sp: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  HNNO:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: 'Loaded from an Arkane YAML file; '
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conformers: false
+      fine: false
+      freq: false
+      irc: false
+      onedmin: false
+      opt: false
+      orbitals: false
+      rotors: true
+      sp: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  NH2NO:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: 'Loaded from an Arkane YAML file; '
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conformers: false
+      fine: false
+      freq: false
+      irc: false
+      onedmin: false
+      opt: false
+      orbitals: false
+      rotors: true
+      sp: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  NH3O:
+    conformers: ''
+    convergence: true
+    errors: ''
+    info: 'Loaded from an Arkane YAML file; '
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conformers: false
+      fine: false
+      freq: false
+      irc: false
+      onedmin: false
+      opt: false
+      orbitals: false
+      rotors: true
+      sp: false
+    paths:
+      composite: ''
+      freq: ''
+      geo: ''
+      sp: ''
+    restart: ''
+    warnings: ''
+  TS0:
+    conformers: ''
+    convergence: null
+    errors: ''
+    info: 'Imaginary frequency: -2489.6182; T1 = 0.04437779; '
+    isomorphism: ''
+    job_types:
+      bde: true
+      composite: false
+      conformers: false
+      fine: true
+      freq: true
+      irc: true
+      onedmin: false
+      opt: true
+      orbitals: false
+      rotors: true
+      sp: true
+    paths:
+      composite: ''
+      freq: arc/testing/restart/5_TS1/freq_a7002/output.out
+      geo: arc/testing/restart/5_TS1/freq_a7002/output.out
+      irc: []
+      sp: arc/testing/restart/5_TS1/sp_a7003/output.out
+    restart: ''
+    warnings: ''
+project: N_rates
+reactions:
+- charge: 0
+  index: 0
+  label: HNNO + NH3O <=> H2NO + NH2NO
+  multiplicity: 2
+  p_species:
+  - label: H2NO
+    yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/H2NO.yml
+  - label: NH2NO
+    yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/NH2NO.yml
+  products:
+  - H2NO
+  - NH2NO
+  r_species:
+  - label: HNNO
+    yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/HNNO.yml
+  - label: NH3O
+    yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/NH3O.yml
+  reactants:
+  - HNNO
+  - NH3O
+  ts_label: TS0
+  ts_xyz_guess: []
+scan_level:
+  basis: def2tzvp
+  method: b2plypd3
+  method_type: dft
+  software: gaussian
+sp_level:
+  basis: cc-pvtz-f12
+  method: ccsd(t)-f12
+  method_type: wavefunction
+  software: molpro
+species:
+- label: HNNO
+  yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/HNNO.yml
+- label: NH3O
+  yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/NH3O.yml
+- label: H2NO
+  yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/H2NO.yml
+- label: NH2NO
+  yml_path: arc/testing/yml_testing/HNNO+NH3O=H2NO+NH2NO/NH2NO.yml
+- charge: 0
+  chosen_ts: 3
+  chosen_ts_list:
+  - 3
+  chosen_ts_method: heuristics
+  compute_thermo: false
+  e_elect: -831223.2650457002
+  final_xyz: |-
+    O      -1.45119400    0.51124500    1.34433300
+    N      -0.46720000    1.20198100    1.31296100
+    N       0.62839300    0.91911300    0.75892300
+    H       1.31642700    1.66105000    0.86478400
+    O       1.68761700   -1.91651000   -1.04091700
+    N       0.57416200   -1.51782900   -0.42308800
+    H       0.67117000   -0.51596600    0.03459500
+    H      -0.23469700   -1.43738900   -1.05317300
+    H       0.29755900   -2.13186300    0.35420300
+  force_field: MMFF94s
+  initial_xyz: |-
+    O      -1.44701600    0.50654400    1.35811000
+    N      -0.46511300    1.19985100    1.31894100
+    N       0.62588400    0.92116600    0.75381700
+    H       1.31359900    1.66382200    0.85658000
+    O       1.69322000   -1.92254100   -1.02741900
+    N       0.57390700   -1.51736400   -0.42457400
+    H       0.66967400   -0.51478100    0.03190700
+    H      -0.22648700   -1.43441600   -1.06509900
+    H       0.28456800   -2.12845000    0.35035800
+  irc_label: IRC_TS0_1 IRC_TS0_2
+  is_ts: true
+  label: TS0
+  mol:
+    atom_order:
+    - -27574
+    - -27573
+    - -27572
+    - -27571
+    - -27570
+    - -27569
+    - -27568
+    - -27567
+    - -27566
+    atoms:
+    - atomtype: O2s
+      charge: 0
+      edges:
+        -27573: 1.0
+      element:
+        isotope: -1
+        number: 8
+      id: -27574
+      label: ''
+      lone_pairs: 2
+      props: {}
+      radical_electrons: 0
+    - atomtype: N3s
+      charge: 0
+      edges:
+        -27574: 1.0
+        -27572: 1.0
+      element:
+        isotope: -1
+        number: 7
+      id: -27573
+      label: ''
+      lone_pairs: 1
+      props: {}
+      radical_electrons: 0
+    - atomtype: N3s
+      charge: 0
+      edges:
+        -27573: 1.0
+        -27571: 1.0
+      element:
+        isotope: -1
+        number: 7
+      id: -27572
+      label: ''
+      lone_pairs: 1
+      props: {}
+      radical_electrons: 0
+    - atomtype: H
+      charge: 0
+      edges:
+        -27572: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -27571
+      label: ''
+      lone_pairs: 0
+      props: {}
+      radical_electrons: 0
+    - atomtype: O2s
+      charge: 0
+      edges:
+        -27569: 1.0
+      element:
+        isotope: -1
+        number: 8
+      id: -27570
+      label: ''
+      lone_pairs: 2
+      props: {}
+      radical_electrons: 0
+    - atomtype: R
+      charge: 0
+      edges:
+        -27570: 1.0
+        -27568: 1.0
+        -27567: 1.0
+        -27566: 1.0
+      element:
+        isotope: -1
+        number: 7
+      id: -27569
+      label: ''
+      lone_pairs: 0
+      props: {}
+      radical_electrons: 0
+    - atomtype: H
+      charge: 0
+      edges:
+        -27569: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -27568
+      label: ''
+      lone_pairs: 0
+      props: {}
+      radical_electrons: 0
+    - atomtype: H
+      charge: 0
+      edges:
+        -27569: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -27567
+      label: ''
+      lone_pairs: 0
+      props: {}
+      radical_electrons: 0
+    - atomtype: H
+      charge: 0
+      edges:
+        -27569: 1.0
+      element:
+        isotope: -1
+        number: 1
+      id: -27566
+      label: ''
+      lone_pairs: 0
+      props: {}
+      radical_electrons: 0
+    multiplicity: 2
+    props: {}
+  multiplicity: 2
+  number_of_rotors: 1
+  opt_level: b2plypd3/def2tzvp
+  rxn_index: 0
+  rxn_label: HNNO + NH3O <=> H2NO + NH2NO
+  successful_methods:
+  - heuristics
+  - heuristics
+  - heuristics
+  - heuristics
+  - heuristics
+  - heuristics
+  - heuristics
+  t1: 0.04437779
+  ts_checks:
+    E0: true
+    IRC: null
+    e_elect: null
+    freq: true
+    normal_mode_displacement: true
+    warnings: 'Could not determine TS e_elect relative to the wells; '
+  ts_conf_spawned: true
+  ts_guesses:
+  - cluster:
+    - 0
+    - 11
+    conformer_index: 0
+    energy: 0.24202382809016854
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 0
+    initial_xyz: |-
+      O      -0.00000238    1.35860216   -0.80284174
+      N       0.00000057    1.65658157    0.37973931
+      N       0.00000057    0.61521484    1.20215568
+      H       0.00000349    0.81346819    2.18605699
+      O       0.00000057   -1.65208932   -1.09228612
+      N       0.00000057   -1.65208932    0.27635299
+      H       0.00000057   -0.51073594    0.74239898
+      H      -0.82369987   -2.12765246    0.66472537
+      H       0.82370048   -2.12765289    0.66472491
+    method: heuristics
+    method_direction: null
+    method_index: 0
+    opt_xyz: |-
+      O       0.00415300    2.00834000   -0.62359300
+      N      -0.03532900    1.90519700    0.55612200
+      N      -0.04867800    0.92146000    1.31097200
+      H      -0.08646900    1.26008300    2.27717000
+      O       0.08640700   -2.13284000   -1.17013100
+      N       0.03322200   -1.94283300    0.14103600
+      H       0.00842800   -0.94095500    0.44432100
+      H      -0.79997000   -2.36306400    0.61085400
+      H       0.83824300   -2.34174200    0.67427500
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 1
+    conformer_index: 1
+    energy: null
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 1
+    initial_xyz: |-
+      O      -0.49212326    1.36676155   -0.71493556
+      N      -0.32286170    1.60986295    0.46808679
+      N       0.25466510    0.62699514    1.14723848
+      H       0.41377990    0.78343535    2.12579615
+      O       0.25466510   -1.64030902   -1.14720332
+      N       0.25466510   -1.64030902    0.22143579
+      H       0.25466510   -0.49895564    0.68748178
+      H      -0.56903534   -2.11587216    0.60980818
+      H       1.07836501   -2.11587258    0.60980771
+    method: heuristics
+    method_direction: null
+    method_index: 1
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 2
+    - 4
+    - 8
+    - 10
+    conformer_index: 2
+    energy: 2.6255031116306782e-05
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 2
+    initial_xyz: |-
+      O      -0.98979437    1.34340682   -0.42136544
+      N      -0.52601267    1.49325405    0.69655316
+      N       0.47429309    0.67020824    0.98429844
+      H       0.88711645    0.75799828    1.89492238
+      O       0.47429309   -1.59709591   -1.31014336
+      N       0.47429309   -1.59709591    0.05849575
+      H       0.47429309   -0.45574254    0.52454175
+      H      -0.34940736   -2.07265905    0.44686814
+      H       1.29799300   -2.07265948    0.44686767
+    method: heuristics
+    method_direction: null
+    method_index: 2
+    opt_xyz: |-
+      O      -1.43852500    0.35123100    1.08994000
+      N      -0.54101000    1.13311000    1.27637600
+      N       0.63761200    0.95955700    0.90282000
+      H       1.22914600    1.74619000    1.17950100
+      O       1.52365100   -2.28888200   -0.46306900
+      N       0.45103900   -1.55561700   -0.22882700
+      H       0.68271600   -0.57257800    0.18215200
+      H      -0.11415700   -1.33920500   -1.07084800
+      H      -0.21340600   -1.96419200    0.45299400
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 3
+    - 9
+    conformer_index: 3
+    energy: 0.0
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs:
+    - -2489.6182
+    index: 3
+    initial_xyz: |-
+      O      -1.38219756    1.22039809    0.09908203
+      N      -0.54957412    1.35597542    0.97979007
+      N       0.60547947    0.75125053    0.73286426
+      H       1.32112947    0.83624681    1.43142484
+      O       0.60547947   -1.51605362   -1.56157753
+      N       0.60547947   -1.51605362   -0.19293843
+      H       0.60547947   -0.37470025    0.27310757
+      H      -0.21822097   -1.99161677    0.19543396
+      H       1.42917938   -1.99161719    0.19543349
+    method: heuristics
+    method_direction: null
+    method_index: 3
+    opt_xyz: |-
+      O      -1.34620600    0.33265900    1.01973600
+      N      -0.46375000    1.13536400    1.18812100
+      N       0.72200100    0.96877500    0.83470700
+      H       1.29181200    1.78487300    1.06834200
+      O       1.49255300   -1.93533200   -1.20924000
+      N       0.54940000   -1.50207300   -0.39319900
+      H       0.77336000   -0.52987900    0.04633000
+      H      -0.37934500   -1.37227300   -0.83357800
+      H       0.38241000   -2.10828500    0.43140100
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 5
+    conformer_index: 5
+    energy: null
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 5
+    initial_xyz: |-
+      O      -1.18516564    0.59052227    1.52309028
+      N      -0.15541516    1.21890969    1.34411302
+      N       0.42211164    0.99232773    0.17110971
+      H       1.27334528    1.48874837   -0.01950511
+      O       0.42211164   -1.27497642   -2.12333208
+      N       0.42211164   -1.27497642   -0.75469298
+      H       0.42211164   -0.13362304   -0.28864698
+      H      -0.40158881   -1.75053956   -0.36632059
+      H       1.24581155   -1.75053999   -0.36632106
+    method: heuristics
+    method_direction: null
+    method_index: 5
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 6
+    conformer_index: 6
+    energy: null
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 6
+    initial_xyz: |-
+      O       0.00000239    0.22251408    1.97945437
+      N      -0.00000056    1.26307724    1.34343709
+      N      -0.00000056    1.09499420    0.02716909
+      H      -0.00000348    1.92526781   -0.53675635
+      O      -0.00000056   -1.17230996   -2.26727270
+      N      -0.00000056   -1.17230996   -0.89863359
+      H      -0.00000056   -0.03095658   -0.43258760
+      H      -0.82370100   -1.64787310   -0.51026121
+      H       0.82369935   -1.64787353   -0.51026167
+    method: heuristics
+    method_direction: null
+    method_index: 6
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  - cluster:
+    - 7
+    conformer_index: 7
+    energy: null
+    execution_time: '0:00:05.357294'
+    family: H_Abstraction
+    imaginary_freqs: null
+    index: 7
+    initial_xyz: |-
+      O       1.18516817    0.59052583    1.52308836
+      N       0.15541458    1.21890884    1.34411348
+      N      -0.42211222    0.99232688    0.17111017
+      H      -1.27334894    1.48874315   -0.01950229
+      O      -0.42211222   -1.27497727   -2.12333163
+      N      -0.42211222   -1.27497727   -0.75469252
+      H      -0.42211222   -0.13362389   -0.28864653
+      H      -1.24581266   -1.75054041   -0.36632013
+      H       0.40158769   -1.75054084   -0.36632060
+    method: heuristics
+    method_direction: null
+    method_index: 7
+    success: true
+    successful_irc: null
+    successful_normal_mode: null
+    t0: '2023-05-26T07:21:30.509220'
+  ts_guesses_exhausted: false
+  ts_number: 0
+  ts_report: ''
+  tsg_spawned: true
+  unsuccessful_methods: []
+thermo_adapter: arkane
+ts_guess_level:
+  basis: def2svp
+  method: wb97xd
+  method_type: dft
+  software: gaussian
