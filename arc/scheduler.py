@@ -409,6 +409,8 @@ class Scheduler(object):
                     species.initial_xyz = species.conformers[0]
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
+                if self.output[species.label]['convergence']:
+                    continue
                 if species.is_monoatomic():
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
@@ -1013,7 +1015,7 @@ class Scheduler(object):
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
-                    and self.species_dict[label].yml_path is None \
+                    and self.species_dict[label].yml_path is None and not self.output[label]['convergence'] \
                     and (self.job_types['conformers'] and label not in self.dont_gen_confs
                          or self.species_dict[label].get_xyz(generate=False) is None):
                 # This is not a TS, opt (/composite) did not converge nor is it running, and conformer energies were
@@ -2873,18 +2875,19 @@ class Scheduler(object):
             label (str): The species label.
         """
         all_converged = True
-        for job_type, spawn_job_type in self.job_types.items():
-            if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                    and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
-                             or (self.species_dict[label].number_of_atoms == 1
-                                 and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
-                             or job_type == 'bde' and self.species_dict[label].bdes is None
-                             or job_type == 'conformers'
-                             or job_type == 'irc'
-                             or job_type == 'tsg'):
-                logger.debug(f'Species {label} did not converge.')
-                all_converged = False
-                break
+        if not self.output[label]['convergence']:
+            for job_type, spawn_job_type in self.job_types.items():
+                if spawn_job_type and not self.output[label]['job_types'][job_type] \
+                        and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
+                                 or (self.species_dict[label].number_of_atoms == 1
+                                     and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
+                                 or job_type == 'bde' and self.species_dict[label].bdes is None
+                                 or job_type == 'conformers'
+                                 or job_type == 'irc'
+                                 or job_type == 'tsg'):
+                    logger.debug(f'Species {label} did not converge.')
+                    all_converged = False
+                    break
         if all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:
