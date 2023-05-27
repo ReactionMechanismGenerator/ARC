@@ -1473,7 +1473,7 @@ class ARCSpecies(object):
         """A helper function to write content into the .ts_report attribute"""
         self.ts_report = ''
         if self.chosen_ts_method is not None:
-            self.ts_report += f'TS method summary for {self.label}'
+            self.ts_report += f'\nTS method summary for {self.label}'
             if self.rxn_label is not None:
                 self.ts_report += f' in {self.rxn_label}'
             self.ts_report += ':\n'
