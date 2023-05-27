@@ -223,9 +223,12 @@ class TestARC(unittest.TestCase):
 
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths',
                                    'log_and_restart_archive'), ignore_errors=True)
-
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
             file_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths', file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        file_paths = [os.path.join(ARC_PATH, 'functional', 'nul'), os.path.join(ARC_PATH, 'functional', 'run.out')]
+        for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
 

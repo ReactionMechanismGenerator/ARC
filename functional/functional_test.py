@@ -116,6 +116,10 @@ class TestFunctional(unittest.TestCase):
         """
         for folder in ['thermo', 'kinetic']:
             shutil.rmtree(os.path.join(ARC_PATH, 'functional', 'test', folder), ignore_errors=True)
+        file_paths = [os.path.join(ARC_PATH, 'functional', 'nul'), os.path.join(ARC_PATH, 'functional', 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
  
 if __name__ == '__main__':
