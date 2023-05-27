@@ -5,10 +5,8 @@
 This module that contains functional tests for ARC
 """
 
-from encodings import utf_8
 import os
 import shutil
-import subprocess
 import unittest
 
 from arc import ARC
@@ -53,17 +51,18 @@ class TestFunctional(unittest.TestCase):
                                level_of_theory='gfn2',
                                freq_scale_factor=1.0,
                                n_confs=2,
-                               bac_type = None,
+                               bac_type=None,
                                verbose=1,
                                )
 
         with open(os.path.join(ARC_PATH, "functional", "ts_guess.xyz"), 'r') as f:
             cls.ts_guess = f.read()
-        cls.species_list_2 = [ARCSpecies(label= "iC3H7", smiles="C[CH]C"), ARCSpecies(label= "nC3H7", smiles="CC[CH2]"), ARCSpecies(label= "TS0", xyz=cls.ts_guess, is_ts=True)]
+        cls.species_list_2 = [ARCSpecies(label="iC3H7", smiles="C[CH]C"), ARCSpecies(label="nC3H7", smiles="CC[CH2]"),
+                              ARCSpecies(label="TS0", xyz=cls.ts_guess, is_ts=True)]
 
         cls.arc_object_2 = ARC(project='FunctionalKineticTest',
                                project_directory=os.path.join(ARC_PATH, "functional", "test", "kinetic"),
-                               reactions=[ARCReaction(label= "iC3H7 <=> nC3H7", ts_label="TS0")],
+                               reactions=[ARCReaction(label="iC3H7 <=> nC3H7", ts_label="TS0")],
                                species=cls.species_list_2,
                                job_types=cls.job_types,
                                conformer_level='gfn2',
