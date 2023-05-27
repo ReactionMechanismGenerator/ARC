@@ -251,9 +251,11 @@ class ARCReaction(object):
             reaction_dict['family'] = self.family.label
         if self.family_own_reverse:
             reaction_dict['family_own_reverse'] = self.family_own_reverse
-        reaction_dict['long_kinetic_description'] = self.long_kinetic_description
+        if self.long_kinetic_description:
+            reaction_dict['long_kinetic_description'] = self.long_kinetic_description
+        if len(self.ts_xyz_guess):
+            reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['label'] = self.label
-        reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
