@@ -146,7 +146,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                       'errors': '',
                                       'job_types': {'opt': False, 'composite': False, 'sp': False, 'fine': False,
                                                     'freq': False, 'conformers': False},
-                                      'convergence': True, 'conformers': '', 'restart': ''}
+                                      'convergence': False, 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
         save_conformers_file(project_directory=self.sched1.project_directory,
                              label='C2H6',
