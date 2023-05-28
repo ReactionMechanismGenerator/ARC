@@ -221,6 +221,8 @@ def check_rxn_e0(reaction: 'ARCReaction') -> Optional[bool]:
     Returns:
         Optional[bool]: Whether the Ts E0 is above both R and P E0 wells.
     """
+    if reaction.ts_species.ts_checks['E0']:
+        return True
     r_e0 = sum_list_entries([r.e0 for r in reaction.r_species],
                             multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
     p_e0 = sum_list_entries([p.e0 for p in reaction.p_species],
