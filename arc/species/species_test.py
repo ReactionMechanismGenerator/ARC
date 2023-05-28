@@ -161,6 +161,17 @@ class TestARCSpecies(unittest.TestCase):
         c3_2 = ARCSpecies(yml_path=c3_2_yml_path)
         self.assertAlmostEqual(c3_2.e0, 72.98479932780415)
 
+        nh3o_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'HNNO+NH3O=H2NO+NH2NO', 'NH3O.yml')
+        nh3o = ARCSpecies(yml_path=nh3o_yml_path)
+        self.assertEqual([atom.element.symbol for atom in nh3o.mol.atoms], ['O', 'N', 'H', 'H', 'H'])
+
+        s1, s2 = ARCSpecies(label='S1', smiles='[NH3+][O-]'), ARCSpecies(label='S2', smiles='NNNN')
+        s1.yml_path = nh3o_yml_path
+        s2.yml_path = n4h6_yml_path
+        regen_mol_1, regen_mol_2 = s1.from_yml_file(nh3o_yml_path), s2.from_yml_file(n4h6_yml_path)
+        self.assertFalse(regen_mol_1)
+        self.assertTrue(regen_mol_2)
+
     def test_str(self):
         """Test the string representation of the object"""
         str_representation = str(self.spc9)

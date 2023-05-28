@@ -10,7 +10,7 @@ import shutil
 import unittest
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
@@ -65,6 +65,21 @@ H      -1.16115119    0.31478894   -0.81506145
         with open(gjf_path, 'r') as f:
             data = f.read()
         self.assertEqual(data, gjf_data)
+
+    def test_augment_arkane_yml_file_with_mol_repr(self):
+        """Test the augment_arkane_yml_file_with_mol_repr() function"""
+        project = 'arc_project_for_testing_delete_after_usage'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        n4h6_yml_path_copy = os.path.join(project_directory, 'Species', 'N4H6', 'N4H6.yml')
+        os.makedirs(os.path.join(project_directory, 'Species', 'N4H6'), exist_ok=True)
+        safe_copy_file(source=n4h6_yml_path, destination=n4h6_yml_path_copy)
+        content_0 = read_yaml_file(path=n4h6_yml_path_copy)
+        self.assertNotIn('mol', content_0.keys())
+        n4h6 = ARCSpecies(label='N4H6', smiles='NNNN')
+        plotter.augment_arkane_yml_file_with_mol_repr(species=n4h6, output_directory=project_directory)
+        content_1 = read_yaml_file(path=n4h6_yml_path_copy)
+        self.assertIn('mol', content_1.keys())
 
     def test_save_conformers_file(self):
         """test the save_conformers_file function"""
@@ -165,7 +180,10 @@ H      -1.16115119    0.31478894   -0.81506145
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         shutil.rmtree(project_directory, ignore_errors=True)
-        os.remove(os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt'))
+        files_to_remove = [os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt')]
+        for file_path in files_to_remove:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 if __name__ == '__main__':

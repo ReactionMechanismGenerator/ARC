@@ -402,6 +402,7 @@ class ARCSpecies(object):
             self.rotors_dict = dict()
             self.rmg_species = rmg_species
             self.tsg_spawned = False
+            regen_mol = True
             if bond_corrections is None:
                 self.bond_corrections = dict()
             else:
@@ -409,7 +410,18 @@ class ARCSpecies(object):
 
             if self.yml_path is not None:
                 # a YAML path was given
-                self.from_yml_file(label)
+                regen_mol = self.from_yml_file(label)
+                if regen_mol:
+                    if adjlist:
+                        self.mol = Molecule().from_adjacency_list(adjlist=adjlist,
+                                                                  raise_atomtype_exception=False,
+                                                                  raise_charge_exception=False,
+                                                                  )
+                    elif inchi:
+                        self.mol = rmg_mol_from_inchi(inchi)
+                    elif smiles:
+                        self.mol = Molecule(smiles=smiles)
+                self.set_mol_list()
             elif self.rmg_species is not None:
                 # an RMG Species was given
                 if not isinstance(self.rmg_species, Species):
@@ -451,10 +463,11 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
-            # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
-            if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
-                self.mol_from_xyz(get_cheap=False)
+            if regen_mol:
+                # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
+                # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
+                if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
+                    self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
                 if self.mol is None:
@@ -884,7 +897,7 @@ class ARCSpecies(object):
                     else:
                         self.rotors_dict[index][key] = val
 
-    def from_yml_file(self, label: str = None):
+    def from_yml_file(self, label: str = None) -> bool:
         """
         Load important species attributes such as label and final_xyz from an Arkane YAML file.
         Actual QM data parsing is done later when processing thermo and kinetics.
@@ -894,25 +907,35 @@ class ARCSpecies(object):
 
         Raises:
             ValueError: If the adjlist cannot be read.
+
+        Returns:
+            bool: Whether self.mol should be regenerated
         """
+        regen_mol = True
         rmg_spc = Species()
         arkane_spc = ArkaneSpecies(species=rmg_spc)
         # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
+        yml_content = read_yaml_file(self.yml_path)
         arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
         self.label = label if label is not None else arkane_spc.label
         self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
                                        numbers=arkane_spc.conformer.number.value)
-        if arkane_spc.adjacency_list is not None:
-            try:
-                self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
-                                                          raise_atomtype_exception=False)
-            except ValueError:
-                print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
-                raise
-        elif arkane_spc.inchi is not None:
-            self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
-        elif arkane_spc.smiles is not None:
-            self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
+        if 'mol' in yml_content:
+            self.mol = rmg_mol_from_dict_repr(representation=yml_content['mol'], is_ts=yml_content['is_ts'])
+            if self.mol is not None:
+                regen_mol = False
+        if regen_mol:
+            if arkane_spc.adjacency_list is not None:
+                try:
+                    self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                                                              raise_atomtype_exception=False)
+                except ValueError:
+                    print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
+                    raise
+            elif arkane_spc.inchi is not None:
+                self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
+            elif arkane_spc.smiles is not None:
+                self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
@@ -932,6 +955,7 @@ class ARCSpecies(object):
             self.mol_from_xyz()
         if self.e0 is None:
             self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+        return regen_mol
 
     def set_mol_list(self):
         """

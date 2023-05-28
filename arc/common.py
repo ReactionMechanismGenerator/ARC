@@ -1622,20 +1622,6 @@ def safe_copy_file(source: str,
             break
 
 
-def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
-    """
-    A helper function, helpful in the context of atom mapping.
-    This function reassign the .atoms in Molecule with a list of atoms
-    with the orders based on the labels of the atoms.
-    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
-    then the function will re-assign the new atom with the order [1, 4, 7, 32]
-    
-    Args:
-        mol (Molecule): An RMG Molecule object, with labeled atoms
-    """
-    mol.atoms = sorted(mol.atoms, key=lambda x: int(x.label))
-
-
 def dfs(mol: Molecule,
         start: int,
         sort_result: bool = True,
@@ -1667,20 +1653,20 @@ def dfs(mol: Molecule,
     return visited
 
 
-def sort_atoms_in_descending_label_order(mol: 'Molecule')-> None:
+def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
     """
-    If all atoms in the molecule object has a label, This function reassign the 
+    If all atoms in the molecule object have a label, this function reassign the
     .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
     for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
     then the function will return the new atom with the order [1, 4, 7, 32]
 
     Args:
-        mol: An rmg Molecule object, with labeld atoms
+        mol (Molecule): An RMG Molecule object, with labeled atoms
     """
     if any(atom.label is None for atom in mol.atoms):
         return None
     try:
-        mol.atoms = sorted(mol.atoms, key = lambda x: int(x.label))
+        mol.atoms = sorted(mol.atoms, key=lambda x: int(x.label))
     except ValueError:
         logger.warning(f"Some atom(s) in molecule.atoms are not integers.\nGot {[atom.label for atom in mol.atoms]}")
         return None

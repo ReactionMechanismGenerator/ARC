@@ -33,8 +33,11 @@ from arc.common import (extremum_list,
                         get_logger,
                         is_notebook,
                         is_str_float,
+                        read_yaml_file,
+                        rmg_mol_to_dict_repr,
                         save_yaml_file,
-                        sort_two_lists_by_the_first,)
+                        sort_two_lists_by_the_first,
+                        )
 from arc.exceptions import InputError, SanitizationError
 from arc.level import Level
 from arc.parser import parse_trajectory
@@ -46,7 +49,8 @@ from arc.species.converter import (check_xyz_dict,
                                    str_to_xyz,
                                    xyz_from_data,
                                    xyz_to_str,
-                                   xyz_to_x_y_z)
+                                   xyz_to_x_y_z,
+                                   )
 from arc.species.species import ARCSpecies
 
 
@@ -956,6 +960,23 @@ def save_conformers_file(project_directory: str,
         if log_content:
             logger.info(content)
         f.write(content)
+
+
+def augment_arkane_yml_file_with_mol_repr(species: ARCSpecies,
+                                          output_directory: str,
+                                          ) -> None:
+    """
+    Add a Molecule representation to an Arkane YAML file.
+
+    Args:
+        species (ARCSpecies): The species to process.
+        output_directory (str): The base path to the project's output directory.
+    """
+    yml_path = os.path.join(output_directory, 'Species', species.label, f'{species.label}.yml')
+    if os.path.isfile(yml_path) and species.mol is not None:
+        content = read_yaml_file(yml_path)
+        content['mol'] = rmg_mol_to_dict_repr(species.mol)
+        save_yaml_file(yml_path, content)
 
 
 # *** Torsions ***
