@@ -777,11 +777,11 @@ def save_thermo_lib(species_list: list,
                 try:
                     thermo_library.load_entry(index=i,
                                               label=spc.label,
-                                              molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
+                                              molecule=spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list(),
                                               thermo=spc.thermo,
                                               shortDesc=spc.thermo.comment,
                                               longDesc=spc.long_thermo_description)
-                except (InvalidAdjacencyListError, DatabaseError, ValueError) as e:
+                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
                     logger.error(f'Could not save species {spc.label} in the thermo library, got:')
                     logger.info(e)
             else:
@@ -806,11 +806,11 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
                 try:
                     transport_library.load_entry(index=i,
                                                  label=spc.label,
-                                                 molecule=spc.mol_list[0].copy(deep=True).to_adjacency_list(),
+                                                 molecule=spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list(),
                                                  transport=spc.transport_data,
                                                  shortDesc=spc.thermo.comment,
                                                  longDesc=description)
-                except (InvalidAdjacencyListError, ValueError) as e:
+                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
                     logger.error(f'Could not save species {spc.label} in the transport library, got:')
                     logger.info(e)
                 logger.info(f'\n\nTransport properties for {spc.label}:')
