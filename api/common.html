@@ -1112,13 +1112,13 @@ different object instances.</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.common.sort_atoms_in_descending_label_order">
 <span class="sig-prename descclassname"><span class="pre">arc.common.</span></span><span class="sig-name descname"><span class="pre">sort_atoms_in_descending_label_order</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/common.html#sort_atoms_in_descending_label_order"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.common.sort_atoms_in_descending_label_order" title="Permalink to this definition">¶</a></dt>
-<dd><p>If all atoms in the molecule object has a label, This function reassign the
+<dd><p>If all atoms in the molecule object have a label, this function reassign the
 .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.
 for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],
 then the function will return the new atom with the order [1, 4, 7, 32]</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mol</strong> – An rmg Molecule object, with labeld atoms</p>
+<dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – An RMG Molecule object, with labeled atoms</p>
 </dd>
 </dl>
 </dd></dl>

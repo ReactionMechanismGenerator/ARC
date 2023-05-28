@@ -1786,20 +1786,6 @@
             <span class="k">break</span></div>
 
 
-<span class="k">def</span> <span class="nf">sort_atoms_in_descending_label_order</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A helper function, helpful in the context of atom mapping.</span>
-<span class="sd">    This function reassign the .atoms in Molecule with a list of atoms</span>
-<span class="sd">    with the orders based on the labels of the atoms.</span>
-<span class="sd">    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],</span>
-<span class="sd">    then the function will re-assign the new atom with the order [1, 4, 7, 32]</span>
-<span class="sd">    </span>
-<span class="sd">    Args:</span>
-<span class="sd">        mol (Molecule): An RMG Molecule object, with labeled atoms</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">label</span><span class="p">))</span>
-
-
 <div class="viewcode-block" id="dfs"><a class="viewcode-back" href="../../api/common.html#arc.common.dfs">[docs]</a><span class="k">def</span> <span class="nf">dfs</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
         <span class="n">start</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
         <span class="n">sort_result</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
@@ -1831,20 +1817,20 @@
     <span class="k">return</span> <span class="n">visited</span></div>
 
 
-<div class="viewcode-block" id="sort_atoms_in_descending_label_order"><a class="viewcode-back" href="../../api/common.html#arc.common.sort_atoms_in_descending_label_order">[docs]</a><span class="k">def</span> <span class="nf">sort_atoms_in_descending_label_order</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">)</span><span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="sort_atoms_in_descending_label_order"><a class="viewcode-back" href="../../api/common.html#arc.common.sort_atoms_in_descending_label_order">[docs]</a><span class="k">def</span> <span class="nf">sort_atoms_in_descending_label_order</span><span class="p">(</span><span class="n">mol</span><span class="p">:</span> <span class="s1">&#39;Molecule&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    If all atoms in the molecule object has a label, This function reassign the </span>
+<span class="sd">    If all atoms in the molecule object have a label, this function reassign the</span>
 <span class="sd">    .atoms in Molecule with a list of atoms with the orders based on the labels of the atoms.</span>
 <span class="sd">    for example, [int(atom.label) for atom in mol.atoms] is [1, 4, 32, 7],</span>
 <span class="sd">    then the function will return the new atom with the order [1, 4, 7, 32]</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        mol: An rmg Molecule object, with labeld atoms</span>
+<span class="sd">        mol (Molecule): An RMG Molecule object, with labeled atoms</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">atom</span><span class="o">.</span><span class="n">label</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">):</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">key</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">label</span><span class="p">))</span>
+        <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">label</span><span class="p">))</span>
     <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Some atom(s) in molecule.atoms are not integers.</span><span class="se">\n</span><span class="s2">Got </span><span class="si">{</span><span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span></div>

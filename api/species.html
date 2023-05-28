@@ -1194,7 +1194,7 @@ in <code class="docutils literal notranslate"><span class="pre">self.rotors_dict
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.from_yml_file">
-<span class="sig-name descname"><span class="pre">from_yml_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.from_yml_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.from_yml_file" title="Permalink to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">from_yml_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.from_yml_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.from_yml_file" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load important species attributes such as label and final_xyz from an Arkane YAML file.
 Actual QM data parsing is done later when processing thermo and kinetics.</p>
 <dl class="field-list simple">
@@ -1203,6 +1203,12 @@ Actual QM data parsing is done later when processing thermo and kinetics.</p>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ValueError</strong> – If the adjlist cannot be read.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Whether self.mol should be regenerated</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
 </dd>
 </dl>
 </dd></dl>

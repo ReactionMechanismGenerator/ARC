@@ -197,8 +197,11 @@
                         <span class="n">get_logger</span><span class="p">,</span>
                         <span class="n">is_notebook</span><span class="p">,</span>
                         <span class="n">is_str_float</span><span class="p">,</span>
+                        <span class="n">read_yaml_file</span><span class="p">,</span>
+                        <span class="n">rmg_mol_to_dict_repr</span><span class="p">,</span>
                         <span class="n">save_yaml_file</span><span class="p">,</span>
-                        <span class="n">sort_two_lists_by_the_first</span><span class="p">,)</span>
+                        <span class="n">sort_two_lists_by_the_first</span><span class="p">,</span>
+                        <span class="p">)</span>
 <span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SanitizationError</span>
 <span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
 <span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="n">parse_trajectory</span>
@@ -210,7 +213,8 @@
                                    <span class="n">str_to_xyz</span><span class="p">,</span>
                                    <span class="n">xyz_from_data</span><span class="p">,</span>
                                    <span class="n">xyz_to_str</span><span class="p">,</span>
-                                   <span class="n">xyz_to_x_y_z</span><span class="p">)</span>
+                                   <span class="n">xyz_to_x_y_z</span><span class="p">,</span>
+                                   <span class="p">)</span>
 <span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
 
 
@@ -1120,6 +1124,23 @@
         <span class="k">if</span> <span class="n">log_content</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="augment_arkane_yml_file_with_mol_repr"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.augment_arkane_yml_file_with_mol_repr">[docs]</a><span class="k">def</span> <span class="nf">augment_arkane_yml_file_with_mol_repr</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span>
+                                          <span class="n">output_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add a Molecule representation to an Arkane YAML file.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        species (ARCSpecies): The species to process.</span>
+<span class="sd">        output_directory (str): The base path to the project&#39;s output directory.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">yml_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_directory</span><span class="p">,</span> <span class="s1">&#39;Species&#39;</span><span class="p">,</span> <span class="n">species</span><span class="o">.</span><span class="n">label</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">species</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">.yml&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">yml_path</span><span class="p">)</span> <span class="ow">and</span> <span class="n">species</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">yml_path</span><span class="p">)</span>
+        <span class="n">content</span><span class="p">[</span><span class="s1">&#39;mol&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rmg_mol_to_dict_repr</span><span class="p">(</span><span class="n">species</span><span class="o">.</span><span class="n">mol</span><span class="p">)</span>
+        <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">yml_path</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span></div>
 
 
 <span class="c1"># *** Torsions ***</span>

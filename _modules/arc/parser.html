@@ -1412,9 +1412,13 @@
         <span class="n">conformers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ics</span><span class="p">)</span>
     <span class="c1"># Concatenate ICs of conformers to a single table and remove redundant ICs</span>
     <span class="n">scan_conformers</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">scan_ic_info</span><span class="p">]</span> <span class="o">+</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-    <span class="n">red_ind</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[</span><span class="n">scan_conformers</span><span class="o">.</span><span class="n">redundant</span> <span class="o">==</span> <span class="kc">True</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">red_ind</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
-        <span class="n">scan_conformers</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">red_ind</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">red_ind</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[</span><span class="n">scan_conformers</span><span class="o">.</span><span class="n">redundant</span> <span class="o">==</span> <span class="kc">True</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+    <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">red_ind</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="n">scan_conformers</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">red_ind</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">scan_conformers</span></div>
 </pre></div>
 
