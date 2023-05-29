@@ -1705,3 +1705,16 @@ def is_xyz_mol_match(mol: 'Molecule',
         if element not in element_dict_xyz or element_dict_xyz[element] != count:
            return False
     return True
+
+
+def fill_in_the_blanks(folder_name: str):
+    """
+    Adding backslashes before spaces in the folder name.
+
+    Args:
+        folder_name (str): The string directory we want to modify.
+
+    Returns:
+        str: Modified folder name.
+    """
+    return folder_name.replace(" ", "\ ")
