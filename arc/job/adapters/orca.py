@@ -312,6 +312,20 @@ end
                 input_dict['scan'] += f'\nD {torsion} =  {dihedral:.1f}, {dihedral - self.scan_res:.1f}, {self.scan_res:.1f}\n'
             input_dict['scan'] += '\nend\nend' if len(self.torsions) > 1 else '\nend'
 
+        if self.level.solvation_method:
+            if self.level.solvation_method.lower() == 'smd':
+                self.add_to_args(val=f"""
+%cpcm SMD true
+    solvent "{self.level.solvent}"
+end
+            """,
+                                 key1='block')
+            elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
+                self.add_to_args(val=f"""
+!CPCM({self.level.solvent})
+            """,
+                                 key1='block')
+
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
