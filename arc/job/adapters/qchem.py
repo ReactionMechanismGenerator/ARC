@@ -277,8 +277,39 @@ class QChemAdapter(JobAdapter):
             for scan in scans:
                 dihedral_1 = int(calculate_dihedral_angle(coords=self.xyz, torsion=scan, index=1))
                 scan_atoms_str = ' '.join([str(atom_index) for atom_index in scan])
-                scan_string += f'tors {scan_atoms_str} {dihedral_1} {dihedral_1 - self.scan_res + 360%self.scan_res - (1 if 360%self.scan_res != 0 else 0)} {self.scan_res}\n'
-            scan_string += '$end\n'
+
+                # QChem requires that the scanning angle is between -180 and 180
+                # Therefore, to ensure that the scan is symmetric, we will need to create multi-job input file
+                # For example, if the scan is starting at 48 degrees and has a resolution of 8 degrees, then the input file will be:
+
+                # $molecule
+                #   molecule info
+                # $end
+                # $rem
+                #   input_dict['block']
+                # $end
+                # $scan
+                #   tors scan_atoms_str 48 176 8
+                # $end
+                # @@@
+                # $molecule
+                #   read
+                # $end
+                # $rem
+                #   input_dict['block']
+                #   SCF_GUESS read
+                # $end
+                # $scan
+                #   tors scan_atoms_str -176 40 8
+                # $end
+
+                scan1_start, scan1_end, scan2_start, scan2_end = self.generate_qchem_scan_angles(dihedral_1, self.scan_res)
+                scan_string += f'tors {scan_atoms_str} {scan1_start} {scan1_end} {self.scan_res}\n'
+                scan_string += '$end\n@@@\n$molecule\nread\n$end\n$rem\n'
+                scan_string += input_dict['block']
+                scan_string += f'\n   SCF_GUESS read\n$end\n$scan\n'
+                scan_string += f'tors {scan_atoms_str} {scan2_start} {scan2_end} {self.scan_res}\n'
+                scan_string += '$end\n'
             if self.torsions is None or not len(self.torsions):
                 self.torsions = torsions_to_scans(scans, direction=-1)
             input_dict['scan'] = scan_string
@@ -336,6 +367,58 @@ class QChemAdapter(JobAdapter):
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
+    def generate_qchem_scan_angles(self,start_angle: int, step: int) -> (int, int, int, int):
+        """
+        Generates the angles for a Q-Chem scan. The scan is split into two parts, one from start_angle to 180, and one from -180 to end_angle.
+
+        Parameters
+        ----------
+        start_angle : int
+            The starting angle for the scan
+        step : int
+            The step size for the scan
+
+        Returns
+        -------
+        scan1_start : int
+            The starting angle for the first part of the scan
+        scan1_end : int
+            The ending angle for the first part of the scan
+        scan2_start : int
+            The starting angle for the second part of the scan
+        scan2_end : int
+            The ending angle for the second part of the scan
+        """
+
+        # This sets the end angle but does not take into account the limit of -180 to 180
+        end_angle = start_angle - step
+
+        # This function wraps the scan2_start within the range of -180 to 180
+        wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
+
+        # This function converts the angles to be within the range of -180 to 180
+        convert_angle = lambda angle: angle % 360 if angle >= 0 else (angle % 360) - 360
+
+        # This converts the angles to be within the range of -180 to 180
+        start_angle = convert_angle(start_angle)
+        end_angle = convert_angle(end_angle)
+        
+        if start_angle == 0 and end_angle == 0:
+            scan1_start = start_angle
+            scan1_end = 180
+            scan2_start = -180
+            scan2_end = end_angle
+        elif start_angle <= end_angle:
+            scan1_start = start_angle
+            scan1_end =  start_angle + (step * ((180 - start_angle)//step))
+            scan2_start = convert_angle(scan1_end)
+            scan2_end = end_angle
+        else:
+            scan1_start = start_angle
+            scan1_end = start_angle + (step * ((180 - start_angle)//step))
+            scan2_start = wrap_within_range(scan1_end, step)
+            scan2_end = end_angle
+        return scan1_start, scan1_end, scan2_start, scan2_end
 
     def set_files(self) -> None:
         """
