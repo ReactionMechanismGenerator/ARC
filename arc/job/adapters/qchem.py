@@ -226,7 +226,7 @@ class QChemAdapter(JobAdapter):
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
         # In QChem the attribute is called "unrestricted", so the logic is in reverse than in other adapters
-        input_dict['unrestricted'] = 'True' if not is_restricted(self) else 'False'
+        input_dict['unrestricted'] = 'TRUE' if not is_restricted(self) else 'FALSE'
 
         # Job type specific options
         if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals']:

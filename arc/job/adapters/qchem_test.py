@@ -28,17 +28,18 @@ class TestQChemAdapter(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.job_1 = QChemAdapter(execution_type='incore',
-                                    job_type='composite',
-                                    level=Level(method='cbs-qb3-paraskevas'),
+                                    job_type='conformers', # Changed from 'composite' to 'conformers' - No equivalent in QChem AFAIK
+                                    level=Level(software='qchem',
+                                                method='b3lyp',
+                                                basis='def2-TZVP',),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
-                                    args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
                                     )
         cls.job_2 = QChemAdapter(execution_type='queue',
                                     job_type='opt',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP',
                                                 solvation_method='SMD',
                                                 solvent='Water'),
@@ -50,7 +51,7 @@ class TestQChemAdapter(unittest.TestCase):
                                     )
         cls.job_3 = QChemAdapter(execution_type='queue',
                                     job_type='opt',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP',
                                                 solvation_method='SMD',
                                                 solvent='Water'),
@@ -72,18 +73,17 @@ class TestQChemAdapter(unittest.TestCase):
         spc_4.determine_rotors()  # also calls initialize_directed_rotors()
         cls.job_4 = QChemAdapter(execution_type='queue',
                                     job_type='scan',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
                                     species=[spc_4],
                                     rotor_index=0,
                                     testing=True,
-                                    args={'block': {'general': 'additional\nqchem\nblock'}},
                                     )
         cls.job_5 = QChemAdapter(execution_type='queue',
                                     job_type='freq',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
@@ -95,7 +95,7 @@ class TestQChemAdapter(unittest.TestCase):
                                     )
         cls.job_6 = QChemAdapter(execution_type='queue',
                                     job_type='optfreq',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
@@ -104,7 +104,7 @@ class TestQChemAdapter(unittest.TestCase):
                                     )
         cls.job_7 = QChemAdapter(execution_type='queue',
                                     job_type='irc',
-                                    level=Level(method='wb97xd',
+                                    level=Level(method='wb97x-d',
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
@@ -123,7 +123,7 @@ class TestQChemAdapter(unittest.TestCase):
                                     )
         cls.job_9 = QChemAdapter(execution_type='local',
                             job_type='optfreq',
-                            level=Level(method='wb97xd',
+                            level=Level(method='wb97x-d',
                                         basis='def2-TZVP'),
                             project='test',
                             project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
@@ -140,26 +140,34 @@ class TestQChemAdapter(unittest.TestCase):
         self.assertEqual(self.job_8.cpu_cores, 8)
 
     def test_set_input_file_memory(self):
-        """Test setting the input_file_memory argument"""
-        expected_memory = math.ceil(14 * 1024)
-        self.assertEqual(self.job_1.input_file_memory, expected_memory)
-        self.assertEqual(self.job_2.input_file_memory, 14336)
+        """
+        Test setting the input_file_memory argument
+        QChem manages its own memory, so this should be None for the time being
+        https://manual.q-chem.com/5.4/CCparallel.html
+
+        A discussion is to be had about better manipulation of assigning memory to QChem jobs
+        """
+        expected_memory = None
+        self.assertEqual(self.job_1.input_file_memory, None)
+        self.assertEqual(self.job_2.input_file_memory, None)
 
     def test_write_input_file(self):
         """Test writing QChem input files"""
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0) scf=xqc  
-
-spc1
-
+        job_1_expected_input_file = """$molecule
 0 3
 O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       opt
+   METHOD        b3lyp
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
+
 
 
 """
@@ -168,16 +176,18 @@ O       0.00000000    0.00000000    1.00000000
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
-
-spc1
-
+        job_3_expected_input_file = """$molecule
 0 3
 O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       opt
+   METHOD        wb97x-d
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
+
 
 
 """
@@ -186,14 +196,7 @@ O       0.00000000    0.00000000    1.00000000
         self.job_4.write_input_file()
         with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
             content_4 = f.read()
-        job_4_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
-
-ethanol
-
+        job_4_expected_input_file = """$molecule
 0 1
 C       1.16582100   -0.40435500    0.00000000
 C       0.00000000    0.55180500    0.00000000
@@ -204,14 +207,36 @@ H       1.13062400   -1.03878500    0.88303200
 H       1.13062400   -1.03878500   -0.88303200
 H       0.04768200    1.19305700    0.88359100
 H       0.04768200    1.19305700   -0.88359100
+$end
+$rem
+   JOBTYPE       pes_scan
+   METHOD        wb97x-d
+   UNRESTRICTED  FALSE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
 
-D 5 1 2 3 S 45 8.0
 
+$scan
+tors 5 1 2 3 4 180 8.0
+$end
 
-additional
-qchem
-block
+@@@
 
+$molecule
+read
+$end
+$rem
+   JOBTYPE       pes_scan
+   METHOD        wb97x-d
+   UNRESTRICTED  FALSE
+   BASIS         def2-TZVP
+   QMOL_FCHK    TRUE
+   SCF_GUESS read
+$end
+$scan
+tors 5 1 2 3 -180 -4 8.0
+$end
 
 
 """
@@ -220,16 +245,18 @@ block
         self.job_5.write_input_file()
         with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
             content_5 = f.read()
-        job_5_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P  uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc  
-
-birad_singlet
-
+        job_5_expected_input_file = """$molecule
 0 1
 O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       freq
+   METHOD        wb97x-d
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
+
 
 
 """
@@ -238,16 +265,18 @@ O       0.00000000    0.00000000    1.00000000
         self.job_6.write_input_file()
         with open(os.path.join(self.job_6.local_path, input_filenames[self.job_6.job_adapter]), 'r') as f:
             content_6 = f.read()
-        job_6_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
-
-anion
-
+        job_6_expected_input_file = """$molecule
 -1 2
 O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       opt
+   METHOD        wb97x-d
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
+
 
 
 """
@@ -256,16 +285,35 @@ O       0.00000000    0.00000000    1.00000000
         self.job_7.write_input_file()
         with open(os.path.join(self.job_7.local_path, input_filenames[self.job_7.job_adapter]), 'r') as f:
             content_7 = f.read()
-        job_7_expected_input_file = """%chk=check.chk
-%mem=14336mb
-%NProcShared=8
-
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
-
-IRC
-
+        job_7_expected_input_file = """$molecule
 0 1
 O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       freq
+   METHOD        wb97x-d
+   UNRESTRICTED  FALSE
+   BASIS         def2-TZVP
+   IQMOL_FCHK    TRUE
+$end
+
+
+@@@
+$molecule
+read
+$end
+$rem
+   JOBTYPE       rpath
+   BASIS        def2-TZVP
+   METHOD        wb97x-d
+   RPATH_DIRECTION -1
+   RPATH_MAX_CYCLES 20
+   RPATH_MAX_STEPSIZE 150
+   RPATH_TOL_DISPLACEMENT 5000
+   RPATH_PRINT 2
+   SCF_GUESS     read
+$end
+
 
 
 """
@@ -278,19 +326,19 @@ O       0.00000000    0.00000000    1.00000000
                                   'remote': os.path.join(self.job_3.remote_path, submit_filenames[servers[self.job_3.server]['cluster_soft']]),
                                   'make_x': False,
                                   'source': 'path'},
-                                 {'file_name': 'input.gjf',
+                                 {'file_name': 'input.in',
                                   'local': os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]),
                                   'remote': os.path.join(self.job_3.remote_path, input_filenames[self.job_3.job_adapter]),
                                   'source': 'path',
                                   'make_x': False}]
-        job_3_files_to_download = [{'file_name': 'input.log',
+        job_3_files_to_download = [{'file_name': 'output.out',
                                     'local': os.path.join(self.job_3.local_path, output_filenames[self.job_3.job_adapter]),
                                     'remote': os.path.join(self.job_3.remote_path, output_filenames[self.job_3.job_adapter]),
                                     'source': 'path',
                                     'make_x': False},
-                                   {'file_name': 'check.chk',
-                                    'local': os.path.join(self.job_3.local_path, 'check.chk'),
-                                    'remote': os.path.join(self.job_3.remote_path, 'check.chk'),
+                                   {'file_name': 'input.fchk',
+                                    'local': os.path.join(self.job_3.local_path, 'input.fchk'),
+                                    'remote': os.path.join(self.job_3.remote_path, 'input.fchk'),
                                     'source': 'path',
                                     'make_x': False}]
         self.assertEqual(self.job_3.files_to_upload, job_3_files_to_upload)
@@ -317,8 +365,8 @@ O       0.00000000    0.00000000    1.00000000
         self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
 
     def test_QChemAdapter_def2tzvp(self):
-        """Test a QChem job using def2-tzvp"""
-        self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
+        """Test a QChem job using def2-TZVP"""
+        self.assertEqual(self.job_9.level.basis, 'def2-TZVP')
 
     @classmethod
     def tearDownClass(cls):
