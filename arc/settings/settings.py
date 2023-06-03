@@ -79,7 +79,7 @@ global_ess_settings = {
     'molpro': ['local', 'server2', 'azure'],
     'onedmin': 'server1',
     'orca': ['local','azure'],
-    'qchem': ['server1','azure'],
+    'qchem': ['local','azure'],
     'terachem': 'server1',
     'xtb': 'local',
     'xtb_gsm': 'local',

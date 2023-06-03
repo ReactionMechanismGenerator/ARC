@@ -286,6 +286,33 @@ conda activate xtb_env
 touch final_time
 
 """,
+        'qchem': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -cpus-per-task={cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+ . /opt/qchem/qchem_env.sh
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+touch initial_time
+
+qchem -nt {cpus} input.in output.out
+
+touch final_time
+
+""",
     },
 
     'atlas': {

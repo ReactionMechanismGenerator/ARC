@@ -1,0 +1,48 @@
+$molecule
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+$end
+$rem
+   JOBTYPE       pes_scan
+   METHOD        wb97xd
+   UNRESTRICTED  False
+   BASIS         def2-tzvp
+
+additional
+qchem
+block
+
+   IQMOL_FCHK    TRUE
+$end
+
+
+$scan
+tors 5 1 2 3 4 180 8.0
+$end
+
+@@@
+
+$molecule
+read
+$end
+$rem
+   JOBTYPE       pes_scan
+   METHOD        wb97xd
+   UNRESTRICTED  False
+   BASIS         def2-tzvp
+   QMOL_FCHK    TRUE
+   SCF_GUESS read
+$end
+$scan
+tors 5 1 2 3 -180 -4 8.0
+$end
+
+

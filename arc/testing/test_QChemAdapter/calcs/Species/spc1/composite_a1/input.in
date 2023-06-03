@@ -1,0 +1,14 @@
+$molecule
+0 3
+O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       
+   METHOD        cbs-qb3-paraskevas
+   UNRESTRICTED  False
+   BASIS         IOp(1/12=5,3/44=0) 
+   IQMOL_FCHK    TRUE
+$end
+
+
+

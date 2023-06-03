@@ -264,11 +264,9 @@ class QChemAdapter(JobAdapter):
         elif self.job_type == 'scan':
             input_dict['job_type_1'] = 'pes_scan'
             if self.fine:
-                input_dict['XC_GRID'] = '3'
+                input_dict['fine'] += '\n   XC_GRID 3'
             scans = list()
-            if self.rotor_index is not None:
-                if self.species[0].rotors_dict \
-                        and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
+            if self.rotor_index is not None and self.species[0].rotors_dict:
                     scans = self.species[0].rotors_dict[self.rotor_index]['scan']
                     scans = [scans] if not isinstance(scans[0], list) else scans
             elif self.torsions is not None and len(self.torsions):
@@ -305,8 +303,26 @@ class QChemAdapter(JobAdapter):
 
                 scan1_start, scan1_end, scan2_start, scan2_end = self.generate_qchem_scan_angles(dihedral_1, self.scan_res)
                 scan_string += f'tors {scan_atoms_str} {scan1_start} {scan1_end} {self.scan_res}\n'
-                scan_string += '$end\n@@@\n$molecule\nread\n$end\n$rem\n'
-                scan_string += input_dict['block']
+                scan_string += '$end\n\n@@@\n\n$molecule\nread\n$end\n$rem'
+                scan_string += f"\n   JOBTYPE       {input_dict['job_type_1']}" \
+                               f"\n   METHOD        {input_dict['method']}" \
+                               f"\n   UNRESTRICTED  {input_dict['unrestricted']}" \
+                               f"\n   BASIS         {input_dict['basis']}" 
+                if input_dict['fine']:
+                    scan_string += f"\n   {input_dict['fine']}"
+                if input_dict['keywords']:
+                    scan_string += f"\n   {input_dict['keywords']}"
+                if input_dict['constraint']:
+                    scan_string += f"\n   {input_dict['constraint']}"
+                if input_dict['scan_trsh']:
+                    scan_string += f"\n   {input_dict['scan_trsh']}"
+                if input_dict['trsh']:
+                    scan_string += f"\n   {input_dict['trsh']}"
+                if input_dict['block']:
+                    scan_string += f"\n   {input_dict['block']}"
+                if input_dict['irc']:
+                    scan_string += f"\n   {input_dict['irc']}" 
+                scan_string += f"\n   QMOL_FCHK    TRUE"
                 scan_string += f'\n   SCF_GUESS read\n$end\n$scan\n'
                 scan_string += f'tors {scan_atoms_str} {scan2_start} {scan2_end} {self.scan_res}\n'
                 scan_string += '$end\n'
@@ -316,8 +332,8 @@ class QChemAdapter(JobAdapter):
 
         elif self.job_type == 'irc':
             if self.fine:
-                # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
+                # Need to ensure that the grid is fine enough for the IRC
+                input_dict['fine'] += '\n   XC_GRID 3'
             # input_dict['job_type_1'] = 'rpath'
             # # IRC variabls are
             # # RPATH_COORDS - 0 for mass-weighted[Default], 1 for cartesian, 2 for z-matrix
@@ -345,8 +361,8 @@ class QChemAdapter(JobAdapter):
                 irc_direction_value = -1
             input_dict['job_type_2'] = f"\n\n@@@\n$molecule\nread\n$end\n$rem" \
                                         f"\n   JOBTYPE       rpath" \
-                                        f"\n   BASIS        {self.level.basis}" \
-                                        f"\n   METHOD        {self.level.method}" \
+                                        f"\n   BASIS        {input_dict['basis']}" \
+                                        f"\n   METHOD        {input_dict['method']}" \
                                         f"\n   RPATH_DIRECTION {irc_direction_value}" \
                                         "\n   RPATH_MAX_CYCLES 20" \
                                         "\n   RPATH_MAX_STEPSIZE 150" \
@@ -408,6 +424,20 @@ class QChemAdapter(JobAdapter):
             scan1_end = 180
             scan2_start = -180
             scan2_end = end_angle
+        elif start_angle == 180:
+            # This is a special case because the scan will be from 180 to 180
+            # This is not allowed in Q-Chem so we split it into two scans
+            # Arguably this could be done in one scan but it is easier to do it this way
+            # We will need to find the starting angle that when added by the step size will be 180
+
+            target_sum = 180
+            quotient = target_sum // step
+            remainder = target_sum % step
+            starting_number = target_sum - (quotient * step)
+            scan1_start = starting_number
+            scan1_end = 180
+            scan2_start = -180
+            scan2_end = scan1_start - step
         elif start_angle <= end_angle:
             scan1_start = start_angle
             scan1_end =  start_angle + (step * ((180 - start_angle)//step))
@@ -418,7 +448,7 @@ class QChemAdapter(JobAdapter):
             scan1_end = start_angle + (step * ((180 - start_angle)//step))
             scan2_start = wrap_within_range(scan1_end, step)
             scan2_end = end_angle
-        return scan1_start, scan1_end, scan2_start, scan2_end
+        return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
 
     def set_files(self) -> None:
         """
