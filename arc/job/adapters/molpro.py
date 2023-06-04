@@ -8,6 +8,7 @@ import datetime
 import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+import socket
 
 from mako.template import Template
 
@@ -329,7 +330,8 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
         # 800,000,000 bytes (800 mb).
         # Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords]
         # The division by 1E6 is for converting into MWords
-        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
+                # Due to Zeus's configuration, there is only 1 nproc so the memory should not be divided by cpu_cores. 
+        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
         
     def execute_incore(self):
         """
