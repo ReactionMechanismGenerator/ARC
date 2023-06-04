@@ -167,7 +167,7 @@ class TestAutoTSTAdapter(unittest.TestCase):
                                )
         atst1.execute_incore()
         self.assertEqual(rxn1.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 4)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
         self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('O', 'C', 'C', 'H', 'H', 'H'))
         self.assertEqual(rxn1.ts_species.ts_guesses[1].initial_xyz['symbols'],
