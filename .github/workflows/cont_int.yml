@@ -24,21 +24,15 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Clean Ubuntu Image
-      run: |
-        sudo apt-get purge -y \
-          '^llvm-.*' \
-          'php.*' \
-          '^mongodb-.*' \
-          '^mysql-.*' \
-          azure-cli \
-          google-cloud-sdk \
-          google-chrome-stable \
-          firefox \
-          powershell \
-          microsoft-edge-stable \
-          mono-devel
-        sudo apt-get autoremove -y
-        sudo apt-get clean
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # This may remove tools actually needed - currently does not
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: true
 
     - name: Cache RMG-Py
       id: cache-rmg-py
