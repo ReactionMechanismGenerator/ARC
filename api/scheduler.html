@@ -265,8 +265,8 @@ Each species in <cite>species_list</cite> has to have a unique label.</p>
 <li><p><strong>adaptive_levels</strong> (<em>dict</em><em>, </em><em>optional</em>) – A dictionary of levels of theory for ranges of the number of heavy atoms
 in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
 values are dictionaries with job type tuples as keys and levels of theory
-as values. ‘inf’ is accepted an max_num_atoms rmg_database
-(RMGDatabase, optional): The RMG database object.</p></li>
+as values. ‘inf’ is accepted in max_num_atoms</p></li>
+<li><p><strong>rmg_database</strong> (<em>RMGDatabase</em><em>, </em><em>optional</em>) – The RMG database object.</p></li>
 <li><p><strong>job_types</strong> (<em>dict</em><em>, </em><em>optional</em>) – A dictionary of job types to execute. Keys are job types, values are boolean.</p></li>
 <li><p><strong>bath_gas</strong> (<em>str</em><em>, </em><em>optional</em>) – A bath gas. Currently used in OneDMin to calc L-J parameters.
 Allowed values are He, Ne, Ar, Kr, H2, N2, O2.</p></li>
@@ -677,11 +677,21 @@ Allowed values are He, Ne, Ar, Kr, H2, N2, O2.</p>
 <dd><p>A dictionary of levels of theory for ranges of the number of heavy atoms
 in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
 values are dictionaries with job type tuples as keys and levels of theory
-as values. ‘inf’ is accepted an max_num_atoms rmg_database
-(RMGDatabase, optional): The RMG database object.</p>
+as values. ‘inf’ is accepted in max_num_atoms</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">rmg_database</span></span><a class="headerlink" href="#id0" title="Permalink to this definition">¶</a></dt>
+<dd><p>The RMG database object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>RMGDatabase, optional</p>
 </dd>
 </dl>
 </dd></dl>
@@ -849,7 +859,7 @@ Returns <code class="docutils literal notranslate"><span class="pre">True</span>
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_rxn_e0_by_spc">
 <span class="sig-name descname"><span class="pre">check_rxn_e0_by_spc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_rxn_e0_by_spc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_rxn_e0_by_spc" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check the E0 (electronic energy + ZPE) of reactions related to a specific species.
-Requires all opt + freq computations to be converged for all apecies (and TS) participating in each reaction.</p>
+Requires all opt + freq computations to be converged for all species (and TS) participating in each reaction.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>label</strong> (<em>str</em>) – A label representing a species.</p>
