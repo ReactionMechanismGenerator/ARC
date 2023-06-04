@@ -309,8 +309,8 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_2, dmat_bonds_2=dmat_bonds_1)
         self.assertEqual(change, 'breaking')
 
-    def test_check_rxn_e0(self):
-        """Test the check_rxn_e0() function."""
+    def test_compute_and_check_rxn_e0(self):
+        """Test the compute_and_check_rxn_e0() function."""
         species_dict = {spc.label: spc for spc in self.rxn_8.r_species + self.rxn_8.p_species + [self.rxn_8.ts_species]}
         project_directory = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
         output_dict = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
@@ -342,14 +342,14 @@ H                 -1.28677889    1.04716138   -1.01532486"""
             freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
             shutil.copy(src=output_dict[spc_label]['paths']['freq'], dst=freq_path)
 
-        check_e0 = ts.check_rxn_e0(reaction=self.rxn_8,
-                                   species_dict=species_dict,
-                                   project_directory=project_directory,
-                                   kinetics_adapter='arkane',
-                                   output=output_dict,
-                                   sp_level=Level(repr='uhf/3-21g'),
-                                   freq_scale_factor=1.0,
-                                   )
+        check_e0 = ts.compute_and_check_rxn_e0(reaction=self.rxn_8,
+                                               species_dict=species_dict,
+                                               project_directory=project_directory,
+                                               kinetics_adapter='arkane',
+                                               output=output_dict,
+                                               sp_level=Level(repr='uhf/3-21g'),
+                                               freq_scale_factor=1.0,
+                                               )
         self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
 
     def test_check_normal_mode_displacement(self):

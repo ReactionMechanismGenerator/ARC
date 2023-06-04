@@ -110,24 +110,28 @@ def check_ts_energy(reaction: 'ARCReaction',
         reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
     """
+    # Check whether E0 values are already known, e.g. from Arkane species YAML files
+    check_rxn_e0(reaction=reaction)
+    if reaction.ts_species.ts_checks['E0']:
+        return
+
     r_e_elect = None if any([spc.e_elect is None for spc in reaction.r_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=0) for spc in reaction.r_species)
     p_e_elect = None if any([spc.e_elect is None for spc in reaction.p_species]) \
         else sum(spc.e_elect * reaction.get_species_count(species=spc, well=1) for spc in reaction.p_species)
     ts_e_elect = reaction.ts_species.e_elect
-    min_e = extremum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
 
-    if any([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
-        if verbose:
-            r_text = f'{r_e_elect - min_e:.2f} kJ/mol' if r_e_elect is not None else 'None'
-            ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
-            p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
-            logger.info(
-                f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
-                f'has the following path electronic energy:\n'
-                f'Reactants: {r_text}\n'
-                f'TS: {ts_text}\n'
-                f'Products: {p_text}')
+    if verbose and all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
+        min_e = extremum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
+        r_text = f'{r_e_elect - min_e:.2f} kJ/mol' if r_e_elect is not None else 'None'
+        ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
+        p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
+        logger.info(
+            f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
+            f'has the following path electronic energy:\n'
+            f'Reactants: {r_text}\n'
+            f'TS: {ts_text}\n'
+            f'Products: {p_text}')
 
         if all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
             # We have all params, we can make a quantitative decision.
@@ -150,14 +154,14 @@ def check_ts_energy(reaction: 'ARCReaction',
         reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
 
-def check_rxn_e0(reaction: 'ARCReaction',
-                 species_dict: dict,
-                 project_directory: str,
-                 kinetics_adapter: str,
-                 output: dict,
-                 sp_level: 'Level',
-                 freq_scale_factor: float = 1.0,
-                 ) -> Optional[bool]:
+def compute_and_check_rxn_e0(reaction: 'ARCReaction',
+                             species_dict: dict,
+                             project_directory: str,
+                             kinetics_adapter: str,
+                             output: dict,
+                             sp_level: 'Level',
+                             freq_scale_factor: float = 1.0,
+                             ) -> Optional[bool]:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
 
@@ -182,7 +186,7 @@ def check_rxn_e0(reaction: 'ARCReaction',
     considered_labels = list()
     rxn_copy = reaction.copy()
     for species in rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]:
-        if species.label in considered_labels:
+        if species.label in considered_labels or species.e0:
             continue
         considered_labels.append(species.label)
         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
@@ -197,18 +201,53 @@ def check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    r_e0 = sum_list_entries([r.e0 for r in rxn_copy.r_species],
-                            multipliers=[rxn_copy.get_species_count(species=r, well=0) for r in rxn_copy.r_species])
-    p_e0 = sum_list_entries([p.e0 for p in rxn_copy.p_species],
-                            multipliers=[rxn_copy.get_species_count(species=p, well=1) for p in rxn_copy.p_species])
-    if any(e0 is None for e0 in [r_e0, p_e0, rxn_copy.ts_species.e0]) \
-            or r_e0 >= rxn_copy.ts_species.e0 or p_e0 >= rxn_copy.ts_species.e0:
-        reaction.ts_species.ts_checks['E0'] = False
+    e0_pass = check_rxn_e0(reaction=rxn_copy)
+    if not e0_pass:
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
         return True  # Switch TS.
-    reaction.ts_species.ts_checks['E0'] = True
     return False  # Don't switch TS.
+
+
+def check_rxn_e0(reaction: 'ARCReaction',
+                 verbose: bool = True,
+                 ) -> Optional[bool]:
+    """
+    Check the E0 values between wells and a TS in a ``reaction``, assuming that E0 values are available.
+
+    Args:
+        reaction (ARCReaction): The reaction to consider.
+        verbose (bool, optional): Whether to print logging messages.
+
+    Returns:
+        Optional[bool]: Whether the Ts E0 is above both R and P E0 wells.
+    """
+    if reaction.ts_species.ts_checks['E0']:
+        return True
+    r_e0 = sum_list_entries([r.e0 for r in reaction.r_species],
+                            multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
+    p_e0 = sum_list_entries([p.e0 for p in reaction.p_species],
+                            multipliers=[reaction.get_species_count(species=p, well=1) for p in reaction.p_species])
+    ts_e0 = reaction.ts_species.e0
+
+    if verbose and all([val is not None for val in [r_e0, p_e0, ts_e0]]):
+        min_e0 = extremum_list([r_e0, p_e0, ts_e0], return_min=True)
+        r_text = f'{r_e0 - min_e0:.2f} kJ/mol' if r_e0 is not None else 'None'
+        ts_text = f'{ts_e0 - min_e0:.2f} kJ/mol' if ts_e0 is not None else 'None'
+        p_text = f'{p_e0 - min_e0:.2f} kJ/mol' if p_e0 is not None else 'None'
+        logger.info(
+            f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
+            f'has the following path E0 values:\n'
+            f'Reactants: {r_text}\n'
+            f'TS: {ts_text}\n'
+            f'Products: {p_text}')
+    if any(e0 is None for e0 in [r_e0, p_e0, ts_e0]):
+        return None
+    if r_e0 >= ts_e0 or p_e0 >= ts_e0:
+        reaction.ts_species.ts_checks['E0'] = False
+        return False
+    reaction.ts_species.ts_checks['E0'] = True
+    return True
 
 
 def check_normal_mode_displacement(reaction: 'ARCReaction',

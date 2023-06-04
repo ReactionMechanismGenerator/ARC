@@ -16,7 +16,6 @@ from arc.level import Level
 from arc.main import ARC, StatmechEnum, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
-
 servers = settings['servers']
 
 
@@ -447,32 +446,32 @@ class TestARC(unittest.TestCase):
         """
         Tests the process_level_of_theory function.
         """
-        arc0 = ARC(project='test_0', level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)', bac_type=False, freq_scale_factor=1,)
+        arc0 = ARC(project='test_0', level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
+                   bac_type=None, freq_scale_factor=1)
         arc1 = ARC(project='test_1', level_of_theory='wb97xd/6-311+g(2d,2p)',
-                                    arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
-                                    bac_type=False,
-                                    freq_scale_factor=1,
-                                    job_types= {"freq": True,
-                                                "sp"  : True,
-                                                "opt" : False,})
+                   arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
+                   bac_type=None,
+                   freq_scale_factor=1,
+                   job_types={"freq": True,
+                              "sp": True,
+                              "opt": False})
         arc2 = ARC(project='test_2', sp_level='wb97xd/6-311+g(2d,2p)',
-                                     opt_level='wb97xd/6-311+g(2d,2p)',
-                                     arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
-                                     bac_type=False,
-                                     freq_scale_factor=1,
-                                     job_types= {"freq": True,
-                                                 "sp"  : False,
-                                                 "opt" : False,})
+                   opt_level='wb97xd/6-311+g(2d,2p)',
+                   arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
+                   bac_type=None,
+                   freq_scale_factor=1,
+                   job_types={"freq": True,
+                              "sp": False,
+                              "opt": False})
         arc3 = ARC(project='test_3', sp_level='wb97xd/6-311+g(2d,2p)',
-                                     opt_level='wb97xd/6-311+g(2d,2p)',
-                                     arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
-                                     bac_type=False,
-                                     freq_scale_factor=1,
-                                     job_types= {"opt" : False,})
+                   opt_level='wb97xd/6-311+g(2d,2p)',
+                   arkane_level_of_theory="b3lyp/6-311+g(3df,2p)",
+                   bac_type=None,
+                   freq_scale_factor=1,
+                   job_types={"opt": False})
 
         arc0.process_level_of_theory(), arc1.process_level_of_theory(), arc2.process_level_of_theory(), arc3.process_level_of_theory()
         for arc in [arc0, arc1, arc2, arc3]:
-            print("arc")
             self.assertIsInstance(arc.sp_level, Level)
             self.assertIsInstance(arc.opt_level, Level)
             self.assertIsInstance(arc.freq_level, Level)

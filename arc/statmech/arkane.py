@@ -224,7 +224,9 @@ class ArkaneAdapter(StatmechAdapter):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     return None
-                if not estimate_dh_rxn:
+                est_dh_rxn = estimate_dh_rxn \
+                             or any(spc.thermo is None for spc in self.reaction.r_species + self.reaction.p_species)
+                if not est_dh_rxn:
                     self.reaction.dh_rxn298 = \
                         sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
                              for product in self.reaction.p_species]) \

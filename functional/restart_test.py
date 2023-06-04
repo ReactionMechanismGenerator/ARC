@@ -19,9 +19,9 @@ from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC
 
 
-class TestARC(unittest.TestCase):
+class TestRestart(unittest.TestCase):
     """
-    Contains unit tests for the ARC class
+    Contains unit tests for restarting ARC.
     """
 
     @classmethod
@@ -158,11 +158,11 @@ class TestARC(unittest.TestCase):
         # delete the generated library from RMG-database
         os.remove(new_thermo_library_path)
 
-    def test_restart_rate(self):
-        """Test restarting ARC and attaining reaction a rate coefficient"""
+    def test_restart_rate_1(self):
+        """Test restarting ARC and attaining a reaction rate coefficient"""
         restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
         input_dict = read_yaml_file(path=restart_path)
-        project = 'arc_project_for_testing_delete_after_usage_restart_rate'
+        project = 'arc_project_for_testing_delete_after_usage_restart_rate_1'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
@@ -174,6 +174,33 @@ class TestARC(unittest.TestCase):
             got_rate = False
             for line in f.readlines():
                 if "Arrhenius(A=(0.0636958,'cm^3/(mol*s)'), n=4.07981, Ea=(57.5474,'kJ/mol')" in line:
+                    got_rate = True
+                    break
+        self.assertTrue(got_rate)
+
+    def test_restart_rate_2(self):
+        """Test restarting ARC and attaining a reaction rate coefficient"""
+        project = 'arc_project_for_testing_delete_after_usage_restart_rate_2'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '5_TS1')
+        restart_path = os.path.join(base_path, 'restart.yml')
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
+        input_dict['output']['TS0']['paths']['freq'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['freq'])
+        input_dict['output']['TS0']['paths']['goe'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['geo'])
+        input_dict['output']['TS0']['paths']['sp'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['sp'])
+        for spc in input_dict['species']:
+            if 'TS' not in spc['label']:
+                spc['yml_path'] = os.path.join(ARC_PATH, spc['yml_path'])
+        input_dict['project'], input_dict['project_directory'] = project, project_directory
+        arc1 = ARC(**input_dict)
+        arc1.execute()
+
+        kinetics_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'kinetics', 'reactions.py')
+
+        with open(kinetics_library_path, 'r') as f:
+            got_rate = False
+            for line in f.readlines():
+                if "Arrhenius(A=" in line:
                     got_rate = True
                     break
         self.assertTrue(got_rate)
@@ -214,7 +241,8 @@ class TestARC(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         projects = ['arc_project_for_testing_delete_after_usage_restart_thermo',
-                    'arc_project_for_testing_delete_after_usage_restart_rate',
+                    'arc_project_for_testing_delete_after_usage_restart_rate_1',
+                    'arc_project_for_testing_delete_after_usage_restart_rate_2',
                     'test_restart_bde',
                     ]
         for project in projects:
@@ -223,9 +251,12 @@ class TestARC(unittest.TestCase):
 
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths',
                                    'log_and_restart_archive'), ignore_errors=True)
-
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
             file_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths', file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        file_paths = [os.path.join(ARC_PATH, 'functional', 'nul'), os.path.join(ARC_PATH, 'functional', 'run.out')]
+        for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
 

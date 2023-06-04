@@ -227,7 +227,7 @@ class ARC(object):
                  adaptive_levels: Optional[dict] = None,
                  allow_nonisomorphic_2d: bool = False,
                  arkane_level_of_theory: Optional[Union[dict, Level, str]] = None,
-                 bac_type: str = 'p',
+                 bac_type: Optional[str] = 'p',
                  bath_gas: Optional[str] = None,
                  calc_freq_factor: bool = True,
                  compare_to_rmg: bool = True,

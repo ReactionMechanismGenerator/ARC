@@ -48,6 +48,7 @@ class ARCReaction(object):
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         rmg_reaction (Reaction, optional): An RMG Reaction class.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
+        xyz (list, optional): Identical to `ts_xyz_guess`, used as a shortcut.
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
         reaction_dict (dict, optional): A dictionary to create this object from (used when restarting ARC).
@@ -95,6 +96,7 @@ class ARCReaction(object):
                  ts_label: Optional[str] = None,
                  rmg_reaction: Optional[Reaction] = None,
                  ts_xyz_guess: Optional[list] = None,
+                 xyz: Optional[list] = None,
                  multiplicity: Optional[int] = None,
                  charge: Optional[int] = None,
                  reaction_dict: Optional[dict] = None,
@@ -109,11 +111,11 @@ class ARCReaction(object):
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
         self.family = None
-        self.family_own_reverse = 0
+        self.family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
-        self.ts_xyz_guess = ts_xyz_guess or list()
+        self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
         self._atom_map = None
         self._charge = charge
@@ -247,10 +249,13 @@ class ARCReaction(object):
             reaction_dict['rmg_reaction'] = self.rmg_reaction_to_str()
         if self.family is not None:
             reaction_dict['family'] = self.family.label
-        reaction_dict['family_own_reverse'] = self.family_own_reverse
-        reaction_dict['long_kinetic_description'] = self.long_kinetic_description
+        if self.family_own_reverse:
+            reaction_dict['family_own_reverse'] = self.family_own_reverse
+        if self.long_kinetic_description:
+            reaction_dict['long_kinetic_description'] = self.long_kinetic_description
+        if len(self.ts_xyz_guess):
+            reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['label'] = self.label
-        reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
@@ -274,7 +279,7 @@ class ARCReaction(object):
             self.family.save_order = True
         else:
             self.family = None
-        self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else 0
+        self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else False
         if 'rmg_reaction' in reaction_dict:
             self.rmg_reaction_from_str(reaction_string=reaction_dict['rmg_reaction'])
         else:
@@ -292,10 +297,21 @@ class ARCReaction(object):
             self.products = [check_label(spc.label)[0] for spc in self.rmg_reaction.products]
         if self.ts_label is None:
             self.ts_label = reaction_dict['ts_label'] if 'ts_label' in reaction_dict else None
-        self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
-            if 'r_species' in reaction_dict else self.r_species or list()
-        self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
-            if 'p_species' in reaction_dict else self.p_species or list()
+        if species_list is not None and 'r_species' in reaction_dict and len(reaction_dict['r_species']) \
+                and 'p_species' in reaction_dict and len(reaction_dict['p_species']):
+            self.r_species, self.p_species = list(), list()
+            for spc in species_list:
+                for r_spc_dict in reaction_dict['r_species']:
+                    if spc.label == r_spc_dict['label']:
+                        self.r_species.append(spc)
+                for p_spc_dict in reaction_dict['p_species']:
+                    if spc.label == p_spc_dict['label']:
+                        self.p_species.append(spc)
+        else:
+            self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
+                if 'r_species' in reaction_dict else self.r_species or list()
+            self.p_species = [ARCSpecies(species_dict=p_dict) for p_dict in reaction_dict['p_species']] \
+                if 'p_species' in reaction_dict else self.p_species or list()
         self.reactants = self.reactants or [spc.label for spc in self.r_species]
         self.products = self.products or [spc.label for spc in self.p_species]
         self.ts_species = ARCSpecies(species_dict=reaction_dict['ts_species']) if 'ts_species' in reaction_dict else None

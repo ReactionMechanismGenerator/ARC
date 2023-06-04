@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_rxn_e0, check_irc_species_and_rxn
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn, compute_and_check_rxn_e0
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -139,8 +139,8 @@ class Scheduler(object):
         adaptive_levels (dict, optional): A dictionary of levels of theory for ranges of the number of heavy atoms
                                           in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                           values are dictionaries with job type tuples as keys and levels of theory
-                                          as values. 'inf' is accepted an max_num_atoms rmg_database
-                                          (RMGDatabase, optional): The RMG database object.
+                                          as values. 'inf' is accepted in max_num_atoms
+        rmg_database (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
@@ -207,8 +207,8 @@ class Scheduler(object):
         adaptive_levels (dict): A dictionary of levels of theory for ranges of the number of heavy atoms
                                 in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                 values are dictionaries with job type tuples as keys and levels of theory
-                                as values. 'inf' is accepted an max_num_atoms rmg_database
-                                (RMGDatabase, optional): The RMG database object.
+                                as values. 'inf' is accepted in max_num_atoms
+        rmg_database (RMGDatabase, optional): The RMG database object.
         fine_only (bool): If ``True`` ARC will not run optimization jobs without ``fine=True``.
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float): The harmonic frequencies scaling factor.
@@ -375,6 +375,7 @@ class Scheduler(object):
                                 xyz=user_guess,
                                 rmg_reaction=rxn.rmg_reaction,
                                 index=len(rxn.ts_species.ts_guesses),
+                                success=True,
                                 )
                     )
                 rxn.check_atom_balance()
@@ -409,6 +410,8 @@ class Scheduler(object):
                     species.initial_xyz = species.conformers[0]
                 if species.label not in self.running_jobs:
                     self.running_jobs[species.label] = list()  # initialize before running the first job
+                if self.output[species.label]['convergence']:
+                    continue
                 if species.is_monoatomic():
                     if not self.output[species.label]['job_types']['sp'] \
                             and not self.output[species.label]['job_types']['composite'] \
@@ -427,8 +430,8 @@ class Scheduler(object):
                     if self.job_types['sp']:
                         self.run_sp_job(species.label)
                     if self.job_types['rotors']:
-                        self.run_sp_job(species.label, level = self.scan_level)
-                        if not self.job_types['opt']: # The user provided an optimized coordinates
+                        self.run_sp_job(species.label, level=self.scan_level)
+                        if not self.job_types['opt']:
                             self.run_scan_jobs(species.label)
 
                 elif ((species.initial_xyz is not None or species.final_xyz is not None)
@@ -1013,7 +1016,7 @@ class Scheduler(object):
                     and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
                     and all([e is None for e in self.species_dict[label].conformer_energies]) \
                     and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
-                    and self.species_dict[label].yml_path is None \
+                    and self.species_dict[label].yml_path is None and not self.output[label]['convergence'] \
                     and (self.job_types['conformers'] and label not in self.dont_gen_confs
                          or self.species_dict[label].get_xyz(generate=False) is None):
                 # This is not a TS, opt (/composite) did not converge nor is it running, and conformer energies were
@@ -2420,7 +2423,7 @@ class Scheduler(object):
     def check_rxn_e0_by_spc(self, label: str):
         """
         Check the E0 (electronic energy + ZPE) of reactions related to a specific species.
-        Requires all opt + freq computations to be converged for all apecies (and TS) participating in each reaction.
+        Requires all opt + freq computations to be converged for all species (and TS) participating in each reaction.
 
         Args:
             label (str): A label representing a species.
@@ -2431,14 +2434,14 @@ class Scheduler(object):
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[spc_label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
-                switch_ts = check_rxn_e0(reaction=rxn,
-                                         species_dict=self.species_dict,
-                                         project_directory=self.project_directory,
-                                         kinetics_adapter=self.kinetics_adapter,
-                                         output=self.output,
-                                         sp_level=self.sp_level if not self.composite_method else self.composite_method,
-                                         freq_scale_factor=self.freq_scale_factor,
-                                         )
+                switch_ts = compute_and_check_rxn_e0(reaction=rxn,
+                                                     species_dict=self.species_dict,
+                                                     project_directory=self.project_directory,
+                                                     kinetics_adapter=self.kinetics_adapter,
+                                                     output=self.output,
+                                                     sp_level=self.sp_level if not self.composite_method else self.composite_method,
+                                                     freq_scale_factor=self.freq_scale_factor,
+                                                     )
                 if switch_ts is True:
                     logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
                                 f'Switching TS.\n')
@@ -2873,18 +2876,19 @@ class Scheduler(object):
             label (str): The species label.
         """
         all_converged = True
-        for job_type, spawn_job_type in self.job_types.items():
-            if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                    and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
-                             or (self.species_dict[label].number_of_atoms == 1
-                                 and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
-                             or job_type == 'bde' and self.species_dict[label].bdes is None
-                             or job_type == 'conformers'
-                             or job_type == 'irc'
-                             or job_type == 'tsg'):
-                logger.debug(f'Species {label} did not converge.')
-                all_converged = False
-                break
+        if not self.output[label]['convergence']:
+            for job_type, spawn_job_type in self.job_types.items():
+                if spawn_job_type and not self.output[label]['job_types'][job_type] \
+                        and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conformers'])
+                                 or (self.species_dict[label].number_of_atoms == 1
+                                     and job_type in ['conformers', 'opt', 'fine', 'freq', 'rotors', 'bde'])
+                                 or job_type == 'bde' and self.species_dict[label].bdes is None
+                                 or job_type == 'conformers'
+                                 or job_type == 'irc'
+                                 or job_type == 'tsg'):
+                    logger.debug(f'Species {label} did not converge.')
+                    all_converged = False
+                    break
         if all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:

@@ -1614,6 +1614,12 @@ def safe_copy_file(source: str,
             shutil.copyfile(src=source, dst=destination)
         except shutil.SameFileError:
             break
+        except NotADirectoryError:
+            print(f'Expected "source" and "destination" to be directories. Trying to extract base paths.')
+            if os.path.isfile(source):
+                source = os.path.dirname(source)
+            if os.path.isfile(destination):
+                destination = os.path.dirname(destination)
         except OSError:
             time.sleep(wait)
         else:
