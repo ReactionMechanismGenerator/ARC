@@ -1,0 +1,126 @@
+#BIND_OUTPUT version: 3.0
+
+
+
+#---------------------- SYMMETRY ANALYSIS ----------------------
+
+2 Elements are present. They are:
+  1 Mirror Plane with normal: (0.000,0.000,1.000)
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 
+  2 Identity.
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 
+
+Here are the  Non-Redundant Elements which are present:
+Mirror Plane with normal: (0.000,0.000,1.000)
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 
+Identity.
+   Equivalent Atoms: 1 -> 1, 2 -> 2, 3 -> 3, 
+
+;-----------------------------------------------------------------
+Allocating approximately     5.37 Kbytes (    0.01 Meg).
+Each matrix is:     0.00 meg.
+
+; Number of orbitals
+#Num_Orbitals: 9
+Error value from Diagonalization (0 is good): 0
+
+#	******* Energies (in eV)  and Occupation Numbers *******
+1:--->  -28.6252  [2.000 Electrons]
+2:--->  -21.4347  [2.000 Electrons]
+3:--->  -15.6563  [2.000 Electrons]
+4:--->  -14.8934  [2.000 Electrons]
+5:--->  -13.8468  [2.000 Electrons]
+6:--->  -11.0755  [2.000 Electrons]
+7:--->  -9.86646  [0.000 Electrons]
+8:--->   5.31106  [0.000 Electrons]
+9:--->   20.6986  [0.000 Electrons]
+Total_Energy: -211.064
+
+# Characters of wavefunctions with respect to symmetry operations present.
+;              1      2 
+   1:--->  1.000  1.000 
+   2:--->  1.000  1.000 
+   3:--->  1.000  1.000 
+   4:---> -1.000  1.000 
+   5:--->  1.000  1.000 
+   6:--->  1.000  1.000 
+   7:---> -1.000  1.000 
+   8:--->  1.000  1.000 
+   9:--->  1.000  1.000 
+
+;   Reduced Mulliken Overlap Population Matrix for 12.000 electrons:
+
+              1        2        3      
+  1        3.4932    
+  2        0.8950      6.3514    
+  3        0.7874      -0.1314     0.6044    
+
+;    Net Atomic Charges for 12.000 electrons:
+1 C: -0.334361
+2 CL: 0.266788
+3 H: 0.067573
+;      Total Charge is: 0.000000
+
+
+; 		q-q-q-q-q-q-q-q  Charge Matrix q-q-q-q-q-q-q-q
+
+;   Reduced Charge Matrix Independant of Occupation
+      1        2        3        4        5        6        7      
+   1  0.2943  0.4465  0.3155  0.2095  0.2584  0.6430  0.7905
+   2  0.6803  0.3923  0.5329  0.7905  0.6817  0.2889  0.2095
+   3  0.0254  0.1611  0.1516  0.0000  0.0599  0.0681  0.0000
+      8        9      
+   1  0.5462  0.4961
+   2  0.1338  0.2901
+   3  0.3201  0.2137
+
+
+ Sorting 9 crystal orbitals.
+
+
+# ******** Extended Hueckel Parameters ********
+;  FORMAT  quantum number orbital: Hii, <c1>, exponent1, <c2>, <exponent2>
+
+ATOM: C   Atomic number: 6  # Valence Electrons: 4
+	2S:   -21.4000     1.6250
+	2P:   -11.4000     1.6250
+ATOM: CL   Atomic number: 17  # Valence Electrons: 7
+	3S:   -26.3000     2.1830
+	3P:   -14.2000     1.7330
+ATOM: H   Atomic number: 1  # Valence Electrons: 1
+	1S:   -13.6000     1.3000
+
+### TOTAL DENSITY OF STATES 
+18 states are present.
+#BEGIN CURVE
+1.000000 -28.625238
+1.000000 -21.434669
+1.000000 -15.656312
+1.000000 -14.893372
+1.000000 -13.846764
+1.000000 -11.075531
+1.000000 -9.866461
+1.000000 5.311060
+1.000000 20.698580
+#END CURVE
+# END OF DOS
+
+
+;  The Fermi Level was determined for 1 K points based on
+;     an ordering of 9 crystal orbitals occupied by 12.000000 electrons
+;      in the unit cell (12.000000 electrons total)
+#Fermi_Energy:  -11.075531
+#Average Energy:  -211.063772 eV
+
+# Atomic Orbital Occupations
+;        s      px      py      pz    dx2-y2    dz2     dxy     dxz     dyz
+1 C  1.3990  1.0363  1.4801  0.4190  0.0000  0.0000  0.0000  0.0000  0.0000 
+2 CL  1.7755  1.3914  1.9853  1.5810  0.0000  0.0000  0.0000  0.0000  0.0000 
+3 H  0.9324  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000 
+
+# AVERAGE NET CHARGES
+1 C -0.334361
+2 CL 0.266788
+3 H 0.067573
+There are a total of 12.000000 electrons.
+Done!

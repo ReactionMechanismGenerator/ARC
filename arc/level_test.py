@@ -45,7 +45,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(Level(method='B3LYP', basis='6-311g+(d,f)').software, 'gaussian')
         level_3 = Level(method='B3LYP', basis='6-311g+(d,f)')
         level_3.deduce_software(job_type='irc')
-        self.assertEqual(level_3.software, 'gaussian')
+        self.assertEqual(level_3.software, 'qchem')
         self.assertEqual(Level(method='DLPNO-CCSD(T)', basis='def2-tzvp').software, 'orca')
         self.assertEqual(Level(method='PM6').software, 'gaussian')
         self.assertEqual(Level(method='HF').software, 'gaussian')
@@ -214,7 +214,7 @@ class TestLevel(unittest.TestCase):
         """ Test the fuzzymatching_software_basis() method"""
         
         level_1 = Level(method='CCSD(T)', basis='cc-pvtz', software='qchem')
-        self.assertEqual(level_1.fuzzymatching_software_basis(), 'qchem')
+        self.assertEqual(level_1.software_input_matching(), 'cc-pVTZ')
         
 
 

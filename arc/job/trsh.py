@@ -81,8 +81,7 @@ def determine_ess_status(output_path: str,
         if len(lines) < 5:
             return 'errored', ['NoOutput'], 'Log file could not be read', ''
         forward_lines = tuple(lines)
-        #reverse_lines = tuple(lines[::-1])
-        reverse_lines = reversed(lines)
+        reverse_lines = tuple(lines[::-1])
 
         if software == 'gaussian':
             for line in forward_lines[-1:-20:-1]:

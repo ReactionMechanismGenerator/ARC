@@ -602,8 +602,8 @@ def check_job_status_in_stdout(job_id: int,
             else:
                 raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
-        else:
-            return 'done'
+        
+    return 'done'
 
 def delete_all_arc_jobs(server_list: list,
                         jobs: Optional[List[str]] = None,
