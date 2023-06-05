@@ -1174,8 +1174,8 @@ class ARCSpecies(object):
         The resulting rotors are saved in a ``{'pivots': [1, 3], 'top': [3, 7], 'scan': [2, 1, 3, 7]}`` format
         in ``self.rotors_dict``. Also updates ``self.number_of_rotors``.
         """
-        if self.rotors_dict is None:
-            # This species was marked to skip rotor scans.
+        if self.rotors_dict != {}:
+            # This species was marked to skip rotor scans (when ``rotors_dict`` is ``None``), or a rotors dictionary already exist.
             return
         mol_list = self.mol_list or [self.mol]
         if mol_list is None or not len(mol_list) or all([mol is None for mol in mol_list]):
