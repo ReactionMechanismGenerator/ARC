@@ -757,7 +757,7 @@ class TestMapping(unittest.TestCase):
         rxn1 = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
         rxn1.determine_family(self.rmgdb)
         atom_map = rxn1.atom_map
-        #expected: [0,2,3,4,1,5,[6,7],[6,7],[8,9,10],[8,9,10],[8,9,10],11,12]
+        #expected: [0, 2, 3, 4, 1, 5, [6, 7], [6, 7], [8, 9, 10], [8, 9, 10], [8, 9, 10], 11, 12]
         self.assertEqual(atom_map[:6], [0,2,3,4,1,5])
         self.assertIn(atom_map[6],[6,7])
         self.assertIn(atom_map[7], [6, 7])
