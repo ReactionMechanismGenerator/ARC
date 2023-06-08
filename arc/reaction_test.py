@@ -1258,6 +1258,34 @@ class TestARCReaction(unittest.TestCase):
         rxn = ARCReaction(reactants=['SO2(T)'], products=['SO2(S)'], r_species=[r_1], p_species=[p_1])
         self.assertEqual(rxn.atom_map[0], 1)
         self.assertTrue(check_atom_map(rxn))
+        # F[C]F + [CH3] <=> F[C](F)C
+        r1_xyz = {'symbols': ('F', 'C', 'F'),
+                  'isotopes': (19, 12, 19),
+                  'coords': ((-1.304203748543047, 0.3204330512721478, 0.0),
+                             (-1.9140293120972295e-09, -6.455569423898419e-09, 0.0),
+                             (1.304203750457077, -0.32043304481658, 0.0))}
+        r2_xyz = {'symbols': ('C', 'H', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 1),
+                  'coords': ((3.3746019998564553e-09, 5.828827384106545e-09, -4.859105107686622e-09),
+                             (1.0669051052331406, -0.17519582095514982, 0.05416492980439295),
+                             (-0.6853171627400634, -0.8375353626879753, -0.028085652887100996),
+                             (-0.3815879458676787, 1.0127311778142964, -0.026079272058187608))}
+        p1_xyz = {'symbols': ('F', 'C', 'F', 'C', 'H', 'H', 'H'),
+                  'isotopes': (19, 12, 19, 12, 1, 1, 1),
+                  'coords': ((1.119619553527753, 1.4683016995266238, -0.4256355476700406),
+                             (0.7853078782246593, 0.21618941405118694, -0.04988462642839442),
+                             (1.7521918404307653, -0.6690180410121276, 0.2699297634217041),
+                             (-0.6404114764644544, -0.17821988481768988, 0.034782780206236624),
+                             (-0.7526348686344194, -1.2468644821661592, -0.16730131057453498),
+                             (-1.2335484316315908, 0.3780341245687702, -0.6961093474225755),
+                             (-1.0305244954526513, 0.03157716984946183, 1.0342182884675877))}
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r1", smiles="F[C]F", xyz=r1_xyz),
+                                     ARCSpecies(label="r2", smiles="[CH3]", xyz=r2_xyz)],
+                          p_species=[ARCSpecies(label="p1", smiles="F[C](F)C", xyz=p1_xyz)])
+        self.assertIn(rxn.atom_map[:2], [[0, 1], [1, 0]])
+        self.assertEqual(rxn.atom_map[2], 2)
+        self.assertEqual(rxn.atom_map[3], 3)
+        self.assertIn(tuple(rxn.atom_map[4:]), list(permutations([4, 5, 6])))
 
     @work_in_progress
     def test_get_atom_map_wip(self):
