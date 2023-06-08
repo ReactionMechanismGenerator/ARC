@@ -1292,7 +1292,7 @@ def r_cut_p_cut_isomorphic(reactant, product):
     """
     res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
     for res in res1:
-        if product.mol.is_isomorphic(res, save_order=True):
+        if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
             return True
     return False
 
