@@ -442,8 +442,12 @@ def draw_thermo_parity_plots(species_list: list,
         s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
         s298_rmg.append(spc.rmg_thermo.get_entropy(298))  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
-    draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label='H298', var_units='kJ / mol', labels=labels, pp=pp)
-    draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label='S298', var_units='J / mol * K', labels=labels, pp=pp)
+    var_units_h = r"$\left(\frac{J}{mol}\right)$"
+    var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
+    label_h = r"$\Delta H ^{298_K} _f}$"
+    label_s = r"$\Delta S ^{298_K} _f}$"
+    draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label=label_h, var_units=var_units_h, labels=labels, pp=pp)
+    draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label=label_s, var_units=var_units_s, labels=labels, pp=pp)
     pp.close()
     thermo_sources = '\nSources of thermoproperties determined by RMG for the parity plots:\n'
     max_label_len = max([len(label) for label in labels])
@@ -467,24 +471,24 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         var_units (str): The variable units.
         pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
     """
-    dimention = max(len(var_arc) / 3.5, 4)
-    min_var = min(var_arc + var_rmg)
-    max_var = max(var_arc + var_rmg)
-    fig, ax = plt.subplots(figsize=(dimention, dimention), dpi=120)
+    combined= [x for n in (var_arc, var_rmg) for x in n]
+    min_var = min(combined)
+    max_var = max(combined)
+    fig, ax = plt.subplots(dpi=120)
     ax.set_title(f'{var_label} parity plot')
     for i, label in enumerate(labels):
         ax.plot(var_arc[i], var_rmg[i], 'o', label=label)
     ax.plot([min_var, max_var], [min_var, max_var], 'b-', linewidth=0.5)
-    ax.set_xlabel(f'{var_label} calculated by ARC ({var_units})')
-    ax.set_ylabel(f'{var_label} determined by RMG ({var_units})')
-    ax.set_xlim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
-    ax.set_ylim(min_var - max(abs(min_var * 0.1), 10), max_var + max(abs(max_var * 0.1), 10))
+    ax.set_xlabel(f'{var_label} calculated by ARC {var_units}')
+    ax.set_ylabel(f'{var_label} determined by RMG {var_units}')
+    ax.set_xlim([min_var - abs(min_var * 0.1), max_var + abs(max_var * 0.1)])
+    ax.set_ylim([min_var - abs(min_var * 0.1), max_var + abs(max_var * 0.1)])
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+    ax.set_aspect('equal', adjustable='box')
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), shadow=False)
-    plt.tight_layout()
     if pp is not None:
-        plt.savefig(pp, format='pdf')
+        plt.savefig(pp, format='pdf', bbox_inches='tight')
     if is_notebook():
         plt.show()
     plt.close(fig=fig)
