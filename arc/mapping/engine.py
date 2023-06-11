@@ -1055,13 +1055,12 @@ def prepare_reactants_and_products_for_scissors(rxn: 'ARCReaction',
                 else:
                     loc_r[location] += 1
                     reactants[location] = ARCSpecies(label="".join(sorted(
-                        [key_by_val(r_label_dict, r_label_dict[broken_bond[1]]),
-                         key_by_val(p_label_dict, p_label_dict[broken_bond[3]])])),
-                    mol = reactant.mol.copy(deep=True),
-                    xyz = reactant.get_xyz(),
-                    bdes = [(r_label_dict[broken_bond[1]] + 1 - index,
-                             r_label_dict[broken_bond[3]] + 1 - index)])
-
+                                                        [key_by_val(r_label_dict, r_label_dict[broken_bond[1]]),
+                                                        key_by_val(p_label_dict, p_label_dict[broken_bond[3]])])),
+                                                     mol = reactant.mol.copy(deep=True),
+                                                     bdes = [(r_label_dict[broken_bond[1]] + 1 - index,
+                                                              r_label_dict[broken_bond[3]] + 1 - index)])
+                    reactants[location].final_xyz = reactant.get_xyz()
                     for mol1, mol2 in zip(reactants[location].mol.atoms, reactant.mol.atoms):
                         mol1.label = mol2.label
                     break
