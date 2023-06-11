@@ -629,6 +629,8 @@ class TestConverter(unittest.TestCase):
                     p_cuts.remove(p_cut)
                     break
         self.assertEqual(len(p_cuts),0)
+        self.assertTrue(r_cut_p_cut_isomorphic(ARCSpecies(label="r1", smiles="F[C]F", multiplicity=1),
+                                               ARCSpecies(label="r1", smiles="F[C]F", multiplicity=3)))
 
     def test_pairing_reactants_and_products_for_mapping(self):
         smiles = ["[F]", "C[CH]C", "[CH3]"]
