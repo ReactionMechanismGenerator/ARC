@@ -1102,7 +1102,6 @@ def prepare_reactants_and_products_for_scissors(rxn: 'ARCReaction',
 def make_bond_changes(rxn: 'ARCReaction',
                       r_cuts: List[ARCSpecies],
                       r_label_dict: Dict):
-
     """
     Makes the bond change before matching the reactants and products
 
@@ -1110,24 +1109,35 @@ def make_bond_changes(rxn: 'ARCReaction',
         rxn: An ARCReaction object
         r_cuts: the cut products
         r_label_dict: the dictionary object the find the relevant location.
-
-    Returns:
-        None if there are no bond changes, r_cuts with a muted ARCSpecies in the relevant location
     """
+    
     for action in rxn.family.forward_recipe.actions:
         if action[0].lower() == "CHANGE_BOND".lower():
             indicies = r_label_dict[action[1]],r_label_dict[action[3]]
             for r_cut in r_cuts:
                 if indicies[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indicies[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
-                    atom1, atom2 = 0,0
+                    atom1, atom2 = 0, 0
                     for atom in r_cut.mol.atoms:
                         if int(atom.label) == indicies[0]:
                             atom1 = atom
                         elif int(atom.label) == indicies[1]:
                             atom2 = atom
-                    atom1.decrement_radical()
-                    atom2.decrement_radical()
-                    r_cut.mol.get_bond(atom1,atom2).order += action[2]
+                    if atom1.radical_electrons == 0:
+                        atom1.lone_pairs -= 1
+                        atom2.lone_pairs += 1
+                        atom1.charge += 1
+                        atom2.charge -= 1
+                        atom2.radical_electrons -= 2
+                    elif atom2.radical_electrons == 0:
+                        atom2.lone_pairs -= 1
+                        atom1.lone_pairs += 1
+                        atom2.charge += 1
+                        atom1.charge -= 1
+                        atom1.radical_electrons -= 2
+                    else:    
+                        atom1.decrement_radical()
+                        atom2.decrement_radical()
+                    r_cut.mol.get_bond(atom1, atom2).order += action[2]
                     r_cut.mol.update()
 
 
