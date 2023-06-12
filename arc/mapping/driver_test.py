@@ -21,7 +21,7 @@ from arc.species.species import ARCSpecies
 from itertools import permutations
 
 
-class TestMapping(unittest.TestCase):
+class TestMappingDriver(unittest.TestCase):
     """
     Contains unit tests for the mapping module.
     """

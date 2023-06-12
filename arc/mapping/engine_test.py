@@ -26,7 +26,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 
-class TestConverter(unittest.TestCase):
+class TestMappingEngine(unittest.TestCase):
     """
     Contains unit tests for the mapping_engine module
     """
