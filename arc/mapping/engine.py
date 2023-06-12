@@ -1153,83 +1153,66 @@ def assign_labels_to_products(rxn: 'ARCReaction',
             atom_index+=1
 
 
-def cut_species_for_mapping(reactants: List[ARCSpecies],
-                            products: List[ARCSpecies],
-                            loc_r: List[int],
-                            loc_p: List[int],
-                            ) -> Optional[Tuple[List[ARCSpecies], List[ARCSpecies]]]:
+def multiple_cut_on_species(spc, bdes):
     """
-    A function for scissoring the reactants and products, as a preparation for atom mapping.
-
+    A function that recursively calles an is called by cut_species_for_mapping.
+    Is used to cut a species and reassign the other BDE's to the other cuts, and recalling cut_species_for_mapping.
     Args:
-        reactants: A list of the ARCSpecies for scission
-        products: A list of the ARCSpecies for scission
-        loc_r: A list of the location and number of cuts that is required.
-        loc_p: A list of the location and number of cuts that is required.
-
+        spc (ARCSpecies): a species with more then one BDE's (marks for scission).
+        bdes (list(tuple(int))): the required BDE's.
     Returns:
-        A list of scissored reactants and products.
+        list(ARCSpecies): a list of the cut products.
     """
-    r_cuts, p_cuts=list(), list()
-    for index, reactant in zip(loc_r, reactants):
-        if index==1:
+    bdes = spc.bdes
+    spc.bdes = [bdes[0]]
+    bdes = bdes[1:]
+    try:
+        cuts = spc.scissors()
+    except SpeciesError as e:
+        return None
+    for species in cuts:
+        species.final_xyz = species.get_xyz(generate=False)
+        indinces = [int(atom.label) for atom in species.mol.copy(deep=True).atoms]
+        new_bdes = list()
+        for bde in bdes:
+            if bde[0]-1 in indinces and bde[1]-1 in indinces:
+                new_bdes.append((indinces.index(bde[0]-1) + 1, indinces.index(bde[1]-1) + 1))
+        species.bdes = new_bdes
+    return cut_species_for_mapping(cuts, [len(species.bdes or list()) for species in cuts])
+
+
+def cut_species_for_mapping(species, locs):
+    """
+    A function for performing the necessary scission of species for mapping purposes. Can perform appropriate scission of multiple bonds at once.
+    Args:
+        species (list(ARCSpecies)): the species (reactants or products), marked for scission.
+        locs (list(int)): the number of cuts that is required for each species.
+    Returns:
+        list(ARCSpecies): a list of the cut products.
+    """
+    cuts = list()
+    for spc, loc in zip(species, locs):
+        spc.final_xyz = spc.get_xyz()
+        if spc.mol.copy(deep=True).smiles == "[H][H]" and loc != 0: # scissors should return one species
+            labels = [atom.label for atom in spc.mol.copy(deep=True).atoms]
             try:
-                reactant.final_xyz = reactant.get_xyz()
-                cuts = reactant.scissors()
-                r_cuts += cuts
+                H1 = spc.scissors()[0]
             except SpeciesError:
                 return None
-        elif index>1:
-            bdes = reactant.bdes
-            new_r = ARCSpecies(label="scissors", mol=reactant.mol.copy(deep=True))
-            for bde in bdes:
-                new_r.bdes = [bde]
-                new_r.final_xyz = new_r.get_xyz()
-                try:
-                    cuts=new_r.scissors()
-                except SpeciesError:
-                    return None
-                if len(cuts) == 1:
-                    new_r = cuts[0]
-                else:
-                    new_r, second = find_main_cut_product(cuts, reactant, bde)
-                    r_cuts += [second]
-            r_cuts += [new_r]
-        else:
-            r_cuts.append(reactant)
-
-    for index, product in zip(loc_p, products):
-        if index==1:
+            H2 = H1.copy()
+            H2.mol.atoms[0].label = labels[0] if H1.mol.atoms[0].label != labels[0] else labels[1]
+            cuts += [H1, H2]
+        if loc == 0:
+            cuts += [spc]
+        elif loc == 1:
             try:
-                product.final_xyz = product.get_xyz()
-                cuts = product.scissors()
-                if len(cuts) == 1: #only H2 and cyclic species for now, todo: modify to include cyclic species.
-                    cuts.append(ARCSpecies(label= cuts[0].label, mol=cuts[0].mol.copy(deep=True)))
-                    labels = [atom.label for atom in product.mol.atoms]
-                    cuts[-1].mol.atoms[0].label = labels[1] if cuts[0].mol.atoms[0].label == labels[0] else labels[0]
-                p_cuts += cuts
+                cuts += spc.scissors()
             except SpeciesError:
                 return None
-        elif index > 1:
-            bdes = product.bdes
-            new_p = ARCSpecies(label="scissors", mol=product.mol.copy(deep=True))
-            for bde in bdes:
-                new_p.bdes = [bde]
-                new_p.final_xyz = new_p.get_xyz()
-                try:
-                    cuts = new_p.scissors()
-                except SpeciesError:
-                    return None
-                if len(cuts) == 1:
-                    new_p = cuts[0]
-                else:
-                    new_p, second = find_main_cut_product(cuts, product, bde)
-                    p_cuts += [second]
-            p_cuts += [new_p]
         else:
-            p_cuts.append(product)
-
-    return r_cuts, p_cuts
+            bdes = spc.bdes
+            cuts += multiple_cut_on_species(spc, bdes)
+    return cuts
 
 
 def find_main_cut_product(cuts: List["ARCSpecies"],
