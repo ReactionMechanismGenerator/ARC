@@ -243,7 +243,8 @@ def map_rxn(rxn: 'ARCReaction',
     #step 3:
     label_species_atoms(reactants)
     label_species_atoms(products)
-    r_cuts, p_cuts = cut_species_for_mapping(reactants, products, loc_r, loc_p)
+    r_cuts = cut_species_for_mapping(reactants, loc_r)
+    p_cuts = cut_species_for_mapping(products, loc_p)
 
     try:
         make_bond_changes(rxn, r_cuts, r_label_dict)
