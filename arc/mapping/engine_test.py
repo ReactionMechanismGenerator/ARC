@@ -607,7 +607,8 @@ class TestMappingEngine(unittest.TestCase):
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
                                                                                         self.r_label_dict_rxn_1,
                                                                                         self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
 
         self.assertIn("C[CH]C", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
         self.assertIn("[F]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
@@ -620,7 +621,8 @@ class TestMappingEngine(unittest.TestCase):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,self.r_label_dict_rxn_1,self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
 
         self.assertTrue(r_cut_p_cut_isomorphic(self.spc1,self.spc2))
         for r_cut in r_cuts:
@@ -639,7 +641,8 @@ class TestMappingEngine(unittest.TestCase):
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
                                                                                         self.r_label_dict_rxn_1,
                                                                                         self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
 
         for pair in pairs_of_reactant_and_products:
@@ -657,7 +660,8 @@ class TestMappingEngine(unittest.TestCase):
         reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
         label_species_atoms(reactants)
         label_species_atoms(products)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products, loc_r, loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
         for Map in maps:
@@ -685,7 +689,8 @@ class TestMappingEngine(unittest.TestCase):
         reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
         label_species_atoms(reactants)
         label_species_atoms(products)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
         atom_map = glue_maps(maps,pairs_of_reactant_and_products)
