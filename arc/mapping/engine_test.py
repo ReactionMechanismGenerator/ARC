@@ -916,7 +916,6 @@ class TestMappingEngine(unittest.TestCase):
         equivalence_map_2 = find_equivalent_atoms_in_reactants(arc_reaction=self.rxn_2b)
         self.assertEqual(equivalence_map_2, [[0, 6], [1], [3, 4, 5, 7, 8, 9]])
 
-
     def test_map_two_species(self):
         """Test the map_two_species() function."""
         # H
@@ -1075,13 +1074,11 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = map_two_species(rmg_mol, rmg_spc)
         self.assertEqual(atom_map, [0, 1, 2, 3, 4])
 
-
     def test_get_arc_species(self):
         """Test the get_arc_species function."""
         self.assertIsInstance(get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Species(smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Molecule(smiles='C')), ARCSpecies)
-
 
     def test_create_qc_mol(self):
         """Test the create_qc_mol() function."""
@@ -1139,7 +1136,6 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
         bond_dict = get_bonds_dict(spc=ARCSpecies(label='iC4H10', smiles='CC(C)C'))
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
-
 
     def test_fingerprint(self):
         """Test the fingerprint function."""
@@ -1204,7 +1200,6 @@ class TestMappingEngine(unittest.TestCase):
                                        7: {'self': 'N', 'C': [3], 'H': [8, 9]},
                                        10: {'self': 'O', 'C': [0], 'H': [11]}})
 
-
     def test_identify_superimposable_candidates(self):
         """Test the identify_superimposable_candidates function."""
         candidates = identify_superimposable_candidates(fingerprint_1=self.fingerprint_1,
@@ -1214,7 +1209,6 @@ class TestMappingEngine(unittest.TestCase):
         candidates = identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                         fingerprint_2=self.butenylnebzene_fingerprint)
         self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
-
 
     def test_are_adj_elements_in_agreement(self):
         """Test the are_adj_elements_in_agreement function."""
@@ -1233,7 +1227,6 @@ class TestMappingEngine(unittest.TestCase):
         self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
                                                       {'self': 'C', 'C': [1], 'O': [4], 'H': [8]}))
 
-
     def test_iterative_dfs(self):
         """Test the iterative_dfs function."""
         result = iterative_dfs(fingerprint_1={0: {'self': 'C', 'C': [1]},
@@ -1251,7 +1244,6 @@ class TestMappingEngine(unittest.TestCase):
                                        )
         self.assertEqual(result, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
 
-
     def test_prune_identical_dicts(self):
         """Test the prune_identical_dicts function."""
         new_dicts_list = prune_identical_dicts([{0: 0}])
@@ -1267,12 +1259,10 @@ class TestMappingEngine(unittest.TestCase):
                                                         {0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
         self.assertEqual(new_dicts_list, [{0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
 
-
     def test_remove_gaps_from_values(self):
         """Test the remove_gaps_from_values function."""
         self.assertEqual(remove_gaps_from_values({5: 18, 7: 502, 21: 0, 0: 55, 2: 1}),
                          {5: 2, 7: 4, 21: 0, 0: 3, 2: 1})
-
 
     def test_fix_dihedrals_by_backbone_mapping(self):
         """Test the fix_dihedrals_by_backbone_mapping function."""
@@ -1297,7 +1287,6 @@ class TestMappingEngine(unittest.TestCase):
         self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 5)
         self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 5)
 
-
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score function."""
         self.spc1_dihedral_deviation.determine_rotors()
@@ -1306,7 +1295,6 @@ class TestMappingEngine(unittest.TestCase):
         backbone_map = identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
         score = get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
         self.assertAlmostEqual(score, 106.8417836)
-
 
     def test_get_backbone_dihedral_angles(self):
         """Test the get_backbone_dihedral_angles function."""
@@ -1318,7 +1306,6 @@ class TestMappingEngine(unittest.TestCase):
         self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
         self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
 
-
     def test_map_lists(self):
         """Test the map_lists function."""
         self.assertEqual(map_lists([], []), {})
@@ -1327,7 +1314,6 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(map_lists([179.9, 4.18e-06], [180.8, 359.7]), {0: 0, 1: 1})
         with self.assertRaises(ValueError):
             map_lists([5.0], [3.2, 7.9])
-
 
     def test_map_hydrogens(self):
         """Test the map_hydrogens function."""
@@ -1347,7 +1333,6 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = map_hydrogens(self.spc1, self.spc2, backbone_map)
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
-
 
     def test_flip_map(self):
         """Test the flip_map function."""
@@ -1379,7 +1364,6 @@ class TestMappingEngine(unittest.TestCase):
             atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
             flip_map(atom_map)
 
-
     def test_make_bond_changes(self):
         """Test the make_bond_changes function"""
         spc1 = ARCSpecies(label="Test_bc", smiles="[CH2][CH2]")
@@ -1404,7 +1388,6 @@ class TestMappingEngine(unittest.TestCase):
         for label1, label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
         
-
         spc = ARCSpecies(label="test_UX", smiles = "OCl")
         shuffle(spc.mol.atoms)
         update_xyz([spc])
@@ -1413,7 +1396,6 @@ class TestMappingEngine(unittest.TestCase):
         for label1, label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
 
-
         spc = ARCSpecies(label="test_UX", smiles = "BrOCl")
         shuffle(spc.mol.atoms)
         update_xyz([spc])
@@ -1421,7 +1403,7 @@ class TestMappingEngine(unittest.TestCase):
         atoms = [atom.element.symbol for atom in spc.mol.atoms]
         for label1,label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
-
+ 
     def test_cuts_on_cycle_of_labeled_mol(self):
         """test the cuts_on_cycle_of_labeled_mol function"""
         spc1 = ARCSpecies(label = "A", smiles="NC1=NC=NC2=C1N=CN2", bdes = [(6, 7)])
