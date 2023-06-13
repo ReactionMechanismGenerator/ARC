@@ -1376,7 +1376,22 @@ class TestMappingEngine(unittest.TestCase):
         l = [spc1]
         make_bond_changes(rxn, l, r_label_dict)
         self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
-
+        rxn = ARCReaction(r_species = [ARCSpecies(label="N4", smiles = "NNNN")],
+                          p_species = [ARCSpecies(label="NH3", smiles = "N"),
+                                       ARCSpecies(label="NH2NHN_p", smiles = "[N-]=[NH+]N")])
+        rxn.determine_family(self.db)
+        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend="arc")
+        r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+                                                                                        rmg_reaction=rmg_reactions[0])
+        assign_labels_to_products(rxn, p_label_dict)
+        reactants, _, loc_r, _ = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
+        label_species_atoms(reactants)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
+        make_bond_changes(rxn=rxn,
+                          r_cuts=r_cuts,
+                          r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
+        self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
 
     def test_update_xyz(self):
         """tests the update_xyz function"""
