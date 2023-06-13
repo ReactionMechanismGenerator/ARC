@@ -627,6 +627,17 @@ class TestMappingEngine(unittest.TestCase):
             self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH3]").mol),
                                  cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH]").mol)]))
             
+    def test_multiple_cut_on_species(self):
+        """test the multiple_cut_on_species function"""
+        spc = ARCSpecies(label="test", smiles="NCN", bdes = [(1, 2), (2, 3)])
+        for i, a in enumerate(spc.mol.atoms):
+            a.label=str(i)
+        spc.final_xyz = spc.get_xyz()
+        cuts = multiple_cut_on_species(spc, spc.bdes)
+        for cut in cuts:
+            self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH2]").mol),
+                                 cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH2]").mol)]))
+
     def test_r_cut_p_cut_isomorphic(self):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
