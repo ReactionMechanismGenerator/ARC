@@ -498,7 +498,7 @@ class JobAdapter(ABC):
         try:
             submit_script = submit_script.format(
                 name=self.job_server_name,
-                un=servers[self.server].get('local_un', 'un'),
+                un=servers[self.server].get('un'),
                 t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
                 memory=int(self.submit_script_memory),
                 nodes=servers[self.server].get('server_nodes', 1),
@@ -548,8 +548,7 @@ class JobAdapter(ABC):
             # Parentheses don't play well in folder names:
             species_name_remote = self.species_label.replace('(', '_').replace(')', '_')
             path = servers[self.server].get('path', '').lower()
-            local_un_path = os.path.join(path, servers[self.server].get('local_un', ''))
-            path = local_un_path if local_un_path !='' else (os.path.join(path, servers[self.server]['un']) if path else '')
+            path = os.path.join(path, servers[self.server]['un']) if path else ''
             self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
                                             species_name_remote, self.job_name)
 
