@@ -602,6 +602,7 @@ class TestMappingEngine(unittest.TestCase):
                 index +=1
 
     def test_cut_species_for_mapping(self):
+        """test the cut_species_for_mapping function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
@@ -617,6 +618,15 @@ class TestMappingEngine(unittest.TestCase):
         self.assertIn("[F]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
         self.assertIn("[CH3]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
 
+        spc = ARCSpecies(label="test", smiles="CNC", bdes = [(1, 2), (2, 3)])
+        for i, a in enumerate(spc.mol.atoms):
+            a.label=str(i)
+        cuts = cut_species_for_mapping([spc], [2])
+        self.assertEqual(len(cuts), 3)
+        for cut in cuts:
+            self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH3]").mol),
+                                 cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH]").mol)]))
+            
     def test_r_cut_p_cut_isomorphic(self):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
