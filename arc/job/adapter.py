@@ -767,8 +767,8 @@ class JobAdapter(ABC):
             # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E6  # in Bytes
         elif cluster_software in ['slurm']:
-            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
+            # In Slurm, "#SBATCH --mem=2000" specifies the memory to be 2000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         self.set_input_file_memory()
 
     def as_dict(self) -> dict:
