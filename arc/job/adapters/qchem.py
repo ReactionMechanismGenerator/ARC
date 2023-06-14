@@ -302,30 +302,34 @@ class QChemAdapter(JobAdapter):
                 # $end
 
                 scan1_start, scan1_end, scan2_start, scan2_end = self.generate_qchem_scan_angles(dihedral_1, self.scan_res)
-                scan_string += f'tors {scan_atoms_str} {scan1_start} {scan1_end} {self.scan_res}\n'
-                scan_string += '$end\n\n@@@\n\n$molecule\nread\n$end\n$rem'
-                scan_string += f"\n   JOBTYPE       {input_dict['job_type_1']}" \
-                               f"\n   METHOD        {input_dict['method']}" \
-                               f"\n   UNRESTRICTED  {input_dict['unrestricted']}" \
-                               f"\n   BASIS         {input_dict['basis']}" 
-                if input_dict['fine']:
-                    scan_string += f"\n   {input_dict['fine']}"
-                if input_dict['keywords']:
-                    scan_string += f"\n   {input_dict['keywords']}"
-                if input_dict['constraint']:
-                    scan_string += f"\n   {input_dict['constraint']}"
-                if input_dict['scan_trsh']:
-                    scan_string += f"\n   {input_dict['scan_trsh']}"
-                if input_dict['trsh']:
-                    scan_string += f"\n   {input_dict['trsh']}"
-                if input_dict['block']:
-                    scan_string += f"\n   {input_dict['block']}"
-                if input_dict['irc']:
-                    scan_string += f"\n   {input_dict['irc']}" 
-                scan_string += f"\n   QMOL_FCHK    TRUE"
-                scan_string += f'\n   SCF_GUESS read\n$end\n$scan\n'
-                scan_string += f'tors {scan_atoms_str} {scan2_start} {scan2_end} {self.scan_res}\n'
-                scan_string += '$end\n'
+                if scan2_start != scan2_end:
+                    scan_string += f'tors {scan_atoms_str} {scan1_start} {scan1_end} {self.scan_res}\n'
+                    scan_string += '$end\n\n@@@\n\n$molecule\nread\n$end\n$rem'
+                    scan_string += f"\n   JOBTYPE       {input_dict['job_type_1']}" \
+                                f"\n   METHOD        {input_dict['method']}" \
+                                f"\n   UNRESTRICTED  {input_dict['unrestricted']}" \
+                                f"\n   BASIS         {input_dict['basis']}" 
+                    if input_dict['fine']:
+                        scan_string += f"\n   {input_dict['fine']}"
+                    if input_dict['keywords']:
+                        scan_string += f"\n   {input_dict['keywords']}"
+                    if input_dict['constraint']:
+                        scan_string += f"\n   {input_dict['constraint']}"
+                    if input_dict['scan_trsh']:
+                        scan_string += f"\n   {input_dict['scan_trsh']}"
+                    if input_dict['trsh']:
+                        scan_string += f"\n   {input_dict['trsh']}"
+                    if input_dict['block']:
+                        scan_string += f"\n   {input_dict['block']}"
+                    if input_dict['irc']:
+                        scan_string += f"\n   {input_dict['irc']}" 
+                    scan_string += f"\n   IQMOL_FCHK    TRUE"
+                    scan_string += f'\n   SCF_GUESS read\n$end\n$scan\n'
+                    scan_string += f'tors {scan_atoms_str} {scan2_start} {scan2_end} {self.scan_res}\n'
+                    scan_string += '$end\n'
+                else:
+                    scan_string += f'tors {scan_atoms_str} {scan1_start} {scan1_end} {self.scan_res}\n'
+                    scan_string += '$end\n'
             if self.torsions is None or not len(self.torsions):
                 self.torsions = torsions_to_scans(scans, direction=-1)
             input_dict['scan'] = scan_string
@@ -384,71 +388,83 @@ class QChemAdapter(JobAdapter):
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
     def generate_qchem_scan_angles(self,start_angle: int, step: int) -> (int, int, int, int):
-        """
-        Generates the angles for a Q-Chem scan. The scan is split into two parts, one from start_angle to 180, and one from -180 to end_angle.
+            """
+            Generates the angles for a Q-Chem scan. The scan is split into two parts, one from start_angle to 180, and one from -180 to end_angle.
 
-        Parameters
-        ----------
-        start_angle : int
-            The starting angle for the scan
-        step : int
-            The step size for the scan
+            Parameters
+            ----------
+            start_angle : int
+                The starting angle for the scan
+            step : int
+                The step size for the scan
 
-        Returns
-        -------
-        scan1_start : int
-            The starting angle for the first part of the scan
-        scan1_end : int
-            The ending angle for the first part of the scan
-        scan2_start : int
-            The starting angle for the second part of the scan
-        scan2_end : int
-            The ending angle for the second part of the scan
-        """
+            Returns
+            -------
+            scan1_start : int
+                The starting angle for the first part of the scan
+            scan1_end : int
+                The ending angle for the first part of the scan
+            scan2_start : int
+                The starting angle for the second part of the scan
+            scan2_end : int
+                The ending angle for the second part of the scan
+            """
 
-        # This sets the end angle but does not take into account the limit of -180 to 180
-        end_angle = start_angle - step
+            # First, we need to check that the start_angle is within the range of -180 to 180, and if not, convert it to be within that range
+            if start_angle > 180:
+                start_angle = start_angle - 360
 
-        # This function wraps the scan2_start within the range of -180 to 180
-        wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
 
-        # This function converts the angles to be within the range of -180 to 180
-        convert_angle = lambda angle: angle % 360 if angle >= 0 else (angle % 360) - 360
+            # This sets the end angle but does not take into account the limit of -180 to 180
+            end_angle = start_angle - step
 
-        # This converts the angles to be within the range of -180 to 180
-        start_angle = convert_angle(start_angle)
-        end_angle = convert_angle(end_angle)
-        
-        if start_angle == 0 and end_angle == 0:
-            scan1_start = start_angle
-            scan1_end = 180
-            scan2_start = -180
-            scan2_end = end_angle
-        elif start_angle == 180:
-            # This is a special case because the scan will be from 180 to 180
-            # This is not allowed in Q-Chem so we split it into two scans
-            # Arguably this could be done in one scan but it is easier to do it this way
-            # We will need to find the starting angle that when added by the step size will be 180
+            # This function wraps the scan2_start within the range of -180 to 180
+            wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
 
-            target_sum = 180
-            quotient = target_sum // step
-            remainder = target_sum % step
-            starting_number = target_sum - (quotient * step)
-            scan1_start = starting_number
-            scan1_end = 180
-            scan2_start = -180
-            scan2_end = scan1_start - step
-        elif start_angle <= end_angle:
-            scan1_start = start_angle
-            scan1_end =  start_angle + (step * ((180 - start_angle)//step))
-            scan2_start = convert_angle(scan1_end)
-            scan2_end = end_angle
-        else:
-            scan1_start = start_angle
-            scan1_end = start_angle + (step * ((180 - start_angle)//step))
-            scan2_start = wrap_within_range(scan1_end, step)
-            scan2_end = end_angle
-        return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
+            # This function converts the angles to be within the range of -180 to 180
+            convert_angle = lambda angle: angle % 360 if angle >= 0 else (angle % 360) - 360
+
+            # This converts the angles to be within the range of -180 to 180
+            start_angle = convert_angle(start_angle)
+            end_angle = convert_angle(end_angle)
+            
+            if start_angle == 0 and end_angle == 0:
+                scan1_start = start_angle
+                scan1_end = 180
+                scan2_start = -180
+                scan2_end = end_angle
+            elif start_angle == 180:
+                # This is a special case because the scan will be from 180 to 180
+                # This is not allowed in Q-Chem so we split it into two scans
+                # Arguably this could be done in one scan but it is easier to do it this way
+                # We will need to find the starting angle that when added by the step size will be 180
+
+                target_sum = 180
+                quotient = target_sum // step
+                remainder = target_sum % step
+                starting_number = target_sum - (quotient * step)
+                scan1_start = starting_number
+                scan1_end = 180
+                scan2_start = -180
+                scan2_end = scan1_start - step
+            elif start_angle <= end_angle:
+                scan1_start = start_angle
+                scan1_end =  start_angle + (step * ((180 - start_angle)//step))
+                scan2_start = convert_angle(scan1_end)
+                scan2_end = end_angle
+            elif (start_angle + step) > 180:
+                # This is a special case because the scan will be from, for example, 178 to 178 for the first scan. Therefore, we should make it a single scan from end angle, 178, step size 
+                scan1_end = start_angle
+                scan1_start = wrap_within_range(scan1_end, step)
+                scan2_start = 0
+                scan2_end = 0
+
+            else:
+                scan1_start = start_angle
+                scan1_end = start_angle + (step * ((180 - start_angle)//step))
+                scan2_start = wrap_within_range(scan1_end, step)
+                scan2_end = end_angle
+            return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
 
     def set_files(self) -> None:
         """
