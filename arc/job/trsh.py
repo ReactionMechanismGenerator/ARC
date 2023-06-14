@@ -368,7 +368,7 @@ def determine_ess_status(output_path: str,
                             memory_increase = re.findall(r"[\d.]+", line0)[0]
                             error = f"Additional memory required: {memory_increase} MW"
                             break
-                    error = f'Additional memory required: {line.split()[2]} MW' if 'error' not in locals() else error
+                    error = f'Additional memory required: {line.split()[2]} MW' 
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
