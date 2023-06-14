@@ -450,11 +450,28 @@ def determine_job_log_memory_issues(job_log: Optional[str] = None) -> Tuple[List
     """
     keywords, error, line = list(), '', ''
     if job_log is not None:
-        if os.path.isfile(job_log):
-            with open(job_log, 'r') as f:
-                lines = f.readlines()
-        else:
-            lines = job_log.splitlines()
+        try:
+            if os.path.isfile(job_log):
+                with open(job_log, 'r') as f:
+                    lines = f.readlines()
+            if os.path.isfile(job_log):
+                with open(job_log, 'rb') as f:
+                    # Read the file
+                    first_bytes = f.read()
+                    # Check if the bytes contain a null byte
+                    has_null_byte = b'\x00' in first_bytes
+                    # Use the appropriate mode based on whether the file is binary or not
+                    mode = 'rb' if has_null_byte else 'r'
+                    # Read the file contents using the determined mode
+                    lines = first_bytes.decode('utf-8')
+                if mode == 'r':
+                    with open(job_log, 'r') as f:
+                        lines = f.readlines()
+            else:
+                lines = job_log.splitlines()
+        except ValueError:
+            job_log.replace('\x00','')
+            job_log.splitlines()
         mem_usage = ''
         for line in lines:
             if 'MemoryUsage of job' in line:
