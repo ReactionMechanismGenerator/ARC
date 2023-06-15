@@ -363,12 +363,12 @@ def determine_ess_status(output_path: str,
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
                     keywords = ['Memory']
+                    error = f'Additional memory required: {line.split()[2]} MW'
                     for line0 in reverse_lines:
                         if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
                             memory_increase = re.findall(r"[\d.]+", line0)[0]
                             error = f"Additional memory required: {memory_increase} MW"
-                            break
-                    error = f'Additional memory required: {line.split()[2]} MW' 
+                            break                         
                     break
                 elif 'insufficient memory available - require' in line:
                     # e.g.: `insufficient memory available - require              228765625  have
