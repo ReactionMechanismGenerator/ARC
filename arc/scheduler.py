@@ -876,10 +876,6 @@ class Scheduler(object):
                 level.software = 'terachem'
             job_adapter = level.software
 
-            # If we are choosing the software, we need to make sure we are using the correct form of the level of theory
-            # for the software. For example, Gaussian uses 'wb97xd/6-311++g(d,p)' while QChem uses 'wb97xd/6-311++g**'.
-
-            level.basis = level.software_input_matching()
         return job_adapter.lower()
 
     def end_job(self, job: 'JobAdapter',

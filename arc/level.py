@@ -15,10 +15,6 @@ from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, stand
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
-import pandas as pd
-from rapidfuzz import process, utils
-
-
 logger = get_logger()
 
 
@@ -113,8 +109,6 @@ class Level(object):
         if self.software is None:
             # it wasn't set by the user, try determining it
             self.deduce_software()
-
-        self.software_input_matching()
 
     def __eq__(self, other: Level) -> bool:
         """
@@ -567,50 +561,7 @@ class Level(object):
             for ess in supported_ess:
                 if ess in ess_methods and self.method in ess_methods[ess]:
                     self.compatible_ess.append(ess)
-    
-    def software_input_matching(self):
-        """
-        Check if the user specified software is compatible with the level of theory. If not, try to match the software with
-        similar methods. If no match is found, raise an error.
 
-        Matching is done by comparing the user specified software with the software in the basis_sets.csv file.
-
-        Raises:
-            ValueError: If the software is not compatible with the level of theory.
-        """
-        
-        # Read DataFrame of software basis sets
-        software_methods = pd.read_csv(os.path.join(ARC_PATH, 'data', 'basis_sets.csv'))
-        
-        # First column is the software, second column is the basis set, third column is the description
-        # if the software set by the user is in the DataFrame, then we filter the DataFrame to only include that software
-        # and then we check if the basis set is in the DataFrame. If not, we attempt to fuzzywuzzy match the basis set
-        
-        #Matching pattern for basis set - not spelling errors
-        #pattern = r'[-_a-zA-Z]+'
-
-        if self.software in software_methods['software'].values:
-            software_methods = software_methods[software_methods['software'] == self.software]
-            if self.basis in software_methods['basis_set'].values:
-                return self.basis
-            else:
-                # If hyphen exists, remove it and try to match again
-                basis_match = process.extract(self.basis, software_methods['basis_set'].values, processor=utils.default_process ,score_cutoff=99)
-                # ratio = fuzz.WRatio(self.basis, software_methods['basis_set'].values, regex=pattern)
-                if len(basis_match)>1:
-                    raise ValueError(f"Cannot match basis in {self.software}: {self.basis} as there are too many matches. Please check the basis set.")
-                elif len(basis_match) == 0:
-                    self.basis = self.basis.replace('-', '')
-                    # Add a loop that puts a hyphen in different places in the basis set and tries to match again
-                    # If it still doesn't match, then raise an error
-                    for i in range(1, len(self.basis)):
-                        basis_match = process.extract(self.basis[:i] + '-' + self.basis[i:], software_methods['basis_set'].values, processor=utils.default_process, score_cutoff=99)
-                        if len(basis_match) == 1:
-                            break
-                    if len(basis_match) == 0:
-                        raise ValueError(f"Unsupported basis in {self.software}: {self.basis}. Please check the basis set.")
-                logger.debug(f"Changing basis set from {self.basis} to {basis_match[0][0]} to match {self.software}")
-                self.basis = basis_match[0][0]
 
 
 def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
