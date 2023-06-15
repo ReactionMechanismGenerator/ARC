@@ -8,9 +8,11 @@ import datetime
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+import pandas as pd
+
 from mako.template import Template
 
-from arc.common import get_logger, torsions_to_scans
+from arc.common import get_logger, torsions_to_scans, ARC_PATH
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (_initialize_adapter,
@@ -23,6 +25,8 @@ from arc.job.local import execute_command
 from arc.level import Level
 from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
+
+from rapidfuzz import process, utils
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -208,18 +212,18 @@ class QChemAdapter(JobAdapter):
                     'irc'
                     ]:
             input_dict[key] = ''
-        input_dict['basis'] = self.level.basis or ''
+        input_dict['basis'] = self.software_input_matching(basis = self.level.basis) if self.level.basis else ''
         input_dict['charge'] = self.charge
         input_dict['method'] = self.level.method
         # If method ends with D3, then we need to remove it and add the D3 as a keyword. Need to account for -D3
-        if input_dict['method'].endswith('D3') or input_dict['method'].endswith('-D3'):
+        if input_dict['method'].endswith('d3') or input_dict['method'].endswith('-d3'):
             input_dict['method'] = input_dict['method'][:-2]
             # Remove the - if it exists
             if input_dict['method'].endswith('-'):
                 input_dict['method'] = input_dict['method'][:-1]
             # DFT_D - FALSE, EMPIRICAL_GRIMME, EMPIRICAL_CHG, D3_ZERO, D3_BJ, D3_CSO, D3_ZEROM, D3_BJM, D3_OP,D3 [Default: None]
             # TODO: Add support for other D3 options. Check if the user has specified a D3 option in the level of theory
-            input_dict['keywords'] = "\n DFT_D D3"
+            input_dict['keywords'] = "\n   DFT_D D3"
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
         input_dict['trsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'].keys() else ''
@@ -542,6 +546,52 @@ class QChemAdapter(JobAdapter):
         Execute a job to the server's queue.
         """
         self.legacy_queue_execution()
+    
+    def software_input_matching(self, basis):
+        """
+        Check if the user specified software is compatible with the level of theory. If not, try to match the software with
+        similar methods. If no match is found, raise an error.
+
+        Matching is done by comparing the user specified software with the software in the basis_sets.csv file.
+
+        Raises:
+            ValueError: If the software is not compatible with the level of theory.
+        """
+        
+        # Read DataFrame of software basis sets
+        software_methods = pd.read_csv(os.path.join(ARC_PATH, 'data', 'basis_sets.csv'))
+        
+        # First column is the software, second column is the basis set, third column is the description
+        # if the software set by the user is in the DataFrame, then we filter the DataFrame to only include that software
+        # and then we check if the basis set is in the DataFrame. If not, we attempt to fuzzywuzzy match the basis set
+        
+        #Matching pattern for basis set - not spelling errors
+        #pattern = r'[-_a-zA-Z]+'
+
+        lowercase_software = [row.lower() for row in software_methods['software'].values]
+        if 'qchem' in lowercase_software:
+            software_methods = software_methods[software_methods['software'] == 'qchem']
+            if basis in software_methods['basis_set'].values:
+                return basis
+            else:
+                # If hyphen exists, remove it and try to match again
+                basis_match = process.extract(basis, software_methods['basis_set'].values, processor=utils.default_process ,score_cutoff=99)
+                # ratio = fuzz.WRatio(basis, software_methods['basis_set'].values, regex=pattern)
+                if len(basis_match)>1:
+                    raise ValueError(f"Cannot match basis in qchem: {basis} as there are too many matches. Please check the basis set.")
+                elif len(basis_match) == 0:
+                    basis = basis.replace('-', '')
+                    # Add a loop that puts a hyphen in different places in the basis set and tries to match again
+                    # If it still doesn't match, then raise an error
+                    for i in range(1, len(basis)):
+                        basis_match = process.extract(basis[:i] + '-' + basis[i:], software_methods['basis_set'].values, processor=utils.default_process, score_cutoff=99)
+                        if len(basis_match) == 1:
+                            break
+                    if len(basis_match) == 0:
+                        raise ValueError(f"Unsupported basis in qchem: {basis}. Please check the basis set.")
+                logger.debug(f"Changing basis set from {basis} to {basis_match[0][0]} to match qchem")
+                basis = basis_match[0][0]
+                return basis
 
 
 register_job_adapter('qchem', QChemAdapter)
