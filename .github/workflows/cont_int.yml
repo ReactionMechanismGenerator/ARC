@@ -121,7 +121,7 @@ jobs:
         ref: v2.0.6
         fetch-depth: 1
 
-    - name: Cache Packages Packages
+    - name: Cache Packages
       uses: actions/cache@v2
       env:
         CACHE_NUMBER: 0
