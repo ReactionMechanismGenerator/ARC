@@ -24,7 +24,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Clean Ubuntu Image
-      uses: jlumbroso/free-disk-space@main
+      uses: kfir4444/free-disk-space@main
       with:
         # This may remove tools actually needed - currently does not
         tool-cache: true
@@ -121,7 +121,7 @@ jobs:
         ref: v2.0.6
         fetch-depth: 1
 
-    - name: Cache Packages Packages
+    - name: Cache Packages
       uses: actions/cache@v2
       env:
         CACHE_NUMBER: 0

@@ -8,5 +8,5 @@ dependencies:
   - pandas
   - ncurses
   - pip:
-    - sella
+    - sella==2.2.1
   
