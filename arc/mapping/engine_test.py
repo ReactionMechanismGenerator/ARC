@@ -26,7 +26,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 
-class TestConverter(unittest.TestCase):
+class TestMappingEngine(unittest.TestCase):
     """
     Contains unit tests for the mapping_engine module
     """
@@ -602,12 +602,14 @@ class TestConverter(unittest.TestCase):
                 index +=1
 
     def test_cut_species_for_mapping(self):
+        """test the cut_species_for_mapping function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
                                                                                         self.r_label_dict_rxn_1,
                                                                                         self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
 
         self.assertIn("C[CH]C", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
         self.assertIn("[F]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
@@ -616,11 +618,32 @@ class TestConverter(unittest.TestCase):
         self.assertIn("[F]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
         self.assertIn("[CH3]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
 
+        spc = ARCSpecies(label="test", smiles="CNC", bdes = [(1, 2), (2, 3)])
+        for i, a in enumerate(spc.mol.atoms):
+            a.label=str(i)
+        cuts = cut_species_for_mapping([spc], [2])
+        self.assertEqual(len(cuts), 3)
+        for cut in cuts:
+            self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH3]").mol),
+                                 cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH]").mol)]))
+            
+    def test_multiple_cut_on_species(self):
+        """test the multiple_cut_on_species function"""
+        spc = ARCSpecies(label="test", smiles="NCN", bdes = [(1, 2), (2, 3)])
+        for i, a in enumerate(spc.mol.atoms):
+            a.label=str(i)
+        spc.final_xyz = spc.get_xyz()
+        cuts = multiple_cut_on_species(spc, spc.bdes)
+        for cut in cuts:
+            self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH2]").mol),
+                                 cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH2]").mol)]))
+
     def test_r_cut_p_cut_isomorphic(self):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,self.r_label_dict_rxn_1,self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
 
         self.assertTrue(r_cut_p_cut_isomorphic(self.spc1,self.spc2))
         for r_cut in r_cuts:
@@ -639,7 +662,8 @@ class TestConverter(unittest.TestCase):
         reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
                                                                                         self.r_label_dict_rxn_1,
                                                                                         self.p_label_dict_rxn_1)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
 
         for pair in pairs_of_reactant_and_products:
@@ -657,7 +681,8 @@ class TestConverter(unittest.TestCase):
         reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
         label_species_atoms(reactants)
         label_species_atoms(products)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products, loc_r, loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
         for Map in maps:
@@ -685,7 +710,8 @@ class TestConverter(unittest.TestCase):
         reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
         label_species_atoms(reactants)
         label_species_atoms(products)
-        r_cuts, p_cuts = cut_species_for_mapping(reactants, products,loc_r,loc_p)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        p_cuts = cut_species_for_mapping(products, loc_p)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
         atom_map = glue_maps(maps,pairs_of_reactant_and_products)
@@ -911,7 +937,6 @@ class TestConverter(unittest.TestCase):
         equivalence_map_2 = find_equivalent_atoms_in_reactants(arc_reaction=self.rxn_2b)
         self.assertEqual(equivalence_map_2, [[0, 6], [1], [3, 4, 5, 7, 8, 9]])
 
-
     def test_map_two_species(self):
         """Test the map_two_species() function."""
         # H
@@ -1070,13 +1095,11 @@ class TestConverter(unittest.TestCase):
         atom_map = map_two_species(rmg_mol, rmg_spc)
         self.assertEqual(atom_map, [0, 1, 2, 3, 4])
 
-
     def test_get_arc_species(self):
         """Test the get_arc_species function."""
         self.assertIsInstance(get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Species(smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Molecule(smiles='C')), ARCSpecies)
-
 
     def test_create_qc_mol(self):
         """Test the create_qc_mol() function."""
@@ -1134,7 +1157,6 @@ class TestConverter(unittest.TestCase):
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
         bond_dict = get_bonds_dict(spc=ARCSpecies(label='iC4H10', smiles='CC(C)C'))
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
-
 
     def test_fingerprint(self):
         """Test the fingerprint function."""
@@ -1199,7 +1221,6 @@ class TestConverter(unittest.TestCase):
                                        7: {'self': 'N', 'C': [3], 'H': [8, 9]},
                                        10: {'self': 'O', 'C': [0], 'H': [11]}})
 
-
     def test_identify_superimposable_candidates(self):
         """Test the identify_superimposable_candidates function."""
         candidates = identify_superimposable_candidates(fingerprint_1=self.fingerprint_1,
@@ -1209,7 +1230,6 @@ class TestConverter(unittest.TestCase):
         candidates = identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                         fingerprint_2=self.butenylnebzene_fingerprint)
         self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
-
 
     def test_are_adj_elements_in_agreement(self):
         """Test the are_adj_elements_in_agreement function."""
@@ -1228,7 +1248,6 @@ class TestConverter(unittest.TestCase):
         self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
                                                       {'self': 'C', 'C': [1], 'O': [4], 'H': [8]}))
 
-
     def test_iterative_dfs(self):
         """Test the iterative_dfs function."""
         result = iterative_dfs(fingerprint_1={0: {'self': 'C', 'C': [1]},
@@ -1246,7 +1265,6 @@ class TestConverter(unittest.TestCase):
                                        )
         self.assertEqual(result, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
 
-
     def test_prune_identical_dicts(self):
         """Test the prune_identical_dicts function."""
         new_dicts_list = prune_identical_dicts([{0: 0}])
@@ -1262,12 +1280,10 @@ class TestConverter(unittest.TestCase):
                                                         {0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
         self.assertEqual(new_dicts_list, [{0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
 
-
     def test_remove_gaps_from_values(self):
         """Test the remove_gaps_from_values function."""
         self.assertEqual(remove_gaps_from_values({5: 18, 7: 502, 21: 0, 0: 55, 2: 1}),
                          {5: 2, 7: 4, 21: 0, 0: 3, 2: 1})
-
 
     def test_fix_dihedrals_by_backbone_mapping(self):
         """Test the fix_dihedrals_by_backbone_mapping function."""
@@ -1292,7 +1308,6 @@ class TestConverter(unittest.TestCase):
         self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 5)
         self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 5)
 
-
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score function."""
         self.spc1_dihedral_deviation.determine_rotors()
@@ -1301,7 +1316,6 @@ class TestConverter(unittest.TestCase):
         backbone_map = identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
         score = get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
         self.assertAlmostEqual(score, 106.8417836)
-
 
     def test_get_backbone_dihedral_angles(self):
         """Test the get_backbone_dihedral_angles function."""
@@ -1313,7 +1327,6 @@ class TestConverter(unittest.TestCase):
         self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
         self.assertAlmostEqual(torsions[0]['angle 2'], 174.65228274664804)
 
-
     def test_map_lists(self):
         """Test the map_lists function."""
         self.assertEqual(map_lists([], []), {})
@@ -1322,7 +1335,6 @@ class TestConverter(unittest.TestCase):
         self.assertEqual(map_lists([179.9, 4.18e-06], [180.8, 359.7]), {0: 0, 1: 1})
         with self.assertRaises(ValueError):
             map_lists([5.0], [3.2, 7.9])
-
 
     def test_map_hydrogens(self):
         """Test the map_hydrogens function."""
@@ -1342,7 +1354,6 @@ class TestConverter(unittest.TestCase):
         atom_map = map_hydrogens(self.spc1, self.spc2, backbone_map)
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
-
 
     def test_flip_map(self):
         """Test the flip_map function."""
@@ -1374,7 +1385,6 @@ class TestConverter(unittest.TestCase):
             atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
             flip_map(atom_map)
 
-
     def test_make_bond_changes(self):
         """Test the make_bond_changes function"""
         spc1 = ARCSpecies(label="Test_bc", smiles="[CH2][CH2]")
@@ -1387,7 +1397,22 @@ class TestConverter(unittest.TestCase):
         l = [spc1]
         make_bond_changes(rxn, l, r_label_dict)
         self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
-
+        rxn = ARCReaction(r_species = [ARCSpecies(label="N4", smiles = "NNNN")],
+                          p_species = [ARCSpecies(label="NH3", smiles = "N"),
+                                       ARCSpecies(label="NH2NHN_p", smiles = "[N-]=[NH+]N")])
+        rxn.determine_family(self.db)
+        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend="arc")
+        r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+                                                                                        rmg_reaction=rmg_reactions[0])
+        assign_labels_to_products(rxn, p_label_dict)
+        reactants, _, loc_r, _ = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
+        label_species_atoms(reactants)
+        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
+        make_bond_changes(rxn=rxn,
+                          r_cuts=r_cuts,
+                          r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
+        self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
 
     def test_update_xyz(self):
         """tests the update_xyz function"""
@@ -1399,7 +1424,6 @@ class TestConverter(unittest.TestCase):
         for label1, label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
         
-
         spc = ARCSpecies(label="test_UX", smiles = "OCl")
         shuffle(spc.mol.atoms)
         update_xyz([spc])
@@ -1408,7 +1432,6 @@ class TestConverter(unittest.TestCase):
         for label1, label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
 
-
         spc = ARCSpecies(label="test_UX", smiles = "BrOCl")
         shuffle(spc.mol.atoms)
         update_xyz([spc])
@@ -1416,7 +1439,7 @@ class TestConverter(unittest.TestCase):
         atoms = [atom.element.symbol for atom in spc.mol.atoms]
         for label1,label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
-
+ 
     def test_cuts_on_cycle_of_labeled_mol(self):
         """test the cuts_on_cycle_of_labeled_mol function"""
         spc1 = ARCSpecies(label = "A", smiles="NC1=NC=NC2=C1N=CN2", bdes = [(6, 7)])
