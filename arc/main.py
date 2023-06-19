@@ -43,6 +43,7 @@ from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
+from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
@@ -288,6 +289,10 @@ class ARC(object):
         self.output = output
         self.standardize_output_paths()  # depends on self.project_directory
         self.running_jobs = running_jobs or dict()
+        for jobs in self.running_jobs.values():
+            for job in jobs:
+                if 'xyz' in job.keys():
+                    job['xyz'] = str_to_xyz(job['xyz'])
         self.lib_long_desc = ''
         self.unique_species_labels = list()
         self.rmg_database = rmgdb.make_rmg_database_object()
