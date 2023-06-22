@@ -2577,6 +2577,25 @@ Cl      2.38846685    0.24054066    0.55443324
             atom2=mol_1.atoms[20],
             mol=mol_1), 23)
 
+    def test_cheat_sheet(self):
+        """Test the cheat_sheet() method."""
+        expected_cheat_sheet_dict = [{'xyz': {'symbols': ('C', 'C', 'H', 'H', 'H'),
+                                             'isotopes': (12, 12, 1, 1, 1), 
+                                             'coords': ((0.051314, 0.73513, 0.0), 
+                                                        (0.051314, -0.598032, 0.0), 
+                                                        (-0.705056, 1.524894, 0.0), 
+                                                        (-0.892532, -1.168418, 0.0), 
+                                                        (0.981824, -1.17906, 0.0))}, 
+                                             'index': 0, 
+                                             'FF energy': 0, 
+                                             'source': 'CHEAT_SHEET', 
+                                             'torsion_dihedrals': {}}
+                                    ]
+        cheat_mol1 = Molecule(smiles='C=[CH]')
+        self.assertEqual(conformers.cheat_sheet([cheat_mol1]), expected_cheat_sheet_dict)
+        cheat_mol2 = Molecule(smiles='C')
+        self.assertIsNone(conformers.cheat_sheet([cheat_mol2]))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
