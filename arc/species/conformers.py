@@ -115,7 +115,16 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'FF energy': 0,
                           'source': 'CHEAT_SHEET',
                           'torsion_dihedrals': {}},
-               }
+                '[CH]=C': {'xyz': converter.str_to_xyz("""C	0.0513140	0.7351300	0.0000000
+                                                          C	0.0513140	-0.5980320	0.0000000
+                                                          H	-0.7050560	1.5248940	0.0000000
+                                                          H	-0.8925320	-1.1684180	0.0000000
+                                                          H	0.9818240	-1.1790600	0.0000000"""),
+                         'index': 0,
+                          'FF energy': 0,
+                          'source': 'CHEAT_SHEET',
+                          'torsion_dihedrals': {}}
+              }
 
 
 def generate_conformers(mol_list: Union[List[Molecule], Molecule],
