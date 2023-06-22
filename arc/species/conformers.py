@@ -203,12 +203,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         - Lowest conformers
         - Lowest conformers and all new conformers.
     """
-    for mol in mol_list:
-        smiles = mol.copy(deep=True).to_smiles()
-        if smiles in CHEAT_SHEET:
-            if return_all_conformers:
-                return [CHEAT_SHEET[smiles]], [CHEAT_SHEET[smiles]]
-            return [CHEAT_SHEET[smiles]]
+    cheat = cheat_sheet(mol_list) 
+    if cheat is not None:
+        return cheat
     if isinstance(mol_list, Molecule):
         # Try generating resonance structures, but strictly keep atom order.
         success = False
