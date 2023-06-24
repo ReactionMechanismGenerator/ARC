@@ -202,6 +202,11 @@ def determine_ess_status(output_path: str,
                 elif 'Invalid charge/multiplicity combination' in line:
                     raise SpeciesError(f'The multiplicity and charge combination for species '
                                        f'{species_label} are wrong.')
+                elif 'FlexNet Licensing error' in line:
+                    # This is a special case, as it is not an error, but rather a license issue.
+                    # ARC cannot run QChem without a valid license. Therefore, we raise an error.
+                    # The user should check that the license server is active and that the license file is valid.
+                    raise ValueError('QChem license error. Check the license file.')
                 if 'opt' in job_type or 'conformer' in job_type or 'ts' in job_type:
                     if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line or 'Maximum optimization cycles reached' in line:
                         keywords = ['MaxOptCycles']
@@ -362,12 +367,23 @@ def determine_ess_status(output_path: str,
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
-                    keywords = ['Memory']
-                    error = f'Additional memory required: {line.split()[2]} MW'
+                    pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                    matches = re.findall(pattern, line)
+                    memory_increase = float(matches[-1])
+                    error = f"Memory required: {memory_increase} MW"
+                    keywords=['Memory']
                     for line0 in reverse_lines:
                         if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
-                            memory_increase = re.findall(r"[\d.]+", line0)[0]
-                            error = f"Additional memory required: {memory_increase} MW"
+                            pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                            matches = re.findall(pattern, line0)
+                            memory_increase = float(matches[-1])
+                            error = f"Memory required: {memory_increase} MW"
+                            break
+                        elif 'For minimal' in line0 and 'in triples' in line0 and 'increase memory by' in line0:
+                            pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                            matches = re.findall(pattern, line0)
+                            memory_increase = float(matches[-1])
+                            error = f"Memory required: {memory_increase} MW"
                             break                         
                     break
                 elif 'insufficient memory available - require' in line:
@@ -375,7 +391,11 @@ def determine_ess_status(output_path: str,
                     #        62928590
                     #        the request was for real words`
                     keywords = ['Memory']
-                    error = f'Additional memory required: {float(line.split()[-2]) / 1e6} MW'
+                    numbers = re.findall(r'\d+', line)
+                    total = sum(int(number) for number in numbers)
+                    # It appears that the number is in words. Need to convert to MW.
+                    total /= 1e6
+                    error = f'Memory required: {total} MW'
                     break
                 elif 'Insufficient memory to allocate' in line or 'The problem occurs in memory' in line:
                     # e.g.: `Insufficient memory to allocate a new array of length 321843600 8-byte words
@@ -471,7 +491,7 @@ def determine_job_log_memory_issues(job_log: Optional[str] = None) -> Tuple[List
                 lines = job_log.splitlines()
         except ValueError:
             job_log.replace('\x00','')
-            job_log.splitlines()
+            lines = job_log.splitlines()
         mem_usage = ''
         for line in lines:
             if 'MemoryUsage of job' in line:
@@ -1015,19 +1035,39 @@ def trsh_ess_job(label: str,
         if 'Memory' in job_status['keywords']:
             # Increase memory allocation.
             # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
-            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
-            # The number is the ADDITIONAL memory required in GB
+            # job_status standardizes the format to be:  `'Memory required: {0} MW'`
+            # The number is the complete memory required in GB
             ess_trsh_methods.append('memory')
-            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
+            add_mem_str = re.findall(r'\d+(?:\.\d+)?', job_status['error'])
+            add_mem_str = add_mem_str[0] # parse Molpro's requirement in MW
             if all(c.isdigit() or c == '.' for c in add_mem_str):
                 add_mem = float(add_mem_str)
                 add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+                # Reasons for this error:
+                # 1. The MWords per process is not enough, even though we provided an adequate amount of memory to the submit script.
+                # 2. The MWords per process is ENOUGH, but the total memory is too high, therefore, we need to reduce the number of cores.
+                #   Convert submit memory to MWords
+                ##  1 MWord = 7.45e-3 GB
+                ##  1 GB = 134.2 MWords
+                sumbit_mem_mwords = int(np.ceil(memory_gb / 7.45e-3))
+                ##  But, Molpro is actually requesting more memory per core, therefore
+                sumbit_mem_mwords_per_cpu = int(np.ceil(sumbit_mem_mwords / cpu_cores))
+
+                ##  Check if submit memory is enough
+                if sumbit_mem_mwords_per_cpu < add_mem:
+                    # Convert back to GB and also multiply by the number of cores
+                    memory = add_mem * 7.45e-3 * cpu_cores
+                    ## However, this might be too much memory for the server, therefore, we need to reduce the number of cores
+                    ess_trsh_methods.append('cpu')
+                    ess_trsh_methods.append(f'molpro_memory:{add_mem}')
+                else:
+                    ## The real issue occurs here, where the total memory is too high but
+                    memory = memory_gb # Don't change the submit memory
             else:
                 # The required memory is not specified
                 memory = memory_gb * 3  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
-                        f'instead of {memory_gb} GB')
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
+                            f'instead of {memory_gb} GB')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
