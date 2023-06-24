@@ -29,7 +29,7 @@ from arc.mapping.engine import (assign_labels_to_products,
                                 RESERVED_FINGERPRINT_KEYS,)
 from arc.common import logger
 
-from rmgpy.exceptions import ActionError
+from rmgpy.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
     from rmgpy.data.rmg import RMGDatabase
@@ -248,14 +248,16 @@ def map_rxn(rxn: 'ARCReaction',
 
     try:
         make_bond_changes(rxn, r_cuts, r_label_dict)
-    except (ValueError, IndexError, ActionError):
-        return None
+    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+        logger.warning(e)
 
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
     #step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
-
+    if len(p_cuts):
+        logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
+        return None
     # step 5:
     maps = map_pairs(pairs_of_reactant_and_products)
 
