@@ -132,7 +132,7 @@ touch final_time
 #SBATCH -p long
 #SBATCH -J {name}
 #SBATCH -N 1
-#SBATCH -n {cpus}
+#SBATCH --ntask-per-node={cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
 #SBATCH -o out.txt
@@ -158,7 +158,7 @@ cd $sdir
 
 cp "$SubmitDir/input.in" .
 
-molpro -n {cpus} -d $sdir input.in
+molpro -n {cpus} -t {cpus} -d $sdir input.in
 
 cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
