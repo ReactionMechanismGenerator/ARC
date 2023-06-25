@@ -1286,6 +1286,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.atom_map[2], 2)
         self.assertEqual(rxn.atom_map[3], 3)
         self.assertIn(tuple(rxn.atom_map[4:]), list(permutations([4, 5, 6])))
+        self.assertTrue(check_atom_map(rxn))
 
         # 1,2_NH3_elimination: NCC <=> C2H4 + NH3
         ncc_xyz = {'coords': ((1.1517341397735719, -0.37601689454792764, -0.5230788502681245),
@@ -1325,13 +1326,6 @@ class TestARCReaction(unittest.TestCase):
         self.assertIn(tuple(rxn.atom_map[5:7]+rxn.atom_map[8:]), permutations([2, 3, 4, 5]))
         self.assertTrue(check_atom_map(rxn))
 
-    @work_in_progress
-    def test_get_atom_map_wip(self):
-        """
-        Test getting an atom map for a reaction.
-
-        These are FAILING tests that should be fixed by implementing respective family-specific atom mapping functions.
-        """
         # 1+2_Cycloaddition: CH2 + C2H4 <=> C3H6
         c2h4_xyz = {'coords': ((0.6664040429179742, 0.044298334171779405, -0.0050238049104911735),
                                (-0.6664040438461246, -0.04429833352898575, 0.00502380522486473),
@@ -1403,23 +1397,23 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C5H10O', smiles='CC(C)(C)C=O', xyz=c5h10o_xyz)
         rxn = ARCReaction(reactants=['C4H10', 'CO'], products=['C5H10O'],
                           r_species=[r_1, r_2], p_species=[p_1])
-        for index in [0, 2, 3]:
-            self.assertIn(rxn.atom_map[index], [0, 2, 3])
-        self.assertEqual(rxn.atom_map[1], 1)
-        self.assertEqual(rxn.atom_map[7], 15)
-        self.assertEqual(rxn.atom_map[14], 4)
-        self.assertEqual(rxn.atom_map[15], 5)
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[:4], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn.atom_map[4:7]), permutations([6, 7, 8]))
+        self.assertEqual(atom_map[7], 15)
+        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([9, 10, 11]))
+        self.assertIn(tuple(rxn.atom_map[11:14]), permutations([12, 13, 14]))
+        self.assertEqual(atom_map[14:], [4, 5])
         self.assertTrue(check_atom_map(rxn))
         # same reaction in reverse:
-        rxn_rev = ARCReaction(reactants=['C4H10', 'CO'], products=['C5H10O'],
-                              r_species=[p_1], p_species=[r_1, r_2])
-        rxn.atom_map = None  # Reset the ._atom_map property, so it'll be recalculated.
+        rxn_rev = ARCReaction(r_species=[p_1], p_species=[r_1, r_2])
+        atom_map = rxn_rev.atom_map
         for index in [0, 2, 3]:
-            self.assertIn(rxn.atom_map[index], [0, 2, 3])
-        self.assertEqual(rxn.atom_map[1], 1)
-        self.assertEqual(rxn.atom_map[4], 14)
-        self.assertEqual(rxn.atom_map[5], 15)
-        self.assertEqual(rxn.atom_map[15], 7)
+            self.assertIn(atom_map[index], [0, 2, 3])
+        self.assertEqual(atom_map[1], 1)
+        self.assertEqual(atom_map[4], 14)
+        self.assertEqual(atom_map[5], 15)
+        self.assertEqual(atom_map[15], 7)
         self.assertTrue(check_atom_map(rxn_rev))
 
         # Diels_alder_addition: C5H8 + C6H10 <=> C11H18
@@ -1493,8 +1487,16 @@ class TestARCReaction(unittest.TestCase):
         r_2 = ARCSpecies(label='C6H10', smiles='CC=CC=CC', xyz=c6h10_xyz)
         p_1 = ARCSpecies(label='C11H18', smiles='C=CC1C(C)C=CC(C)C1C', xyz=c11h18_xyz)
         rxn = ARCReaction(reactants=['C5H8', 'C6H10'], products=['C11H18'], r_species=[r_1, r_2], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [4, 9, 2, 5, 10, 20, 15, 27, 18, 16, 17, 14, 25, 0, 1,
-                                        3, 6, 7, 8, 22, 19, 26, 21, 24, 23, 28, 13, 12, 11])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[:5], [0, 1, 2, 9, 10])
+        self.assertEqual(atom_map[:5], [0, 1, 2, 9, 10])
+        self.assertIn(atom_map[5:7], [[11, 12], [12, 11]])
+        self.assertEqual(atom_map[7:10], [13, 14, 25])
+        self.assertIn(tuple(rxn.atom_map[10:13]), permutations([26, 27, 28]))
+        self.assertEqual(atom_map[13:19], [8, 7, 6, 5, 3, 4])
+        self.assertIn(tuple(rxn.atom_map[19:22]), permutations([24, 23, 22]))
+        self.assertEqual(atom_map[22:26], [21, 20, 19, 15])
+        self.assertIn(tuple(rxn.atom_map[26:]), permutations([16, 17, 18]))
         self.assertTrue(check_atom_map(rxn))
 
         # Intra_R_Add_Endocyclic: C9H15_a <=> C9H15_b
@@ -1556,8 +1558,15 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C9H15_b', smiles='C=CC1(C)C[C](C)C1C', xyz=c9h15_b_xyz)
         rxn = ARCReaction(reactants=['C9H15_a'], products=['C9H15_b'],
                           r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [0, 4, 2, 3, 5, 7, 8, 1, 6, 11, 9, 10, 16, 22,
-                                        20, 21, 14, 23, 12, 15, 19, 13, 17, 18])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[0:9], list(range(9)))
+        self.assertIn(atom_map[9:11], [[9, 10], [10, 9]])
+        self.assertEqual(atom_map[11], 11)
+        self.assertIn(tuple(rxn.atom_map[12:15]), permutations([13, 14, 12]))
+        self.assertIn(atom_map[15:17], [[15, 16], [16, 15]])
+        self.assertIn(tuple(rxn.atom_map[17:20]), permutations([18, 17, 19]))
+        self.assertEqual(atom_map[20], 20)
+        self.assertIn(tuple(rxn.atom_map[21:]), permutations([23, 21, 22]))
         self.assertTrue(check_atom_map(rxn))
 
         # R_Addition_COm: C6H5 + CO <=> C7H5O
@@ -1594,19 +1603,18 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C7H5O', smiles='O=[C]c1ccccc1', xyz=c7h5o_xyz)
         rxn = ARCReaction(reactants=['C6H5', 'CO'], products=['C7H5O'],
                           r_species=[r_1, r_2], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [1, 5, 6, 7, 3, 4, 12, 11, 10, 9, 8, 2, 0])
+        self.assertEqual(rxn.atom_map, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 0])
         self.assertTrue(check_atom_map(rxn))
 
-        # Keto-enol isomerization: NH + N2H3 <=> NH2 + N2H2(T)
+        # Keto-enol isomerization: ch2choh <=> ch3cho
         r_1 = ARCSpecies(label='CH2CHOH', smiles='C=CO', xyz=self.ch2choh_xyz)
         p_1 = ARCSpecies(label='CH3CHO', smiles='CC=O', xyz=self.ch3cho_xyz)
         rxn = ARCReaction(r_species=[r_1], p_species=[p_1])
+        atom_map = rxn.atom_map
         self.assertTrue(check_atom_map(rxn))
-        self.assertEqual(rxn.atom_map[:3], [0, 1, 2])
-        self.assertIn(rxn.atom_map[3], [3, 4, 5])
-        self.assertIn(rxn.atom_map[4], [3, 4, 5])
-        self.assertEqual(rxn.atom_map[5], 6)
-        self.assertIn(rxn.atom_map[6], [3, 4, 5])
+        self.assertTrue(atom_map[:3], [0, 1, 2])
+        self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
+        self.assertEqual(atom_map[5], 6)
 
     def test_get_reactants_xyz(self):
         """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
