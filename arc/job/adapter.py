@@ -824,7 +824,7 @@ class JobAdapter(ABC):
         if self.tsg is not None:
             job_dict['tsg'] = self.tsg
         if self.xyz is not None:
-            job_dict['xyz'] = xyz_to_str(self.xyz)
+            job_dict['xyz'] = self.xyz
         return job_dict
 
     def format_max_job_time(self, time_format: str) -> str:
