@@ -129,7 +129,7 @@ def map_arc_rmg_species(arc_reaction: 'ARCReaction',
                     elif i not in spc_map.keys() and j not in spc_map.values():
                         spc_map[i] = j
                         break
-    if not r_map or not p_map:
+    if not r_map or not p_map or len(r_map) != len(arc_reactants) or len(p_map) != len(arc_products):
         raise ValueError(f'Could not match some of the RMG Reaction {rmg_reaction} to the ARC Reaction {arc_reaction}.')
     return r_map, p_map
 
