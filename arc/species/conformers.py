@@ -41,7 +41,7 @@ import logging
 import sys
 import time
 from itertools import product
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
@@ -115,7 +115,33 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'FF energy': 0,
                           'source': 'CHEAT_SHEET',
                           'torsion_dihedrals': {}},
-               }
+                '[CH]=C': {'xyz': converter.str_to_xyz("""C	0.0513140	0.7351300	0.0000000
+                                                          C	0.0513140	-0.5980320	0.0000000
+                                                          H	-0.7050560	1.5248940	0.0000000
+                                                          H	-0.8925320	-1.1684180	0.0000000
+                                                          H	0.9818240	-1.1790600	0.0000000"""),
+                         'index': 0,
+                          'FF energy': 0,
+                          'source': 'CHEAT_SHEET',
+                          'torsion_dihedrals': {}}
+              }
+
+def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict]]:
+    """
+    Check if the species is in the cheat sheet, and return its correct xyz if it is.
+
+    Args:
+        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+    
+    Returns: Optional[lis[Dict]]
+    """
+    mol_list = [mol_list] if not isinstance(mol_list, list) else mol_list
+    for smiles in CHEAT_SHEET.keys():
+        cheat_mol = Molecule(smiles=smiles)
+        for mol in mol_list:
+            if cheat_mol.is_isomorphic(mol.copy(deep=True)):
+                return [CHEAT_SHEET[smiles]]
+    return None
 
 
 def generate_conformers(mol_list: Union[List[Molecule], Molecule],
@@ -177,12 +203,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         - Lowest conformers
         - Lowest conformers and all new conformers.
     """
-    for mol in mol_list:
-        smiles = mol.copy(deep=True).to_smiles()
-        if smiles in CHEAT_SHEET:
-            if return_all_conformers:
-                return [CHEAT_SHEET[smiles]], [CHEAT_SHEET[smiles]]
-            return [CHEAT_SHEET[smiles]]
+    cheat = cheat_sheet(mol_list) 
+    if cheat is not None:
+        return cheat
     if isinstance(mol_list, Molecule):
         # Try generating resonance structures, but strictly keep atom order.
         success = False
