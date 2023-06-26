@@ -205,7 +205,7 @@
 <span class="kn">import</span> <span class="nn">sys</span>
 <span class="kn">import</span> <span class="nn">time</span>
 <span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">product</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span> <span class="nn">openbabel</span> <span class="kn">import</span> <span class="n">openbabel</span> <span class="k">as</span> <span class="n">ob</span>
 <span class="kn">from</span> <span class="nn">openbabel</span> <span class="kn">import</span> <span class="n">pybel</span> <span class="k">as</span> <span class="n">pyb</span>
@@ -279,7 +279,33 @@
                           <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
                           <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CHEAT_SHEET&#39;</span><span class="p">,</span>
                           <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{}},</span>
-               <span class="p">}</span>
+                <span class="s1">&#39;[CH]=C&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">converter</span><span class="o">.</span><span class="n">str_to_xyz</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;C	0.0513140	0.7351300	0.0000000</span>
+<span class="s2">                                                          C	0.0513140	-0.5980320	0.0000000</span>
+<span class="s2">                                                          H	-0.7050560	1.5248940	0.0000000</span>
+<span class="s2">                                                          H	-0.8925320	-1.1684180	0.0000000</span>
+<span class="s2">                                                          H	0.9818240	-1.1790600	0.0000000&quot;&quot;&quot;</span><span class="p">),</span>
+                         <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                          <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                          <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CHEAT_SHEET&#39;</span><span class="p">,</span>
+                          <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{}}</span>
+              <span class="p">}</span>
+
+<div class="viewcode-block" id="cheat_sheet"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.cheat_sheet">[docs]</a><span class="k">def</span> <span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if the species is in the cheat sheet, and return its correct xyz if it is.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).</span>
+<span class="sd">    </span>
+<span class="sd">    Returns: Optional[lis[Dict]]</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mol_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">mol_list</span><span class="p">]</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mol_list</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="k">else</span> <span class="n">mol_list</span>
+    <span class="k">for</span> <span class="n">smiles</span> <span class="ow">in</span> <span class="n">CHEAT_SHEET</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="n">cheat_mol</span> <span class="o">=</span> <span class="n">Molecule</span><span class="p">(</span><span class="n">smiles</span><span class="o">=</span><span class="n">smiles</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">mol</span> <span class="ow">in</span> <span class="n">mol_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">cheat_mol</span><span class="o">.</span><span class="n">is_isomorphic</span><span class="p">(</span><span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)):</span>
+                <span class="k">return</span> <span class="p">[</span><span class="n">CHEAT_SHEET</span><span class="p">[</span><span class="n">smiles</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
 
 
 <div class="viewcode-block" id="generate_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformers">[docs]</a><span class="k">def</span> <span class="nf">generate_conformers</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">],</span>
@@ -341,12 +367,9 @@
 <span class="sd">        - Lowest conformers</span>
 <span class="sd">        - Lowest conformers and all new conformers.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">for</span> <span class="n">mol</span> <span class="ow">in</span> <span class="n">mol_list</span><span class="p">:</span>
-        <span class="n">smiles</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_smiles</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">smiles</span> <span class="ow">in</span> <span class="n">CHEAT_SHEET</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">return_all_conformers</span><span class="p">:</span>
-                <span class="k">return</span> <span class="p">[</span><span class="n">CHEAT_SHEET</span><span class="p">[</span><span class="n">smiles</span><span class="p">]],</span> <span class="p">[</span><span class="n">CHEAT_SHEET</span><span class="p">[</span><span class="n">smiles</span><span class="p">]]</span>
-            <span class="k">return</span> <span class="p">[</span><span class="n">CHEAT_SHEET</span><span class="p">[</span><span class="n">smiles</span><span class="p">]]</span>
+    <span class="n">cheat</span> <span class="o">=</span> <span class="n">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">)</span> 
+    <span class="k">if</span> <span class="n">cheat</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cheat</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mol_list</span><span class="p">,</span> <span class="n">Molecule</span><span class="p">):</span>
         <span class="c1"># Try generating resonance structures, but strictly keep atom order.</span>
         <span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>

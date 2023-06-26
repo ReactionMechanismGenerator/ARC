@@ -257,6 +257,18 @@ We assume that each list entry in new_dihedrals is of the length of the torsions
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.cheat_sheet">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">cheat_sheet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#cheat_sheet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.cheat_sheet" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the species is in the cheat sheet, and return its correct xyz if it is.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol_list</strong> (<em>Union</em><em>[</em><em>List</em><em>[</em><em>Molecule</em><em>]</em><em>, </em><em>Molecule</em><em>]</em>) – Molecule objects to consider (or Molecule, resonance structures will be generated).</p>
+</dd>
+</dl>
+<p>Returns: Optional[lis[Dict]]</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.conformers.check_special_non_rotor_cases">
 <span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">check_special_non_rotor_cases</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#check_special_non_rotor_cases"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.check_special_non_rotor_cases" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check whether one of the tops correspond to a special case which does not have a torsional mode.
