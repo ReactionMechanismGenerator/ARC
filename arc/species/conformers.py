@@ -41,7 +41,7 @@ import logging
 import sys
 import time
 from itertools import product
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
@@ -125,6 +125,23 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'source': 'CHEAT_SHEET',
                           'torsion_dihedrals': {}}
               }
+
+def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict]]:
+    """
+    Check if the species is in the cheat sheet, and return its correct xyz if it is.
+
+    Args:
+        mol_list (Union[List[Molecule], Molecule]): Molecule objects to consider (or Molecule, resonance structures will be generated).
+    
+    Returns: Optional[lis[Dict]]
+    """
+    mol_list = [mol_list] if not isinstance(mol_list, list) else mol_list
+    for smiles in CHEAT_SHEET.keys():
+        cheat_mol = Molecule(smiles=smiles)
+        for mol in mol_list:
+            if cheat_mol.is_isomorphic(mol.copy(deep=True)):
+                return [CHEAT_SHEET[smiles]]
+    return None
 
 
 def generate_conformers(mol_list: Union[List[Molecule], Molecule],
