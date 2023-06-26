@@ -1219,7 +1219,10 @@ class Scheduler(object):
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
             if 'opt' in self.job_dict[label].keys():
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
-                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+                    if (
+                        int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1])
+                        and opt_job.job_status[1]['status'] == 'done' #This needs to be checked, but this current function does not consider if the opt job is done or not. Maybe it shouldn't need to but rather is a result of Zeus creating submission issues
+                    ):
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
                 if recent_opt_job is not None:
                     recent_opt_job.rename_output_file()
