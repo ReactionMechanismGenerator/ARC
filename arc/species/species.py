@@ -2009,6 +2009,7 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        project_directory (str, optional): The path to the project directory.
 
     Attributes:
         initial_xyz (dict): The 3D coordinates guess.
@@ -2050,6 +2051,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 project_directory: Optional[str] = None,
                  ):
 
         if ts_dict is not None:
@@ -2066,7 +2068,7 @@ class TSGuess(object):
             self.execution_time = execution_time if execution_time is not None else execution_time
             self._opt_xyz = None
             self._initial_xyz = None
-            self.process_xyz(xyz)  # populates self.initial_xyz
+            self.process_xyz(xyz, project_directory)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
             self.cluster = cluster
@@ -2220,7 +2222,7 @@ class TSGuess(object):
             except AtomTypeError:
                 pass
 
-    def process_xyz(self, xyz: Union[dict, str]):
+    def process_xyz(self, xyz: Union[dict, str], project_directory: Optional[str] = None):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
 
@@ -2233,7 +2235,7 @@ class TSGuess(object):
         if xyz is not None:
             if not isinstance(xyz, (dict, str)):
                 raise InputError(f'xyz must be either a dictionary or string, got:\n{xyz}\nwhich is a {type(xyz)}')
-            self.initial_xyz = check_xyz_dict(xyz)
+            self.initial_xyz = check_xyz_dict(xyz, project_directory)
 
     def get_xyz(self,
                 return_format: str = 'dict',

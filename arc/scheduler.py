@@ -377,6 +377,7 @@ class Scheduler(object):
                                 rmg_reaction=rxn.rmg_reaction,
                                 index=len(rxn.ts_species.ts_guesses),
                                 success=True,
+                                project_directory=self.project_directory,
                                 )
                     )
                 rxn.check_atom_balance()
