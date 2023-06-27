@@ -155,6 +155,7 @@ class MolproAdapter(JobAdapter):
         self.execution_type = execution_type or 'queue'
         self.command = 'molpro'
         self.url = 'https://www.molpro.net/'
+        self.core_change = None
 
         if species is None:
             raise ValueError('Cannot execute Molpro without an ARCSpecies object.')
@@ -348,7 +349,12 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
                 if memory_values:
                     min_memory_value = min(memory_values)
                     required_cores = math.floor(max_memory / (min_memory_value * 7.45e-3))
-
+                    if self.core_change is None:
+                        self.core_change = required_cores
+                    elif self.core_change == required_cores:
+                        # We have already done this
+                        # Reduce the cores by 1
+                        required_cores -= 1
                     if required_cores < current_cpu_cores:
                         self.cpu_cores = required_cores
                         logger.info(f'Changing the number of cpu_cores from {current_cpu_cores} to {self.cpu_cores}')
