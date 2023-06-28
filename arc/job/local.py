@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import time
 from typing import List, Optional, Tuple, Union
+import socket
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
@@ -284,7 +285,8 @@ def submit_job(path: str,
     #         job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
 
     # One more time to make sure
-    if not os.path.exists(os.path.join(path, 'intial_time')):
+    # make sure socket hostname is zeus
+    if not os.path.exists(os.path.join(path, 'intial_time')) and 'zeus' in socket.gethostname():
         qstat_id_cmd = f'/opt/pbs/bin/qstat {job_id} -x'
         stdout_status, stderr_status= execute_command(qstat_id_cmd)
         # Parse the std
