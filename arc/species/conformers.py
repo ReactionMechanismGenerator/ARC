@@ -1471,6 +1471,9 @@ def rdkit_force_field(label: str,
                                                           confId=i,
                                                           maxIters=500,
                                                           ignoreInterfragInteractions=False,
+                                                          randomSeed=1,
+                                                          useRandomCoords=True,
+                                                          numConfs=100,
                                                           )
                 except Exception as e:
                     logger.warning(f'NPS error catch: got the error: {e}')
