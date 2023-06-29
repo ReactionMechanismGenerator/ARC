@@ -1472,8 +1472,8 @@ def rdkit_force_field(label: str,
                                                           maxIters=500,
                                                           ignoreInterfragInteractions=False,
                                                           )
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f'NPS error catch: got the error: {e}')
                 else:
                     j += 1
         mol_properties = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field)
