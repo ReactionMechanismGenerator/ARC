@@ -54,7 +54,7 @@ $rem
    METHOD        ${method}
    UNRESTRICTED  ${unrestricted}
    BASIS         ${basis}${fine}${keywords}${constraint}${scan_trsh}${trsh}${block}${irc}
-   IQMOL_FCHK    TRUE
+   IQMOL_FCHK    FALSE
 $end
 ${job_type_2}
 ${scan}
@@ -327,8 +327,8 @@ class QChemAdapter(JobAdapter):
                         scan_string += f"\n   {input_dict['block']}"
                     if input_dict['irc']:
                         scan_string += f"\n   {input_dict['irc']}" 
-                    scan_string += f"\n   IQMOL_FCHK    TRUE"
-                    scan_string += f'\n   SCF_GUESS read\n$end\n$scan\n'
+                    scan_string += f"\n   IQMOL_FCHK    FALSE"
+                    scan_string += f'\n   SCF_GUESS     READ\n$end\n$scan\n'
                     scan_string += f'tors {scan_atoms_str} {scan2_start} {scan2_end} {self.scan_res}\n'
                     scan_string += '$end\n'
                 else:
@@ -512,7 +512,7 @@ class QChemAdapter(JobAdapter):
             self.files_to_download.append(self.get_file_property_dictionary(
                 file_name=output_filenames[self.job_adapter]))
             # 2.3. checkfile
-            self.files_to_download.append(self.get_file_property_dictionary(file_name='input.fchk'))
+            #self.files_to_download.append(self.get_file_property_dictionary(file_name='input.fchk'))
 
     def set_additional_file_paths(self) -> None:
         """
