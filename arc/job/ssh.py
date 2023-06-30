@@ -308,6 +308,9 @@ class SSHClient(object):
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
             for line in stderr:
+                if 'Memory specification can not be satisfied' in line:
+                    logger.warning('User may be requesting more memory than is available. Please check server '
+                                   'settings, such as cpus and memory, in ARC/arc/settings/settings.py.')
                 if 'Requested node configuration is not available' in line:
                     logger.warning('User may be requesting more resources than are available. Please check server '
                                    'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
