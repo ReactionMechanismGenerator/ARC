@@ -265,8 +265,8 @@ def check_argument_consistency(obj: 'JobAdapter'):
     if obj.job_type == 'scan' and obj.job_adapter in ['molpro'] \
             and any(species.rotors_dict['directed_scan_type'] == 'ess' for species in obj.species):
         raise NotImplementedError(f'The {obj.job_adapter} job adapter does not support ESS scans.')
-    if obj.job_type == 'scan' and divmod(360, obj.scan_res)[1]:
-        raise ValueError(f'Got an illegal rotor scan resolution of {obj.scan_res}.')
+    # if obj.job_type == 'scan' and divmod(360, obj.scan_res)[1]:
+    #     raise ValueError(f'Got an illegal rotor scan resolution of {obj.scan_res}.')
     if obj.job_type == 'scan' and ((not obj.species[0].rotors_dict or obj.rotor_index is None) and obj.torsions is None):
         # If this is a scan job type and species.rotors_dict is empty (e.g., via pipe), then torsions must be set up.
         raise ValueError('Either torsions or a species rotors_dict along with a rotor_index argument '
