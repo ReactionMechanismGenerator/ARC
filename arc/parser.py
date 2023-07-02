@@ -842,18 +842,38 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
             traj = list()
             done = False
             i = 0
+            # In our QChem scans, we usually run two jobs in one input file. Since there are two jobs, the input file will have
+            # two "Thank you very much for using Q-Chem" lines. Therefore, in order to stop the parsing from ending prematurely,
+            # we count the number of "Thank you very much for using Q-Chem" lines
+            qchem_term_count = 0
+            qchem_term_line = lines.copy()
+            for qlines in qchem_term_line:
+                if 'Thank you very much for using Q-Chem' in qlines:
+                    qchem_term_count += 1
             while not done:
-                if i >= len(lines) or 'Thank you very much for using Q-Chem.' in lines[i]:
+                if i >=len(lines):
                     done = True
-                elif 'Standard Nuclear Orientation (Angstroms)' in lines[i]:
-                    i += 4
-                    xyz_str = ''
-                    while len(lines) and '--------------------------------------------' not in lines[i]:
+                elif 'Thank you very much for using Q-Chem' in lines[i]:
+                    # Once we reach a "Thank you very much for using Q-Chem" line, we decrement the count by 1
+                    # If the count is not 0, we continue parsing
+                    # If the count is 0, we are done parsing
+                    qchem_term_count -= 1
+                    if qchem_term_count == 0:
+                        done = True
+                    i += 1
+                elif 'OPTIMIZATION CONVERGED' in lines[i] and "Coordinates (Angstroms)" in lines[i+3]:
+                    i += 5
+                    xyz_str, skip_traj = '', False
+                    
+                    while len(lines) and lines[i] != "\n" and 'Z-matrix Print:\n' not in lines[i+1]:
                         splits = lines[i].split()
-                        xyz_str += f'{str(splits[1])}  {splits[2]}  {splits[3]}  {splits[4]}\n'
+                        xyz_str += f'{splits[1]}  {splits[2]}  {splits[3]}  {splits[4]}\n'
                         i += 1
-                    traj.append(str_to_xyz(xyz_str))
-                i += 1
+                    
+                    if not skip_traj:
+                        traj.append(str_to_xyz(xyz_str))
+                else:
+                    i += 1 
 
         elif type(log) not in [GaussianLog, QChemLog]:
             raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
