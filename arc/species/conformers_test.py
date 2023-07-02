@@ -2596,6 +2596,13 @@ Cl      2.38846685    0.24054066    0.55443324
         cheat_mol2 = Molecule(smiles='C')
         self.assertIsNone(conformers.cheat_sheet([cheat_mol2]))
 
+    def test_conformers_with_xyz_wo_energy(self):
+        """Test that ARC can generate conformers even if RDKit cannot compute FF energies (but can suggest xyz)."""
+        smiles = '[O]OOC=CC#CCO'
+        mol = Molecule(smiles=smiles)
+        confs = conformers.generate_conformers(mol_list=[mol], label='spc_1')
+        self.assertGreater(len(confs), 0)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
