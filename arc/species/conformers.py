@@ -508,6 +508,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
     else:
         base_energy = base_energy[0]
     new_conformers = list()
+    new_conformers_no_energy = list()
     lowest_conf_i = None
     for i in range(max_combination_iterations):
         newest_conformers_dict, newest_conformer_list = dict(), list()  # Conformers from the current iteration.
@@ -520,7 +521,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                 exists = False
                 if any([converter.compare_confs(xyz, conf['xyz']) for conf in new_conformers + newest_conformer_list]):
                     exists = True
-                if xyz is not None:
+                if xyz is not None and energy is not None:
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
                                  'FF energy': round(energy, 3),
@@ -530,9 +531,17 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                     newest_conformers_dict[tor].append(conformer)
                     if not exists:
                         newest_conformer_list.append(conformer)
-                else:
+                elif xyz is None:
                     # If xyz is None, atoms have collided.
                     logger.debug(f'\n\natoms colliding in {label} for torsion {tor} and dihedral {dihedral}\n')
+                elif energy is None:
+                    new_conformers_no_energy.append(
+                        {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
+                         'xyz': xyz,
+                         'FF energy': None,
+                         'source': f'Changing dihedrals on most stable conformer, iteration {i}, but FF energy is None',
+                         'torsion': tor,
+                         'dihedral': round(dihedral, 2)})
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
             newest_conformer_list = [lowest_conf_i]
@@ -557,6 +566,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
     if de_threshold is not None:
         min_e = min([conf['FF energy'] for conf in new_conformers])
         new_conformers = [conf for conf in new_conformers if conf['FF energy'] - min_e < de_threshold]
+    if len(new_conformers) == 0 and len(new_conformers_no_energy) > 0:
+        return new_conformers_no_energy
     return new_conformers
 
 
@@ -1491,7 +1502,7 @@ def rdkit_force_field(label: str,
                                                                maxIters=200,
                                                                ignoreInterfragInteractions=True,
                                                                )
-            except RuntimeError:
+            except (RuntimeError, ValueError):
                 if try_ob:
                     logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers '
                                    f'for {label}. This is often slower.')
