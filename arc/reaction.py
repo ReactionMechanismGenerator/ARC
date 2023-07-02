@@ -317,7 +317,8 @@ class ARCReaction(object):
         self.ts_species = ARCSpecies(species_dict=reaction_dict['ts_species']) if 'ts_species' in reaction_dict else None
         self.long_kinetic_description = reaction_dict['long_kinetic_description'] \
             if 'long_kinetic_description' in reaction_dict else ''
-        self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict else list()
+        self.ts_xyz_guess = reaction_dict['ts_xyz_guess'] if 'ts_xyz_guess' in reaction_dict \
+            else reaction_dict['xyz'] if 'xyz' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
         self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None

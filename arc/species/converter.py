@@ -49,7 +49,9 @@ ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 
-def str_to_xyz(xyz_str: str) -> dict:
+def str_to_xyz(xyz_str: str,
+               project_directory: Optional[str] = None,
+               ) -> dict:
     """
     Convert a string xyz format to the ARC dict xyz style.
     Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.
@@ -75,6 +77,7 @@ def str_to_xyz(xyz_str: str) -> dict:
 
     Args:
         xyz_str (str): The string xyz format to be converted.
+        project_directory (str, optional): The path to the project directory.
 
     Raises:
         ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.
@@ -84,6 +87,8 @@ def str_to_xyz(xyz_str: str) -> dict:
     """
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
+    if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
+        xyz_str = os.path.join(project_directory, xyz_str)
     if os.path.isfile(xyz_str):
         from arc.parser import parse_xyz_from_file
         return parse_xyz_from_file(xyz_str)
@@ -668,7 +673,9 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
 
-def check_xyz_dict(xyz: Union[dict, str]) -> Optional[dict]:
+def check_xyz_dict(xyz: Union[dict, str],
+                   project_directory: Optional[str] = None,
+                   ) -> Optional[dict]:
     """
     Check that the xyz dictionary entered is valid.
     If it is a string, convert it.
@@ -677,7 +684,8 @@ def check_xyz_dict(xyz: Union[dict, str]) -> Optional[dict]:
     If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().
 
     Args:
-         xyz (Union[dict, str]): The xyz dictionary.
+        xyz (Union[dict, str]): The xyz dictionary.
+        project_directory (str, optional): The path to the project directory.
 
     Raises:
         ConverterError: If ``xyz`` is of wrong type or is missing symbols or coords.
@@ -687,7 +695,7 @@ def check_xyz_dict(xyz: Union[dict, str]) -> Optional[dict]:
     """
     if xyz is None:
         return None
-    xyz_dict = str_to_xyz(xyz) if isinstance(xyz, str) else xyz
+    xyz_dict = str_to_xyz(xyz, project_directory) if isinstance(xyz, str) else xyz
     if not isinstance(xyz_dict, dict):
         raise ConverterError(f'Expected a dictionary, got {type(xyz_dict)}')
     if 'vars' in list(xyz_dict.keys()):
