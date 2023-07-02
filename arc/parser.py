@@ -470,30 +470,68 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
 
     lines = _get_lines_from_file(path)
     log = ess_factory(fullpath=path, check_for_errors=False)
-    if not isinstance(log, GaussianLog):
-        raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files, got {type(log)}')
-    done = False
-    i = 0
-    while not done:
-        if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
-            done = True
-        elif 'Optimization completed' in lines[i]:
-            while i < len(lines) + 10 and 'Input orientation:' not in lines[i] or 'Forces (Hartrees/Bohr)' in lines [i + 7]:
+
+    if isinstance(log, GaussianLog):
+        done = False
+        i = 0
+        while not done:
+            if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+                done = True
+            elif 'Optimization completed' in lines[i]:
+                while i < len(lines) + 10 and 'Input orientation:' not in lines[i] or 'Forces (Hartrees/Bohr)' in lines [i + 7]:
+                    i += 1
+                    if 'Error termination via' in lines[i]:
+                        return traj
+                i += 5
+                xyz_str, skip_traj = '', False
+                while len(lines) and '--------------------------------------------' not in lines[i]:
+                    if 'DIIS: error' in lines[i]:
+                        skip_traj = True
+                        break
+                    splits = lines[i].split()
+                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                    i += 1
+                if not skip_traj:
+                    traj.append(str_to_xyz(xyz_str))
+            i += 1  
+    if isinstance(log, QChemLog):
+        done = False
+        i = 0
+        # In our QChem scans, we usually run two jobs in one input file. Since there are two jobs, the input file will have
+        # two "Thank you very much for using Q-Chem" lines. Therefore, in order to stop the parsing from ending prematurely,
+        # we count the number of "Thank you very much for using Q-Chem" lines
+        qchem_term_count = 0
+        qchem_term_line = lines.copy()
+        for qlines in qchem_term_line:
+            if 'Thank you very much for using Q-Chem' in qlines:
+                qchem_term_count += 1
+        while not done:
+            if i >=len(lines):
+                done = True
+            elif 'Thank you very much for using Q-Chem' in lines[i]:
+                # Once we reach a "Thank you very much for using Q-Chem" line, we decrement the count by 1
+                # If the count is not 0, we continue parsing
+                # If the count is 0, we are done parsing
+                qchem_term_count -= 1
+                if qchem_term_count == 0:
+                    done = True
                 i += 1
-                if 'Error termination via' in lines[i]:
-                    return traj
-            i += 5
-            xyz_str, skip_traj = '', False
-            while len(lines) and '--------------------------------------------' not in lines[i]:
-                if 'DIIS: error' in lines[i]:
-                    skip_traj = True
-                    break
-                splits = lines[i].split()
-                xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
-                i += 1
-            if not skip_traj:
-                traj.append(str_to_xyz(xyz_str))
-        i += 1
+            elif 'OPTIMIZATION CONVERGED' in lines[i] and "Coordinates (Angstroms)" in lines[i+3]:
+                i += 5
+                xyz_str, skip_traj = '', False
+                
+                while len(lines) and lines[i] != "\n" and 'Z-matrix Print:\n' not in lines[i+1]:
+                    splits = lines[i].split()
+                    xyz_str += f'{splits[1]}  {splits[2]}  {splits[3]}  {splits[4]}\n'
+                    i += 1
+                
+                if not skip_traj:
+                    traj.append(str_to_xyz(xyz_str))
+            else:
+                i += 1 
+    elif not isinstance(log, GaussianLog):
+        raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files and QChem, got {type(log)}')
+
     return traj
 
 
