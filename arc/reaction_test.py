@@ -7,18 +7,20 @@ This module contains unit tests of the arc.reaction module
 
 from itertools import permutations
 import os
+import shutil
 import unittest
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import ARC_PATH, almost_equal_lists
+from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
+from arc.main import ARC
 from arc.reaction import ARCReaction, remove_dup_species
+from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map
-from arc.utils.wip import work_in_progress
 
 
 class TestARCReaction(unittest.TestCase):
@@ -1923,6 +1925,67 @@ H       1.12853146   -0.86793870    0.06973060"""
                                     O       2.65817800   -1.34488900    0.51012400
                                     H       3.16323600   -2.29177100    0.72530400
                                     H       3.06938800   -0.89699200   -0.39503300"""])
+
+    def test_load_ts_xyz_user_guess_from_files(self):
+        """Test various loading a reaction and populating the TS ARCSpecies with user xyz guesses from files"""
+        project_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'reactions', 'methanoate_hydrolysis')
+        input_dict = read_yaml_file(path=os.path.join(project_directory, 'input_1.yml'))
+        input_dict['project_directory'] = project_directory
+        arc_object = ARC(**input_dict)
+        Scheduler(project=arc_object.project,
+                  species_list=arc_object.species,
+                  rxn_list=arc_object.reactions,
+                  conformer_level=arc_object.conformer_level,
+                  opt_level=arc_object.opt_level,
+                  freq_level=arc_object.freq_level,
+                  sp_level=arc_object.sp_level,
+                  scan_level=arc_object.scan_level,
+                  ts_guess_level=arc_object.ts_guess_level,
+                  ess_settings=arc_object.ess_settings,
+                  job_types=arc_object.job_types,
+                  rmg_database=arc_object.rmg_database,
+                  project_directory=arc_object.project_directory,
+                  ts_adapters=arc_object.ts_adapters,
+                  testing=True,
+                  )
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[0].initial_xyz['symbols']), 19)
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
+
+        input_dict = read_yaml_file(path=os.path.join(project_directory, 'input_2.yml'))
+        input_dict['project_directory'] = project_directory
+        arc_object = ARC(**input_dict)
+        Scheduler(project=arc_object.project,
+                  species_list=arc_object.species,
+                  rxn_list=arc_object.reactions,
+                  conformer_level=arc_object.conformer_level,
+                  opt_level=arc_object.opt_level,
+                  freq_level=arc_object.freq_level,
+                  sp_level=arc_object.sp_level,
+                  scan_level=arc_object.scan_level,
+                  ts_guess_level=arc_object.ts_guess_level,
+                  ess_settings=arc_object.ess_settings,
+                  job_types=arc_object.job_types,
+                  rmg_database=arc_object.rmg_database,
+                  project_directory=arc_object.project_directory,
+                  ts_adapters=arc_object.ts_adapters,
+                  testing=True,
+                  )
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses), 2)
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
+
+    @classmethod
+    def tearDownClass(cls):
+        """A function that is run ONCE after all unit tests in this class."""
+        project_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'reactions', 'methanoate_hydrolysis')
+        sub_folders = ['log_and_restart_archive', 'output']
+        files_to_remove = ['arc.log']
+        for sub_folder in sub_folders:
+            shutil.rmtree(os.path.join(project_directory, sub_folder), ignore_errors=True)
+        for file_path in files_to_remove:
+            full_file_path = os.path.join(project_directory, file_path)
+            if os.path.isfile(full_file_path):
+                os.remove(full_file_path)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
