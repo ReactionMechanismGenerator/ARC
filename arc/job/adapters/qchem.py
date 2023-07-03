@@ -426,7 +426,7 @@ class QChemAdapter(JobAdapter):
             wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
 
             # This function converts the angles to be within the range of -180 to 180
-            convert_angle = lambda angle: angle % 360 if angle >= 0 else (angle % 360) - 360
+            convert_angle = lambda angle: angle % 360 if angle >= 0 else ( angle % 360 if angle <= -180 else (angle % 360) - 360)
 
             # This converts the angles to be within the range of -180 to 180
             start_angle = convert_angle(start_angle)
@@ -442,7 +442,6 @@ class QChemAdapter(JobAdapter):
                 # This is not allowed in Q-Chem so we split it into two scans
                 # Arguably this could be done in one scan but it is easier to do it this way
                 # We will need to find the starting angle that when added by the step size will be 180
-
                 target_sum = 180
                 quotient = target_sum // step
                 remainder = target_sum % step
@@ -462,12 +461,16 @@ class QChemAdapter(JobAdapter):
                 scan1_start = wrap_within_range(scan1_end, step)
                 scan2_start = 0
                 scan2_end = 0
-
             else:
                 scan1_start = start_angle
                 scan1_end = start_angle + (step * ((180 - start_angle)//step))
                 scan2_start = wrap_within_range(scan1_end, step)
                 scan2_end = end_angle
+                
+            if scan2_start == scan2_end:
+                scan2_start = 0
+                scan2_end = 0
+
             return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
 
     def set_files(self) -> None:
