@@ -483,7 +483,7 @@ hostname
 source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
-export QCSCRATCH=/scratch/{un}/{name}
+export QCSCRATCH=$PWD
 export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
 . $QC/qcenv.sh
 
