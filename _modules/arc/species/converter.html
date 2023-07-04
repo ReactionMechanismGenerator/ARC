@@ -213,7 +213,9 @@
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
 
-<div class="viewcode-block" id="str_to_xyz"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.str_to_xyz">[docs]</a><span class="k">def</span> <span class="nf">str_to_xyz</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<div class="viewcode-block" id="str_to_xyz"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.str_to_xyz">[docs]</a><span class="k">def</span> <span class="nf">str_to_xyz</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+               <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert a string xyz format to the ARC dict xyz style.</span>
 <span class="sd">    Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.</span>
@@ -239,6 +241,7 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        xyz_str (str): The string xyz format to be converted.</span>
+<span class="sd">        project_directory (str, optional): The path to the project directory.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.</span>
@@ -248,6 +251,8 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">raise</span> <span class="n">ConverterError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Expected a string input, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">project_directory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">project_directory</span><span class="p">,</span> <span class="n">xyz_str</span><span class="p">)):</span>
+        <span class="n">xyz_str</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">project_directory</span><span class="p">,</span> <span class="n">xyz_str</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">):</span>
         <span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="n">parse_xyz_from_file</span>
         <span class="k">return</span> <span class="n">parse_xyz_from_file</span><span class="p">(</span><span class="n">xyz_str</span><span class="p">)</span>
@@ -832,7 +837,9 @@
     <span class="k">return</span> <span class="n">xyz_to_str</span><span class="p">(</span><span class="n">xyz_dict</span><span class="o">=</span><span class="n">xyz_dict</span><span class="p">,</span> <span class="n">isotope_format</span><span class="o">=</span><span class="n">isotope_format</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="check_xyz_dict"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.check_xyz_dict">[docs]</a><span class="k">def</span> <span class="nf">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<div class="viewcode-block" id="check_xyz_dict"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.check_xyz_dict">[docs]</a><span class="k">def</span> <span class="nf">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+                   <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check that the xyz dictionary entered is valid.</span>
 <span class="sd">    If it is a string, convert it.</span>
@@ -841,7 +848,8 @@
 <span class="sd">    If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">         xyz (Union[dict, str]): The xyz dictionary.</span>
+<span class="sd">        xyz (Union[dict, str]): The xyz dictionary.</span>
+<span class="sd">        project_directory (str, optional): The path to the project directory.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ConverterError: If ``xyz`` is of wrong type or is missing symbols or coords.</span>
@@ -851,7 +859,7 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
-    <span class="n">xyz_dict</span> <span class="o">=</span> <span class="n">str_to_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">xyz</span>
+    <span class="n">xyz_dict</span> <span class="o">=</span> <span class="n">str_to_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">xyz</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
         <span class="k">raise</span> <span class="n">ConverterError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Expected a dictionary, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="k">if</span> <span class="s1">&#39;vars&#39;</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">xyz_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>

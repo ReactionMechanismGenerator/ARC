@@ -352,6 +352,7 @@
 <span class="sd">        irc_label (str, optional): The label of an original ``ARCSpecies`` object (a TS) for which an IRC job was spawned.</span>
 <span class="sd">                                   The present species object instance represents a geometry optimization job of the IRC</span>
 <span class="sd">                                   result in one direction.</span>
+<span class="sd">        project_directory (str, optional): The path to the project directory.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        label (str): The species&#39; label.</span>
@@ -451,6 +452,7 @@
 <span class="sd">                         The present species object instance represents a geometry optimization job of the IRC</span>
 <span class="sd">                         result in one direction. If a species is a transition state, then this attribute contains the</span>
 <span class="sd">                         labels of the two corresponding &quot;IRC species&quot;, separated by a blank space.</span>
+<span class="sd">        project_directory (str): The path to the project directory.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -487,6 +489,7 @@
                  <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">yml_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">keep_mol</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">t1</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_number</span> <span class="o">=</span> <span class="n">ts_number</span>
@@ -524,6 +527,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">chosen_ts</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">rxn_zone_atom_indices</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_checks</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span> <span class="o">=</span> <span class="n">project_directory</span>
 
         <span class="k">if</span> <span class="n">species_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># Reading from a dictionary (it&#39;s possible that the dict contains only a &#39;yml_path&#39; argument, check first)</span>
@@ -1774,22 +1778,27 @@
                 <span class="n">xyz_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">xyz_list</span><span class="p">]</span>
             <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
             <span class="k">for</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="n">xyz_list</span><span class="p">:</span>
+                <span class="n">xyz_</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                    <span class="n">xyz_</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="n">xyz</span><span class="p">)</span> \
+                        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
+                        <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="n">xyz</span><span class="p">))</span> <span class="k">else</span> <span class="n">xyz</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)):</span>
                     <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Each xyz entry in xyz_list must be either a string or a dictionary. &#39;</span>
                                      <span class="sa">f</span><span class="s1">&#39;Got:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
                     <span class="n">xyzs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">)))</span>
                     <span class="n">energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># dummy (lists should be the same length)</span>
-                <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">xyz</span><span class="p">):</span>
-                    <span class="n">file_extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">xyz</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">xyz_</span><span class="p">):</span>
+                    <span class="n">file_extension</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">xyz_</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
                     <span class="k">if</span> <span class="s1">&#39;txt&#39;</span> <span class="ow">in</span> <span class="n">file_extension</span><span class="p">:</span>
                         <span class="c1"># assume this is an ARC conformer file</span>
-                        <span class="n">xyzs_</span><span class="p">,</span> <span class="n">energies_</span> <span class="o">=</span> <span class="n">process_conformers_file</span><span class="p">(</span><span class="n">conformers_path</span><span class="o">=</span><span class="n">xyz</span><span class="p">)</span>
+                        <span class="n">xyzs_</span><span class="p">,</span> <span class="n">energies_</span> <span class="o">=</span> <span class="n">process_conformers_file</span><span class="p">(</span><span class="n">conformers_path</span><span class="o">=</span><span class="n">xyz_</span><span class="p">)</span>
                         <span class="n">xyzs</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">xyz_</span><span class="p">)</span> <span class="k">for</span> <span class="n">xyz_</span> <span class="ow">in</span> <span class="n">xyzs_</span><span class="p">])</span>
                         <span class="n">energies</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">energies_</span><span class="p">)</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="c1"># assume this is an ESS log file</span>
-                        <span class="n">xyzs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">parse_xyz_from_file</span><span class="p">(</span><span class="n">xyz</span><span class="p">)))</span>  <span class="c1"># also calls standardize_xyz_string()</span>
+                        <span class="n">xyzs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">parse_xyz_from_file</span><span class="p">(</span><span class="n">xyz_</span><span class="p">)))</span>  <span class="c1"># also calls standardize_xyz_string()</span>
                         <span class="n">energies</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>  <span class="c1"># dummy (lists should be the same length)</span>
                 <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
                     <span class="c1"># string which does not represent a (valid) path, treat as a string representation of xyz</span>
@@ -2174,6 +2183,7 @@
 <span class="sd">        energy (float, optional): Relative energy of all TS conformers in kJ/mol.</span>
 <span class="sd">        t0 (datetime.datetime, optional): Initial time of spawning the guess job.</span>
 <span class="sd">        execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.</span>
+<span class="sd">        project_directory (str, optional): The path to the project directory.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        initial_xyz (dict): The 3D coordinates guess.</span>
@@ -2215,6 +2225,7 @@
                  <span class="n">ts_dict</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">energy</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">cluster</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
 
         <span class="k">if</span> <span class="n">ts_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -2231,7 +2242,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span> <span class="o">=</span> <span class="n">execution_time</span> <span class="k">if</span> <span class="n">execution_time</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">execution_time</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_opt_xyz</span> <span class="o">=</span> <span class="kc">None</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_initial_xyz</span> <span class="o">=</span> <span class="kc">None</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">process_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>  <span class="c1"># populates self.initial_xyz</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">process_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span>  <span class="c1"># populates self.initial_xyz</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">success</span> <span class="o">=</span> <span class="n">success</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">energy</span> <span class="o">=</span> <span class="n">energy</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">cluster</span> <span class="o">=</span> <span class="n">cluster</span>
@@ -2385,12 +2396,16 @@
             <span class="k">except</span> <span class="n">AtomTypeError</span><span class="p">:</span>
                 <span class="k">pass</span></div>
 
-<div class="viewcode-block" id="TSGuess.process_xyz"><a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.process_xyz">[docs]</a>    <span class="k">def</span> <span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]):</span>
+<div class="viewcode-block" id="TSGuess.process_xyz"><a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.process_xyz">[docs]</a>    <span class="k">def</span> <span class="nf">process_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                    <span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+                    <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process the user&#39;s input. If ``xyz`` represents a file path, parse it.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            xyz (dict, str): The coordinates in a dict/string form or a path to a file containing the coordinates.</span>
+<span class="sd">            project_directory (str, optional): The path to the project directory.</span>
 
 <span class="sd">        Raises:</span>
 <span class="sd">            InputError: If xyz is of the wrong type.</span>
@@ -2398,7 +2413,7 @@
         <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">)):</span>
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;xyz must be either a dictionary or string, got:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="se">\n</span><span class="s1">which is a </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="n">project_directory</span><span class="p">)</span></div>
 
 <div class="viewcode-block" id="TSGuess.get_xyz"><a class="viewcode-back" href="../../../api/species.html#arc.species.species.TSGuess.get_xyz">[docs]</a>    <span class="k">def</span> <span class="nf">get_xyz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                 <span class="n">return_format</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;dict&#39;</span><span class="p">,</span>

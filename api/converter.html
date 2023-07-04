@@ -251,7 +251,7 @@ Resonance structures will not be generated.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.check_xyz_dict">
-<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">check_xyz_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#check_xyz_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.check_xyz_dict" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">check_xyz_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#check_xyz_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.check_xyz_dict" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check that the xyz dictionary entered is valid.
 If it is a string, convert it.
 If it is a Z matrix, convert it to cartesian coordinates,
@@ -259,7 +259,10 @@ If isotopes are not in xyz_dict, common values will be added.
 If a part of the xyz structure is a np.ndarray type, convert it by always calling xyz_from_data().</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>xyz</strong> (<em>Union</em><em>[</em><em>dict</em><em>, </em><em>str</em><em>]</em>) – The xyz dictionary.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>Union</em><em>[</em><em>dict</em><em>, </em><em>str</em><em>]</em>) – The xyz dictionary.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the project directory.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ConverterError</strong> – If <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is of wrong type or is missing symbols or coords.</p>
@@ -966,7 +969,7 @@ option is ‘gaussian’.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.str_to_xyz">
-<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">str_to_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz_str</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#str_to_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.str_to_xyz" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">str_to_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz_str</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#str_to_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.str_to_xyz" title="Permalink to this definition">¶</a></dt>
 <dd><p>Convert a string xyz format to the ARC dict xyz style.
 Note: The <code class="docutils literal notranslate"><span class="pre">xyz_str</span></code> argument could also direct to a file path to parse the data from.
 The xyz string format may have optional Gaussian-style isotope specification, e.g.:</p>
@@ -991,7 +994,10 @@ The xyz string format may have optional Gaussian-style isotope specification, e.
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>xyz_str</strong> (<em>str</em>) – The string xyz format to be converted.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz_str</strong> (<em>str</em>) – The string xyz format to be converted.</p></li>
+<li><p><strong>project_directory</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the project directory.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Raises<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ConverterError</strong> – If xyz_str is not a string or does not have four space-separated entries per non-empty line.</p>

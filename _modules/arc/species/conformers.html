@@ -275,20 +275,21 @@
                <span class="s1">&#39;[CH2]&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">converter</span><span class="o">.</span><span class="n">str_to_xyz</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;C  0.0	0.000000  0.1051320</span>
 <span class="s2">                                                        H  0.0  0.988263 -0.3153960</span>
 <span class="s2">                                                        H  0.0 -0.988263 -0.3153960&quot;&quot;&quot;</span><span class="p">),</span>
-                          <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>  <span class="c1"># Singlet CH2 forms the same H-C-H angle as triplet CH2</span>
-                          <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
-                          <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CHEAT_SHEET&#39;</span><span class="p">,</span>
-                          <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{}},</span>
-                <span class="s1">&#39;[CH]=C&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">converter</span><span class="o">.</span><span class="n">str_to_xyz</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;C	0.0513140	0.7351300	0.0000000</span>
-<span class="s2">                                                          C	0.0513140	-0.5980320	0.0000000</span>
-<span class="s2">                                                          H	-0.7050560	1.5248940	0.0000000</span>
-<span class="s2">                                                          H	-0.8925320	-1.1684180	0.0000000</span>
-<span class="s2">                                                          H	0.9818240	-1.1790600	0.0000000&quot;&quot;&quot;</span><span class="p">),</span>
-                         <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                         <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>  <span class="c1"># Singlet CH2 forms the same H-C-H angle as triplet CH2</span>
+                         <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                         <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CHEAT_SHEET&#39;</span><span class="p">,</span>
+                         <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{}},</span>
+               <span class="s1">&#39;[CH]=C&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">converter</span><span class="o">.</span><span class="n">str_to_xyz</span><span class="p">(</span><span class="s2">&quot;&quot;&quot;C  0.0513140  0.7351300  0.0000000</span>
+<span class="s2">                                                         C  0.0513140 -0.5980320  0.0000000</span>
+<span class="s2">                                                         H -0.7050560  1.5248940  0.0000000</span>
+<span class="s2">                                                         H -0.8925320 -1.1684180  0.0000000</span>
+<span class="s2">                                                         H  0.9818240 -1.1790600  0.0000000&quot;&quot;&quot;</span><span class="p">),</span>
+                          <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
                           <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
                           <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CHEAT_SHEET&#39;</span><span class="p">,</span>
                           <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{}}</span>
-              <span class="p">}</span>
+               <span class="p">}</span>
+
 
 <div class="viewcode-block" id="cheat_sheet"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.cheat_sheet">[docs]</a><span class="k">def</span> <span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
     <span class="sd">&quot;&quot;&quot;</span>
