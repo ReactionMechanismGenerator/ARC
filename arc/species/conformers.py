@@ -111,20 +111,21 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                '[CH2]': {'xyz': converter.str_to_xyz("""C  0.0	0.000000  0.1051320
                                                         H  0.0  0.988263 -0.3153960
                                                         H  0.0 -0.988263 -0.3153960"""),
-                          'index': 0,  # Singlet CH2 forms the same H-C-H angle as triplet CH2
-                          'FF energy': 0,
-                          'source': 'CHEAT_SHEET',
-                          'torsion_dihedrals': {}},
-                '[CH]=C': {'xyz': converter.str_to_xyz("""C	0.0513140	0.7351300	0.0000000
-                                                          C	0.0513140	-0.5980320	0.0000000
-                                                          H	-0.7050560	1.5248940	0.0000000
-                                                          H	-0.8925320	-1.1684180	0.0000000
-                                                          H	0.9818240	-1.1790600	0.0000000"""),
-                         'index': 0,
+                         'index': 0,  # Singlet CH2 forms the same H-C-H angle as triplet CH2
+                         'FF energy': 0,
+                         'source': 'CHEAT_SHEET',
+                         'torsion_dihedrals': {}},
+               '[CH]=C': {'xyz': converter.str_to_xyz("""C  0.0513140  0.7351300  0.0000000
+                                                         C  0.0513140 -0.5980320  0.0000000
+                                                         H -0.7050560  1.5248940  0.0000000
+                                                         H -0.8925320 -1.1684180  0.0000000
+                                                         H  0.9818240 -1.1790600  0.0000000"""),
+                          'index': 0,
                           'FF energy': 0,
                           'source': 'CHEAT_SHEET',
                           'torsion_dihedrals': {}}
-              }
+               }
+
 
 def cheat_sheet(mol_list: Union[List[Molecule], Molecule]) -> Optional[List[Dict]]:
     """

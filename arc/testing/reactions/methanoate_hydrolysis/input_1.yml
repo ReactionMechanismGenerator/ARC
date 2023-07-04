@@ -1,0 +1,57 @@
+project: xdeg1018
+
+compute_thermo: false
+
+opt_level:
+  method: wb97xd
+  basis: def2tzvp
+  solvation_method: smd
+  solvent: water
+
+conformer_level:
+  method: wb97xd
+  basis: def2tzvp
+  solvation_method: smd
+  solvent: water
+
+ts_guess_level:
+  method: wb97xd
+  basis: def2tzvp
+  solvation_method: smd
+  solvent: water
+
+freq_level:
+  method: wb97xd
+  basis: def2tzvp
+  solvation_method: smd
+  solvent: water
+
+sp_level:
+  method: wb97xd
+  basis: def2tzvp
+  solvation_method: smd
+  solvent: water
+
+job_types:
+  rotors: false
+  opt: true
+  fine: true
+  freq: true
+  sp: true
+
+species:
+  - label: 'H2O'
+    smiles: O
+  - label: methanoate_N
+    smiles: CC(=O)OCCN
+  - label: P1
+    smiles: OCCN
+  - label: P2
+    smiles: CC(=O)O
+
+reactions:
+  - label: methanoate_N + H2O <=> P1 + P2
+    ts_xyz_guess:
+    - TS1.gjf
+    - TS2.gjf
+

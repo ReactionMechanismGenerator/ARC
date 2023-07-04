@@ -188,6 +188,7 @@ class ARCSpecies(object):
         irc_label (str, optional): The label of an original ``ARCSpecies`` object (a TS) for which an IRC job was spawned.
                                    The present species object instance represents a geometry optimization job of the IRC
                                    result in one direction.
+        project_directory (str, optional): The path to the project directory.
 
     Attributes:
         label (str): The species' label.
@@ -287,6 +288,7 @@ class ARCSpecies(object):
                          The present species object instance represents a geometry optimization job of the IRC
                          result in one direction. If a species is a transition state, then this attribute contains the
                          labels of the two corresponding "IRC species", separated by a blank space.
+        project_directory (str): The path to the project directory.
     """
 
     def __init__(self,
@@ -323,6 +325,7 @@ class ARCSpecies(object):
                  xyz: Optional[Union[list, dict, str]] = None,
                  yml_path: Optional[str] = None,
                  keep_mol: bool = False,
+                 project_directory: Optional[str] = None,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -360,6 +363,7 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
+        self.project_directory = project_directory
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -1610,22 +1614,27 @@ class ARCSpecies(object):
                 xyz_list = [xyz_list]
             xyzs, energies = list(), list()
             for xyz in xyz_list:
+                xyz_ = ''
+                if isinstance(xyz, str):
+                    xyz_ = os.path.join(self.project_directory, xyz) \
+                        if self.project_directory is not None \
+                        and os.path.isfile(os.path.join(self.project_directory, xyz)) else xyz
                 if not isinstance(xyz, (str, dict)):
                     raise InputError(f'Each xyz entry in xyz_list must be either a string or a dictionary. '
                                      f'Got:\n{xyz}\nwhich is a {type(xyz)}')
                 if isinstance(xyz, dict):
                     xyzs.append(remove_dummies(check_xyz_dict(xyz)))
                     energies.append(None)  # dummy (lists should be the same length)
-                elif os.path.isfile(xyz):
-                    file_extension = os.path.splitext(xyz)[1]
+                elif os.path.isfile(xyz_):
+                    file_extension = os.path.splitext(xyz_)[1]
                     if 'txt' in file_extension:
                         # assume this is an ARC conformer file
-                        xyzs_, energies_ = process_conformers_file(conformers_path=xyz)
+                        xyzs_, energies_ = process_conformers_file(conformers_path=xyz_)
                         xyzs.extend([remove_dummies(xyz_) for xyz_ in xyzs_])
                         energies.extend(energies_)
                     else:
                         # assume this is an ESS log file
-                        xyzs.append(remove_dummies(parse_xyz_from_file(xyz)))  # also calls standardize_xyz_string()
+                        xyzs.append(remove_dummies(parse_xyz_from_file(xyz_)))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
                 elif isinstance(xyz, str):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
@@ -2010,6 +2019,7 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        project_directory (str, optional): The path to the project directory.
 
     Attributes:
         initial_xyz (dict): The 3D coordinates guess.
@@ -2051,6 +2061,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 project_directory: Optional[str] = None,
                  ):
 
         if ts_dict is not None:
@@ -2067,7 +2078,7 @@ class TSGuess(object):
             self.execution_time = execution_time if execution_time is not None else execution_time
             self._opt_xyz = None
             self._initial_xyz = None
-            self.process_xyz(xyz)  # populates self.initial_xyz
+            self.process_xyz(xyz, project_directory=project_directory)  # populates self.initial_xyz
             self.success = success
             self.energy = energy
             self.cluster = cluster
@@ -2221,12 +2232,16 @@ class TSGuess(object):
             except AtomTypeError:
                 pass
 
-    def process_xyz(self, xyz: Union[dict, str]):
+    def process_xyz(self,
+                    xyz: Union[dict, str],
+                    project_directory: Optional[str] = None,
+                    ):
         """
         Process the user's input. If ``xyz`` represents a file path, parse it.
 
         Args:
             xyz (dict, str): The coordinates in a dict/string form or a path to a file containing the coordinates.
+            project_directory (str, optional): The path to the project directory.
 
         Raises:
             InputError: If xyz is of the wrong type.
@@ -2234,7 +2249,7 @@ class TSGuess(object):
         if xyz is not None:
             if not isinstance(xyz, (dict, str)):
                 raise InputError(f'xyz must be either a dictionary or string, got:\n{xyz}\nwhich is a {type(xyz)}')
-            self.initial_xyz = check_xyz_dict(xyz)
+            self.initial_xyz = check_xyz_dict(xyz, project_directory=project_directory)
 
     def get_xyz(self,
                 return_format: str = 'dict',
