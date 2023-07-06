@@ -85,6 +85,8 @@ def str_to_xyz(xyz_str: str,
     Returns: dict
         The ARC xyz format.
     """
+    if isinstance(xyz_str, dict):
+        return xyz_str
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
