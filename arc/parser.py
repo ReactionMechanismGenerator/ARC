@@ -1145,8 +1145,8 @@ def parse_scan_args(file_path: str) -> dict:
     Returns: dict
         A dictionary that contains the scan arguments as well as step number, step size, number of atom::
 
-              {'scan': <list, atom indexes of the torsion to be scanned>,
-               'freeze': <list, list of internal coordinates identified by atom indexes>,
+              {'scan': <list, atom indices of the torsion to be scanned>,
+               'freeze': <list, list of internal coordinates identified by atom indices>,
                'step': <int, number of steps to scan>,
                'step_size': <float, the size of each step>,
                'n_atom': <int, the number of atoms of the molecule>,
@@ -1182,8 +1182,22 @@ def parse_scan_args(file_path: str) -> dict:
                 scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
             if 'NAtoms' in line:
                 scan_args['n_atom'] = int(line.split()[1])
+    elif isinstance(log, QChemLog):
+        freeze = parse_str_blocks(file_path,
+                            'FIXED',
+                            'ENDFIXED', regex=False)
+        atoms = len(parse_str_blocks(file_path,
+                                     '$molecule',
+                                     '$end', regex=False)[0])-3
+        
+        scan_blk = parse_str_blocks(file_path, "$scan", "$end", regex=False)[0][1:-1]
+        scan_args['scan'] = list(map(int, scan_blk[0][:-2].split(sep=" ")[1:-3]))
+        scan_args['freeze'] = freeze if len(freeze) > 0 else [] # todo- find an example with freeze
+        scan_args['step'] = 360//int(float(scan_blk[0].split(" ")[-1].split(sep="\n")[0]))
+        scan_args['step_size'] = float(scan_blk[0].split(" ")[-1].split(sep="\n")[0])
+        scan_args['n_atom'] = atoms
     else:
-        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian output '
+        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian and QChem output '
                                   f'files, got {log}')
     return scan_args
 
@@ -1245,6 +1259,8 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
             else:
                 # Currently doesn't support scan of angles.
                 ic_dict['scan'].append(False)
+    elif isinstance(log, QChemLog):
+
     else:
         raise NotImplementedError(f'parse_ic_info() can currently only parse Gaussian output '
                                   f'files, got {log}')
