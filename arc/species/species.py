@@ -921,7 +921,7 @@ class ARCSpecies(object):
         # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         yml_content = read_yaml_file(self.yml_path)
         arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
-        self.label = label if label is not None else arkane_spc.label
+        self.label = label or self.label or arkane_spc.label
         self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
                                        numbers=arkane_spc.conformer.number.value)
         if 'mol' in yml_content:
