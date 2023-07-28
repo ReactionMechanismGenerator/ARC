@@ -302,10 +302,10 @@ class ARCReaction(object):
             self.r_species, self.p_species = list(), list()
             for spc in species_list:
                 for r_spc_dict in reaction_dict['r_species']:
-                    if spc.label == r_spc_dict['label']:
+                    if r_spc_dict['label'] in [spc.label, spc.original_label]:
                         self.r_species.append(spc)
                 for p_spc_dict in reaction_dict['p_species']:
-                    if spc.label == p_spc_dict['label']:
+                    if p_spc_dict['label'] in [spc.label, spc.original_label]:
                         self.p_species.append(spc)
         else:
             self.r_species = [ARCSpecies(species_dict=r_dict) for r_dict in reaction_dict['r_species']] \
