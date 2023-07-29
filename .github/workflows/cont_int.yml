@@ -83,7 +83,7 @@ jobs:
       with:
         repository: ReactionMechanismGenerator/AutoTST
         path: AutoTST
-        ref: main
+        ref: descriptastorus_lock
         fetch-depth: 1
 
     - name: Cache TS-GCN
