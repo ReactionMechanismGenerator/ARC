@@ -775,7 +775,10 @@ class JobAdapter(ABC):
             total_submit_script_memory = self.job_memory_gb * 1024 * 1.05 if (self.job_memory_gb * 1024 * 1.05) <= max_mem else max_mem * 1000 # MB
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
         else:
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  if (self.job_memory_gb * 1024 * 1.1) <= max_mem else max_mem * 1000 # MB# MB
+            if max_mem is None:
+                total_submit_script_memory = self.job_memory_gb * 1024 * 1.1
+            else:
+                total_submit_script_memory = self.job_memory_gb * 1024 * 1.1 if (self.job_memory_gb * 1024 * 1.1) <= max_mem else max_mem * 1000  # MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'htcondor']:
