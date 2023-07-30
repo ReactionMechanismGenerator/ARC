@@ -891,19 +891,18 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
                     if qchem_term_count == 0:
                         done = True
                     i += 1
-                elif 'OPTIMIZATION CONVERGED' in lines[i] and "Coordinates (Angstroms)" in lines[i+3]:
-                    i += 5
-                    xyz_str, skip_traj = '', False
-                    
-                    while len(lines) and lines[i] != "\n" and 'Z-matrix Print:\n' not in lines[i+1]:
+                elif 'Standard Nuclear Orientation (Angstroms)' in lines[i]:
+                    i += 3  # Skip the headers
+                    xyz_str = ''
+                    # Keep reading until we encounter a line of hyphens
+                    while not lines[i].startswith(' ---'):
                         splits = lines[i].split()
+                        # X, Y, and Z are in indices 2, 3, and 4 respectively
                         xyz_str += f'{splits[1]}  {splits[2]}  {splits[3]}  {splits[4]}\n'
                         i += 1
-                    
-                    if not skip_traj:
-                        traj.append(str_to_xyz(xyz_str))
+                    traj.append(str_to_xyz(xyz_str))
                 else:
-                    i += 1 
+                    i += 1
 
         elif type(log) not in [GaussianLog, QChemLog]:
             raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
