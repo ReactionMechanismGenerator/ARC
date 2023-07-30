@@ -165,7 +165,7 @@ $rem
    METHOD        b3lyp
    UNRESTRICTED  TRUE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   IQMOL_FCHK    FALSE
 $end
 
 
@@ -185,7 +185,8 @@ $rem
    METHOD        wb97x-d
    UNRESTRICTED  TRUE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   SCF_CONVERGENCE 8
+   IQMOL_FCHK    FALSE
 $end
 
 
@@ -213,29 +214,12 @@ $rem
    METHOD        wb97x-d
    UNRESTRICTED  FALSE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   IQMOL_FCHK    FALSE
 $end
 
 
 $scan
-tors 5 1 2 3 4 180 8.0
-$end
-
-@@@
-
-$molecule
-read
-$end
-$rem
-   JOBTYPE       pes_scan
-   METHOD        wb97x-d
-   UNRESTRICTED  FALSE
-   BASIS         def2-TZVP
-   QMOL_FCHK    TRUE
-   SCF_GUESS read
-$end
-$scan
-tors 5 1 2 3 -180 -4 8.0
+tors 5 1 2 3 -180.0 180 8.0
 $end
 
 
@@ -254,7 +238,8 @@ $rem
    METHOD        wb97x-d
    UNRESTRICTED  TRUE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   SCF_CONVERGENCE 8
+   IQMOL_FCHK    FALSE
 $end
 
 
@@ -274,7 +259,7 @@ $rem
    METHOD        wb97x-d
    UNRESTRICTED  TRUE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   IQMOL_FCHK    FALSE
 $end
 
 
@@ -294,7 +279,7 @@ $rem
    METHOD        wb97x-d
    UNRESTRICTED  FALSE
    BASIS         def2-TZVP
-   IQMOL_FCHK    TRUE
+   IQMOL_FCHK    FALSE
 $end
 
 
@@ -335,11 +320,6 @@ $end
                                     'local': os.path.join(self.job_3.local_path, output_filenames[self.job_3.job_adapter]),
                                     'remote': os.path.join(self.job_3.remote_path, output_filenames[self.job_3.job_adapter]),
                                     'source': 'path',
-                                    'make_x': False},
-                                   {'file_name': 'input.fchk',
-                                    'local': os.path.join(self.job_3.local_path, 'input.fchk'),
-                                    'remote': os.path.join(self.job_3.remote_path, 'input.fchk'),
-                                    'source': 'path',
                                     'make_x': False}]
         self.assertEqual(self.job_3.files_to_upload, job_3_files_to_upload)
         self.assertEqual(self.job_3.files_to_download, job_3_files_to_download)
@@ -365,8 +345,8 @@ $end
         self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
 
     def test_QChemAdapter_def2tzvp(self):
-        """Test a QChem job using def2-TZVP"""
-        self.assertEqual(self.job_9.level.basis, 'def2-TZVP')
+        """Test a QChem job using def2-tzvp"""
+        self.assertEqual(self.job_9.level.basis, 'def2-tzvp')
 
     @classmethod
     def tearDownClass(cls):
