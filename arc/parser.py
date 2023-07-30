@@ -149,7 +149,7 @@ def parse_frequencies(path: str,
 
 def parse_normal_mode_displacement(path: str,
                                    software: Optional[str] = None,
-                                   raise_error: bool = True,
+                                   raise_error: bool = True, # TODO: Why is this true? What is it supposed to do?
                                    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Parse frequencies and normal mode displacement.
@@ -209,6 +209,36 @@ def parse_normal_mode_displacement(path: str,
             elif parse and 'Atom  AN      X      Y      Z' in line or 'Atom AN      X      Y      Z' in line:
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
+                parse = False
+    if software == 'qchem':
+        number_freqs_per_line = 3
+        parse, parse_normal_mode_disp = False, False
+        for line in lines + ['']:
+            if 'VIBRATIONAL FREQUENCIES (CM**-1) AND NORMAL MODES' in line:
+                parse = True
+            if parse and len(line.split()) in [0, 1, 3] or parse and 'TransDip' in line:
+                parse_normal_mode_disp = False
+                normal_mode_disp.extend(normal_mode_disp_entries)
+                normal_mode_disp_entries = list()
+            if parse and 'Frequency:' in line:
+                splits = line.split()
+                freqs.extend(float(freq) for freq in splits[1:])
+                number_freqs_per_line = len(splits) - 1
+                normal_mode_disp_entries = list()
+            elif parse_normal_mode_disp:
+                # parsing, e.g.:
+                #                X      Y      Z        X      Y      Z        X      Y      Z
+                #  C         -0.000 -0.000 -0.000   -0.000 -0.000 -0.072   -0.000  0.136 -0.000
+                #  C          0.000 -0.000  0.000    0.000 -0.000  0.036    0.000  0.131  0.000
+                # TODO:  TransDip  -0.000 -0.000 -0.000   -0.000  0.000 -0.029    0.000 -0.016 -0.000 
+                splits = line.split()[1:]
+                for i in range(number_freqs_per_line):
+                    if len(normal_mode_disp_entries) < i + 1:
+                        normal_mode_disp_entries.append(list())
+                    normal_mode_disp_entries[i].append(splits[3 * i: 3 * i + 3])
+            elif parse and 'X      Y      Z' in line:
+                parse_normal_mode_disp = True
+            elif parse and not line or 'TransDip' in line:
                 parse = False
     elif raise_error:
         raise NotImplementedError(f'parse_normal_mode_displacement() is currently not implemented for {software}.')
@@ -470,30 +500,68 @@ def parse_1d_scan_coords(path: str) -> List[Dict[str, tuple]]:
 
     lines = _get_lines_from_file(path)
     log = ess_factory(fullpath=path, check_for_errors=False)
-    if not isinstance(log, GaussianLog):
-        raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files, got {type(log)}')
-    done = False
-    i = 0
-    while not done:
-        if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
-            done = True
-        elif 'Optimization completed' in lines[i]:
-            while i < len(lines) + 10 and 'Input orientation:' not in lines[i] or 'Forces (Hartrees/Bohr)' in lines [i + 7]:
+
+    if isinstance(log, GaussianLog):
+        done = False
+        i = 0
+        while not done:
+            if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+                done = True
+            elif 'Optimization completed' in lines[i]:
+                while i < len(lines) + 10 and 'Input orientation:' not in lines[i] or 'Forces (Hartrees/Bohr)' in lines [i + 7]:
+                    i += 1
+                    if 'Error termination via' in lines[i]:
+                        return traj
+                i += 5
+                xyz_str, skip_traj = '', False
+                while len(lines) and '--------------------------------------------' not in lines[i]:
+                    if 'DIIS: error' in lines[i]:
+                        skip_traj = True
+                        break
+                    splits = lines[i].split()
+                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                    i += 1
+                if not skip_traj:
+                    traj.append(str_to_xyz(xyz_str))
+            i += 1  
+    if isinstance(log, QChemLog):
+        done = False
+        i = 0
+        # In our QChem scans, we usually run two jobs in one input file. Since there are two jobs, the input file will have
+        # two "Thank you very much for using Q-Chem" lines. Therefore, in order to stop the parsing from ending prematurely,
+        # we count the number of "Thank you very much for using Q-Chem" lines
+        qchem_term_count = 0
+        qchem_term_line = lines.copy()
+        for qlines in qchem_term_line:
+            if 'Thank you very much for using Q-Chem' in qlines:
+                qchem_term_count += 1
+        while not done:
+            if i >=len(lines):
+                done = True
+            elif 'Thank you very much for using Q-Chem' in lines[i]:
+                # Once we reach a "Thank you very much for using Q-Chem" line, we decrement the count by 1
+                # If the count is not 0, we continue parsing
+                # If the count is 0, we are done parsing
+                qchem_term_count -= 1
+                if qchem_term_count == 0:
+                    done = True
                 i += 1
-                if 'Error termination via' in lines[i]:
-                    return traj
-            i += 5
-            xyz_str, skip_traj = '', False
-            while len(lines) and '--------------------------------------------' not in lines[i]:
-                if 'DIIS: error' in lines[i]:
-                    skip_traj = True
-                    break
-                splits = lines[i].split()
-                xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
-                i += 1
-            if not skip_traj:
-                traj.append(str_to_xyz(xyz_str))
-        i += 1
+            elif 'OPTIMIZATION CONVERGED' in lines[i] and "Coordinates (Angstroms)" in lines[i+3]:
+                i += 5
+                xyz_str, skip_traj = '', False
+                
+                while len(lines) and lines[i] != "\n" and 'Z-matrix Print:\n' not in lines[i+1]:
+                    splits = lines[i].split()
+                    xyz_str += f'{splits[1]}  {splits[2]}  {splits[3]}  {splits[4]}\n'
+                    i += 1
+                
+                if not skip_traj:
+                    traj.append(str_to_xyz(xyz_str))
+            else:
+                i += 1 
+    elif not isinstance(log, GaussianLog):
+        raise NotImplementedError(f'Currently parse_1d_scan_coords only supports Gaussian files and QChem, got {type(log)}')
+
     return traj
 
 
@@ -784,23 +852,61 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
             ess_file = False
 
     if ess_file:
-        if not isinstance(log, GaussianLog):
-            raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
-        traj = list()
-        done = False
-        i = 0
-        while not done:
-            if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
-                done = True
-            elif 'Input orientation:' in lines[i]:
-                i += 5
-                xyz_str = ''
-                while len(lines) and '--------------------------------------------' not in lines[i]:
-                    splits = lines[i].split()
-                    xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+        if isinstance(log, GaussianLog):
+            traj = list()
+            done = False
+            i = 0
+            while not done:
+                if i >= len(lines) or 'Normal termination of Gaussian' in lines[i] or 'Error termination via' in lines[i]:
+                    done = True
+                elif 'Input orientation:' in lines[i]:
+                    i += 5
+                    xyz_str = ''
+                    while len(lines) and '--------------------------------------------' not in lines[i]:
+                        splits = lines[i].split()
+                        xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
+                        i += 1
+                    traj.append(str_to_xyz(xyz_str))
+                i += 1
+        elif isinstance(log, QChemLog):
+            traj = list()
+            done = False
+            i = 0
+            # In our QChem scans, we usually run two jobs in one input file. Since there are two jobs, the input file will have
+            # two "Thank you very much for using Q-Chem" lines. Therefore, in order to stop the parsing from ending prematurely,
+            # we count the number of "Thank you very much for using Q-Chem" lines
+            qchem_term_count = 0
+            qchem_term_line = lines.copy()
+            for qlines in qchem_term_line:
+                if 'Thank you very much for using Q-Chem' in qlines:
+                    qchem_term_count += 1
+            while not done:
+                if i >=len(lines):
+                    done = True
+                elif 'Thank you very much for using Q-Chem' in lines[i]:
+                    # Once we reach a "Thank you very much for using Q-Chem" line, we decrement the count by 1
+                    # If the count is not 0, we continue parsing
+                    # If the count is 0, we are done parsing
+                    qchem_term_count -= 1
+                    if qchem_term_count == 0:
+                        done = True
                     i += 1
-                traj.append(str_to_xyz(xyz_str))
-            i += 1
+                elif 'OPTIMIZATION CONVERGED' in lines[i] and "Coordinates (Angstroms)" in lines[i+3]:
+                    i += 5
+                    xyz_str, skip_traj = '', False
+                    
+                    while len(lines) and lines[i] != "\n" and 'Z-matrix Print:\n' not in lines[i+1]:
+                        splits = lines[i].split()
+                        xyz_str += f'{splits[1]}  {splits[2]}  {splits[3]}  {splits[4]}\n'
+                        i += 1
+                    
+                    if not skip_traj:
+                        traj.append(str_to_xyz(xyz_str))
+                else:
+                    i += 1 
+
+        elif type(log) not in [GaussianLog, QChemLog]:
+            raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
 
     else:
         # this is not an ESS output file, probably an XYZ format file with several Cartesian coordinates
@@ -1069,8 +1175,8 @@ def parse_scan_args(file_path: str) -> dict:
     Returns: dict
         A dictionary that contains the scan arguments as well as step number, step size, number of atom::
 
-              {'scan': <list, atom indexes of the torsion to be scanned>,
-               'freeze': <list, list of internal coordinates identified by atom indexes>,
+              {'scan': <list, atom indices of the torsion to be scanned>,
+               'freeze': <list, list of internal coordinates identified by atom indices>,
                'step': <int, number of steps to scan>,
                'step_size': <float, the size of each step>,
                'n_atom': <int, the number of atoms of the molecule>,
@@ -1106,8 +1212,22 @@ def parse_scan_args(file_path: str) -> dict:
                 scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
             if 'NAtoms' in line:
                 scan_args['n_atom'] = int(line.split()[1])
+    elif isinstance(log, QChemLog):
+        freeze = parse_str_blocks(file_path,
+                            'FIXED',
+                            'ENDFIXED', regex=False)
+        atoms = len(parse_str_blocks(file_path,
+                                     '$molecule',
+                                     '$end', regex=False)[0])-3
+        
+        scan_blk = parse_str_blocks(file_path, "$scan", "$end", regex=False)[0][1:-1]
+        scan_args['scan'] = list(map(int, scan_blk[0][:-2].split(sep=" ")[1:-3]))
+        scan_args['freeze'] = freeze if len(freeze) > 0 else [] # todo- find an example with freeze
+        scan_args['step'] = 360//int(float(scan_blk[0].split(" ")[-1].split(sep="\n")[0]))
+        scan_args['step_size'] = float(scan_blk[0].split(" ")[-1].split(sep="\n")[0])
+        scan_args['n_atom'] = atoms
     else:
-        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian output '
+        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian and QChem output '
                                   f'files, got {log}')
     return scan_args
 
@@ -1169,6 +1289,9 @@ def parse_ic_info(file_path: str) -> pd.DataFrame:
             else:
                 # Currently doesn't support scan of angles.
                 ic_dict['scan'].append(False)
+    elif isinstance(log, QChemLog):
+        pass
+
     else:
         raise NotImplementedError(f'parse_ic_info() can currently only parse Gaussian output '
                                   f'files, got {log}')
