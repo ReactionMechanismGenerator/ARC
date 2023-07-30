@@ -772,10 +772,10 @@ class JobAdapter(ABC):
                            f'exceeds {100 * job_max_server_node_memory_allocation}% of the the maximum node memory on '
                            f'{self.server}. Setting it to {job_max_server_node_memory_allocation * max_mem:.2f} GB.')
             self.job_memory_gb = job_max_server_node_memory_allocation * max_mem
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.05  # MB
+            total_submit_script_memory = self.job_memory_gb * 1024 * 1.05 if (self.job_memory_gb * 1024 * 1.05) <= max_mem else max_mem * 1000 # MB
             self.job_status[1]['keywords'].append('max_total_job_memory')  # Useful info when troubleshooting.
         else:
-            total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  # MB
+            total_submit_script_memory = self.job_memory_gb * 1024 * 1.1  if (self.job_memory_gb * 1024 * 1.1) <= max_mem else max_mem * 1000 # MB# MB
         # Determine amount of memory in submit script based on cluster job scheduling system.
         cluster_software = servers[self.server].get('cluster_soft').lower() if self.server is not None else None
         if cluster_software in ['oge', 'sge', 'htcondor']:
@@ -785,8 +785,8 @@ class JobAdapter(ABC):
             # In PBS, "#PBS -l select=1:ncpus=8:mem=12000000" specifies the memory for all cores to be 12 MB.
             self.submit_script_memory = math.ceil(total_submit_script_memory) * 1E6  # in Bytes
         elif cluster_software in ['slurm']:
-            # In Slurm, "#SBATCH --mem-per-cpu=2000" specifies the memory **per cpu/thread** to be 2000 MB.
-            self.submit_script_memory = math.ceil(total_submit_script_memory / self.cpu_cores)  # in MB
+            # In Slurm, "#SBATCH --mem=2000" specifies the memory to be 2000 MB.
+            self.submit_script_memory = math.ceil(total_submit_script_memory)  # in MB
         self.set_input_file_memory()
 
     def as_dict(self) -> dict:
@@ -942,18 +942,25 @@ class JobAdapter(ABC):
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
-            local_file_path_3 = os.path.join(self.local_path, 'job.log')
-            if self.server != 'local' and self.remote_path is not None and not self.testing:
+            local_file_path_3 = None
+            for files in self.files_to_upload:
+                if 'job.sh' in files.values():
+                    local_file_path_3 = os.path.join(self.local_path, 'job.log')
+            if self.server != 'local' and self.remote_path is not None:
                 remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
                 remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
+                remote_file_path_3 = None
+                for files in self.files_to_upload:
+                    if 'job.sh' in files.values():
+                        remote_file_path_3 = os.path.join(self.remote_path, 'job.log')                        
                 with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
+
+                    local_files_to_zip = [local_file_path_1, local_file_path_2]
+                    remote_files_to_zip = [remote_file_path_1, remote_file_path_2]
+                    if local_file_path_3 and remote_file_path_3:
+                        local_files_to_zip.append(local_file_path_3)
+                        remote_files_to_zip.append(remote_file_path_3)
+                    for local_file_path, remote_file_path in zip(local_files_to_zip, remote_files_to_zip):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
                                               local_file_path=local_file_path)
@@ -963,10 +970,21 @@ class JobAdapter(ABC):
                                            f'flags with stdout and stderr of out.txt and err.txt, respectively '
                                            f'(e.g., "#SBATCH -o out.txt"). Error message:')
                             logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            for local_file_path in [path for path in [local_file_path_1, local_file_path_2, local_file_path_3] if path]:
                 if os.path.isfile(local_file_path):
-                    with open(local_file_path, 'r') as f:
-                        lines = f.readlines()
+                    with open(local_file_path, 'rb') as f:
+                        # Read the file
+                        first_bytes = f.read()
+                        # Check if the bytes contain a null byte
+                        has_null_byte = b'\x00' in first_bytes
+                        # Use the appropriate mode based on whether the file is binary or not
+                        mode = 'rb' if has_null_byte else 'r'
+                        # Read the file contents using the determined mode
+                        lines = first_bytes.decode('utf-8')
+                    if mode == 'r':
+                        with open(local_file_path, 'r') as f:
+                            lines = f.readlines()
+
                     content += ''.join([line for line in lines])
                     content += '\n'
         else:
@@ -1346,6 +1364,14 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+    
+    def remove_remote_files(self):
+        """
+        Remove the remote files.
+        """
+        if (self.server != 'local' and self.server is not None):
+            with SSHClient(self.server) as ssh:
+                ssh.remove_dir(self.remote_path)
 
     def troubleshoot_queue(self) -> bool:
         """Troubleshoot queue errors.
