@@ -392,7 +392,7 @@ def determine_ess_status(output_path: str,
                             error = f"Memory required: {memory_increase} MW"
                             break                         
                     break
-                elif 'insufficient memory available - require' in line:
+                elif 'insufficient memory available - require' in line:                           
                     # e.g.: `insufficient memory available - require              228765625  have
                     #        62928590
                     #        the request was for real words`
@@ -403,11 +403,18 @@ def determine_ess_status(output_path: str,
                     total /= 1e6
                     error = f'Memory required: {total} MW'
                     break
-                elif 'Insufficient memory to allocate' in line or 'The problem occurs in memory' in line:
+                elif 'Insufficient memory to allocate' in line:
                     # e.g.: `Insufficient memory to allocate a new array of length 321843600 8-byte words
                     #        The problem occurs in memory`
                     keywords = ['Memory']
-                    error = 'Additional memory required'
+                    numbers = re.findall(r'\d+', line)
+                    size_of_each_element_bytes = 8
+                    # Calculating total memory
+                    # Just making sure that it is 8 bytes per element
+                    assert int(numbers[1]) == size_of_each_element_bytes
+                    # Assuming this is in words, need to convert to MW.
+                    total = int(numbers[0]) / 1e6
+                    error = f'Memory required: {total} MW'
                     break
                 elif 'Basis library exhausted' in line:
                     # e.g.:
