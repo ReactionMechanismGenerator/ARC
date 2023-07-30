@@ -99,11 +99,11 @@ class TestARC(unittest.TestCase):
                          'ess_settings': {'cfour': ['local'],
                                           'gaussian': ['local', 'server2'],
                                           'gcn': ['local'],
-                                          'molpro': ['local', 'server2'],
+                                          'molpro': ['local', 'server2', 'azure'],
                                           'onedmin': ['server1'],
                                           'openbabel': ['local'],
-                                          'orca': ['local'],
-                                          'qchem': ['server1'],
+                                          'orca': ['local', 'azure'],
+                                          'qchem': ['local', 'azure'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
                                           'xtb': ['local'],
@@ -299,15 +299,15 @@ class TestARC(unittest.TestCase):
 
         # Test deduce levels from level of theory specification
         arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd')
-        self.assertEqual(arc3.opt_level.simple(), 'wb97m-v/def2tzvpd')
-        self.assertEqual(arc3.freq_level.simple(), 'wb97m-v/def2tzvpd')
+        self.assertEqual(arc3.opt_level.simple(), 'wb97m-v/def2-TZVPD')
+        self.assertEqual(arc3.freq_level.simple(), 'wb97m-v/def2-TZVPD')
         self.assertEqual(arc3.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
-        self.assertEqual(arc3.scan_level.simple(), 'wb97m-v/def2tzvpd')
+        self.assertEqual(arc3.scan_level.simple(), 'wb97m-v/def2-TZVPD')
         self.assertIsNone(arc3.orbitals_level)
 
         arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
                    sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False)
-        self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++g(3df,3pd)')
+        self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++G(3df,3pd)')
         self.assertEqual(arc4.freq_level.simple(), 'm062x/def2-tzvpp')
         self.assertEqual(arc4.sp_level.simple(), 'ccsd(t)f12/aug-cc-pvqz')
 
@@ -358,7 +358,7 @@ class TestARC(unittest.TestCase):
                     job_types={'rotors': False, 'orbitals': True}, compute_thermo=False)
         self.assertIsNone(arc12.scan_level)
         self.assertEqual(arc12.freq_level.simple(), 'b3lyp/sto-3g')
-        self.assertEqual(arc12.orbitals_level.simple(), 'wb97x-d3/def2tzvp')
+        self.assertEqual(arc12.orbitals_level.simple(), 'wb97x-d3/def2-TZVP')
 
         # Test using specified scan level
         arc13 = ARC(project='test', level_of_theory='b3lyp/sto-3g', calc_freq_factor=False, scan_level='apfd/def2svp',
