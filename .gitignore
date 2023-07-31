@@ -53,6 +53,10 @@ timer.dat
 # .vscode
 .vscode
 
+# files created via testing
+nul
+run.out
+
 # .trunk folder
 .trunk
 

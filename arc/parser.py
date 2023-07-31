@@ -149,7 +149,7 @@ def parse_frequencies(path: str,
 
 def parse_normal_mode_displacement(path: str,
                                    software: Optional[str] = None,
-                                   raise_error: bool = True, # TODO: Why is this true? What is it supposed to do?
+                                   raise_error: bool = False, # TODO: Why is this true? What is it supposed to do?
                                    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Parse frequencies and normal mode displacement.
@@ -210,7 +210,7 @@ def parse_normal_mode_displacement(path: str,
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
-    if software == 'qchem':
+    elif software == 'qchem':
         number_freqs_per_line = 3
         parse, parse_normal_mode_disp = False, False
         for line in lines + ['']:
