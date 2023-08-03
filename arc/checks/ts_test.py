@@ -353,6 +353,27 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertAlmostEquals(rxn_copy.p_species[0].e0, -306902.397, places=1)
         self.assertAlmostEquals(rxn_copy.ts_species.e0, -306655.822, places=1)
 
+    def test_check_rxn_e0(self):
+        """Test the check_rxn_e0() function."""
+        for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
+            folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
+            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
+            os.makedirs(base_path)
+            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
+        rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
+                                     species_dict=self.species_dict_8,
+                                     project_directory=self.project_directory_8,
+                                     kinetics_adapter='arkane',
+                                     output=self.output_dict_8,
+                                     sp_level=Level(repr='uhf/3-21g'),
+                                     freq_scale_factor=1.0,
+                                     )
+
+        self.assertIsNone(rxn_copy.ts_species.ts_checks['E0'])
+        ts.check_rxn_e0(reaction=rxn_copy, verbose=True)
+        self.assertTrue(rxn_copy.ts_species.ts_checks['E0'])
+
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
         self.rxn_2a.ts_species.populate_ts_checks()
