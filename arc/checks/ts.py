@@ -190,34 +190,31 @@ def compute_rxn_e0(reaction: 'ARCReaction',
 
 def check_rxn_e0(reaction: 'ARCReaction',
                  verbose: bool = True,
-                 ) -> Optional[bool]:
+                 ):
     """
     Check the E0 values between wells and a TS in a ``reaction``, assuming that E0 values are available.
 
     Args:
         reaction (ARCReaction): The reaction to consider.
         verbose (bool, optional): Whether to print logging messages.
-
-    Returns:
-        Optional[bool]: Whether the Ts E0 is above both R and P E0 wells.
     """
     if reaction.ts_species.ts_checks['E0']:
-        return True
+        return
     r_e0 = sum_list_entries([r.e0 for r in reaction.r_species],
                             multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
     p_e0 = sum_list_entries([p.e0 for p in reaction.p_species],
                             multipliers=[reaction.get_species_count(species=p, well=1) for p in reaction.p_species])
     ts_e0 = reaction.ts_species.e0
-    if verbose:
-        report_ts_and_wells_energy(r_e=r_e0, p_e=p_e0, ts_e=ts_e0, rxn_label=reaction.label, ts_label=reaction.ts_label,
-                                   chosen_ts=reaction.ts_species.chosen_ts, energy_type='E0')
     if any(e0 is None for e0 in [r_e0, p_e0, ts_e0]):
-        return None
-    if r_e0 >= ts_e0 or p_e0 >= ts_e0:
-        reaction.ts_species.ts_checks['E0'] = False
-        return False
-    reaction.ts_species.ts_checks['E0'] = True
-    return True
+        reaction.ts_species.ts_checks['E0'] = None
+    else:
+        if verbose:
+            report_ts_and_wells_energy(r_e=r_e0, p_e=p_e0, ts_e=ts_e0, rxn_label=reaction.label, ts_label=reaction.ts_label,
+                                       chosen_ts=reaction.ts_species.chosen_ts, energy_type='E0')
+        if r_e0 >= ts_e0 or p_e0 >= ts_e0:
+            reaction.ts_species.ts_checks['E0'] = False
+        else:
+            reaction.ts_species.ts_checks['E0'] = True
 
 
 def report_ts_and_wells_energy(r_e: float,
