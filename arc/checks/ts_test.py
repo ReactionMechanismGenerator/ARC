@@ -254,41 +254,41 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertTrue(ts.ts_passed_all_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
         spc.ts_checks['e_elect'] = False
 
-    def test_check_ts_energy(self):
-        """Test the check_ts_energy() function."""
+    def test_check_rxn_e_elect(self):
+        """Test the check_rxn_e_elect() function."""
         rxn1 = ARCReaction(r_species=[ARCSpecies(label='s1', smiles='C')], p_species=[ARCSpecies(label='s2', smiles='C')])
         rxn1.ts_species = ARCSpecies(label='TS', is_ts=True)
         # no data
         rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
+        ts.check_rxn_e_elect(reaction=rxn1)
         self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
         # only E0 (incorrect)
         rxn1.r_species[0].e0 = 2
         rxn1.p_species[0].e0 = 50
         rxn1.ts_species.e0 = -100
         rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
+        ts.check_rxn_e_elect(reaction=rxn1)
         self.assertFalse(rxn1.ts_species.ts_checks['E0'])
         # only E0 (partial data)
         rxn1.r_species[0].e0 = 2
         rxn1.p_species[0].e0 = None
         rxn1.ts_species.e0 = -100
         rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
+        ts.check_rxn_e_elect(reaction=rxn1)
         self.assertIsNone(rxn1.ts_species.ts_checks['e_elect'])
         # check e_elect (correct)
         rxn1.r_species[0].e_elect = 2
         rxn1.p_species[0].e_elect = 50
         rxn1.ts_species.e_elect = 100
         rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
+        ts.check_rxn_e_elect(reaction=rxn1)
         self.assertTrue(rxn1.ts_species.ts_checks['e_elect'])
         # incorrect e_elect
         rxn1.r_species[0].e_elect = 2
         rxn1.p_species[0].e_elect = 50
         rxn1.ts_species.e_elect = -100
         rxn1.ts_species.populate_ts_checks()
-        ts.check_ts_energy(reaction=rxn1)
+        ts.check_rxn_e_elect(reaction=rxn1)
         self.assertFalse(rxn1.ts_species.ts_checks['e_elect'])
 
     def test_determine_changing_bond(self):
