@@ -138,15 +138,14 @@ def check_rxn_e_elect(reaction: 'ARCReaction',
         reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
 
 
-def compute_and_check_rxn_e0(reaction: 'ARCReaction',
-                             species_dict: dict,
-                             project_directory: str,
-                             kinetics_adapter: str,
-                             output: dict,
-                             sp_level: 'Level',
-                             freq_scale_factor: float = 1.0,
-                             verbose: bool = True,
-                             ) -> Optional[bool]:
+def compute_rxn_e0(reaction: 'ARCReaction',
+                   species_dict: dict,
+                   project_directory: str,
+                   kinetics_adapter: str,
+                   output: dict,
+                   sp_level: 'Level',
+                   freq_scale_factor: float = 1.0,
+                   ) -> Optional['ARCReaction']:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
 
@@ -158,11 +157,9 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
         output (dict): The Scheduler output dictionary.
         sp_level (Level): The single-point energy level of theory.
         freq_scale_factor (float, optional): The frequency scaling factor.
-        verbose (bool, optional): Whether to print logging messages.
 
     Returns:
-        Optional[bool]: Whether the test failed and the scheduler should switch to a different TS guess,
-                        ``None`` if the test couldn't be performed.
+        Optional['ARCReaction']: A copy of the reaction object with E0 values populated.
     """
     for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
         folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
@@ -187,12 +184,7 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    e0_pass = check_rxn_e0(reaction=rxn_copy, verbose=verbose)
-    if not e0_pass:
-        if rxn_copy.ts_species.ts_guesses_exhausted:
-            return False
-        return True
-    return False
+    return rxn_copy
 
 
 def check_rxn_e0(reaction: 'ARCReaction',
