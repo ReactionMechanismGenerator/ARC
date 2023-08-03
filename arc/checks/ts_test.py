@@ -215,6 +215,24 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                    (-1.1189110146736851, -0.8090395034382198, 0.6657966599789673),
                                    (-1.1265684046717404, -0.2344009055503307, -1.0127644068816903))}
 
+        cls.species_dict_8 = {spc.label: spc for spc in cls.rxn_8.r_species + cls.rxn_8.p_species + [cls.rxn_8.ts_species]}
+        cls.project_directory_8 = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
+        cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
+                                                 'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+                                                 'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+                                                 'composite': ''},
+                                       'convergence': True},
+                             'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
+                                                 'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+                                                 'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+                                                 'composite': ''},
+                                       'convergence': True},
+                             'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
+                                               'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                                               'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                                               'composite': ''},
+                                     'convergence': True}}
+
     def test_check_ts(self):
         """Test the check_ts() function."""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
@@ -309,48 +327,31 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         change = ts.determine_changing_bond(bond=(0, 1), dmat_bonds_1=dmat_bonds_2, dmat_bonds_2=dmat_bonds_1)
         self.assertEqual(change, 'breaking')
 
-    def test_compute_and_check_rxn_e0(self):
-        """Test the compute_and_check_rxn_e0() function."""
-        species_dict = {spc.label: spc for spc in self.rxn_8.r_species + self.rxn_8.p_species + [self.rxn_8.ts_species]}
-        project_directory = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
-        output_dict = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
-                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                           'composite': '',
-                                           },
-                                 'convergence': True,
-                                 },
-                       'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
-                                           'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                           'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                           'composite': '',
-                                           },
-                                 'convergence': True,
-                                 },
-                       'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
-                                         'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                         'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                         'composite': '',
-                                         },
-                               'convergence': True,
-                               },
-                       }
+    def test_compute_rxn_e0(self):
+        """Test the compute_rxn_e0() function."""
         for spc_label in self.rxn_8.reactants + self.rxn_8.products + [self.rxn_8.ts_label]:
-            folder = 'rxns' if species_dict[spc_label].is_ts else 'Species'
-            base_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry')
+            folder = 'rxns' if self.species_dict_8[spc_label].is_ts else 'Species'
+            base_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry')
             os.makedirs(base_path)
-            freq_path = os.path.join(project_directory, 'output', folder, spc_label, 'geometry', 'freq.out')
-            shutil.copy(src=output_dict[spc_label]['paths']['freq'], dst=freq_path)
+            freq_path = os.path.join(self.project_directory_8, 'output', folder, spc_label, 'geometry', 'freq.out')
+            shutil.copy(src=self.output_dict_8[spc_label]['paths']['freq'], dst=freq_path)
 
-        check_e0 = ts.compute_and_check_rxn_e0(reaction=self.rxn_8,
-                                               species_dict=species_dict,
-                                               project_directory=project_directory,
-                                               kinetics_adapter='arkane',
-                                               output=output_dict,
-                                               sp_level=Level(repr='uhf/3-21g'),
-                                               freq_scale_factor=1.0,
-                                               )
-        self.assertFalse(check_e0)  # Tests whether a TS switch is needed. The E0 check passes, thus we expect ``False``.
+        self.assertIsNone(self.rxn_8.r_species[0].e0)
+        self.assertIsNone(self.rxn_8.p_species[0].e0)
+        self.assertIsNone(self.rxn_8.ts_species.e0)
+
+        rxn_copy = ts.compute_rxn_e0(reaction=self.rxn_8,
+                                     species_dict=self.species_dict_8,
+                                     project_directory=self.project_directory_8,
+                                     kinetics_adapter='arkane',
+                                     output=self.output_dict_8,
+                                     sp_level=Level(repr='uhf/3-21g'),
+                                     freq_scale_factor=1.0,
+                                     )
+
+        self.assertAlmostEquals(rxn_copy.r_species[0].e0, -306893.334, places=1)
+        self.assertAlmostEquals(rxn_copy.p_species[0].e0, -306902.397, places=1)
+        self.assertAlmostEquals(rxn_copy.ts_species.e0, -306655.822, places=1)
 
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
