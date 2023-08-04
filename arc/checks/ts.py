@@ -76,17 +76,18 @@ def check_ts(reaction: 'ARCReaction',
             raise ValueError(f"Requested checks could be 'energy', 'freq', 'IRC', or 'rotors', got:\n{checks}")
 
     if 'energy' in checks:
+        rxn_copy = None
         if not reaction.ts_species.ts_checks['E0'] \
                 and all(val is not None for val in [species_dict, project_directory, kinetics_adapter,
                                                     output, sp_level, freq_scale_factor]):
-            compute_rxn_e0(reaction=reaction,
-                           species_dict=species_dict,
-                           project_directory=project_directory,
-                           kinetics_adapter=kinetics_adapter,
-                           output=output,
-                           sp_level=sp_level,
-                           freq_scale_factor=freq_scale_factor)
-        check_rxn_e0(reaction=reaction, verbose=verbose)
+            rxn_copy = compute_rxn_e0(reaction=reaction,
+                                      species_dict=species_dict,
+                                      project_directory=project_directory,
+                                      kinetics_adapter=kinetics_adapter,
+                                      output=output,
+                                      sp_level=sp_level,
+                                      freq_scale_factor=freq_scale_factor)
+        check_rxn_e0(reaction=rxn_copy or reaction, verbose=verbose)
         if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
             check_rxn_e_elect(reaction=reaction, verbose=verbose)
 
