@@ -2436,8 +2436,7 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
             if label in labels and rxn.ts_species.ts_checks['E0'] is None \
-                    and all([(species_has_sp(output_dict, self.species_dict[spc_label].yml_path)
-                              and species_has_freq(output_dict, self.species_dict[spc_label].yml_path))
+                    and all([species_has_sp_and_freq(output_dict, self.species_dict[spc_label].yml_path)
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
                 check_ts(reaction=rxn,
                          checks=['energy'],
@@ -3676,3 +3675,18 @@ def species_has_sp(species_output_dict: dict,
         return True
     return False
 
+
+def species_has_sp_and_freq(species_output_dict: dict,
+                            yml_path: Optional[str] = None,
+                            ) -> bool:
+    """
+    Checks whether a species has a valid converged single-point energy and valid converged frequencies.
+
+    Args:
+        species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+        yml_path (str): THe species Arkane YAML file path.
+
+    Returns: bool
+        Whether a species has a valid converged single-point energy and frequencies.
+    """
+    return species_has_sp(species_output_dict, yml_path) and species_has_freq(species_output_dict, yml_path)
