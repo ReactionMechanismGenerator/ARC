@@ -86,7 +86,8 @@ def check_ts(reaction: 'ARCReaction',
                                       output=output,
                                       sp_level=sp_level,
                                       freq_scale_factor=freq_scale_factor)
-            reaction.copy_e0_values(rxn_copy)
+            if rxn_copy is not None:
+                reaction.copy_e0_values(rxn_copy)
         check_rxn_e0(reaction=reaction, verbose=verbose)
         if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
             check_rxn_e_elect(reaction=reaction, verbose=verbose)
