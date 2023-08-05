@@ -960,6 +960,21 @@ class ARCReaction(object):
                 len_atoms += spc.number_of_atoms
         return r_bonds, p_bonds
 
+    def copy_e0_values(self, other_rxn: Optional['ARCReaction']):
+        """
+        Copy the E0 values from another reaction object instance for the TS
+        and for all species if they have corresponding labels.
+
+        Args:
+            other_rxn (ARCReaction): An ARCReaction object instance from which E0 values will be copied.
+        """
+        if other_rxn is not None:
+            self.ts_species.e0 = self.ts_species.e0 or other_rxn.ts_species.e0
+            for spc in self.r_species + self.p_species:
+                for other_spc in other_rxn.r_species + other_rxn.p_species:
+                    if spc.label == other_spc.label:
+                        spc.e0 = spc.e0 or other_spc.e0
+
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
     """
