@@ -2195,8 +2195,6 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
-                if success:
-                    self.check_rxn_e0_by_spc(label)
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
