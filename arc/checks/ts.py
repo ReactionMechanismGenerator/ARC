@@ -76,9 +76,7 @@ def check_ts(reaction: 'ARCReaction',
             raise ValueError(f"Requested checks could be 'energy', 'freq', 'IRC', or 'rotors', got:\n{checks}")
 
     if 'energy' in checks:
-        if not reaction.ts_species.ts_checks['E0'] \
-                and all(val is not None for val in [species_dict, project_directory, kinetics_adapter,
-                                                    output, sp_level, freq_scale_factor]):
+        if not reaction.ts_species.ts_checks['E0']:
             rxn_copy = compute_rxn_e0(reaction=reaction,
                                       species_dict=species_dict,
                                       project_directory=project_directory,
@@ -191,6 +189,9 @@ def compute_rxn_e0(reaction: 'ARCReaction',
     Returns:
         Optional['ARCReaction']: A copy of the reaction object with E0 values populated.
     """
+    if any(val is None for val in [species_dict, project_directory, kinetics_adapter,
+                                   output, sp_level, freq_scale_factor]):
+        return None
     for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
         folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
         freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
