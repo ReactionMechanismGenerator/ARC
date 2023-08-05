@@ -37,10 +37,16 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = settings['LOWEST_MAJOR_TS_FREQ'], 
 
 
 def check_ts(reaction: 'ARCReaction',
-             verbose: bool = True,
              job: Optional['JobAdapter'] = None,
              checks: Optional[List[str]] = None,
              rxn_zone_atom_indices: Optional[List[int]] = None,
+             species_dict: Optional[dict] = None,
+             project_directory: Optional[str] = None,
+             kinetics_adapter: Optional[str] = None,
+             output: Optional[dict] = None,
+             sp_level: Optional['Level'] = None,
+             freq_scale_factor: float = 1.0,
+             verbose: bool = True,
              ):
     """
     Check the TS in terms of energy, normal mode displacement, and IRC.
@@ -52,19 +58,36 @@ def check_ts(reaction: 'ARCReaction',
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
-        verbose (bool, optional): Whether to print logging messages.
         job (JobAdapter, optional): The frequency job object instance.
         checks (List[str], optional): Specific checks to run. Optional values: 'energy', 'freq', 'IRC', 'rotors'.
         rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal mode displacement
                                                      as the reaction zone. Automatically determined if not given.
+        species_dict (dict, optional): The Scheduler species dictionary.
+        project_directory (str, optional): The path to ARC's project directory.
+        kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
+        output (dict, optional): The Scheduler output dictionary.
+        sp_level (Level, optional): The single-point energy level of theory.
+        freq_scale_factor (float, optional): The frequency scaling factor.
+        verbose (bool, optional): Whether to print logging messages.
     """
     checks = checks or list()
     for entry in checks:
         if entry not in ['energy', 'freq', 'IRC', 'rotors']:
             raise ValueError(f"Requested checks could be 'energy', 'freq', 'IRC', or 'rotors', got:\n{checks}")
 
-    if 'energy' in checks or not reaction.ts_species.ts_checks['e_elect']:
-        check_rxn_e_elect(reaction=reaction, verbose=verbose)
+    if 'energy' in checks:
+        if not reaction.ts_species.ts_checks['E0']:
+            rxn_copy = compute_rxn_e0(reaction=reaction,
+                                      species_dict=species_dict,
+                                      project_directory=project_directory,
+                                      kinetics_adapter=kinetics_adapter,
+                                      output=output,
+                                      sp_level=sp_level,
+                                      freq_scale_factor=freq_scale_factor)
+            reaction.copy_e0_values(rxn_copy)
+        check_rxn_e0(reaction=reaction, verbose=verbose)
+        if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
+            check_rxn_e_elect(reaction=reaction, verbose=verbose)
 
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
         check_normal_mode_displacement(reaction, job=job)
@@ -162,6 +185,9 @@ def compute_rxn_e0(reaction: 'ARCReaction',
     Returns:
         Optional['ARCReaction']: A copy of the reaction object with E0 values populated.
     """
+    if any(val is None for val in [species_dict, project_directory, kinetics_adapter,
+                                   output, sp_level, freq_scale_factor]):
+        return None
     for spc in reaction.r_species + reaction.p_species + [reaction.ts_species]:
         folder = 'rxns' if species_dict[spc.label].is_ts else 'Species'
         freq_path = os.path.join(project_directory, 'output', folder, spc.label, 'geometry', 'freq.out')
