@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn, compute_and_check_rxn_e0
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -2193,8 +2193,6 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
-                if success:
-                    self.check_rxn_e0_by_spc(label)
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -2431,20 +2429,22 @@ class Scheduler(object):
         """
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
-            if label in labels and not rxn.ts_species.ts_checks['E0'] \
+            if label in labels and rxn.ts_species.ts_checks['E0'] is None \
                     and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
                              or self.species_dict[spc_label].yml_path is not None
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
-                switch_ts = compute_and_check_rxn_e0(reaction=rxn,
-                                                     species_dict=self.species_dict,
-                                                     project_directory=self.project_directory,
-                                                     kinetics_adapter=self.kinetics_adapter,
-                                                     output=self.output,
-                                                     sp_level=self.sp_level if not self.composite_method else self.composite_method,
-                                                     freq_scale_factor=self.freq_scale_factor,
-                                                     )
-                if switch_ts is True:
-                    logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
+                check_ts(reaction=rxn,
+                         checks=['energy'],
+                         species_dict=self.species_dict,
+                         project_directory=self.project_directory,
+                         kinetics_adapter=self.kinetics_adapter,
+                         output=self.output,
+                         sp_level=self.sp_level if not self.composite_method else self.composite_method,
+                         freq_scale_factor=self.freq_scale_factor,
+                         verbose=True,
+                         )
+                if rxn.ts_species.ts_checks['E0'] is False:
+                    logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Switching TS.\n')
                     self.switch_ts(rxn.ts_label)
 
