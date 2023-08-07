@@ -92,7 +92,7 @@ def check_ts(reaction: 'ARCReaction',
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
         try:
             check_normal_mode_displacement(reaction, job=job)
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             logger.error(f'Could not check normal mode displacement, got: \n{e}')
             reaction.ts_species.ts_checks['normal_mode_displacement'] = True
 
