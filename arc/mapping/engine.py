@@ -197,8 +197,12 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
                                                            )
     for rmg_reaction in rmg_reactions:
         r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
-        ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
-        ordered_rmg_products = [rmg_reaction.products[p_map[i]] for i in range(len(rmg_reaction.products))]
+        try:
+            ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
+            ordered_rmg_products = [rmg_reaction.products[p_map[i]] for i in range(len(rmg_reaction.products))]
+        except KeyError:
+            logger.warning(f'Got a problematic RMG rxn from ARC rxn, trying again')
+            continue
         mapped_rmg_reactants, mapped_rmg_products = list(), list()
         for ordered_rmg_mols, arc_species, mapped_mols in zip([ordered_rmg_reactants, ordered_rmg_products],
                                                               [arc_reaction.r_species, arc_reaction.p_species],
