@@ -302,7 +302,7 @@ class HeuristicsAdapter(JobAdapter):
                     rxn.ts_species.ts_guesses.append(ts_guess)
                     save_geo(xyz=xyz,
                              path=self.local_path,
-                             filename=f'Heuristics {method_index}',
+                             filename=f'Heuristics_{method_index}',
                              format_='xyz',
                              comment=f'Heuristics {method_index}, family: {family_label}',
                              )
