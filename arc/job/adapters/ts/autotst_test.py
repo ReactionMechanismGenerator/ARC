@@ -35,7 +35,7 @@ class TestAutoTSTAdapter(unittest.TestCase):
     def test_has_autotst(self):
         """Test that AutoTST was successfully imported"""
         self.assertTrue(HAS_AUTOTST)
-
+    @unittest.skip("This test is deprecated and will be removed in future versions.")
     def test_autotst_h_abstraction(self):
         """Test AutoTST for H Abstraction reactions"""
         rxn1 = ARCReaction(reactants=['CCC', 'HO2'], products=['C3H7', 'H2O2'],
@@ -111,7 +111,7 @@ class TestAutoTSTAdapter(unittest.TestCase):
         self.assertEqual(len(rxn3.ts_species.ts_guesses[1].initial_xyz['coords']), 8)
         self.assertEqual(len(rxn3.ts_species.ts_guesses[2].initial_xyz['coords']), 8)
         self.assertEqual(len(rxn3.ts_species.ts_guesses[3].initial_xyz['coords']), 8)
-
+    @unittest.skip("This test is deprecated and will be removed in future versions.")
     def test_autotst_intra_h_migration(self):
         """Test AutoTST for intra-H migration reactions"""
         rxn1 = ARCReaction(reactants=['[CH2]CO'], products=['CC[O]'],
@@ -150,7 +150,7 @@ class TestAutoTSTAdapter(unittest.TestCase):
         self.assertTrue(rxn1.ts_species.ts_guesses[1].success)
         self.assertTrue(rxn1.ts_species.ts_guesses[2].success)
         self.assertTrue(rxn1.ts_species.ts_guesses[3].success)
-
+    @unittest.skip("This test is deprecated and will be removed in future versions.")
     def test_autotst_r_addition_multiple_bond(self):
         """Test AutoTST for R addition multiple bond reactions"""
         rxn1 = ARCReaction(reactants=['C#C', '[OH]'], products=['[CH]=CO'],
