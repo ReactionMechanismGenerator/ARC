@@ -2645,7 +2645,8 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
 
-        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out')]
+        file_paths = [os.path.join(ARC_PATH, 'nul'), os.path.join(ARC_PATH, 'run.out'),
+                      os.path.join(ARC_PATH, 'arc', 'species', 'nul'), os.path.join(ARC_PATH, 'arc', 'species', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
