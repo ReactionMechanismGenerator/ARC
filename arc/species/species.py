@@ -364,6 +364,7 @@ class ARCSpecies(object):
         self.rxn_zone_atom_indices = None
         self.ts_checks = dict()
         self.project_directory = project_directory
+        self.label = label
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -415,7 +416,7 @@ class ARCSpecies(object):
 
             if self.yml_path is not None:
                 # a YAML path was given
-                regen_mol = self.from_yml_file(label)
+                regen_mol = self.from_yml_file(self.label)
                 if regen_mol:
                     if adjlist:
                         self.mol = Molecule().from_adjacency_list(adjlist=adjlist,
@@ -437,17 +438,12 @@ class ARCSpecies(object):
                 if not self.rmg_species.label and not label:
                     raise SpeciesError('If an RMG Species given, it must have a label or a label must be given '
                                        'separately')
-                if label is not None:
-                    self.label = label
-                else:
-                    self.label = self.rmg_species.label
+                self.label = self.label or self.rmg_species.label
                 if self.mol is None:
                     self.mol = self.rmg_species.molecule[0]
                 self.multiplicity = self.rmg_species.molecule[0].multiplicity
                 self.charge = self.rmg_species.molecule[0].get_net_charge()
 
-            if label is not None:
-                self.label = label
             self.process_xyz(xyz)
             if multiplicity is not None:
                 self.multiplicity = multiplicity
