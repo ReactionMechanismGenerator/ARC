@@ -528,6 +528,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">rxn_zone_atom_indices</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_checks</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span> <span class="o">=</span> <span class="n">project_directory</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
 
         <span class="k">if</span> <span class="n">species_dict</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># Reading from a dictionary (it&#39;s possible that the dict contains only a &#39;yml_path&#39; argument, check first)</span>
@@ -579,7 +580,7 @@
 
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="c1"># a YAML path was given</span>
-                <span class="n">regen_mol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">from_yml_file</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+                <span class="n">regen_mol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">from_yml_file</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">regen_mol</span><span class="p">:</span>
                     <span class="k">if</span> <span class="n">adjlist</span><span class="p">:</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="o">=</span> <span class="n">Molecule</span><span class="p">()</span><span class="o">.</span><span class="n">from_adjacency_list</span><span class="p">(</span><span class="n">adjlist</span><span class="o">=</span><span class="n">adjlist</span><span class="p">,</span>
@@ -601,17 +602,12 @@
                 <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">label</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">label</span><span class="p">:</span>
                     <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="s1">&#39;If an RMG Species given, it must have a label or a label must be given &#39;</span>
                                        <span class="s1">&#39;separately&#39;</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">label</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">label</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">molecule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">molecule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">multiplicity</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmg_species</span><span class="o">.</span><span class="n">molecule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">()</span>
 
-            <span class="k">if</span> <span class="n">label</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">label</span> <span class="o">=</span> <span class="n">label</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">process_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">multiplicity</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="n">multiplicity</span>
