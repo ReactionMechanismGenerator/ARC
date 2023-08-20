@@ -1370,6 +1370,17 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_xyz_mol_match(mol1, xyz2))
         self.assertTrue(common.is_xyz_mol_match(mol2, xyz2))
 
+    def test_fill_in_the_blanks(self):
+        """Test the fill_in_the_blanks() function"""
+        ex1 = "michalkfir"
+        ex2 = "michal kfir"
+        ex3 = "mich al kfir"
+        ex4 = "michal  kfir"
+        self.assertEqual(common.fill_in_the_blanks(ex1), "michalkfir")
+        self.assertEqual(common.fill_in_the_blanks(ex2), "michal\\ kfir")
+        self.assertEqual(common.fill_in_the_blanks(ex3), "mich\\ al\\ kfir")
+        self.assertEqual(common.fill_in_the_blanks(ex4), "michal\\ \\ kfir")
+
     @classmethod
     def tearDownClass(cls):
         """
