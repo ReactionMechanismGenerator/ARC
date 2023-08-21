@@ -2082,6 +2082,45 @@ class TestZMat(unittest.TestCase):
         with self.assertRaises(TypeError):
             zmat.map_index_to_int('XY5486')
 
+    def test_check_ordered_zmats(self):
+        """Test the check_ordered_zmats() function."""
+        zmat_1 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749, 'A_2_1_0': 109.47121834780573,
+                           'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
+                           'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        zmat_2 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749, 'A_2_1_0': 109.47121834780573,
+                           'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
+                           'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        zmat_3 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
+                  'coords': ((None, None, None),
+                             ('R_1_0', None, None),
+                             ('R_2_1', 'A_2_1_0', None),
+                             ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                             ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
+                  'vars': {'R_1_0': 2.0, 'R_2_1': 5, 'A_2_1_0': 200,
+                           'R_3_1': 1.2, 'A_3_1_2': 80, 'D_3_1_2_0': 90,
+                           'R_4_1': 0.8, 'A_4_1_0': 150, 'D_4_1_0_3': 250},
+                  'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
+        self.assertTrue(zmat.check_ordered_zmats(zmat_1, zmat_1))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_2, zmat_2))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_3, zmat_3))
+        self.assertFalse(zmat.check_ordered_zmats(zmat_1, zmat_2))
+        self.assertFalse(zmat.check_ordered_zmats(zmat_2, zmat_3))
+        self.assertTrue(zmat.check_ordered_zmats(zmat_1, zmat_3))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
