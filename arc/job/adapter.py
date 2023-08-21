@@ -96,9 +96,10 @@ class JobEnum(str, Enum):
 
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
+    gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     heuristics = 'heuristics'  # ARC's heuristics
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
-    gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
+    linear = 'linear'  # ARC's linear TS search
     user = 'user'  # user guesses
     xtb_gsm = 'xtb_gsm'   # Double ended growing string method (DE-GSM), [10.1021/ct400319w, 10.1063/1.4804162] via xTB
 
