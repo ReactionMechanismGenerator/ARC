@@ -1262,6 +1262,41 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                     'R_9_3': 0.9741224704818748}}
         self.assertTrue(_compare_zmats(zmat_8, expected_zmat_8))
 
+    def test_xyz_to_zmat(self):
+        """Check folding xyz into a zmat"""
+        h2nn = {'symbols': ('N', 'N', 'H', 'H'),
+                'isotopes': (14, 14, 1, 1),
+                'coords': ((1.3546347608168492, -0.015322539977107492, -0.015327345703300993),
+                           (-0.0986192196858452, 0.0011155018627852027, 0.0011158328655407426),
+                           (-0.6378749227822363, -0.8648316328267205, 0.0067050159766062715),
+                           (-0.6181406183487707, 0.8790386709410358, 0.007506496861156013))}
+        zmat = xyz_to_zmat(h2nn)
+        expected_zmat = {'symbols': ('N', 'N', 'H', 'H'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.453439904003661, 'R_2_1': 1.0201432886642632, 'A_2_1_0': 121.26532344550412,
+                                  'R_3_2': 1.7439821177668233, 'A_3_2_0': 66.26220791342335, 'D_3_2_0_1': 359.99999758516344},
+                         'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
+
+        zmat = xyz_to_zmat(h2nn, atom_order=[2, 3, 0, 1])
+        expected_zmat = {'symbols': ('H', 'H', 'N', 'N'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.7439821177668233, 'R_2_1': 2.166159374808962, 'A_2_1_0': 66.26220397737823,
+                                  'R_3_2': 1.453439904003661, 'A_3_2_0': 23.737787276875004, 'D_3_2_0_1': 359.99999758516344},
+                         'map': {0: 2, 1: 3, 2: 0, 3: 1}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
+
+        zmat = xyz_to_zmat(h2nn, atom_order=[1, 3, 2, 0])
+        expected_zmat = {'symbols': ('N', 'H', 'H', 'N'),
+                         'coords': ((None, None, None), ('R_1_0', None, None),
+                                    ('R_2_1', 'A_2_1_0', None), ('R_3_2', 'A_3_2_0', 'D_3_2_0_1')),
+                         'vars': {'R_1_0': 1.0201433470919798, 'R_2_1': 1.7439821177668233, 'A_2_1_0': 31.265321828101055,
+                                  'R_3_2': 2.1661591546787227, 'A_3_2_0': 34.99688237878201, 'D_3_2_0_1': 180.0000041826196},
+                         'map': {0: 1, 1: 3, 2: 2, 3: 0}}
+        self.assertTrue(_compare_zmats(zmat, expected_zmat))
+
     def test_zmat_to_xyz(self):
         """Check refolding a zmat into cartesian coordinates"""
         co3 = {'symbols': ('O', 'O', 'O'), 'isotopes': (16, 16, 16),
