@@ -388,12 +388,23 @@ class ARCReaction(object):
 
     def is_isomerization(self):
         """
-        Determine whether this is an isomerization reaction.
+        Determine whether this is an isomerization reaction (i.e., A <=> B).
 
         Returns:
             bool: Whether this is an isomerization reaction.
         """
-        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 and len(products) == 1
+
+    def is_unimolecular(self):
+        """
+        Determine whether this is a unimolecular reaction (e.g., A <=> B or A <=> B + C or A + B <=> C).
+
+        Returns:
+            bool: Whether this is a unimolecular reaction.
+        """
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 or len(products) == 1
 
     def set_label_reactants_products(self, species_list: list[ARCSpecies] | None = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
