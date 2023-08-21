@@ -60,6 +60,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                 consolidate: bool = True,
                 consolidation_tols: Dict[str, float] = None,
                 fragments: Optional[List[List[int]]] = None,
+                atom_order: Optional[List[int]] = None,
                 ) -> Dict[str, tuple]:
     """
     Generate a z-matrix from cartesian coordinates.
@@ -96,6 +97,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
             Fragments represented by the species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
             indices are 0-indexed.
+        atom_order (List[int], optional): The order in which atoms should be added to the zmat.
 
     Raises:
         ZMatError: If the zmat could not be generated.
@@ -118,7 +120,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                                     f'coordinates with only {len(xyz["symbols"])} atoms:\n{constraints}')
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
-    atom_order = get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
+    atom_order = atom_order or get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
     connectivity = get_connectivity(mol=mol) if mol is not None else None
     skipped_atoms = list()  # atoms for which constrains are applied
     for atom_index in atom_order:
