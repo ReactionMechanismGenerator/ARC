@@ -2340,3 +2340,19 @@ def map_index_to_int(index: Union[int, str]) -> int:
     if isinstance(index, str) and all(char.isdigit() for char in index[1:]):
         return int(index[1:])
     raise TypeError(f'Expected either an int or a string on the format "X15", got {index}')
+
+
+def check_ordered_zmats(zmat_1: dict,
+                        zmat_2: dict,
+                        ) -> bool:
+    """
+    Check whether the ZMats have the same order of atoms and the same variable names.
+
+    Args:
+        zmat_1 (dict): ZMat 1.
+        zmat_2 (dict): ZMat 2.
+
+    Returns:
+        bool: Whether the ZMats are ordered.
+    """
+    return zmat_1['symbols'] == zmat_2['symbols'] and zmat_1['vars'].keys() == zmat_2['vars'].keys()
