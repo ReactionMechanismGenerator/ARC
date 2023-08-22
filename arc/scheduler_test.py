@@ -16,7 +16,7 @@ from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
-from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp
+from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -667,6 +667,12 @@ H      -1.82570782    0.42754384   -0.56130718"""
             self.assertTrue(species_has_property((species_output_dict)))
             species_output_dict = {'paths': {property_: True, 'composite': True}}
             self.assertTrue(species_has_property((species_output_dict)))
+        yml_path=os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        species_output_dict = {'paths': {'geo': False, 'sp': False, 'freq': False, 'composite': False}}
+        self.assertTrue(species_has_freq(species_output_dict=species_output_dict, yml_path=yml_path))
+        self.assertTrue(species_has_geo(species_output_dict=species_output_dict, yml_path=yml_path))
+        self.assertTrue(species_has_sp(species_output_dict=species_output_dict, yml_path=yml_path))
+        self.assertTrue(species_has_sp_and_freq(species_output_dict=species_output_dict, yml_path=yml_path))
 
     def test_add_label_to_unique_species_labels(self):
         """Test the add_label_to_unique_species_labels() method."""
