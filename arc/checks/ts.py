@@ -64,7 +64,7 @@ def check_ts(reaction: 'ARCReaction',
             raise ValueError(f"Requested checks could be 'energy', 'freq', 'IRC', or 'rotors', got:\n{checks}")
 
     if 'energy' in checks or not reaction.ts_species.ts_checks['e_elect']:
-        check_ts_energy(reaction=reaction, verbose=verbose)
+        check_rxn_e_elect(reaction=reaction, verbose=verbose)
 
     if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
         check_normal_mode_displacement(reaction, job=job)
@@ -99,9 +99,9 @@ def ts_passed_all_checks(species: 'ARCSpecies',
     return True
 
 
-def check_ts_energy(reaction: 'ARCReaction',
-                    verbose: bool = True,
-                    ) -> None:
+def check_rxn_e_elect(reaction: 'ARCReaction',
+                      verbose: bool = True,
+                      ) -> None:
     """
     Check that the TS electronic energy is above both reactant and product wells in a ``reaction``.
     Sets the respective energy parameter 'e_elect' in the ``TS.ts_checks`` dictionary.
@@ -110,45 +110,29 @@ def check_ts_energy(reaction: 'ARCReaction',
         reaction (ARCReaction): The reaction for which the TS is checked.
         verbose (bool, optional): Whether to print logging messages.
     """
-    # Check whether E0 values are already known, e.g. from Arkane species YAML files
-    check_rxn_e0(reaction=reaction)
+    check_rxn_e0(reaction=reaction, verbose=verbose)
     if reaction.ts_species.ts_checks['E0']:
         return
-
-    r_e_elect = None if any([spc.e_elect is None for spc in reaction.r_species]) \
-        else sum(spc.e_elect * reaction.get_species_count(species=spc, well=0) for spc in reaction.r_species)
-    p_e_elect = None if any([spc.e_elect is None for spc in reaction.p_species]) \
-        else sum(spc.e_elect * reaction.get_species_count(species=spc, well=1) for spc in reaction.p_species)
-    ts_e_elect = reaction.ts_species.e_elect
-
-    if verbose and all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
-        min_e = extremum_list([r_e_elect, p_e_elect, ts_e_elect], return_min=True)
-        r_text = f'{r_e_elect - min_e:.2f} kJ/mol' if r_e_elect is not None else 'None'
-        ts_text = f'{ts_e_elect - min_e:.2f} kJ/mol' if ts_e_elect is not None else 'None'
-        p_text = f'{p_e_elect - min_e:.2f} kJ/mol' if p_e_elect is not None else 'None'
-        logger.info(
-            f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
-            f'has the following path electronic energy:\n'
-            f'Reactants: {r_text}\n'
-            f'TS: {ts_text}\n'
-            f'Products: {p_text}')
-
-        if all([val is not None for val in [r_e_elect, p_e_elect, ts_e_elect]]):
-            # We have all params, we can make a quantitative decision.
-            if ts_e_elect > r_e_elect + 1.0 and ts_e_elect > p_e_elect + 1.0:
-                # TS is above both wells.
-                reaction.ts_species.ts_checks['e_elect'] = True
-                return
-            # TS is not above both wells.
-            if verbose:
-                logger.error(f'TS of reaction {reaction.label} has a lower electronic energy value than expected.')
-                reaction.ts_species.ts_checks['e_elect'] = False
-                return
-    # We don't have any params (some are ``None``)
+    r_ee = sum_list_entries([r.e_elect for r in reaction.r_species],
+                            multipliers=[reaction.get_species_count(species=r, well=0) for r in reaction.r_species])
+    p_ee = sum_list_entries([p.e_elect for p in reaction.p_species],
+                            multipliers=[reaction.get_species_count(species=p, well=1) for p in reaction.p_species])
+    ts_ee = reaction.ts_species.e_elect
+    if verbose:
+        report_ts_and_wells_energy(r_e=r_ee, p_e=p_ee, ts_e=ts_ee, rxn_label=reaction.label,
+                                   ts_label=reaction.ts_label, chosen_ts=reaction.ts_species.chosen_ts,
+                                   energy_type='electronic energy')
+    if all([val is not None for val in [r_ee, p_ee, ts_ee]]):
+        if ts_ee > r_ee + 1.0 and ts_ee > p_ee + 1.0:
+            reaction.ts_species.ts_checks['e_elect'] = True
+            return
+        if verbose:
+            logger.error(f'TS of reaction {reaction.label} has a lower electronic energy value than expected.')
+        reaction.ts_species.ts_checks['e_elect'] = False
+        return
     if verbose:
         logger.info('\n')
         logger.warning(f"Could not get electronic energy for all species in reaction {reaction.label}.\n")
-    # We don't really know.
     reaction.ts_species.ts_checks['e_elect'] = None
     if 'Could not determine TS e_elect relative to the wells; ' not in reaction.ts_species.ts_checks['warnings']:
         reaction.ts_species.ts_checks['warnings'] += 'Could not determine TS e_elect relative to the wells; '
@@ -161,6 +145,7 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
                              output: dict,
                              sp_level: 'Level',
                              freq_scale_factor: float = 1.0,
+                             verbose: bool = True,
                              ) -> Optional[bool]:
     """
     Checking the E0 values between wells and a TS in a ``reaction`` using ZPE from statmech.
@@ -173,6 +158,7 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
         output (dict): The Scheduler output dictionary.
         sp_level (Level): The single-point energy level of theory.
         freq_scale_factor (float, optional): The frequency scaling factor.
+        verbose (bool, optional): Whether to print logging messages.
 
     Returns:
         Optional[bool]: Whether the test failed and the scheduler should switch to a different TS guess,
@@ -201,12 +187,12 @@ def compute_and_check_rxn_e0(reaction: 'ARCReaction',
                                         e0_only=True,
                                         skip_rotors=True,
                                         )
-    e0_pass = check_rxn_e0(reaction=rxn_copy)
+    e0_pass = check_rxn_e0(reaction=rxn_copy, verbose=verbose)
     if not e0_pass:
         if rxn_copy.ts_species.ts_guesses_exhausted:
             return False
-        return True  # Switch TS.
-    return False  # Don't switch TS.
+        return True
+    return False
 
 
 def check_rxn_e0(reaction: 'ARCReaction',
@@ -229,18 +215,9 @@ def check_rxn_e0(reaction: 'ARCReaction',
     p_e0 = sum_list_entries([p.e0 for p in reaction.p_species],
                             multipliers=[reaction.get_species_count(species=p, well=1) for p in reaction.p_species])
     ts_e0 = reaction.ts_species.e0
-
-    if verbose and all([val is not None for val in [r_e0, p_e0, ts_e0]]):
-        min_e0 = extremum_list([r_e0, p_e0, ts_e0], return_min=True)
-        r_text = f'{r_e0 - min_e0:.2f} kJ/mol' if r_e0 is not None else 'None'
-        ts_text = f'{ts_e0 - min_e0:.2f} kJ/mol' if ts_e0 is not None else 'None'
-        p_text = f'{p_e0 - min_e0:.2f} kJ/mol' if p_e0 is not None else 'None'
-        logger.info(
-            f'\nReaction {reaction.label} (TS {reaction.ts_label}, TSG {reaction.ts_species.chosen_ts}) '
-            f'has the following path E0 values:\n'
-            f'Reactants: {r_text}\n'
-            f'TS: {ts_text}\n'
-            f'Products: {p_text}')
+    if verbose:
+        report_ts_and_wells_energy(r_e=r_e0, p_e=p_e0, ts_e=ts_e0, rxn_label=reaction.label, ts_label=reaction.ts_label,
+                                   chosen_ts=reaction.ts_species.chosen_ts, energy_type='E0')
     if any(e0 is None for e0 in [r_e0, p_e0, ts_e0]):
         return None
     if r_e0 >= ts_e0 or p_e0 >= ts_e0:
@@ -248,6 +225,38 @@ def check_rxn_e0(reaction: 'ARCReaction',
         return False
     reaction.ts_species.ts_checks['E0'] = True
     return True
+
+
+def report_ts_and_wells_energy(r_e: float,
+                               p_e: float,
+                               ts_e: float,
+                               rxn_label: str,
+                               ts_label: str,
+                               chosen_ts: int,
+                               energy_type: str = 'electronic energy',
+                               ):
+    """
+    Report the relative R/TS/P energies.
+
+    Args:
+        r_e (float): The reactant energy.
+        p_e (float): The product energy.
+        ts_e (float): The TS energy.
+        rxn_label (str): The reaction label.
+        ts_label (str): The TS label.
+        chosen_ts (int): The TSG number.
+        energy_type (str): The energy type: 'electronic energy' or 'E0'.
+    """
+    if all([val is not None for val in [r_e, p_e, ts_e]]):
+        min_e = extremum_list(lst=[r_e, p_e, ts_e], return_min=True)
+        r_text = f'{r_e - min_e:.2f} kJ/mol'
+        ts_text = f'{ts_e - min_e:.2f} kJ/mol'
+        p_text = f'{p_e - min_e:.2f} kJ/mol'
+        logger.info(
+            f'\nReaction {rxn_label} (TS {ts_label}, TSG {chosen_ts}) has the following {energy_type} values:\n'
+            f'Reactants: {r_text}\n'
+            f'TS: {ts_text}\n'
+            f'Products: {p_text}')
 
 
 def check_normal_mode_displacement(reaction: 'ARCReaction',
