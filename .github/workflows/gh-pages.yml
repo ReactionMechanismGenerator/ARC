@@ -33,6 +33,7 @@ jobs:
 
     - name: Install LaTeX
       run: |
+        sudo apt update -y && sudo apt upgrade -y && sudo apt autoremove -y
         sudo apt install texlive-latex-base -y
         sudo apt-get install texlive-latex-extra -y
         sudo apt-get install -y dvipng
