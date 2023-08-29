@@ -672,6 +672,7 @@
     <span class="k">else</span><span class="p">:</span>
         <span class="n">base_energy</span> <span class="o">=</span> <span class="n">base_energy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">new_conformers</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+    <span class="n">new_conformers_no_energy</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="n">lowest_conf_i</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_combination_iterations</span><span class="p">):</span>
         <span class="n">newest_conformers_dict</span><span class="p">,</span> <span class="n">newest_conformer_list</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>  <span class="c1"># Conformers from the current iteration.</span>
@@ -684,7 +685,7 @@
                 <span class="n">exists</span> <span class="o">=</span> <span class="kc">False</span>
                 <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">converter</span><span class="o">.</span><span class="n">compare_confs</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">conf</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span> <span class="k">for</span> <span class="n">conf</span> <span class="ow">in</span> <span class="n">new_conformers</span> <span class="o">+</span> <span class="n">newest_conformer_list</span><span class="p">]):</span>
                     <span class="n">exists</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">energy</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">conformer</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="n">len_conformers</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_conformers</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">newest_conformer_list</span><span class="p">),</span>
                                  <span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">xyz</span><span class="p">,</span>
                                  <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">energy</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
@@ -694,9 +695,17 @@
                     <span class="n">newest_conformers_dict</span><span class="p">[</span><span class="n">tor</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">conformer</span><span class="p">)</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="n">exists</span><span class="p">:</span>
                         <span class="n">newest_conformer_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">conformer</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
+                <span class="k">elif</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="c1"># If xyz is None, atoms have collided.</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n\n</span><span class="s1">atoms colliding in </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> for torsion </span><span class="si">{</span><span class="n">tor</span><span class="si">}</span><span class="s1"> and dihedral </span><span class="si">{</span><span class="n">dihedral</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">energy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">new_conformers_no_energy</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="p">{</span><span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="n">len_conformers</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_conformers</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">newest_conformer_list</span><span class="p">),</span>
+                         <span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">xyz</span><span class="p">,</span>
+                         <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                         <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="sa">f</span><span class="s1">&#39;Changing dihedrals on most stable conformer, iteration </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">, but FF energy is None&#39;</span><span class="p">,</span>
+                         <span class="s1">&#39;torsion&#39;</span><span class="p">:</span> <span class="n">tor</span><span class="p">,</span>
+                         <span class="s1">&#39;dihedral&#39;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">dihedral</span><span class="p">,</span> <span class="mi">2</span><span class="p">)})</span>
         <span class="n">new_conformers</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">newest_conformer_list</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">newest_conformer_list</span><span class="p">:</span>
             <span class="n">newest_conformer_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">lowest_conf_i</span><span class="p">]</span>
@@ -721,6 +730,8 @@
     <span class="k">if</span> <span class="n">de_threshold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">min_e</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="n">conf</span><span class="p">[</span><span class="s1">&#39;FF energy&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">conf</span> <span class="ow">in</span> <span class="n">new_conformers</span><span class="p">])</span>
         <span class="n">new_conformers</span> <span class="o">=</span> <span class="p">[</span><span class="n">conf</span> <span class="k">for</span> <span class="n">conf</span> <span class="ow">in</span> <span class="n">new_conformers</span> <span class="k">if</span> <span class="n">conf</span><span class="p">[</span><span class="s1">&#39;FF energy&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">min_e</span> <span class="o">&lt;</span> <span class="n">de_threshold</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_conformers</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_conformers_no_energy</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">new_conformers_no_energy</span>
     <span class="k">return</span> <span class="n">new_conformers</span></div>
 
 
@@ -1655,7 +1666,7 @@
                                                                <span class="n">maxIters</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
                                                                <span class="n">ignoreInterfragInteractions</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                                                                <span class="p">)</span>
-            <span class="k">except</span> <span class="ne">RuntimeError</span><span class="p">:</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">RuntimeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">try_ob</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Using OpenBabel (instead of RDKit) as a fall back method to generate conformers &#39;</span>
                                    <span class="sa">f</span><span class="s1">&#39;for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">. This is often slower.&#39;</span><span class="p">)</span>
