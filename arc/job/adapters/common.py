@@ -262,9 +262,10 @@ def check_argument_consistency(obj: 'JobAdapter'):
     if obj.job_type == 'irc' and (obj.irc_direction is None or obj.irc_direction not in ['forward', 'reverse']):
         raise ValueError(f'Missing the irc_direction argument for job type irc. '
                          f'It must be either "forward" or "reverse".\nGot: {obj.irc_direction}')
-    if obj.job_type == 'scan' and obj.job_adapter in ['molpro'] \
-            and any(species.rotors_dict['directed_scan_type'] == 'ess' for species in obj.species):
-        raise NotImplementedError(f'The {obj.job_adapter} job adapter does not support ESS scans.')
+    if obj.job_type == 'scan' and obj.job_adapter in ['molpro']:
+        for species in obj.species:
+            if any(rotor_dict['directed_scan_type'] == 'ess' for rotor_dict in species.rotors_dict.values()):
+                raise NotImplementedError(f'The {obj.job_adapter} job adapter does not support ESS scans.')
     if obj.job_type == 'scan' and divmod(360, obj.scan_res)[1]:
         raise ValueError(f'Got an illegal rotor scan resolution of {obj.scan_res}.')
     if obj.job_type == 'scan' and ((not obj.species[0].rotors_dict or obj.rotor_index is None) and obj.torsions is None):
