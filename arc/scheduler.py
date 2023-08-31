@@ -2576,7 +2576,7 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
-            job (JobAdapter): The single point job object.
+            job (JobAdapter): The IRC job object.
         """
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         index = 1
@@ -2592,6 +2592,8 @@ class Scheduler(object):
                              xyz=parser.parse_xyz_from_file(job.local_path_to_output_file),
                              irc_label=label,
                              compute_thermo=False,
+                             multiplicity=job.species[0].multiplicity,
+                             charge=job.species[0].charge,
                              )
         if self.species_dict[label].irc_label is None:
             self.species_dict[label].irc_label = irc_spc.label
