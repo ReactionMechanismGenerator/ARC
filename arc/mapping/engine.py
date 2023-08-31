@@ -1214,7 +1214,7 @@ def cut_species_for_mapping(species, locs):
             H2 = H1.copy()
             H2.mol.atoms[0].label = labels[0] if H1.mol.atoms[0].label != labels[0] else labels[1]
             cuts += [H1, H2]
-        if loc == 0:
+        elif loc == 0:
             cuts += [spc]
         elif loc == 1:
             try:
