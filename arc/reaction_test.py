@@ -20,7 +20,7 @@ from arc.main import ARC
 from arc.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
-from arc.mapping.engine import check_atom_map
+from arc.mapping.engine import check_atom_map, label_species_atoms
 
 
 class TestARCReaction(unittest.TestCase):
@@ -1617,6 +1617,33 @@ class TestARCReaction(unittest.TestCase):
         self.assertTrue(atom_map[:3], [0, 1, 2])
         self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
         self.assertEqual(atom_map[5], 6)
+
+    # Same species in products
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
+                          p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
+                                     ARCSpecies(label="p2", smiles= 'C=CC=C')])
+        rxn.determine_family(rmg_database=self.rmgdb)
+        c_symmetry_h_1 = [1, 2, 11, 12]            # symmetry of carbons with one hydrogen
+        c_symmetry_h_2 = [0, 3, 10, 13]            # symmetry of carbons with two hydrogens
+        h_symmetry1 = [6, 7, 16, 17]               # symmetry of hydrogens with one other hydrogen second order neighbor
+        h_symmetry2 = [4, 5, 8, 9, 14 ,15, 18, 19] # symmetry of hydrogens with two other hydrogen second order neighbor
+        
+        label_species_atoms(rxn.r_species)
+        atom_map = rxn.atom_map
+        for atom in rxn.r_species[0].mol.copy(deep=True).atoms:
+            if atom.symbol == "C":
+                relevant_atom = atom
+            else:
+                relevant_atom = list(atom.bonds.keys())[0]
+            number_of_hydrogens = 0
+            for neighbor in relevant_atom.bonds.keys():
+                if neighbor.symbol=="H":
+                    number_of_hydrogens+=1
+            if number_of_hydrogens == 1:
+                self.assertIn(atom_map[int(atom.label)], c_symmetry_h_1 if atom.symbol == "C" else h_symmetry1)
+            else:
+                self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
+        self.assertTrue(check_atom_map(rxn=rxn))
 
     def test_get_reactants_xyz(self):
         """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
