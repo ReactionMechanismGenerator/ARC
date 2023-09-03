@@ -1184,7 +1184,7 @@ def multiple_cut_on_species(spc, bdes):
     bdes = bdes[1:]
     try:
         cuts = spc.scissors()
-    except SpeciesError as e:
+    except SpeciesError:
         return None
     for species in cuts:
         species.final_xyz = species.get_xyz(generate=False)
@@ -1329,7 +1329,7 @@ def map_pairs(pairs):
         A list of the mapped species
     """
 
-    maps=list()
+    maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
 
@@ -1350,7 +1350,7 @@ def label_species_atoms(spcs):
             index+=1
 
 
-def glue_maps(maps,pairs_of_reactant_and_products):
+def glue_maps(maps, pairs_of_reactant_and_products):
     """
     a function that joins together the maps from the parts of the reaction.
 
@@ -1362,7 +1362,7 @@ def glue_maps(maps,pairs_of_reactant_and_products):
         an Atom Map of the compleate reaction.
     """
     am_dict = dict()
-    for _map, pair in zip(maps,pairs_of_reactant_and_products):
+    for _map, pair in zip(maps, pairs_of_reactant_and_products):
         r_atoms = pair[0].mol.atoms
         p_atoms = pair[1].mol.atoms
         for map_index, r_atom in zip(_map, r_atoms):
