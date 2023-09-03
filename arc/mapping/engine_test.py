@@ -626,7 +626,12 @@ class TestMappingEngine(unittest.TestCase):
         for cut in cuts:
             self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH3]").mol),
                                  cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH]").mol)]))
-            
+
+        cuts =  cut_species_for_mapping([ARCSpecies(label="H2", smiles="[H][H]", bdes=[(1, 2)])], [1])
+        self.assertEqual(len(cuts), 2)
+        for cut in cuts:
+            self.assertEqual(cut.get_xyz()["symbols"], ('H',))
+    
     def test_multiple_cut_on_species(self):
         """test the multiple_cut_on_species function"""
         spc = ARCSpecies(label="test", smiles="NCN", bdes = [(1, 2), (2, 3)])
