@@ -1175,7 +1175,6 @@ def multiple_cut_on_species(spc, bdes):
     Returns:
         list(ARCSpecies): a list of the cut products.
     """
-    bdes = spc.bdes
     spc.bdes = [bdes[0]]
     bdes = bdes[1:]
     try:
