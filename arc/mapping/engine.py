@@ -59,12 +59,12 @@ def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReact
     for spc in rmg_reaction.reactants + rmg_reaction.products:
         generate_resonance_structures(object_=spc, save_order=True)
 
-    r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction)
+    r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
 
     reactant_index_dict, product_index_dict = dict(), dict()
     reactant_atoms, product_atoms = list(), list()
-    rmg_reactant_order = [val[0] for key, val in sorted(r_map.items(), key=lambda item: item[0])]
-    rmg_product_order = [val[0] for key, val in sorted(p_map.items(), key=lambda item: item[0])]
+    rmg_reactant_order = [val for _, val in sorted(r_map.items(), key=lambda item: item[0])]
+    rmg_product_order = [val for _, val in sorted(p_map.items(), key=lambda item: item[0])]
     for i in rmg_reactant_order:
         reactant_atoms.extend([atom for atom in rmg_reaction.reactants[i].atoms])
     for i in rmg_product_order:
