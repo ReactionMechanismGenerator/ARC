@@ -1123,7 +1123,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                         elif int(atom.label) == indicies[1]:
                             atom2 = atom
                     if atom1.radical_electrons == 0 and atom2.radical_electrons == 0: # Both atoms do not have any radicals, but their bond is changing. There probably is resonance, so this will not affect the isomorphism check.
-                        return
+                        continue
                     elif atom1.radical_electrons == 0 and atom2.radical_electrons != 0:
                         atom1.lone_pairs -= 1
                         atom2.lone_pairs += 1
