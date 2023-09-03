@@ -262,4 +262,4 @@ def map_rxn(rxn: 'ARCReaction',
     maps = map_pairs(pairs_of_reactant_and_products)
 
     #step 6:
-    return glue_maps(maps,pairs_of_reactant_and_products)
+    return glue_maps(maps, pairs_of_reactant_and_products)
