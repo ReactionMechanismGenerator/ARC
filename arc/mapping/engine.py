@@ -59,12 +59,12 @@ def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReact
     for spc in rmg_reaction.reactants + rmg_reaction.products:
         generate_resonance_structures(object_=spc, save_order=True)
 
-    r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction)
+    r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
 
     reactant_index_dict, product_index_dict = dict(), dict()
     reactant_atoms, product_atoms = list(), list()
-    rmg_reactant_order = [val[0] for key, val in sorted(r_map.items(), key=lambda item: item[0])]
-    rmg_product_order = [val[0] for key, val in sorted(p_map.items(), key=lambda item: item[0])]
+    rmg_reactant_order = [val for _, val in sorted(r_map.items(), key=lambda item: item[0])]
+    rmg_product_order = [val for _, val in sorted(p_map.items(), key=lambda item: item[0])]
     for i in rmg_reactant_order:
         reactant_atoms.extend([atom for atom in rmg_reaction.reactants[i].atoms])
     for i in rmg_product_order:
@@ -1180,7 +1180,7 @@ def multiple_cut_on_species(spc, bdes):
     bdes = bdes[1:]
     try:
         cuts = spc.scissors()
-    except SpeciesError as e:
+    except SpeciesError:
         return None
     for species in cuts:
         species.final_xyz = species.get_xyz(generate=False)
@@ -1214,7 +1214,7 @@ def cut_species_for_mapping(species, locs):
             H2 = H1.copy()
             H2.mol.atoms[0].label = labels[0] if H1.mol.atoms[0].label != labels[0] else labels[1]
             cuts += [H1, H2]
-        if loc == 0:
+        elif loc == 0:
             cuts += [spc]
         elif loc == 1:
             try:
@@ -1325,7 +1325,7 @@ def map_pairs(pairs):
         A list of the mapped species
     """
 
-    maps=list()
+    maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
 
@@ -1346,7 +1346,7 @@ def label_species_atoms(spcs):
             index+=1
 
 
-def glue_maps(maps,pairs_of_reactant_and_products):
+def glue_maps(maps, pairs_of_reactant_and_products):
     """
     a function that joins together the maps from the parts of the reaction.
 
@@ -1358,7 +1358,7 @@ def glue_maps(maps,pairs_of_reactant_and_products):
         an Atom Map of the compleate reaction.
     """
     am_dict = dict()
-    for _map, pair in zip(maps,pairs_of_reactant_and_products):
+    for _map, pair in zip(maps, pairs_of_reactant_and_products):
         r_atoms = pair[0].mol.atoms
         p_atoms = pair[1].mol.atoms
         for map_index, r_atom in zip(_map, r_atoms):
