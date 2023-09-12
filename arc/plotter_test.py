@@ -96,6 +96,11 @@ H      -1.16115119    0.31478894   -0.81506145
         conf_file_path = os.path.join(project_directory, 'output', 'Species', label, 'geometry', 'conformers',
                                       'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(conf_file_path))
+        with open(conf_file_path, 'r') as f:
+            lines = f.readlines()
+        found = any(line.startswith('Relative Energy:') for line in lines)
+        self.assertTrue(found, "No line starting with 'Relative Energy:' found in the file.")
+
 
     def test_save_rotor_text_file(self):
         """Test the save_rotor_text_file function"""
