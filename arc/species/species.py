@@ -206,7 +206,8 @@ class ARCSpecies(object):
         number_of_rotors (int): The number of potential rotors to scan.
         rotors_dict (dict): A dictionary of rotors. structure given below.
         conformers (list): A list of selected conformers XYZs (dict format).
-        conformer_energies (list): A list of conformers E0 (in kJ/mol).
+        conformer_energies (list): A list of conformers E0 (in kJ/mol) from DFT calcs at conformer_level.
+        conformer_ff_energies (list): A list of conformer FF energies (in kJ/mol).
         cheap_conformer (str): A string format xyz of a cheap conformer (not necessarily the best/lowest one).
         most_stable_conformer (int): The index of the best/lowest conformer in self.conformers.
         recent_md_conformer (list): A length three list containing the coordinates of the recent conformer
@@ -336,6 +337,7 @@ class ARCSpecies(object):
         self.most_stable_conformer = None
         self.recent_md_conformer = None
         self.conformer_energies = list()
+        self.conformer_ff_energies = list()
         self.initial_xyz = None
         self.thermo = None
         self.rmg_thermo = None
@@ -718,6 +720,7 @@ class ARCSpecies(object):
         if self.conformers:
             species_dict['conformers'] = [xyz_to_str(conf) for conf in self.conformers]
             species_dict['conformer_energies'] = self.conformer_energies
+            species_dict['conformer_ff_energies'] = self.conformer_ff_energies
         if self.conformers_before_opt is not None:
             species_dict['conformers_before_opt'] = [xyz_to_str(conf) for conf in self.conformers_before_opt]
         if self.bdes is not None:
@@ -864,6 +867,8 @@ class ARCSpecies(object):
             self.conformers = [str_to_xyz(conf) for conf in species_dict['conformers']]
             self.conformer_energies = species_dict['conformer_energies'] if 'conformer_energies' in species_dict \
                 else [None] * len(self.conformers)
+            self.conformer_ff_energies = species_dict['conformer_ff_energies'] if 'conformer_ff_energies' in species_dict \
+                else list()
         self.conformers_before_opt = [str_to_xyz(conf) for conf in species_dict['conformers_before_opt']] \
             if 'conformers_before_opt' in species_dict else None
         if self.mol is None and self.initial_xyz is None and self.final_xyz is None and not self.conformers \
@@ -1088,7 +1093,12 @@ class ARCSpecies(object):
                                                       diastereomers=diastereomers,
                                                       )
         if len(lowest_confs):
+            import pprint
+            pprint.pprint(lowest_confs)
+            print('\n\n\n')
+            print([conf['FF energy'] for conf in lowest_confs])
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
+            self.conformer_ff_energies.extend([conf['FF energy'] for conf in lowest_confs])
             self.conformer_energies.extend([None] * len(lowest_confs))
         else:
             xyz = self.get_xyz(generate=False)
