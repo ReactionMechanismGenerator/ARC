@@ -1074,6 +1074,7 @@ class Scheduler(object):
             multiplicity=self.species_dict[label].multiplicity,
             charge=self.species_dict[label].charge,
             is_ts=True,
+            optimized=False,
             ts_methods=[f'{tsg.method} '
                         f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                         f'{tsg.method_index if tsg.method_index is not None else ""} '
@@ -1744,11 +1745,13 @@ class Scheduler(object):
         plotter.save_conformers_file(project_directory=self.project_directory,
                                      label=label,
                                      xyzs=self.species_dict[label].conformers,
-                                     level_of_theory=self.conformer_level,
+                                     level_of_theory=self.species_dict[label].force_field,
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge,
+                                     energies=self.species_dict[label].conformer_ff_energies,
                                      is_ts=False,
-                                     )  # before optimization
+                                     optimized=False,
+                                     )
         self.species_dict[label].conformers_before_opt = tuple(self.species_dict[label].conformers)
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
@@ -1917,7 +1920,8 @@ class Scheduler(object):
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
-                                         energies=self.species_dict[label].conformer_energies,  # after optimization
+                                         energies=self.species_dict[label].conformer_energies,
+                                         optimized=True,
                                          )
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
@@ -2127,6 +2131,7 @@ class Scheduler(object):
                 charge=self.species_dict[label].charge,
                 is_ts=True,
                 energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                optimized=True,
                 ts_methods=[f'{tsg.method} '
                             f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                             f'{tsg.method_index if tsg.method_index is not None else ""} '
@@ -2406,6 +2411,7 @@ class Scheduler(object):
                     charge=self.species_dict[label].charge,
                     is_ts=True,
                     energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                    optimized=True,
                     ts_methods=[f'{tsg.method} '
                                 f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                                 f'{tsg.method_index if tsg.method_index is not None else ""} '
