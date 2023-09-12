@@ -47,7 +47,6 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
 input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${keywords}
-! NRSCF # using Newton–Raphson SCF algorithm 
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
@@ -55,8 +54,6 @@ ${job_type_2}
 nprocs ${cpus}
 end
 %%scf # recommended SCF settings
-NRMaxIt 400
-NRStart 0.00005
 MaxIter 500
 end${scan}
 ${block}
@@ -316,13 +313,13 @@ end
             if self.level.solvation_method.lower() == 'smd':
                 self.add_to_args(val=f"""
 %cpcm SMD true
-    solvent "{self.level.solvent}"
+      SMDsolvent "{self.level.solvent}"
 end
             """,
-                                 key1='block')
+                                key1='block')
             elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
                 self.add_to_args(val=f"""
-!CPCM({self.level.solvent})
+!$CPCM({self.level.solvent})
             """,
                                  key1='block')
 
