@@ -41,9 +41,9 @@ def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
                  db: Optional['RMGDatabase'] = None,
                  flip: bool = False
-                 ) -> Optional[List[int]]:
+                 ) -> Optional[List[List[int]]]:
     """
-    Map a reaction.
+    Map a reaction. A wrapper for the ``map_rxn`` function.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
@@ -52,7 +52,7 @@ def map_reaction(rxn: 'ARCReaction',
         flip (bool, optional): Try mapping with a flipped reaction.
 
     Returns:
-        Optional[List[int]]:
+        Optional[List[List[int]]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
@@ -60,46 +60,43 @@ def map_reaction(rxn: 'ARCReaction',
         logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. "
                        f"Trying again with the flipped reaction.")
         try:
-            _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend, db=db))
+            atom_maps = flip_maps(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
             return None
-        return _map
+        return atom_maps
     else:
         if rxn.family is None:
             rmgdb.determine_family(reaction=rxn, db=db)
         if rxn.family is None:
-            logger.warning(f'Could not determine the reaction family for {rxn.label}. Mapping as a general or isomerization reaction.')
-            _map = map_general_rxn(rxn, backend=backend)
-            return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
+            logger.warning(f'Could not determine the reaction family for {rxn.label}.\n'
+                           f'Mapping as a general or isomerization reaction.')
+            atom_maps = map_general_rxn(rxn)
+            return atom_maps if atom_maps is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
         try:
-            _map = map_rxn(rxn, backend=backend, db=db)
+            atom_maps = map_rxn(rxn, backend=backend)
         except ValueError:
             return map_reaction(rxn, backend=backend, db=db, flip=True)
-        return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
+        return atom_maps if atom_maps is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
 
 
 def map_general_rxn(rxn: 'ARCReaction',
-                    backend: str = 'ARC',
-                    db: Optional['RMGDatabase'] = None,
-                    ) -> Optional[List[int]]:
+                    ) -> Optional[List[List[int]]]:
     """
-    Map a general reaction (one that was not categorized into a reaction family by RMG).
-    The general method isn't great, a family-specific method should be implemented where possible.
+    Map a general reaction that could not be categorized into an RMG reaction family.
+    The general method isn't great, using the family-based method is better.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
-        Optional[List[int]]:
+        Optional[List[List[int]]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
     if rxn.is_isomerization():
-        atom_map = map_isomerization_reaction(rxn=rxn)
-        if atom_map is not None:
-            return atom_map
+        atom_maps = map_isomerization_reaction(rxn=rxn)
+        if atom_maps is not None:
+            return atom_maps
 
     # If the reaction is not a known RMG template and is not isomerization, use fragments via the QCElemental backend.
     qcmol_1 = create_qc_mol(species=[spc.copy() for spc in rxn.r_species],
@@ -114,21 +111,19 @@ def map_general_rxn(rxn: 'ARCReaction',
         return None
     data = qcmol_2.align(ref_mol=qcmol_1, verbose=0)[1]
     atom_map = data['mill'].atommap.tolist()
-    return atom_map
+    return [atom_map]
 
 
 def map_isomerization_reaction(rxn: 'ARCReaction',
-                               ) -> Optional[List[int]]:
+                               ) -> Optional[List[List[int]]]:
     """
     Map isomerization reaction that has no corresponding RMG family.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
-        Optional[List[int]]:
+        Optional[List[List[int]]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
@@ -205,18 +200,17 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
                 for bond in atom.bonds.values():
                     bond.order = 1
             if success:
-                return map_two_species(r_copy, p_copy, map_type='list')
+                return [map_two_species(r_copy, p_copy, map_type='list')]
 
     # Fallback to the general mapping algorithm.
-    return map_two_species(rxn.r_species[0], rxn.p_species[0], map_type='list')
+    return [map_two_species(rxn.r_species[0], rxn.p_species[0], map_type='list')]
 
 
 def map_rxn(rxn: 'ARCReaction',
             backend: str = 'ARC',
-            db: Optional['RMGDatabase'] = None,
-            ) -> Optional[List[int]]:
+            ) -> Optional[List[List[int]]]:
     """
-    A wrapper function for mapping reaction, uses databases for mapping with the correct reaction family parameters.
+    Map a reaction. The main function of the atom mapping module.
     Strategy:
         1) get_rmg_reactions_from_arc_reaction, get_atom_indices_of_labeled_atoms_in_an_rmg_reaction.
         2) (For bimolecular reactions) Find the species in which the bond is broken.
@@ -226,50 +220,47 @@ def map_rxn(rxn: 'ARCReaction',
         6) Join maps together.
 
     Args:
-        rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
+        rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
         
     Returns:
-        Optional[List[int]]:
+        Optional[List[List[int]]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    # step 1:
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    
+
     if not rmg_reactions:
         return None
-    
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
-                                                                                      rmg_reaction=rmg_reactions[0])
 
-    # step 2:
-    assign_labels_to_products(rxn, p_label_dict)
-    
-    # step 3:
-    reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
-    label_species_atoms(reactants), label_species_atoms(products)
-    
-    r_bdes, p_bdes = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+    atom_maps = list()
+    for rmg_reaction in rmg_reactions:
+        r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+                                                                                          rmg_reaction=rmg_reaction)
 
-    r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-    p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+        assign_labels_to_products(rxn, p_label_dict)
+        reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
+        label_species_atoms(reactants)
+        label_species_atoms(products)
 
-    try:
-        make_bond_changes(rxn, r_cuts, r_label_dict)
-    except (ValueError, IndexError, ActionError, AtomTypeError) as e:
-        logger.warning(e)
+        r_bdes, p_bdes = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
 
-    r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
+        try:
+            make_bond_changes(rxn, r_cuts, r_label_dict)
+        except (ValueError, IndexError, ActionError, AtomTypeError) as e:
+            logger.warning(e)
+        r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
-    # step 4:
-    pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
-    if len(p_cuts):
-        logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
-        return None
-    # step 5:
-    maps = map_pairs(pairs_of_reactant_and_products)
+        pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+        if len(p_cuts):
+            logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
+            return None
 
-    # step 6:
-    return glue_maps(maps, pairs_of_reactant_and_products)
+        atom_map = map_pairs(pairs_of_reactant_and_products)
+        if atom_map is not None:
+            atom_map = glue_maps(atom_map, pairs_of_reactant_and_products)
+            atom_maps.append(atom_map)
+
+    return atom_maps
