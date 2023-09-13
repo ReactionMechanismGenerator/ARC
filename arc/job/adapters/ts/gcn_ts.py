@@ -274,46 +274,53 @@ class GCNAdapter(JobAdapter):
                                         charge=rxn.charge,
                                         multiplicity=rxn.multiplicity,
                                         )
-        write_sdf_files(rxn=rxn,
-                        reactant_path=self.reactant_path,
-                        product_path=self.product_path,
-                        )
-        if exe_type == 'queue':
-            input_dict = {'reactant_path': self.reactant_path,
-                          'product_path': self.product_path,
-                          'local_path': self.local_path,
-                          'yml_out_path': self.yml_out_path,
-                          'repetitions': self.repetitions,
-                          }
-            save_yaml_file(path=self.yml_in_path, content=input_dict)
-            self.legacy_queue_execution()
-        elif exe_type == 'incore':
-            for _ in range(self.repetitions):
-                run_subprocess_locally(direction='F',
-                                       reactant_path=self.reactant_path,
-                                       product_path=self.product_path,
-                                       ts_path=self.ts_fwd_path,
-                                       local_path=self.local_path,
-                                       ts_species=rxn.ts_species,
-                                       )
-                run_subprocess_locally(direction='R',
-                                       reactant_path=self.product_path,
-                                       product_path=self.reactant_path,
-                                       ts_path=self.ts_rev_path,
-                                       local_path=self.local_path,
-                                       ts_species=rxn.ts_species,
-                                       )
-            if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'gcn' in tsg.method])
-                if successes:
-                    logger.info(f'GCN successfully found {successes} TS guesses for {rxn.label}.')
-                else:
-                    logger.info(f'GCN did not find any successful TS guesses for {rxn.label}.')
+        for i in range(len(rxn.atom_maps)):
+            try:
+                write_sdf_files(rxn=rxn,
+                                reactant_path=self.reactant_path,
+                                product_path=self.product_path,
+                                am_index=i,
+                                )
+            except IndexError:
+                logger.warning(f'GCN adapter could not write SDF files for {rxn.label} with atom map {i}.')
+                continue
+            if exe_type == 'queue':
+                input_dict = {'reactant_path': self.reactant_path,
+                              'product_path': self.product_path,
+                              'local_path': self.local_path,
+                              'yml_out_path': self.yml_out_path,
+                              'repetitions': self.repetitions,
+                              }
+                save_yaml_file(path=self.yml_in_path, content=input_dict)
+                self.legacy_queue_execution()
+            elif exe_type == 'incore':
+                for _ in range(self.repetitions):
+                    run_subprocess_locally(direction='F',
+                                           reactant_path=self.reactant_path,
+                                           product_path=self.product_path,
+                                           ts_path=self.ts_fwd_path,
+                                           local_path=self.local_path,
+                                           ts_species=rxn.ts_species,
+                                           )
+                    run_subprocess_locally(direction='R',
+                                           reactant_path=self.product_path,
+                                           product_path=self.reactant_path,
+                                           ts_path=self.ts_rev_path,
+                                           local_path=self.local_path,
+                                           ts_species=rxn.ts_species,
+                                           )
+                if len(self.reactions) < 5:
+                    successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'gcn' in tsg.method])
+                    if successes:
+                        logger.info(f'GCN successfully found {successes} TS guesses for {rxn.label}.')
+                    else:
+                        logger.info(f'GCN did not find any successful TS guesses for {rxn.label}.')
 
 
 def write_sdf_files(rxn: 'ARCReaction',
                     reactant_path: str,
                     product_path: str,
+                    am_index: int = 0,
                     ):
     """
     Write reactant and product SDF files using RDKit.
@@ -322,9 +329,10 @@ def write_sdf_files(rxn: 'ARCReaction',
         rxn (ARCReaction): The relevant reaction.
         reactant_path (str): The path to the reactant SDF file.
         product_path (str): The path to the product SDF file.
+        am_index (int, optional): The atom map index. Default: 0.
     """
     reactant_rdkit_mol = rdkit_conf_from_mol(rxn.r_species[0].mol, rxn.r_species[0].get_xyz())[1]
-    mapped_product = rxn.get_single_mapped_product_xyz()
+    mapped_product = rxn.get_single_mapped_product_xyz(am_index)
     product_rdkit_mol = rdkit_conf_from_mol(mapped_product.mol, mapped_product.get_xyz())[1]
     w = Chem.SDWriter(reactant_path)
     w.write(reactant_rdkit_mol)
