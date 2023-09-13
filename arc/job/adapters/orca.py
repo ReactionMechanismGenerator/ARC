@@ -319,7 +319,7 @@ end
                                 key1='block')
             elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
                 self.add_to_args(val=f"""
-!$CPCM({self.level.solvent})
+!CPCM({self.level.solvent})
             """,
                                  key1='block')
 

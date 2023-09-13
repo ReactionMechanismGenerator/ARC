@@ -70,15 +70,15 @@ class TestOrcaAdapter(unittest.TestCase):
                                 )
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
-        self.job_1.cpu_cores = 48
+        self.job_1.cpu_cores = 8
         self.job_1.input_file_memory = None
         self.job_1.submit_script_memory = None
         self.job_1.set_cpu_and_mem()
-        self.assertEqual(self.job_1.cpu_cores, 48)
+        self.assertEqual(self.job_1.cpu_cores, 8)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
-        expected_memory = math.ceil(14 * 1024 / 48)
+        expected_memory = math.ceil(14 * 1024 / 8)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
 
     def test_write_input_file(self):
@@ -86,11 +86,12 @@ class TestOrcaAdapter(unittest.TestCase):
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """!dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
 !sp 
-%maxcore 299
+
+%maxcore 1792
 %pal # job parallelization settings
-nprocs 48
+nprocs 8
 end
 %scf # recommended SCF settings
 MaxIter 500
@@ -112,8 +113,9 @@ H      -0.53338088   -0.77135867   -0.54806440
         self.job_2.write_input_file()
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
-        job_2_expected_input_file = """!dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
 !sp 
+
 %maxcore 1792
 %pal # job parallelization settings
 nprocs 8
@@ -121,10 +123,15 @@ end
 %scf # recommended SCF settings
 MaxIter 500
 end
+
+
+
 %cpcm SMD true
       SMDsolvent "dmso"
 end
             
+
+
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
 O       1.35198769    0.01264937   -0.17195885
@@ -141,8 +148,9 @@ H      -0.53338088   -0.77135867   -0.54806440
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = """!dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
 !sp 
+
 %maxcore 1792
 %pal # job parallelization settings
 nprocs 8
@@ -150,8 +158,13 @@ end
 %scf # recommended SCF settings
 MaxIter 500
 end
+
+
+
 !CPCM(water)
             
+
+
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
 O       1.35198769    0.01264937   -0.17195885
