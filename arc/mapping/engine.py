@@ -936,19 +936,20 @@ def check_atom_map(rxn) -> bool:
     Returns: bool
         Whether the atom mapping makes sense.
     """
-    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
-        return False
-    r_elements, p_elements = list(), list()
-    for r_species in rxn.r_species:
-        r_elements.extend(list(r_species.get_xyz()['symbols']))
-    for p_species in rxn.p_species:
-        p_elements.extend(list(p_species.get_xyz()['symbols']))
-    for i, map_i in enumerate(rxn.atom_map):
-        if r_elements[i] != p_elements[map_i]:
-            break
-    for i in range(len(unique(rxn.atom_map))):
-        if unique(rxn.atom_map)[i] != i:
+    for atom_map in rxn.atom_maps:
+        if len(atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
             return False
+        r_elements, p_elements = list(), list()
+        for r_species in rxn.r_species:
+            r_elements.extend(list(r_species.get_xyz()['symbols']))
+        for p_species in rxn.p_species:
+            p_elements.extend(list(p_species.get_xyz()['symbols']))
+        for i, map_i in enumerate(atom_map):
+            if r_elements[i] != p_elements[map_i]:
+                break
+        for i in range(len(unique(atom_map))):
+            if unique(atom_map)[i] != i:
+                return False
     return True
 
 
