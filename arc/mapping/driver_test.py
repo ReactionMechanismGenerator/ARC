@@ -1080,6 +1080,36 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
 
+    def test_flip_maps(self):
+        """Test the flip_maps function."""
+        atom_maps = [[0]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[0]])
+
+        atom_maps = [[0, 1]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[0, 1]])
+
+        atom_maps = [[1, 0]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[1, 0]])
+
+        atom_maps = [[0, 1, 2, 3, 5, 4, 6]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[0, 1, 2, 3, 5, 4, 6]])
+
+        atom_maps = [[0, 1, 2, 8, 7, 4, 5, 3, 6, 9]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[0, 1, 2, 7, 5, 6, 8, 4, 3, 9]])
+
+        atom_maps = [[5, 8, 0, 6, 10, 1, 9, 3, 4, 2, 7]]
+        flipped_maps = flip_maps(atom_maps)
+        self.assertEqual(flipped_maps, [[2, 5, 9, 7, 8, 0, 3, 10, 1, 6, 4]])
+
+        with self.assertRaises(ValueError):
+            atom_maps = [[0, 1, 2, 1, 0, 5, 3, 4, 6, 2]]
+            flip_maps(atom_maps)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

@@ -13,7 +13,6 @@ import arc.rmgdb as rmgdb
 from arc.mapping.engine import (assign_labels_to_products,
                                 are_adj_elements_in_agreement,
                                 create_qc_mol,
-                                flip_map,
                                 fingerprint,
                                 get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
                                 get_rmg_reactions_from_arc_reaction,
@@ -264,3 +263,26 @@ def map_rxn(rxn: 'ARCReaction',
             atom_maps.append(atom_map)
 
     return atom_maps
+
+
+def flip_maps(atom_maps: Optional[List[List[int]]]) -> Optional[List[List[int]]]:
+    """
+    Flip atom maps so that the products map to the reactants.
+
+    Args:
+        atom_maps (List[int]): The atom maps in a list format.
+
+    Returns:
+        Optional[List[int]]: The flipped atom maps.
+    """
+    if atom_maps is None:
+        return None
+    flipped_maps = list()
+    for atom_map in atom_maps:
+        flipped_map = [-1] * len(atom_map)
+        for index, entry in enumerate(atom_map):
+            flipped_map[entry] = index
+        if any(entry < 0 for entry in flipped_map):
+            raise ValueError(f'Cannot flip the atom map {atom_map}')
+        flipped_maps.append(flipped_map)
+    return flipped_maps
