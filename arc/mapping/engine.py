@@ -1165,13 +1165,36 @@ def assign_labels_to_products(rxn: 'ARCReaction',
             atom_index+=1
 
 
-def multiple_cut_on_species(spc, bdes):
+def find_new_bdes_based_on_atom_label(spc, original_bdes):
+    """
+    A helper function for finding the correct scission position basesd on the atom labels.
+    Args:
+        spc ARCSpecies: the species (reactants or products), marked for scission.
+        original_bdes (list(tuple(int, int))): The original positions at which scission is needed.
+    Returns:
+        list(ARCSpecies): a list of the cut products.
+    """
+    new_bdes = []
+    for bde in original_bdes:
+        new_bde = []
+        for bd in bde:
+            for index, atom in enumerate(spc.mol.atoms):
+                if int(atom.label)+1 == bd:
+                    new_bde.append(index+1)
+                    break
+        if not new_bde == []:
+            new_bdes.append(tuple(new_bde))
+    return new_bdes
+
+
+def multiple_cut_on_species(spc, bdes, original_bdes):
     """
     A function that recursively calles an is called by cut_species_for_mapping.
     Is used to cut a species and reassign the other BDE's to the other cuts, and recalling cut_species_for_mapping.
     Args:
         spc (ARCSpecies): a species with more then one BDE's (marks for scission).
         bdes (list(tuple(int))): the required BDE's.
+        original_bdes (list(list(tuple(int, int)))): The original positions at which scission is needed.
     Returns:
         list(ARCSpecies): a list of the cut products.
     """
@@ -1189,20 +1212,21 @@ def multiple_cut_on_species(spc, bdes):
             if bde[0]-1 in indinces and bde[1]-1 in indinces:
                 new_bdes.append((indinces.index(bde[0]-1) + 1, indinces.index(bde[1]-1) + 1))
         species.bdes = new_bdes
-    return cut_species_for_mapping(cuts, [len(species.bdes or list()) for species in cuts])
+    return cut_species_for_mapping(cuts, [len(species.bdes or list()) for species in cuts], )
 
 
-def cut_species_for_mapping(species, locs):
+def cut_species_for_mapping(species, locs, all_original_bdes):
     """
     A function for performing the necessary scission of species for mapping purposes. Can perform appropriate scission of multiple bonds at once.
     Args:
         species (list(ARCSpecies)): the species (reactants or products), marked for scission.
         locs (list(int)): the number of cuts that is required for each species.
+        all_original_bdes (list(list(tuple(int, int)))): The original positions at which scission is needed.
     Returns:
         list(ARCSpecies): a list of the cut products.
     """
     cuts = list()
-    for spc, loc in zip(species, locs):
+    for spc, loc, original_bdes in zip(species, locs, all_original_bdes):
         spc.final_xyz = spc.get_xyz()
         if spc.mol.copy(deep=True).smiles == "[H][H]" and loc != 0: # scissors should return one species
             labels = [atom.label for atom in spc.mol.copy(deep=True).atoms]
@@ -1222,7 +1246,7 @@ def cut_species_for_mapping(species, locs):
                 return None
         else:
             bdes = spc.bdes
-            cuts += multiple_cut_on_species(spc, bdes)
+            cuts += multiple_cut_on_species(spc, bdes, original_bdes)
     return cuts
 
 
@@ -1390,3 +1414,107 @@ def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
             if bde[0]-1 in cycle and bde[1]-1 in cycle:
                 return True
     return False
+
+def cut_species_based_on_bdes(species: List[ARCSpecies], bdess: List[List[Tuple[int, int]]]) -> List[ARCSpecies]:
+    """
+    A function used in atom mapping to scissor ARCSpecies based on their atom- indexed BDE's.
+    Args:
+        species (list(ARCSpecies)): The species list (reactants or products).
+        bdess (List(List(Tuple(int, int)))): The bond to be scissioned, based on the atom indices.
+    Returns:
+        list(ARCSpecies): The species list after scissor.
+    Examples:
+        >>> species = [ARCSpecies(label="ethane", smiles="CC"), ARCSpecies(label="H2", smiles=[H][H])]
+        >>> bdess = [[(1, 2), (1, 3)], []]
+        >>> label_species_atoms(species)
+        >>> [spc.mol.to_smiles() for spc in cut_species_based_on_bdes(species, bdess)]
+        ['[CH2]', '[H]', '[CH3]', '[H][H]']
+    """
+    if not any(bdess):
+        return species
+    
+    cuts = list()
+    for spc, bdes in zip(species, bdess):
+        if bdes:
+            spc.final_xyz = spc.get_xyz()
+            bde, others = bdes[0], bdes[1:]
+            if determine_bdes_indices_based_on_atom_labels(spc=spc, bde=bde, add_bdes=True):
+                try:
+                    cuts_temp = spc.scissors()
+                except SpeciesError as e:
+                    return None
+            
+            if others:
+                cuts += continue_cutting(cuts_temp, others)
+            else:
+                cuts += cuts_temp
+        else:
+            cuts.append(spc)
+    return cuts
+
+
+def determine_bdes_indices_based_on_atom_labels(spc, bde, add_bdes):
+    """
+    A function for determining whether or not the species in question containt the bond specified by the BDE. Also, assigns the BDE if the user requests.
+    Args:
+        spc (ARCSpecies): The species in question, with labels atom indices.
+        bde (Tuple(int, int)): The bde in question.
+        add_bdes (bool): Whether or not to add the bde to the species.
+    Returns:
+        bool: Whether or not the bde is based on the atom labels.
+    Examples:
+        >>> spc = ARCSpecies(label="ethane", smiles="CC")
+        >>> bde = (1, 2)
+        >>> label_species_atoms([spc])
+        >>> determine_bdes_indices_based_on_atom_labels(spc, bde, add_bdes=False)
+        True
+        >>> spc.bdes # None
+        >>> determine_bdes_indices_based_on_atom_labels(spc, bde, add_bdes=True)
+        True
+        >>> spc.bdes
+        [(1, 2)]
+
+        >>> determine_bdes_indices_based_on_atom_labels(spc, bde, add_bdes=True)
+        >>> bde = (2, 3)
+        True
+        >>> spc.bdes
+        None
+    """
+    index1, index2 = bde[0]-1, bde[1]-1
+    new_bde = list()
+    for index, atom in enumerate(spc.mol.atoms):
+        if atom.label == str(index1) or atom.label ==  str(index2):
+            new_bde.append(index+1)
+        if len(new_bde) == 2:
+            break
+    
+    if len(new_bde) == 2:
+        if add_bdes:
+            spc.bdes = [tuple(new_bde)]
+        return True
+    else:
+        return False
+    
+
+
+def continue_cutting(species, unsorted_bdes):
+    """
+    Determines whether or not further scission is required. If so, this function calls cut_species_based_on_bdes to faciliatate the scission.
+    Args:
+        species (list(ARCSpecies)): The species list (reactants or products).
+        unsorted_bdes (List(Tuple(int, int))): The bond to be scissioned, based on the atom indices, not sorted or assigned to the species from the list.
+    Returns:
+        list(ARCSpecies): The species list after scisson.
+    Examples:
+        >>> species = [ARCSpecies(label="c1", smiles="[CH3]"), ARCSpecies(label="c1", smiles="[CH3]")]
+        >>> unsorted_bdes = [(1, 3)]
+        >>> label_species_atoms(species)
+        >>> [spc.mol.to_smiles() for spc in continue_cutting(species, bdess)]
+        ['[CH2]', '[H]', '[CH3]']
+    """
+    new_bdes = [[] for _ in species]
+    for bde in unsorted_bdes:
+        for index, spc in enumerate(species):
+            if determine_bdes_indices_based_on_atom_labels(spc=spc, bde=bde, add_bdes=False):
+                new_bdes[index].append(bde)
+    return cut_species_based_on_bdes(species, new_bdes)
