@@ -31,7 +31,15 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_type='sp',
                                   level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-f12'),
                                   project='test',
-                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter'),
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_1'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  testing=True,
+                                  )
+        cls.job_2 = MolproAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='CCSD(T)', basis='cc-pVQZ'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                   testing=True,
                                   )
@@ -93,6 +101,37 @@ uccsd(t)-f12;
 """
         self.assertEqual(content_1, job_1_expected_input_file)
 
+        self.job_2.cpu_cores = 48
+        self.job_2.set_input_file_memory()
+        self.job_2.write_input_file()
+        with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
+            content_2 = f.read()
+        job_2_expected_input_file = """***,spc1
+memory,40,m;
+file,1,file1.int    !allocate permanent integral file
+file,2,file2.wfu    !allocate permanent wave-function (dump) file
+
+geometry={angstrom;
+O       0.00000000    0.00000000    1.00000000}
+
+basis=cc-pvqz
+
+
+
+int;
+{hf;
+maxit,1000;
+wf,spin=2,charge=0;}
+
+uccsd(t);
+
+optg, savexyz='geometry.xyz'
+
+---;
+
+"""
+        self.assertEqual(content_2, job_2_expected_input_file)
+
     def test_set_files(self):
         """Test setting files"""
         job_1_files_to_upload = [{'file_name': 'submit.sub',
@@ -120,7 +159,8 @@ uccsd(t)-f12;
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter'), ignore_errors=True)
+        for folder in ['test_MolproAdapter_1', 'test_MolproAdapter_2']:
+            shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', folder), ignore_errors=True)
 
 
 if __name__ == '__main__':

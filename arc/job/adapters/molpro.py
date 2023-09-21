@@ -229,8 +229,8 @@ class MolproAdapter(JobAdapter):
 
         # Job type specific options
         if self.job_type in ['opt', 'optfreq', 'conformers']:
-            keywords = ['optg,', 'root=2,', 'method=qsd,', 'readhess,', "savexyz='geometry.xyz'"] if self.is_ts \
-                else ['optg,', "savexyz='geometry.xyz'"]
+            keywords = ['optg', 'root=2', 'method=qsd', 'readhess', "savexyz='geometry.xyz'"] if self.is_ts \
+                else ['optg', "savexyz='geometry.xyz'"]
             input_dict['job_type_1'] = ', '.join(key for key in keywords)
 
         elif self.job_type in ['freq', 'optfreq']:
