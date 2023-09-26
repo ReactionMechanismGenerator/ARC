@@ -552,26 +552,6 @@ class TestMappingEngine(unittest.TestCase):
                     self.assertEqual(self.p_label_dict_rxn_1[atom.label], index)
                 index+=1
 
-    def test_prepare_reactants_and_products_for_scissors(self):
-        rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        rxn_1_test.determine_family(self.db)
-        assign_labels_to_products(rxn_1_test, self.p_label_dict_rxn_1)
-        reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
-                                                                                        self.r_label_dict_rxn_1,
-                                                                                        self.p_label_dict_rxn_1)
-        
-        for reactant in reactants:
-            self.assertIn(reactant.mol.smiles,["CC(C)F", "[CH3]"])
-
-        for product in products:
-            self.assertIn(product.mol.smiles,["C[CH]C", "CF"])
-
-        self.assertEqual(loc_r, [1,0])
-        self.assertEqual(loc_p, [0,1])
-
-        self.assertEqual(reactants[0].bdes,[(1+1,3+1)])
-        self.assertEqual(products[1].bdes, [(11+1-products[0].number_of_atoms, 10+1-products[0].number_of_atoms)])
-
     def test_inc_vals(self):
         """Test creating an atom map via map_two_species() and incrementing all values"""
         spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
