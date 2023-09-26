@@ -1502,5 +1502,12 @@ class TestMappingEngine(unittest.TestCase):
         for key in range(4):
             self.assertEqual(out_dict[key], key)
 
+    def test_determine_bdes_on_spc_based_on_atom_labels(self):
+        """tests the determine_bdes_indices_based_on_atom_labels function"""
+        spc = ARCSpecies(label="ethane", smiles="CC")
+        label_species_atoms([spc])
+        self.assertTrue(determine_bdes_on_spc_based_on_atom_labels(spc, (1, 2)))
+        self.assertFalse(determine_bdes_on_spc_based_on_atom_labels(spc, (2, 3)))
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
