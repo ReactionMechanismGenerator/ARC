@@ -1083,40 +1083,6 @@ def assign_labels_to_products(rxn: 'ARCReaction',
 
 
 
-def cut_species_for_mapping(species, locs):
-    """
-    A function for performing the necessary scission of species for mapping purposes. Can perform appropriate scission of multiple bonds at once.
-    Args:
-        species (list(ARCSpecies)): the species (reactants or products), marked for scission.
-        locs (list(int)): the number of cuts that is required for each species.
-    Returns:
-        list(ARCSpecies): a list of the cut products.
-    """
-    cuts = list()
-    for spc, loc in zip(species, locs):
-        spc.final_xyz = spc.get_xyz()
-        if spc.mol.copy(deep=True).smiles == "[H][H]" and loc != 0: # scissors should return one species
-            labels = [atom.label for atom in spc.mol.copy(deep=True).atoms]
-            try:
-                H1 = spc.scissors()[0]
-            except SpeciesError:
-                return None
-            H2 = H1.copy()
-            H2.mol.atoms[0].label = labels[0] if H1.mol.atoms[0].label != labels[0] else labels[1]
-            cuts += [H1, H2]
-        elif loc == 0:
-            cuts += [spc]
-        elif loc == 1:
-            try:
-                cuts += spc.scissors()
-            except SpeciesError:
-                return None
-        else:
-            bdes = spc.bdes
-            cuts += multiple_cut_on_species(spc, bdes)
-    return cuts
-
-
 def find_main_cut_product(cuts: List["ARCSpecies"],
                           reactant: "ARCSpecies",
                           bde: Tuple[int]
