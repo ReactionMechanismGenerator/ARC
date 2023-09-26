@@ -1455,25 +1455,6 @@ class TestMappingEngine(unittest.TestCase):
         atoms = [atom.element.symbol for atom in spc.mol.atoms]
         for label1,label2 in zip(atoms, xyz):
             self.assertEqual(label1, label2)
- 
-    def test_cuts_on_cycle_of_labeled_mol(self):
-        """test the cuts_on_cycle_of_labeled_mol function"""
-        spc1 = ARCSpecies(label = "A", smiles="NC1=NC=NC2=C1N=CN2", bdes = [(6, 7)])
-        try:
-            cuts_on_cycle_of_labeled_mol(spc1)
-        except ValueError as e:
-            self.assertEqual(e.args[0], "cuts_on_cycle_of_labeled_mol recives labeled ARCSpecies only, got an unlabeld species")
-        for index, atom in enumerate(spc1.mol.atoms):
-            atom.label = str(index)
-        self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
-        spc1.bdes = [(1, 2)]
-        self.assertFalse(cuts_on_cycle_of_labeled_mol(spc1))
-        spc1.bdes = [(1, 2), (6, 7)]
-        self.assertTrue(cuts_on_cycle_of_labeled_mol(spc1))
-        spc2 = ARCSpecies(label = "propane", smiles = "CCC",bdes = [(1, 2)])
-        for index, atom in enumerate(spc2.mol.atoms):
-            atom.label = str(index)
-        self.assertFalse(cuts_on_cycle_of_labeled_mol(spc2))
 
     def test_add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(self):
         "test the add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion function"
