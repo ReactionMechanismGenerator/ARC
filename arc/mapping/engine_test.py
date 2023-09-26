@@ -1508,6 +1508,18 @@ class TestMappingEngine(unittest.TestCase):
         for key in range(4):
             self.assertEqual(out_dict[key], key)
 
+    def test_copy_species_list_for_mapping(self):
+        """tests the copy_species_list_for_mapping function"""
+        species = [ARCSpecies(label="test_1", smiles = "BrC(F)Cl"), ARCSpecies(label="test_2", smiles = "OOC(F)CCCONNO")]
+        label_species_atoms(species)
+        species_copy = copy_species_list_for_mapping(species)
+        for s1, s2 in zip(species, species_copy):
+            self.assertIsNot(s1, s2)
+            self.assertTrue(s1.mol.is_isomorphic(s2.mol))
+            for atom1, atom2 in zip(s1.mol.atoms, s2.mol.atoms):
+                self.assertIsNot(atom1, atom2)
+                self.assertEqual(atom1.label, atom2.label)
+
     def test_determine_bdes_on_spc_based_on_atom_labels(self):
         """tests the determine_bdes_indices_based_on_atom_labels function"""
         spc = ARCSpecies(label="ethane", smiles="CC")
