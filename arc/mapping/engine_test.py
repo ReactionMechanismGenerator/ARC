@@ -1508,6 +1508,12 @@ class TestMappingEngine(unittest.TestCase):
         for key in range(4):
             self.assertEqual(out_dict[key], key)
 
+    def test_find_all_bdes(self):
+        rxn = self.rxn_1.copy()
+        rxn.determine_family(self.db)
+        bdes = find_all_bdes(rxn, self.r_label_dict_rxn_1, True)
+        self.assertEqual(bdes, [(2, 4)])
+
     def test_copy_species_list_for_mapping(self):
         """tests the copy_species_list_for_mapping function"""
         species = [ARCSpecies(label="test_1", smiles = "BrC(F)Cl"), ARCSpecies(label="test_2", smiles = "OOC(F)CCCONNO")]
