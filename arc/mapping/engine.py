@@ -1194,6 +1194,36 @@ def glue_maps(maps, pairs_of_reactant_and_products):
     return [val for _, val in sorted(am_dict.items(), key=lambda item: item[0])]
 
 
+def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
+    """
+    A function for determining whether or not the species in question containt the bond specified by the bond dissociation indices.
+    Also, assigns the correct BDE to the species.
+    
+    Args:
+        spc (ARCSpecies): The species in question, with labels atom indices.
+        bde (Tuple[int, int]): The bde in question.
+        add_bdes (bool): Whether or not to add the bde to the species.
+    
+    Returns:
+        bool: Whether or not the bde is based on the atom labels.
+    """
+    bde = convert_list_index_0_to_1(bde, direction=-1)
+    index1, index2 = bde[0], bde[1]
+    new_bde = list()
+    atoms = list()
+    for index, atom in enumerate(spc.mol.atoms):
+        if atom.label == str(index1) or atom.label == str(index2):
+            new_bde.append(index+1)
+            atoms.append(atom)
+        if len(new_bde) == 2:
+            break
+    
+    if len(new_bde) == 2 and atoms[1] in atoms[0].bonds.keys():
+        spc.bdes = [tuple(new_bde)]
+        return True
+    else:
+        return False
+
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
     """A helper function determining whether or not the scission site opens a cycle.
 
