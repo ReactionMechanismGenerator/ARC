@@ -1275,6 +1275,24 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
             atom1.label = atom2.label
     return copies
 
+
+def find_all_bdes(rxn: "ARCReaction", label_dict: dict, is_reactants: bool) -> List[Tuple[int, int]]:
+    """
+    A function for finding all the broken(/formed) bonds during a chemical reaction, based on the atom indices.
+    Args:
+        rxn (ARCReaction): The reaction in question.
+        label_dict (dict): A dictionary of the atom indices to the atom labels.
+        is_reactants (bool): Whether or not the species list represents reactants or products.
+    Returns:
+        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond. Note that these represent the atom indicies to be cut, and not final BDEs.
+    """
+    bdes = list()
+    for action in rxn.family.forward_recipe.actions:
+        if action[0].lower() == ("break_bond" if is_reactants else "form_bond"):
+            bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
+    return bdes
+
+
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
     """A helper function determining whether or not the scission site opens a cycle.
 
