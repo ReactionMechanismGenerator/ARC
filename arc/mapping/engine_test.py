@@ -583,9 +583,9 @@ class TestMappingEngine(unittest.TestCase):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
         assign_labels_to_products(rxn_1_test, self.p_label_dict_rxn_1)
-        reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
-                                                                                        self.r_label_dict_rxn_1,
-                                                                                        self.p_label_dict_rxn_1)
+        
+        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+
         label_species_atoms(reactants)
         label_species_atoms(products)
 
@@ -642,19 +642,17 @@ class TestMappingEngine(unittest.TestCase):
         label_species_atoms(spcs)
         cuts = cut_species_based_on_atom_indices(spcs, [(6, 5), (4, 2), (3, 7)])
         self.assertEqual(len(cuts), 4)
-            a.label=str(i)
-        spc.final_xyz = spc.get_xyz()
-        cuts = multiple_cut_on_species(spc, spc.bdes)
-        for cut in cuts:
-            self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH2]").mol),
-                                 cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH2]").mol)]))
 
     def test_r_cut_p_cut_isomorphic(self):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
-        reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,self.r_label_dict_rxn_1,self.p_label_dict_rxn_1)
-        r_cuts = cut_species_for_mapping(reactants, loc_r)
-        p_cuts = cut_species_for_mapping(products, loc_p)
+        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+        label_species_atoms(reactants), label_species_atoms(products)
+        
+        r_bdes, p_bdes = find_all_bdes(rxn_1_test, self.r_label_dict_rxn_1, True), find_all_bdes(rxn_1_test, self.p_label_dict_rxn_1, False)
+
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
 
         self.assertTrue(r_cut_p_cut_isomorphic(self.spc1,self.spc2))
         for r_cut in r_cuts:
@@ -670,11 +668,14 @@ class TestMappingEngine(unittest.TestCase):
         smiles = ["[F]", "C[CH]C", "[CH3]"]
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn_1_test.determine_family(self.db)
-        reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test,
-                                                                                        self.r_label_dict_rxn_1,
-                                                                                        self.p_label_dict_rxn_1)
-        r_cuts = cut_species_for_mapping(reactants, loc_r)
-        p_cuts = cut_species_for_mapping(products, loc_p)
+        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+        label_species_atoms(reactants), label_species_atoms(products)
+        
+        r_bdes, p_bdes = find_all_bdes(rxn_1_test, self.r_label_dict_rxn_1, True), find_all_bdes(rxn_1_test, self.p_label_dict_rxn_1, False)
+
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
 
         for pair in pairs_of_reactant_and_products:
@@ -688,28 +689,29 @@ class TestMappingEngine(unittest.TestCase):
         rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_1_test, backend="ARC")
         r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_1_test,
                                                                                           rmg_reaction=rmg_reactions[0])
-        assign_labels_to_products(rxn_1_test, p_label_dict)
-        reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
-        label_species_atoms(reactants)
-        label_species_atoms(products)
-        r_cuts = cut_species_for_mapping(reactants, loc_r)
-        p_cuts = cut_species_for_mapping(products, loc_p)
+        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+        label_species_atoms(reactants), label_species_atoms(products)
+        
+        r_bdes, p_bdes = find_all_bdes(rxn_1_test, r_label_dict, True), find_all_bdes(rxn_1_test, p_label_dict, False)
+
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
-        for Map in maps:
-            if len(Map) == 1:
-                self.assertEqual(Map[0], 0)
-            elif len(Map) == 4:
-                self.assertEqual(Map[0], 0)
-                for i in Map[1:]:
+        for map_ in maps:
+            if len(map_) == 1:
+                self.assertEqual(map_[0], 0)
+            elif len(map_) == 4:
+                self.assertEqual(map_[0], 0)
+                for i in map_[1:]:
                     self.assertIn(i, [1, 2, 3])
-                self.assertEqual(len(np.unique(Map)), len(Map))
+                self.assertEqual(len(np.unique(map_)), len(map_))
             else:
-                self.assertEqual(Map[:3], [0, 1, 2])
-                self.assertIn(tuple(Map[3:6]), list(itertools.permutations([3, 4, 5])))
-                self.assertEqual(Map[6], 6)
-                self.assertIn(tuple(Map[7:]), list(itertools.permutations([7, 8, 9])))
-                self.assertEqual(len(np.unique(Map)), len(Map))
+                self.assertEqual(map_[:3], [0, 1, 2])
+                self.assertIn(tuple(map_[3:6]), list(itertools.permutations([3, 4, 5])))
+                self.assertEqual(map_[6], 6)
+                self.assertIn(tuple(map_[7:]), list(itertools.permutations([7, 8, 9])))
+                self.assertEqual(len(np.unique(map_)), len(map_))
     
     def test_glue_maps(self):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
@@ -718,11 +720,13 @@ class TestMappingEngine(unittest.TestCase):
         r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_1_test,
                                                                                       rmg_reaction=rmg_reactions[0])
         assign_labels_to_products(rxn_1_test, p_label_dict)
-        reactants, products,loc_r,loc_p = prepare_reactants_and_products_for_scissors(rxn_1_test, r_label_dict, p_label_dict)
-        label_species_atoms(reactants)
-        label_species_atoms(products)
-        r_cuts = cut_species_for_mapping(reactants, loc_r)
-        p_cuts = cut_species_for_mapping(products, loc_p)
+        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+        label_species_atoms(reactants), label_species_atoms(products)
+        
+        r_bdes, p_bdes = find_all_bdes(rxn_1_test, r_label_dict, True), find_all_bdes(rxn_1_test, p_label_dict, False)
+
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
         atom_map = glue_maps(maps,pairs_of_reactant_and_products)
@@ -1416,9 +1420,10 @@ class TestMappingEngine(unittest.TestCase):
         r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
                                                                                         rmg_reaction=rmg_reactions[0])
         assign_labels_to_products(rxn, p_label_dict)
-        reactants, _, loc_r, _ = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
-        label_species_atoms(reactants)
-        r_cuts = cut_species_for_mapping(reactants, loc_r)
+        reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
+        label_species_atoms(reactants), label_species_atoms(products)
+        r_bdes, _ = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
         self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
         make_bond_changes(rxn=rxn,
                           r_cuts=r_cuts,
