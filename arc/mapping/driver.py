@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, List, Optional
 import arc.rmgdb as rmgdb
 from arc.mapping.engine import (assign_labels_to_products,
                                 are_adj_elements_in_agreement,
-                                cut_species_for_mapping,
                                 create_qc_mol,
                                 flip_map,
                                 fingerprint,
@@ -24,7 +23,9 @@ from arc.mapping.engine import (assign_labels_to_products,
                                 map_pairs,
                                 iterative_dfs, map_two_species,
                                 pairing_reactants_and_products_for_mapping,
-                                prepare_reactants_and_products_for_scissors,
+                                copy_species_list_for_mapping,
+                                find_all_bdes,
+                                cut_species_based_on_atom_indices,
                                 update_xyz,
                                 RESERVED_FINGERPRINT_KEYS,)
 from arc.common import logger
@@ -239,12 +240,15 @@ def map_rxn(rxn: 'ARCReaction',
 
     # step 2:
     assign_labels_to_products(rxn, p_label_dict)
-    reactants, products, loc_r, loc_p = prepare_reactants_and_products_for_scissors(rxn, r_label_dict, p_label_dict)
+    
     #step 3:
-    label_species_atoms(reactants)
-    label_species_atoms(products)
-    r_cuts = cut_species_for_mapping(reactants, loc_r)
-    p_cuts = cut_species_for_mapping(products, loc_p)
+    reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
+    label_species_atoms(reactants), label_species_atoms(products)
+    
+    r_bdes, p_bdes = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+
+    r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
+    p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
 
     try:
         make_bond_changes(rxn, r_cuts, r_label_dict)
