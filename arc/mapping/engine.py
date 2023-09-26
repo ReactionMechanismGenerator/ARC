@@ -1082,34 +1082,6 @@ def assign_labels_to_products(rxn: 'ARCReaction',
             atom_index+=1
 
 
-
-def find_main_cut_product(cuts: List["ARCSpecies"],
-                          reactant: "ARCSpecies",
-                          bde: Tuple[int]
-                          )->Tuple["ARCSpecies", "ARCSpecies"]:
-    """
-    Differentiate the main product from scissors product.
-    Strategy: use the other BDE, if the indices of the atoms are in the bdes, it should be able to cut there.
-    
-    Args:
-        cuts: The cut products
-        reactant: The reactant with multiple bdes
-        bde: the BDE used for scissors.
-    
-    Returns:
-        Tuple["ARCSpecies", "ARCSpecies"] in the correct order.
-    """
-    list_atom_labels_cuts_0 = [int(atom.label)+1 for atom in cuts[0].mol.atoms]
-    bdes = reactant.bdes
-    for bd in bdes:
-        if bd == bde:
-            continue
-        elif bd[0] not in list_atom_labels_cuts_0:
-            return cuts[1], cuts[0]
-    
-    return cuts[0], cuts[1]
-
-
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
     """
     A helper function, updates the xyz values of each species after cutting. This is important, since the
