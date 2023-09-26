@@ -1191,7 +1191,7 @@ def glue_maps(maps, pairs_of_reactant_and_products):
         p_atoms = pair[1].mol.atoms
         for map_index, r_atom in zip(_map, r_atoms):
             am_dict[int(r_atom.label)] = int(p_atoms[map_index].label)
-    return [val for key, val in sorted(am_dict.items(), key=lambda item: item[0])]
+    return [val for _, val in sorted(am_dict.items(), key=lambda item: item[0])]
 
 
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
