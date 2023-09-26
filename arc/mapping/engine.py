@@ -1082,33 +1082,6 @@ def assign_labels_to_products(rxn: 'ARCReaction',
             atom_index+=1
 
 
-def multiple_cut_on_species(spc, bdes):
-    """
-    A function that recursively calles an is called by cut_species_for_mapping.
-    Is used to cut a species and reassign the other BDE's to the other cuts, and recalling cut_species_for_mapping.
-    Args:
-        spc (ARCSpecies): a species with more then one BDE's (marks for scission).
-        bdes (list(tuple(int))): the required BDE's.
-    Returns:
-        list(ARCSpecies): a list of the cut products.
-    """
-    bdes = spc.bdes
-    spc.bdes = [bdes[0]]
-    bdes = bdes[1:]
-    try:
-        cuts = spc.scissors()
-    except SpeciesError:
-        return None
-    for species in cuts:
-        species.final_xyz = species.get_xyz(generate=False)
-        indinces = [int(atom.label) for atom in species.mol.copy(deep=True).atoms]
-        new_bdes = list()
-        for bde in bdes:
-            if bde[0]-1 in indinces and bde[1]-1 in indinces:
-                new_bdes.append((indinces.index(bde[0]-1) + 1, indinces.index(bde[1]-1) + 1))
-        species.bdes = new_bdes
-    return cut_species_for_mapping(cuts, [len(species.bdes or list()) for species in cuts])
-
 
 def cut_species_for_mapping(species, locs):
     """
