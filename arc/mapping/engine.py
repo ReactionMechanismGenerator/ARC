@@ -1224,6 +1224,42 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
     else:
         return False
 
+
+def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tuple[int, int]]) -> Optional[List["ARCSpecies"]]:
+    """
+    A function for scissoring species based on their atom indices.
+    Args:
+        species (List[ARCSpecies]): The species list that requires scission.
+        bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored. The atoms are described using the atom labels, and not the actuall atom positions.
+    Returns:
+        Optional[List["ARCSpecies"]]: The species after scission.
+    """
+    if not bdes:
+        return species
+    
+    for bde in bdes:
+        for index, spc in enumerate(species):
+            if determine_bdes_on_spc_based_on_atom_labels(spc, bde):
+                candidate = species.pop(index)
+                candidate.final_xyz = candidate.get_xyz()
+                if candidate.mol.copy(deep=True).smiles == "[H][H]":
+                    labels = [atom.label for atom in candidate.mol.copy(deep=True).atoms]
+                    try:
+                        h1 = candidate.scissors()[0]
+                    except SpeciesError:
+                        return None
+                    h2 = h1.copy()
+                    h2.mol.atoms[0].label = labels[0] if h1.mol.atoms[0].label != labels[0] else labels[1]
+                    species += [h1, h2]
+                else:
+                    try:
+                        species += candidate.scissors()
+                    except SpeciesError:
+                        return None
+                break
+                
+    return species
+
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
     """A helper function determining whether or not the scission site opens a cycle.
 
