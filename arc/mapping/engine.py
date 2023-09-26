@@ -1260,6 +1260,21 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tu
                 
     return species
 
+
+def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpecies"]:
+    """
+    A helper function for copying the species list for mapping. Also keeps the atom indices when copying.
+    Args:
+        species (List[ARCSpecies]): The species list to be copied.
+    Returns:
+        List[ARCSpecies]: The copied species list.
+    """
+    copies = [spc.copy() for spc in species]
+    for copy, spc in zip(copies, species):
+        for atom1, atom2 in zip(copy.mol.atoms, spc.mol.atoms):
+            atom1.label = atom2.label
+    return copies
+
 def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
     """A helper function determining whether or not the scission site opens a cycle.
 
