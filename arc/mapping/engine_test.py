@@ -1475,7 +1475,8 @@ class TestMappingEngine(unittest.TestCase):
             self.assertEqual(out_dict[key], key)
 
     def test_find_all_bdes(self):
-        rxn = self.rxn_1.copy()
+        """tests the find_all_bdes function"""
+        rxn = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         rxn.determine_family(self.db)
         bdes = find_all_bdes(rxn, self.r_label_dict_rxn_1, True)
         self.assertEqual(bdes, [(2, 4)])
