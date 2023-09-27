@@ -380,3 +380,20 @@ def get_family(rmgdb: RMGDatabase,
             family.save_order = True
             return family
     return None
+
+
+def clean_rmg_database_object(db: RMGDatabase) -> RMGDatabase:
+    """
+    clears the global RMG database object.
+
+    Args:
+        db (RMGDatabase): the database object
+
+    Returns:
+        RMGDatabase: the database object
+    """
+    global rmg_database_instance
+    del rmg_database_instance
+    rmg_database_instance = None
+
+    return make_rmg_database_object()
