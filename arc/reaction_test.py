@@ -11,7 +11,6 @@ import shutil
 import unittest
 
 from rmgpy.reaction import Reaction
-from rmgpy import settings as rmg_settings
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
@@ -36,15 +35,9 @@ class TestARCReaction(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.rmgdb.load(path=rmg_settings['database.directory'],
-                       thermo_libraries=list(),
-                       transport_libraries='none',
-                       reaction_libraries=list(),
-                       seed_mechanisms=list(),
-                       kinetics_families="all",
-                       kinetics_depositories=['training'],
-                       depository=False,
-                       )
+        cls.rmgdb.kinetics.families = None
+        rmgdb.load_families_only(cls.rmgdb, "all")
+        
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
         cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
