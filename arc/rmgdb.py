@@ -39,7 +39,7 @@ def make_rmg_database_object() -> RMGDatabase:
 
 
 def load_families_only(rmgdb: RMGDatabase,
-                       kinetics_families: Union[str, list] = 'default'):
+                       kinetics_families: Union[str, list] = 'all'):
     """
     A helper function for loading kinetic families from RMG's database.
 
