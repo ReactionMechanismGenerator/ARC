@@ -1232,7 +1232,7 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tu
         species (List[ARCSpecies]): The species list that requires scission.
         bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored. The atoms are described using the atom labels, and not the actuall atom positions.
     Returns:
-        Optional[List["ARCSpecies"]]: The species after scission.
+        Optional[List["ARCSpecies"]]: The species list input after the scission.
     """
     if not bdes:
         return species
