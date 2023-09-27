@@ -1291,30 +1291,3 @@ def find_all_bdes(rxn: "ARCReaction", label_dict: dict, is_reactants: bool) -> L
         if action[0].lower() == ("break_bond" if is_reactants else "form_bond"):
             bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
     return bdes
-
-
-def cuts_on_cycle_of_labeled_mol(spc: 'ARCSpecies')-> bool:
-    """A helper function determining whether or not the scission site opens a cycle.
-
-        Args:
-            spc1: ARCSpecies with a bdes
-
-        Returns:
-            True if the scission site is on a ring, None if the speceis is unlabeled, False otherwise"""
-    if not any([atom.label for atom in spc.mol.atoms]):
-        raise ValueError("cuts_on_cycle_of_labeled_mol recives labeled ARCSpecies only, got an unlabeld species")
-    
-    if not spc.mol.is_cyclic():
-        return False
-
-    k = spc.mol.get_deterministic_sssr()
-    labels = [[] for i in range(len(k))]
-    for index, cycle in enumerate(k):
-        for atom in cycle:
-            labels[index].append(int(atom.label))
-    
-    for bde in spc.bdes:
-        for cycle in labels:
-            if bde[0]-1 in cycle and bde[1]-1 in cycle:
-                return True
-    return False
