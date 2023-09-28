@@ -123,6 +123,13 @@ class TestRMGDB(unittest.TestCase):
         self.assertEqual(family_4.label, 'intra_H_migration')  # returns the correct capitalization
         self.assertTrue(family_4.save_order)
 
+    def test_clean_rmg_database_object(self):
+        """Test the clean_rmg_database_object() function"""
+        self.rmgdb = rmgdb.clean_rmg_database_object(self.rmgdb)
+        self.assertIsNone(self.rmgdb.thermo)
+        self.assertIsNone(self.rmgdb.transport)
+        self.assertIsNone(self.rmgdb.kinetics)
+        rmgdb.load_rmg_database(rmgdb=self.rmgdb)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
