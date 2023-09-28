@@ -193,6 +193,23 @@
 <span id="arc-rmgdb"></span><span id="rmgdb"></span><h1>arc.rmgdb<a class="headerlink" href="#module-arc.rmgdb" title="Permalink to this heading">¶</a></h1>
 <p>A module for working with the RMG database.</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.rmgdb.clean_rmg_database_object">
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">clean_rmg_database_object</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">RMGDatabase</span></span></span><a class="reference internal" href="../_modules/arc/rmgdb.html#clean_rmg_database_object"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.clean_rmg_database_object" title="Permalink to this definition">¶</a></dt>
+<dd><p>clears the global RMG database object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>db</strong> (<em>RMGDatabase</em>) – the database object</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>the database object</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>RMGDatabase</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.rmgdb.determine_family">
 <span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">determine_family</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reaction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="reaction.html#arc.reaction.ARCReaction" title="arc.reaction.ARCReaction"><span class="pre">ARCReaction</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">db</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">RMGDatabase</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/rmgdb.html#determine_family"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.determine_family" title="Permalink to this definition">¶</a></dt>
 <dd><p>Determine the RMG reaction family for an ARC reaction.
@@ -273,7 +290,7 @@ Assigns a list of all matching entries from both libraries and families.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.rmgdb.load_families_only">
-<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">load_families_only</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kinetics_families</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'default'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/rmgdb.html#load_families_only"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.load_families_only" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.rmgdb.</span></span><span class="sig-name descname"><span class="pre">load_families_only</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rmgdb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RMGDatabase</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kinetics_families</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'all'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/rmgdb.html#load_families_only"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.rmgdb.load_families_only" title="Permalink to this definition">¶</a></dt>
 <dd><p>A helper function for loading kinetic families from RMG’s database.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
