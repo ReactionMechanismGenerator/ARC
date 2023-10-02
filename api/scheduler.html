@@ -1483,11 +1483,14 @@ Using the following methods:
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.scheduler.species_has_freq">
-<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_freq" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yml_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_freq" title="Permalink to this definition">¶</a></dt>
 <dd><p>Checks whether a species has valid converged frequencies using it’s output dict.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p></li>
+<li><p><strong>yml_path</strong> (<em>str</em>) – THe species Arkane YAML file path.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="simple">
@@ -1498,11 +1501,14 @@ Using the following methods:
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.scheduler.species_has_geo">
-<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_geo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_geo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_geo" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_geo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yml_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_geo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_geo" title="Permalink to this definition">¶</a></dt>
 <dd><p>Checks whether a species has a valid converged geometry using it’s output dict.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p></li>
+<li><p><strong>yml_path</strong> (<em>str</em>) – THe species Arkane YAML file path.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="simple">
@@ -1513,15 +1519,36 @@ Using the following methods:
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.scheduler.species_has_sp">
-<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_sp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_sp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_sp" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_sp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yml_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_sp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_sp" title="Permalink to this definition">¶</a></dt>
 <dd><p>Checks whether a species has a valid converged single-point energy using it’s output dict.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p></li>
+<li><p><strong>yml_path</strong> (<em>str</em>) – THe species Arkane YAML file path.</p></li>
+</ul>
 </dd>
 </dl>
 <dl class="simple">
 <dt>Returns: bool</dt><dd><p>Whether a species has a valid converged single-point energy.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.scheduler.species_has_sp_and_freq">
+<span class="sig-prename descclassname"><span class="pre">arc.scheduler.</span></span><span class="sig-name descname"><span class="pre">species_has_sp_and_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_output_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yml_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/scheduler.html#species_has_sp_and_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.species_has_sp_and_freq" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks whether a species has a valid converged single-point energy and valid converged frequencies.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_output_dict</strong> (<em>dict</em>) – The species output dict (i.e., Scheduler.output[label]).</p></li>
+<li><p><strong>yml_path</strong> (<em>str</em>) – THe species Arkane YAML file path.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: bool</dt><dd><p>Whether a species has a valid converged single-point energy and frequencies.</p>
 </dd>
 </dl>
 </dd></dl>
