@@ -2632,6 +2632,58 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
 
+    def test_get_atom_theoretical_charge(self):
+        """Test getting the theoretical charge of an atom."""
+        mol = Molecule(smiles='[O-][S+]([O-])=[OH+]')
+        charges = [get_atom_theoretical_charge(atom) for atom in mol.atoms]
+        self.assertEqual(sorted(charges), [-1.0, -1.0, 0.0, 1.0, 1.0])
+
+    def test_add_missing_radicals(self):
+        """Test adding missing radicals to a molecule."""
+        adjlist = """1  C u0 p0 c0 {2,S} {6,S} {7,S} {8,S}
+2  C u0 p0 c0 {1,S} {3,S} {9,S} {10,S}
+3  N u0 p1 c0 {2,S} {4,S} {5,S}
+4  O u1 p2 c0 {3,S}
+5  O u1 p2 c0 {3,S}
+6  H u0 p0 c0 {1,S}
+7  H u0 p0 c0 {1,S}
+8  H u0 p0 c0 {1,S}
+9  H u0 p0 c0 {2,S}
+10 H u0 p0 c0 {2,S}"""
+        mol = Molecule().from_adjacency_list(adjlist)
+        for atom in mol.atoms:
+            atom.radical_electrons = 0
+        self.assertEqual(mol.get_radical_count(), 0)
+        add_missing_radicals(mol)
+        self.assertEqual(mol.get_radical_count(), 2)
+
+
+    def test_fix_mol_electronic_configuration(self):
+        """Test fixing the electronic configuration of a molecule."""
+        adjlist = """multiplicity 1
+1 O u1 p2 c0 {3,S}
+2 O u1 p2 c0 {3,S}
+3 N u0 p1 c0 {1,S} {2,S} {4,S}
+4 C u0 p0 c0 {3,S} {5,S} {6,S} {7,S}
+5 C u0 p0 c0 {4,S} {8,S} {9,S} {10,S}
+6 H u0 p0 c0 {4,S}
+7 H u0 p0 c0 {4,S}
+8 H u0 p0 c0 {5,S}
+9 H u0 p0 c0 {5,S}
+10 H u0 p0 c0 {5,S}"""
+        mol_1 = Molecule().from_adjacency_list(adjlist)
+        self.assertEqual(mol_1.multiplicity, 1)
+        self.assertNotIn('[N+]', mol_1.to_smiles())
+        self.assertNotIn('[O-]', mol_1.to_smiles())
+        charges = [get_atom_theoretical_charge(atom) for atom in mol_1.atoms]
+        self.assertEqual(list(set((charges))), [0.0])
+        mol_2 = fix_mol_electronic_configuration(mol_1)
+        self.assertEqual(mol_2.multiplicity, 1)
+        self.assertIn('[N+]', mol_2.to_smiles())
+        self.assertIn('[O-]', mol_2.to_smiles())
+        charges = [get_atom_theoretical_charge(atom) for atom in mol_2.atoms]
+        self.assertEqual(sorted(charges), [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+
     @classmethod
     def tearDownClass(cls):
         """
