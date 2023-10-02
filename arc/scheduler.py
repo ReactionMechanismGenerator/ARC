@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn, compute_and_check_rxn_e0
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -2193,8 +2193,6 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
-                if success:
-                    self.check_rxn_e0_by_spc(label)
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
@@ -2334,7 +2332,8 @@ class Scheduler(object):
                 self.output[label]['warnings'] += wrong_freq_message
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-        if job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts and species_has_sp(self.output[label]):
+        if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
+                and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
             self.check_rxn_e0_by_spc(label)
 
     def check_negative_freq(self,
@@ -2431,21 +2430,22 @@ class Scheduler(object):
         """
         for rxn in self.rxn_list:
             labels = rxn.reactants + rxn.products + [rxn.ts_label]
-            if label in labels and not rxn.ts_species.ts_checks['E0'] \
-                    and all([(species_has_sp(output_dict) and species_has_freq(output_dict))
-                             or self.species_dict[spc_label].yml_path is not None
+            if label in labels and rxn.ts_species.ts_checks['E0'] is None \
+                    and all([species_has_sp_and_freq(output_dict, self.species_dict[spc_label].yml_path)
                              for spc_label, output_dict in self.output.items() if spc_label in labels]):
-                switch_ts = compute_and_check_rxn_e0(reaction=rxn,
-                                                     species_dict=self.species_dict,
-                                                     project_directory=self.project_directory,
-                                                     kinetics_adapter=self.kinetics_adapter,
-                                                     output=self.output,
-                                                     sp_level=self.sp_level if not self.composite_method else self.composite_method,
-                                                     freq_scale_factor=self.freq_scale_factor,
-                                                     )
-                if switch_ts is True:
-                    logger.info(f'TS status for reaction {rxn.label} is:\n{rxn.ts_species.ts_checks}.\n'
-                                f'Switching TS.\n')
+                check_ts(reaction=rxn,
+                         checks=['energy'],
+                         species_dict=self.species_dict,
+                         project_directory=self.project_directory,
+                         kinetics_adapter=self.kinetics_adapter,
+                         output=self.output,
+                         sp_level=self.sp_level if not self.composite_method else self.composite_method,
+                         freq_scale_factor=self.freq_scale_factor,
+                         verbose=True,
+                         )
+                if rxn.ts_species.ts_checks['E0'] is False:
+                    logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
+                                f'Searching for a better TS conformer...\n')
                     self.switch_ts(rxn.ts_label)
 
     def switch_ts(self, label: str):
@@ -2549,20 +2549,8 @@ class Scheduler(object):
                     self.output[label]['paths']['sp_no_sol'] = sp_path
                 self.output[label]['paths']['sp'] = original_sp_path  # restore the original path
 
-        if self.species_dict[label].is_ts:
-            for rxn in self.rxn_dict.values():
-                if rxn.ts_label == label:
-                    if not rxn.ts_species.ts_checks['e_elect']:
-                        check_ts(reaction=rxn, verbose=True, checks=['energy'])
-                    if species_has_freq(self.output[label]) and not rxn.ts_species.ts_checks['E0']:
-                        self.check_rxn_e0_by_spc(label)
-                        if not (rxn.ts_species.ts_checks['E0'] or rxn.ts_species.ts_checks['e_elect']) \
-                                and (self.output[label]['paths']['freq'] or self.species_dict[label].e0):
-                            logger.info(f'TS {label} did not pass the energy check. '
-                                        f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                                        f'Searching for a better TS conformer...')
-                            self.switch_ts(label=label)
-                    break
+        if species_has_freq(self.output[label], self.species_dict[label].yml_path):
+            self.check_rxn_e0_by_spc(label)
 
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
         self.output[label]['job_types']['sp'] = True
@@ -3627,47 +3615,77 @@ class Scheduler(object):
             save_yaml_file(path=path, content=content)
 
 
-def species_has_freq(species_output_dict: dict) -> bool:
+def species_has_freq(species_output_dict: dict,
+                     yml_path: Optional[str] = None,
+                     ) -> bool:
     """
     Checks whether a species has valid converged frequencies using it's output dict.
 
     Args:
         species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+        yml_path (str): THe species Arkane YAML file path.
 
     Returns: bool
         Whether a species has valid converged frequencies.
     """
+    if yml_path is not None:
+        return True
     if species_output_dict['paths']['freq'] or species_output_dict['paths']['composite']:
         return True
     return False
 
 
-def species_has_geo(species_output_dict: dict) -> bool:
+def species_has_geo(species_output_dict: dict,
+                    yml_path: Optional[str] = None,
+                    ) -> bool:
     """
     Checks whether a species has a valid converged geometry using it's output dict.
 
     Args:
         species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+        yml_path (str): THe species Arkane YAML file path.
 
     Returns: bool
         Whether a species has a valid converged geometry.
     """
+    if yml_path is not None:
+        return True
     if species_output_dict['paths']['geo'] or species_output_dict['paths']['composite']:
         return True
     return False
 
 
-def species_has_sp(species_output_dict: dict) -> bool:
+def species_has_sp(species_output_dict: dict,
+                   yml_path: Optional[str] = None,
+                   ) -> bool:
     """
     Checks whether a species has a valid converged single-point energy using it's output dict.
 
     Args:
         species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+        yml_path (str): THe species Arkane YAML file path.
 
     Returns: bool
         Whether a species has a valid converged single-point energy.
     """
+    if yml_path is not None:
+        return True
     if species_output_dict['paths']['sp'] or species_output_dict['paths']['composite']:
         return True
     return False
 
+
+def species_has_sp_and_freq(species_output_dict: dict,
+                            yml_path: Optional[str] = None,
+                            ) -> bool:
+    """
+    Checks whether a species has a valid converged single-point energy and valid converged frequencies.
+
+    Args:
+        species_output_dict (dict): The species output dict (i.e., Scheduler.output[label]).
+        yml_path (str): THe species Arkane YAML file path.
+
+    Returns: bool
+        Whether a species has a valid converged single-point energy and frequencies.
+    """
+    return species_has_sp(species_output_dict, yml_path) and species_has_freq(species_output_dict, yml_path)
