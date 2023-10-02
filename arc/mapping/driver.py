@@ -235,6 +235,10 @@ def map_rxn(rxn: 'ARCReaction',
     """
     # step 1:
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
+    
+    if not rmg_reactions:
+        return None
+    
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
                                                                                       rmg_reaction=rmg_reactions[0])
 
