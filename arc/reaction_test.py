@@ -35,7 +35,9 @@ class TestARCReaction(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.rmgdb = rmgdb.make_rmg_database_object()
-        rmgdb.load_families_only(cls.rmgdb)
+        cls.rmgdb.kinetics.families = None
+        rmgdb.load_families_only(cls.rmgdb, "all")
+        
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
         cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
@@ -1644,6 +1646,24 @@ class TestARCReaction(unittest.TestCase):
             else:
                 self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
         self.assertTrue(check_atom_map(rxn=rxn))
+
+    def test_mapping_XY_elimination_hydroxyl(self):
+        """Test mapping of a reaction family XY_elimination_hydroxyl"""    
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'O=C(O)CCF')],
+                          p_species=[ARCSpecies(label="p1", smiles='C=C'),
+                                     ARCSpecies(label="p2", smiles="F"),
+                                     ARCSpecies(label="p3", smiles="O=C=O")])
+        rxn.determine_family(rmg_database=self.rmgdb)
+        if not rxn.family: # reaction family not found for some reason.
+            rxn.family = self.rmgdb.kinetics.families["XY_elimination_hydroxyl"]
+        atom_map = rxn.atom_map
+        self.assertIsNotNone(rxn.family)
+        self.assertTrue(check_atom_map(rxn=rxn))
+        self.assertIn(atom_map[:3], [[8, 9, 10], [10, 9, 8]])
+        self.assertIn(atom_map[3:5], [[0, 1], [1, 0]])
+        self.assertEqual(atom_map[5:7], [6, 7])
+        self.assertIn(atom_map[7:9], [[4, 5], [5, 4]])
+        self.assertIn(atom_map[9:], [[2, 3], [3, 2]])
 
     def test_get_reactants_xyz(self):
         """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
