@@ -2643,25 +2643,26 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The rotor scan job object.
         """
-        # If the job has not converged, troubleshoot ESS.
-        # Besides, according to the experience, 'Internal coordinate error' cannot be handled by
-        # troubleshoot_ess() for scan jobs. It is usually related to bond or angle changes which
-        # messes up the internal coordinates during the scan. It can be resolved
-        # by conformer-based scan troubleshooting method, yet its energies are readable.
-        if job.job_status[1]['status'] != 'done' and job.job_status[1]['error'] != 'Internal coordinate error':
-            self.troubleshoot_ess(label=label,
-                                  job=job,
-                                  level_of_theory=job.level)
-            return None
-        # Otherwise, check the scan job quality.
+        # An 'Internal coordinate error' cannot be handled by troubleshooting, so we don't even try.
+        # It is usually related to bond or angle changes which mess up the internal coordinates during the scan.
         invalidate, actions, energies, angles = False, list(), list(), list()
+        invalidation_reason, message = '', ''
+        if job.job_status[1]['status'] != 'done':
+            if job.job_status[1]['error'] == 'Internal coordinate error':
+                invalidate = True
+                invalidation_reason = 'Internal coordinate error; '
+            else:
+                self.troubleshoot_ess(label=label,
+                                      job=job,
+                                      level_of_theory=job.level)
+                return None
+
         if job.rotor_index not in self.species_dict[label].rotors_dict.keys():
             raise SchedulerError(f'Could not match rotor {job.rotor_index} of species {label} '
                                  f'with pivots {self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} '
                                  f'to any of the existing rotors in the species.\n'
                                  f'The rotors dict of {label} is:\n{pprint.pformat(self.species_dict[label].rotors_dict)}')
 
-        invalidation_reason, message = '', ''
         if self.species_dict[label].rotors_dict[job.rotor_index]['dimensions'] == 1:
             # This is a 1D scan.
             # Read energy profile (in kJ/mol), it may be used in the troubleshooting.
@@ -2752,7 +2753,6 @@ class Scheduler(object):
                                            'original_dihedrals'],
                                        )
 
-        # Save the restart dictionary
         self.save_restart_dict()
 
     def check_directed_scan(self, label, pivots, scan, energies):
