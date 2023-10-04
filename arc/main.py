@@ -711,7 +711,7 @@ class ARC(object):
             if output['convergence']:
                 status_dict[label] = True
                 logger.info(f'Species {label} converged successfully\n')
-            else:
+            elif not label.startswith('IRC_'):
                 status_dict[label] = False
                 job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                    if key in self.job_types and self.job_types[key]}

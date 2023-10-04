@@ -2909,7 +2909,7 @@ class Scheduler(object):
             logger.info(f'\nAll jobs for species {label} successfully converged. '
                         f'Run time: {self.species_dict[label].run_time}')
             # Todo: any TS which did not converged (any rxn not calculated) should be reported here with full status: Was the family identified? Were TS guesses found? IF so, what's wrong?
-        elif not self.species_dict[label].is_ts or self.species_dict[label].ts_guesses_exhausted:
+        elif (not self.species_dict[label].is_ts or self.species_dict[label].ts_guesses_exhausted) and not label.startswith('IRC_'):
             job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
                                if key in self.job_types and self.job_types[key]
                                and (key != 'irc' or self.species_dict[label].is_ts)}
