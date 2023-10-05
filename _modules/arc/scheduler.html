@@ -2807,25 +2807,26 @@
 <span class="sd">            label (str): The species label.</span>
 <span class="sd">            job (JobAdapter): The rotor scan job object.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c1"># If the job has not converged, troubleshoot ESS.</span>
-        <span class="c1"># Besides, according to the experience, &#39;Internal coordinate error&#39; cannot be handled by</span>
-        <span class="c1"># troubleshoot_ess() for scan jobs. It is usually related to bond or angle changes which</span>
-        <span class="c1"># messes up the internal coordinates during the scan. It can be resolved</span>
-        <span class="c1"># by conformer-based scan troubleshooting method, yet its energies are readable.</span>
-        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;done&#39;</span> <span class="ow">and</span> <span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;error&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;Internal coordinate error&#39;</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
-                                  <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span>
-                                  <span class="n">level_of_theory</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="p">)</span>
-            <span class="k">return</span> <span class="kc">None</span>
-        <span class="c1"># Otherwise, check the scan job quality.</span>
+        <span class="c1"># An &#39;Internal coordinate error&#39; cannot be handled by troubleshooting, so we don&#39;t even try.</span>
+        <span class="c1"># It is usually related to bond or angle changes which mess up the internal coordinates during the scan.</span>
         <span class="n">invalidate</span><span class="p">,</span> <span class="n">actions</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">angles</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;status&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;done&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">job_status</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;error&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;Internal coordinate error&#39;</span><span class="p">:</span>
+                <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="s1">&#39;Internal coordinate error; &#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">troubleshoot_ess</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
+                                      <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span>
+                                      <span class="n">level_of_theory</span><span class="o">=</span><span class="n">job</span><span class="o">.</span><span class="n">level</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">None</span>
+
         <span class="k">if</span> <span class="n">job</span><span class="o">.</span><span class="n">rotor_index</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
             <span class="k">raise</span> <span class="n">SchedulerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not match rotor </span><span class="si">{</span><span class="n">job</span><span class="o">.</span><span class="n">rotor_index</span><span class="si">}</span><span class="s1"> of species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> &#39;</span>
                                  <span class="sa">f</span><span class="s1">&#39;with pivots </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="p">[</span><span class="n">job</span><span class="o">.</span><span class="n">rotor_index</span><span class="p">][</span><span class="s2">&quot;pivots&quot;</span><span class="p">]</span><span class="si">}</span><span class="s1"> &#39;</span>
                                  <span class="sa">f</span><span class="s1">&#39;to any of the existing rotors in the species.</span><span class="se">\n</span><span class="s1">&#39;</span>
                                  <span class="sa">f</span><span class="s1">&#39;The rotors dict of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is:</span><span class="se">\n</span><span class="si">{</span><span class="n">pprint</span><span class="o">.</span><span class="n">pformat</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
 
-        <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rotors_dict</span><span class="p">[</span><span class="n">job</span><span class="o">.</span><span class="n">rotor_index</span><span class="p">][</span><span class="s1">&#39;dimensions&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
             <span class="c1"># This is a 1D scan.</span>
             <span class="c1"># Read energy profile (in kJ/mol), it may be used in the troubleshooting.</span>
@@ -2916,7 +2917,6 @@
                                            <span class="s1">&#39;original_dihedrals&#39;</span><span class="p">],</span>
                                        <span class="p">)</span>
 
-        <span class="c1"># Save the restart dictionary</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_restart_dict</span><span class="p">()</span></div>
 
 <div class="viewcode-block" id="Scheduler.check_directed_scan"><a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.check_directed_scan">[docs]</a>    <span class="k">def</span> <span class="nf">check_directed_scan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">pivots</span><span class="p">,</span> <span class="n">scan</span><span class="p">,</span> <span class="n">energies</span><span class="p">):</span>
