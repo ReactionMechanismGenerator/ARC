@@ -195,7 +195,7 @@ class GaussianAdapter(JobAdapter):
                             xyz=xyz,
                             )
         if isinstance(self.level, Level) and self.level.basis is not None:
-                self.level.basis = re.sub('def2-', 'def2', self.level.basis.lower())
+            self.level.basis = re.sub('def2-', 'def2', self.level.basis.lower())
 
         if self.checkfile is None:
             if os.path.isfile(os.path.join(self.local_path, 'check.chk')):

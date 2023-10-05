@@ -19,6 +19,7 @@ from arc.plotter import save_conformers_file
 from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_has_sp, species_has_sp_and_freq
 from arc.imports import settings
 from arc.reaction import ARCReaction
+from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -37,7 +38,14 @@ class TestScheduler(unittest.TestCase):
         cls.maxDiff = None
         cls.ess_settings = {'gaussian': ['server1'], 'molpro': ['server2', 'server1'], 'qchem': ['server1']}
         cls.project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3')
-        cls.spc1 = ARCSpecies(label='methylamine', smiles='CN')
+        xyz1 = str_to_xyz("""C      -0.57422867   -0.01669771    0.01229213
+N       0.82084044    0.08279104   -0.37769346
+H      -1.05737005   -0.84067772   -0.52007494
+H      -1.10211468    0.90879867   -0.23383011
+H      -0.66133128   -0.19490562    1.08785111
+H       0.88047852    0.26966160   -1.37780789
+H       1.27889520   -0.81548721   -0.22940984""")
+        cls.spc1 = ARCSpecies(label='methylamine', smiles='CN', xyz=xyz1)
         cls.spc2 = ARCSpecies(label='C2H6', smiles='CC')
         xyz3 = """C       1.11424367   -0.01231165   -0.11493630
 C      -0.07257945   -0.17830906   -0.16010022
@@ -45,19 +53,22 @@ O      -1.38500471   -0.36381519   -0.20928090
 H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
         cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
-        xyz2 = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0.0, 0.0, 0.0),)}
         cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz2, job_type='conformers',
+                               species=[cls.spc1], xyz=xyz1, job_type='conformers',
                                conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
                                project_directory=cls.project_directory, job_num=101)
         cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz2, job_type='conformers',
+                               species=[cls.spc1], xyz=xyz1, job_type='conformers',
                                conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
                                project_directory=cls.project_directory, job_num=102)
         cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
                                species=[cls.spc2], job_type='freq',
                                level=Level(repr={'method': 'wb97x-d3', 'basis': '6-311+g(d,p)'}),
                                project_directory=cls.project_directory, job_num=103)
+        cls.job4 = job_factory(job_adapter='gaussian', project='project_test_4', ess_settings=cls.ess_settings,
+                               species=[cls.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
+                               level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
+                               project_directory=cls.project_directory, job_num=104)
         cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conformers': True,
                           'opt': True,
@@ -67,6 +78,13 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           'rotors': False,
                           'orbitals': False,
                           'lennard_jones': False,
+                          }
+        cls.job_types2 = {'conformers': True,
+                          'opt': True,
+                          'fine': False,
+                          'freq': True,
+                          'sp': True,
+                          'rotors': True,
                           }
         cls.sched1 = Scheduler(project='project_test_1', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
@@ -99,6 +117,19 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                job_types=cls.job_types1,
                                orbitals_level=default_levels_of_theory['orbitals'],
                                adaptive_levels=None,
+                               )
+        cls.sched3 = Scheduler(project='project_test_4', ess_settings=cls.ess_settings,
+                               species_list=[cls.spc1],
+                               composite_method=Level(repr='CBS-QB3'),
+                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               opt_level=Level(repr=default_levels_of_theory['freq_for_composite']),
+                               freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
+                               scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
+                               ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                               rmg_database=cls.rmg_database,
+                               project_directory=cls.project_directory,
+                               testing=True,
+                               job_types=cls.job_types2,
                                )
 
     def test_conformers(self):
@@ -310,6 +341,20 @@ H      -1.82570782    0.42754384   -0.56130718"""
         job_type_5 = 'freq'
         job_adapter_5 = self.sched1.deduce_job_adapter(level=level_5, job_type=job_type_5)
         self.assertEqual(job_adapter_5, 'terachem')
+
+    def test_check_scan_job(self):
+        """Test the check_scan_job() method."""
+        self.job4.job_status[1]['status'] = 'done'
+        self.job4.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'N2O3.out')
+        self.sched3.check_scan_job(label='methylamine', job=self.job4)
+        self.assertTrue(self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['success'])
+
+        self.job4.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'l103_err.out')
+        self.job4.job_status[1]['status'] = 'errored'
+        self.job4.job_status[1]['error'] = 'Internal coordinate error'
+        self.sched3.check_scan_job(label='methylamine', job=self.job4)
+        self.assertFalse(self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['success'])
+        self.assertIn('Internal coordinate error', self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['invalidation_reason'])
 
     def test_check_rxn_e0_by_spc(self):
         """Test the check_rxn_e0_by_spc() method."""
@@ -586,7 +631,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                      {'element': {'number': 1, 'isotope': -1}, 'radical_electrons': 0, 'charge': 0, 'label': '',
                       'lone_pairs': 0, 'id': -26573, 'props': {'inRing': False}, 'atomtype': 'H',
                       'edges': {-26580: 1.0}}], 'multiplicity': 2, 'props': {},
-                                                            'atom_order': [-26582, -26581, -26580, -26579, -26578, -26577, -26576, -26575, -26574, -26573]},
+                     'atom_order': [-26582, -26581, -26580, -26579, -26578, -26577, -26576, -26575, -26574, -26573]},
                             'initial_xyz': 'C      -0.94073000   -1.08641400   -0.13521400\nC      -0.33120900    0.27400500   -0.10738200\nC       1.03297600    0.48550500    0.47374300\nH      -0.34195200   -1.93903700    0.19367700\nH      -2.02636000   -1.19201700   -0.17452300\nH      -0.43853800   -0.46541200   -1.16876000\nH      -1.02644700    1.11801000   -0.14324700\nH       1.47599100    1.43717700    0.14587900\nH       1.72184900   -0.32388500    0.18160800\nH       1.00079200    0.49179200    1.58006000',
                             'final_xyz': 'C      -0.94403900   -1.08919600   -0.13528100\nC      -0.33161500    0.27504900   -0.10775400\nC       1.03465100    0.48772700    0.47568400\nH      -0.35007600   -1.93768200    0.18473700\nH      -2.02160800   -1.19512500   -0.17500700\nH      -0.44246400   -0.46665500   -1.16369500\nH      -1.02252600    1.11305500   -0.14369600\nH       1.47717100    1.43311000    0.14664900\nH       1.72023500   -0.31816900    0.18700200\nH       1.00664300    0.49760900    1.57720100',
                             'checkfile': '/storage/ce_dana/alongd/runs/ARC/debug13/calcs/TSs/TS0/opt_a24061/check.chk'},
