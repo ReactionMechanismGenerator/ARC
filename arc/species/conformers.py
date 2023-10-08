@@ -123,7 +123,14 @@ CHEAT_SHEET = {'[H][H]': {'xyz': converter.str_to_xyz("""H  0.0  0.0  0.3715170
                           'index': 0,
                           'FF energy': 0,
                           'source': 'CHEAT_SHEET',
-                          'torsion_dihedrals': {}}
+                          'torsion_dihedrals': {}},
+               '[CH]=O': {'xyz': converter.str_to_xyz("""C                  0.71157787    0.65761977    0.00000000
+                                                         H                  0.15757396   -0.36153658    0.00000000
+                                                         O                  0.23065902    1.72421110    0.00000000"""),
+                          'index': 0,
+                          'FF energy': 0,
+                          'source': 'CHEAT_SHEET',
+                          'torsion_dihedrals': {}},
                }
 
 
