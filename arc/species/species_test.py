@@ -1555,7 +1555,7 @@ H      -1.69944700    0.93441600   -0.11271200"""
 
         # test with energies
         save_conformers_file(project_directory=project_directory, label='vinoxy', xyzs=xyzs,
-                             level_of_theory=Level(repr='level1'), multiplicity=2, charge=0, energies=energies)
+                             level_of_theory=Level(repr='level1'), multiplicity=2, charge=0, energies=energies,optimized=True)
         self.assertTrue(os.path.isfile(os.path.join(project_directory, 'output', 'Species', 'vinoxy', 'geometry',
                                                     'conformers', 'conformers_after_optimization.txt')))
 
