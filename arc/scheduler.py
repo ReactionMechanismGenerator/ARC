@@ -160,6 +160,7 @@ class Scheduler(object):
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
+        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -214,6 +215,7 @@ class Scheduler(object):
         freq_scale_factor (float): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
+        report_e_elect (bool): Whether to report electronic energy.
     """
 
     def __init__(self,
@@ -248,6 +250,7 @@ class Scheduler(object):
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: List[str] = None,
+                 report_e_elect: Optional[bool] = False,
                  ) -> None:
 
         self.project = project
@@ -279,6 +282,7 @@ class Scheduler(object):
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
         self.output = dict()
+        self.report_e_elect = report_e_elect
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
