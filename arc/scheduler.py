@@ -23,6 +23,7 @@ from arc.common import (extremum_list,
                         get_logger,
                         get_number_with_ordinal_indicator,
                         is_angle_linear,
+                        read_yaml_file,
                         safe_copy_file,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
@@ -2556,6 +2557,9 @@ class Scheduler(object):
         if species_has_freq(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
 
+        if self.report_e_elect:
+            self.save_e_elect(label)
+
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
         self.output[label]['job_types']['sp'] = True
 
@@ -3617,6 +3621,18 @@ class Scheduler(object):
         path = os.path.join(self.project_directory, 'output', 'rxns', 'TS_guess_report.yml')
         if content:
             save_yaml_file(path=path, content=content)
+
+    def save_e_elect(self, label: str):
+        """
+        Save the electronic energy of the corresponding species.
+        It will append if the file already exists.
+        """
+        path = os.path.join(self.project_directory, 'output', 'e_elect_summary.yml')
+        content = dict()
+        if os.path.isfile(path):
+            content = read_yaml_file(path)
+        content[label] = self.species_dict[label].e_elect
+        save_yaml_file(path=path, content=content)
 
 
 def species_has_freq(species_output_dict: dict,
