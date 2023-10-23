@@ -23,6 +23,7 @@ from arc.common import (extremum_list,
                         get_logger,
                         get_number_with_ordinal_indicator,
                         is_angle_linear,
+                        read_yaml_file,
                         safe_copy_file,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
@@ -160,6 +161,7 @@ class Scheduler(object):
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
+        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -214,6 +216,7 @@ class Scheduler(object):
         freq_scale_factor (float): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
+        report_e_elect (bool): Whether to report electronic energy.
     """
 
     def __init__(self,
@@ -248,6 +251,7 @@ class Scheduler(object):
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: List[str] = None,
+                 report_e_elect: Optional[bool] = False,
                  ) -> None:
 
         self.project = project
@@ -279,6 +283,7 @@ class Scheduler(object):
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
         self.output = dict()
+        self.report_e_elect = report_e_elect
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
@@ -2552,6 +2557,9 @@ class Scheduler(object):
         if species_has_freq(self.output[label], self.species_dict[label].yml_path):
             self.check_rxn_e0_by_spc(label)
 
+        if self.report_e_elect:
+            self.save_e_elect(label)
+
         # set *at the end* to differentiate between sp jobs when using complex solvation corrections
         self.output[label]['job_types']['sp'] = True
 
@@ -3613,6 +3621,18 @@ class Scheduler(object):
         path = os.path.join(self.project_directory, 'output', 'rxns', 'TS_guess_report.yml')
         if content:
             save_yaml_file(path=path, content=content)
+
+    def save_e_elect(self, label: str):
+        """
+        Save the electronic energy of the corresponding species.
+        It will append if the file already exists.
+        """
+        path = os.path.join(self.project_directory, 'output', 'e_elect_summary.yml')
+        content = dict()
+        if os.path.isfile(path):
+            content = read_yaml_file(path)
+        content[label] = self.species_dict[label].e_elect
+        save_yaml_file(path=path, content=content)
 
 
 def species_has_freq(species_output_dict: dict,
