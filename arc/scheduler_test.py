@@ -12,7 +12,7 @@ import shutil
 import arc.rmgdb as rmgdb
 import arc.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types
+from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -700,6 +700,37 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched.check_rxn_e0_by_spc('TS0')
         self.assertEqual(rxn.ts_species.ts_checks,
                          {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'normal_mode_displacement': True, 'warnings': ''})
+
+    def test_save_e_elect(self):
+        """Test the save_e_elect() method."""
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'save_e_elect')
+        e_elect_summary_path = os.path.join(project_directory, 'output', 'e_elect_summary.yml')
+        self.assertFalse(os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')))
+        sched = Scheduler(project='test_save_e_elect',
+                          ess_settings=self.ess_settings,
+                          project_directory=project_directory,
+                          species_list=[ARCSpecies(label='formaldehyde', smiles='C=O'),
+                                        ARCSpecies(label='mehylamine', smiles='CN')],
+                          freq_scale_factor=1.0,
+                          opt_level=Level(method='B3LYP', basis='6-31G(d,p)', software='gaussian'),
+                          sp_level=Level(method='B3LYP', basis='6-31G(d,p)', software='gaussian'),
+                          job_types={'opt': True, 'fine_grid': False, 'freq': False, 'sp': True, 'rotors': False,
+                                     'conformers': False, 'irc': False},
+                          report_e_elect=True,
+                          testing=True,
+                          )
+        sched.post_sp_actions(label='formaldehyde',
+                              sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_output.out'))
+        self.assertTrue(os.path.isfile(e_elect_summary_path))
+        content = read_yaml_file(e_elect_summary_path)
+        self.assertEqual(content, {'formaldehyde': -300621.95378630824})
+
+        sched.post_sp_actions(label='mehylamine',
+                              sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out'))
+        content = read_yaml_file(e_elect_summary_path)
+        self.assertEqual(content, {'formaldehyde': -300621.95378630824,
+                                    'mehylamine': -251377.49160993524})
+        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_species_has_geo_sp_freq(self):
         """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
