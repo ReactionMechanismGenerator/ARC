@@ -187,6 +187,7 @@
                         <span class="n">get_logger</span><span class="p">,</span>
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
                         <span class="n">is_angle_linear</span><span class="p">,</span>
+                        <span class="n">read_yaml_file</span><span class="p">,</span>
                         <span class="n">safe_copy_file</span><span class="p">,</span>
                         <span class="n">save_yaml_file</span><span class="p">,</span>
                         <span class="n">sort_two_lists_by_the_first</span><span class="p">,</span>
@@ -324,6 +325,7 @@
 <span class="sd">        freq_scale_factor (float, optional): The harmonic frequencies scaling factor.</span>
 <span class="sd">        trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list, optional): Entries represent different TS adapters.</span>
+<span class="sd">        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
@@ -378,6 +380,7 @@
 <span class="sd">        freq_scale_factor (float): The harmonic frequencies scaling factor.</span>
 <span class="sd">        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list): Entries represent different TS adapters.</span>
+<span class="sd">        report_e_elect (bool): Whether to report electronic energy.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -412,6 +415,7 @@
                  <span class="n">kinetics_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;arkane&#39;</span><span class="p">,</span>
                  <span class="n">freq_scale_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
                  <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">report_e_elect</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">project</span> <span class="o">=</span> <span class="n">project</span>
@@ -443,6 +447,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="n">ts_adapters</span> <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">default_ts_adapters</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="p">[</span><span class="n">ts_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">ts_adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span> <span class="o">=</span> <span class="n">report_e_elect</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rxn_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(),</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">species</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_list</span><span class="p">:</span>
@@ -2716,6 +2721,9 @@
         <span class="k">if</span> <span class="n">species_has_freq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">yml_path</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">check_rxn_e0_by_spc</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
 
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">save_e_elect</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+
         <span class="c1"># set *at the end* to differentiate between sp jobs when using complex solvation corrections</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="s1">&#39;job_types&#39;</span><span class="p">][</span><span class="s1">&#39;sp&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span></div>
 
@@ -3776,7 +3784,19 @@
                 <span class="n">plotter</span><span class="o">.</span><span class="n">plot_ts_guesses_by_e_and_method</span><span class="p">(</span><span class="n">species</span><span class="o">=</span><span class="n">species</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">tsg_fig_path</span><span class="p">)</span>
         <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;rxns&#39;</span><span class="p">,</span> <span class="s1">&#39;TS_guess_report.yml&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">content</span><span class="p">:</span>
-            <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">)</span></div></div>
+            <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Scheduler.save_e_elect"><a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.Scheduler.save_e_elect">[docs]</a>    <span class="k">def</span> <span class="nf">save_e_elect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Save the electronic energy of the corresponding species.</span>
+<span class="sd">        It will append if the file already exists.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;e_elect_summary.yml&#39;</span><span class="p">)</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="n">content</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">content</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">e_elect</span>
+        <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="species_has_freq"><a class="viewcode-back" href="../../api/scheduler.html#arc.scheduler.species_has_freq">[docs]</a><span class="k">def</span> <span class="nf">species_has_freq</span><span class="p">(</span><span class="n">species_output_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
