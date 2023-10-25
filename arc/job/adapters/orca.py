@@ -1,5 +1,5 @@
 """
-An adapter for executing Orca jobs
+An adapter for executing Orca 4 jobs
 
 https://orcaforum.kofo.mpg.de/app.php/portal
 """
@@ -41,7 +41,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # restricted: 'R' = closed-shell SCF, 'U' = spin unrestricted SCF, 'RO' = open-shell spin restricted SCF
 # auxiliary_basis: required for DLPNO calculations (speed up calculation)
 # memory: MB per core (must increase as system gets larger)
-# cpus: must be less than number of electron pairs, defaults to min(heavy atoms, cpus limit)
+# cpus: must be less than number of electron pairs, defaults to min(heavy atoms, cpus limit). If working without parallelization, set to 1.
 # job_options_blocks: input blocks that enable detailed control over program
 # job_options_keywords: input keywords that control the job
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
@@ -50,9 +50,9 @@ input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary
 ! NRSCF # using Newton–Raphson SCF algorithm 
 !${job_type_1} 
 ${job_type_2}
-%%maxcore ${memory}
+%%maxcore 8000
 %%pal # job parallelization settings
-nprocs ${cpus}
+nprocs 1
 end
 %%scf # recommended SCF settings
 NRMaxIt 400
@@ -312,6 +312,20 @@ end
                 input_dict['scan'] += f'\nD {torsion} =  {dihedral:.1f}, {dihedral - self.scan_res:.1f}, {self.scan_res:.1f}\n'
             input_dict['scan'] += '\nend\nend' if len(self.torsions) > 1 else '\nend'
 
+        if self.level.solvation_method:
+            if self.level.solvation_method.lower() == 'smd':
+                self.add_to_args(val=f"""
+%cpcm SMD true
+       solvent "{self.level.solvent}"
+end
+            """,
+                                key1='block')
+            elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
+                self.add_to_args(val=f"""
+!CPCM({self.level.solvent})
+            """,
+                                 key1='block')
+
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
@@ -375,7 +389,9 @@ end
         Set the input_file_memory attribute.
         """
         # Orca's memory is per cpu core and in MB
-        self.input_file_memory = math.ceil(self.job_memory_gb * 1024 / self.cpu_cores)
+        # If working without parallelization, replace cpu_cores with 1. 
+        # previous: self.input_file_memory = math.ceil(self.job_memory_gb * 1024 / self.cpu_cores)
+        self.input_file_memory = math.ceil(self.job_memory_gb * 1024 / 1)
 
     def execute_incore(self):
         """
