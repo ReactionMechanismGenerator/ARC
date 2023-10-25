@@ -1,5 +1,5 @@
 """
-An adapter for executing Orca jobs
+An adapter for executing Orca 5 jobs
 
 https://orcaforum.kofo.mpg.de/app.php/portal
 """
@@ -47,7 +47,6 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
 # method_class: 'HF' for wavefunction methods (hf, mp, cc, dlpno ...). 'KS' for DFT methods.
 # options: additional keywords to control job (e.g., TightSCF, NormalPNO ...)
 input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary_basis} ${keywords}
-! NRSCF # using Newton–Raphson SCF algorithm 
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
@@ -55,8 +54,6 @@ ${job_type_2}
 nprocs ${cpus}
 end
 %%scf # recommended SCF settings
-NRMaxIt 400
-NRStart 0.00005
 MaxIter 500
 end${scan}
 ${block}
@@ -311,6 +308,20 @@ end
                 dihedral = calculate_dihedral_angle(coords=self.species[0].get_xyz(), torsion=self.torsions[i])
                 input_dict['scan'] += f'\nD {torsion} =  {dihedral:.1f}, {dihedral - self.scan_res:.1f}, {self.scan_res:.1f}\n'
             input_dict['scan'] += '\nend\nend' if len(self.torsions) > 1 else '\nend'
+
+        if self.level.solvation_method:
+            if self.level.solvation_method.lower() == 'smd':
+                self.add_to_args(val=f"""
+%cpcm SMD true
+      SMDsolvent "{self.level.solvent}"
+end
+            """,
+                                key1='block')
+            elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
+                self.add_to_args(val=f"""
+!CPCM({self.level.solvent})
+            """,
+                                key1='block')
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
