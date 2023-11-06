@@ -272,7 +272,9 @@ class GaussianAdapter(JobAdapter):
             keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycles={max_c}'] if self.is_ts else ['calcfc']
             if self.level.method in ['rocbs-qb3']:
                 # There are no analytical 2nd derivatives (FC) for this method.
-                keywords = ['ts', 'noeigentest', 'maxcycles=100'] if self.is_ts else []
+                #keywords = ['ts', 'noeigentest', 'maxcycles=100'] if self.is_ts else []
+                # remove limit of 100 cycles for opt jobs
+                keywords = ['ts', 'noeigentest'] if self.is_ts else []
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
