@@ -8,3 +8,4 @@ import arc.job.adapters.terachem
 import arc.job.adapters.torch_ani
 import arc.job.adapters.ts
 import arc.job.adapters.xtb_adapter
+import arc.job.adapters.pyscf

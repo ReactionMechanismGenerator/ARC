@@ -93,6 +93,7 @@ class JobEnum(str, Enum):
     torchani = 'torchani'
     xtb = 'xtb'
     openbabel = 'openbabel'
+    pyscf = 'pyscf'
 
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
