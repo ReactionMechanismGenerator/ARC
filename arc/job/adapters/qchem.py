@@ -8,9 +8,10 @@ import datetime
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
+import pandas as pd
 from mako.template import Template
 
-from arc.common import get_logger, torsions_to_scans
+from arc.common import get_logger, torsions_to_scans, ARC_PATH
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (_initialize_adapter,
@@ -23,6 +24,8 @@ from arc.job.local import execute_command
 from arc.level import Level
 from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
+
+from rapidfuzz import process, utils
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -37,7 +40,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
 
-# job_type_1: 'opt', 'ts', 'sp', 'freq'.
+# job_type_1: 'opt', 'ts', 'sp', 'freq','irc'.
 # job_type_2: reserved for 'optfreq'.
 # fine: '\n   GEOM_OPT_TOL_GRADIENT 15\n   GEOM_OPT_TOL_DISPLACEMENT 60\n   GEOM_OPT_TOL_ENERGY 5\n   XC_GRID SG-3'
 # unrestricted: 'False' or 'True' for restricted / unrestricted
@@ -49,7 +52,8 @@ $rem
    JOBTYPE       ${job_type_1}
    METHOD        ${method}
    UNRESTRICTED  ${unrestricted}
-   BASIS         ${basis}${fine}${keywords}${constraint}${scan_trsh}${block}
+   BASIS         ${basis}${fine}${keywords}${constraint}${scan_trsh}${trsh}${block}${irc}
+   IQMOL_FCHK    FALSE
 $end
 ${job_type_2}
 ${scan}
@@ -211,20 +215,31 @@ class QChemAdapter(JobAdapter):
                     'block',
                     'scan',
                     'constraint',
+                    'irc'
                     ]:
             input_dict[key] = ''
-        input_dict['basis'] = self.level.basis or ''
+        input_dict['basis'] = self.software_input_matching(basis = self.level.basis) if self.level.basis else ''
         input_dict['charge'] = self.charge
         input_dict['method'] = self.level.method
+        # If method ends with D3, then we need to remove it and add the D3 as a keyword. Need to account for -D3
+        if input_dict['method'].endswith('d3') or input_dict['method'].endswith('-d3'):
+            input_dict['method'] = input_dict['method'][:-2]
+            # Remove the - if it exists
+            if input_dict['method'].endswith('-'):
+                input_dict['method'] = input_dict['method'][:-1]
+            # DFT_D - FALSE, EMPIRICAL_GRIMME, EMPIRICAL_CHG, D3_ZERO, D3_BJ, D3_CSO, D3_ZEROM, D3_BJM, D3_OP,D3 [Default: None]
+            # TODO: Add support for other D3 options. Check if the user has specified a D3 option in the level of theory
+            input_dict['keywords'] = "\n   DFT_D D3"
         input_dict['multiplicity'] = self.multiplicity
         input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
+        input_dict['trsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'].keys() else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
         # In QChem the attribute is called "unrestricted", so the logic is in reverse than in other adapters
-        input_dict['unrestricted'] = 'True' if not is_restricted(self) else 'False'
+        input_dict['unrestricted'] = 'TRUE' if not is_restricted(self) else 'FALSE'
 
         # Job type specific options
-        if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals', 'scan']:
+        if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals']:
             input_dict['job_type_1'] = 'ts' if self.is_ts else 'opt'
             if self.fine:
                 input_dict['fine'] = '\n   GEOM_OPT_TOL_GRADIENT 15' \
@@ -234,7 +249,7 @@ class QChemAdapter(JobAdapter):
                     # Use a fine DFT grid, see 4.4.5.2 Standard Quadrature Grids, in
                     # http://www.q-chem.com/qchem-website/manual/qchem50_manual/sect-DFT.html
                     input_dict['fine'] += '\n   XC_GRID 3'
-
+            
         elif self.job_type == 'freq':
             input_dict['job_type_1'] = 'freq'
 
@@ -257,10 +272,11 @@ class QChemAdapter(JobAdapter):
                                        f"\n$end\n"
 
         elif self.job_type == 'scan':
+            input_dict['job_type_1'] = 'pes_scan'
+            if self.fine:
+                input_dict['fine'] += '\n   XC_GRID 3'
             scans = list()
-            if self.rotor_index is not None:
-                if self.species[0].rotors_dict \
-                        and self.species[0].rotors_dict[self.rotor_index]['directed_scan_type'] == 'ess':
+            if self.rotor_index is not None and self.species[0].rotors_dict:
                     scans = self.species[0].rotors_dict[self.rotor_index]['scan']
                     scans = [scans] if not isinstance(scans[0], list) else scans
             elif self.torsions is not None and len(self.torsions):
@@ -269,16 +285,82 @@ class QChemAdapter(JobAdapter):
             for scan in scans:
                 dihedral_1 = int(calculate_dihedral_angle(coords=self.xyz, torsion=scan, index=1))
                 scan_atoms_str = ' '.join([str(atom_index) for atom_index in scan])
-                scan_string += f'tors {scan_atoms_str} {dihedral_1} {dihedral_1 + 360.0} {self.scan_res}\n'
-            scan_string += '$end\n'
+
+                # QChem requires that the scanning angle is between -180 and 180
+                # Therefore, to ensure that the scan is symmetric, we will need to create multi-job input file
+                # For example, if the scan is starting at 48 degrees and has a resolution of 8 degrees, then the input file will be:
+
+                # $molecule
+                #   molecule info
+                # $end
+                # $rem
+                #   input_dict['block']
+                # $end
+                # $scan
+                #   tors scan_atoms_str 48 176 8
+                # $end
+                # @@@
+                # $molecule
+                #   read
+                # $end
+                # $rem
+                #   input_dict['block']
+                #   SCF_GUESS read
+                # $end
+                # $scan
+                #   tors scan_atoms_str -176 40 8
+                # $end
+
+
+
+                scan_start, scan_end= self.generate_scan_angles(dihedral_1, self.scan_res)
+                scan_string += f'tors {scan_atoms_str} {scan_start} {scan_end} {self.scan_res}\n'
+                scan_string += '$end\n'
             if self.torsions is None or not len(self.torsions):
                 self.torsions = torsions_to_scans(scans, direction=-1)
+            input_dict['scan'] = scan_string
 
         elif self.job_type == 'irc':
             if self.fine:
-                # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
-            input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
+                # Need to ensure that the grid is fine enough for the IRC
+                input_dict['fine'] += '\n   XC_GRID 3'
+            # input_dict['job_type_1'] = 'rpath'
+            # # IRC variabls are
+            # # RPATH_COORDS - 0 for mass-weighted[Default], 1 for cartesian, 2 for z-matrix
+            # # RPATH_DIRECTION - 1 for Descend in the positive direction of the eigen mode. [Default], -1 for Ascend in the negative direction of the eigen mode.
+            # # RPATH_MAX_CYCLES - Maximum number of cycles to perform. [Default: 20]
+            # # RPATH_MAX_STEPSIZE - Specifies the maximum step size to be taken (in 0.001 a.u.). [Default: 150 -> 0.15 a.u.]
+            # # RPATH_TOL_DISPLACEMENT - Specifies the convergence threshold for the step.
+            # #                          If a step size is chosen by the algorithm that is smaller than this, the path is deemed to have reached the minimum. [Default: 5000 -> 0.005 a.u.]
+            # # RPATH_PRINT - Specifies the print level [Default: 2] Higher values give less output.
+            # if self.irc_direction == 'forward':
+            #     irc_direction_value = 1
+            # elif self.irc_direction == 'reverse':
+            #     irc_direction_value = -1
+            # input_dict['irc'] = "\n   RPATH_COORDS 1" \
+            #                     f"\n   RPATH_DIRECTION {irc_direction_value}" \
+            #                     "\n   RPATH_MAX_CYCLES 20" \
+            #                     "\n   RPATH_MAX_STEPSIZE 150" \
+            #                     "\n   RPATH_TOL_DISPLACEMENT 5000" \
+            #                     "\n   RPATH_PRINT 2"\
+            #                     f"\n   SCF_GUESS     read" \
+            input_dict['job_type_1'] = 'freq'
+            if self.irc_direction == 'forward':
+                irc_direction_value = 1
+            else: # We assume that if it is not forward, then it must be reverse self.irc_direction == 'reverse' - 
+                  # this also fixes any CodeQL errors regarding the irc_direction_value not being defined
+                irc_direction_value = -1
+            input_dict['job_type_2'] = f"\n\n@@@\n$molecule\nread\n$end\n$rem" \
+                                        f"\n   JOBTYPE       rpath" \
+                                        f"\n   BASIS        {input_dict['basis']}" \
+                                        f"\n   METHOD        {input_dict['method']}" \
+                                        f"\n   RPATH_DIRECTION {irc_direction_value}" \
+                                        "\n   RPATH_MAX_CYCLES 20" \
+                                        "\n   RPATH_MAX_STEPSIZE 150" \
+                                        "\n   RPATH_TOL_DISPLACEMENT 5000" \
+                                        "\n   RPATH_PRINT 2"\
+                                        f"\n   SCF_GUESS     read" \
+                                        f"\n$end\n"
 
         if self.constraints:
             input_dict['constraint'] = '\n    CONSTRAINT\n'
@@ -287,11 +369,129 @@ class QChemAdapter(JobAdapter):
                 constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])
                 input_dict['constraint'] = f"      {constraint_type} {constraint_atom_indices} {constraint_tuple[1]:.2f}"
             input_dict['constraint'] += '    ENDCONSTRAINT\n'
+        
+        if self.job_type == 'opt' or self.job_type == 'pes_scan' or self.job_type == 'freq' or self.job_type == 'ts':
+            # https://manual.q-chem.com/latest/Ch4.S5.SS2.html
+            # 5 For single point energy calculations (including BSSE and XSAPT jobs) 
+            # 7 For job types NMR, STATPOLAR, DYNPOLAR, HYPERPOLAR, and ISSC 
+            # 8 For most other job types, including geometry optimization, transition-state search, vibrational analysis, CIS/TDDFT calculations, correlated wavefunction methods, energy decomposition analysis (EDA2), etc.
+            # OPTIONS:
+            #        n Corresponding to 10−n
+            # RECOMMENDATION:
+            #        Tighter criteria for geometry optimization and vibration analysis. Larger values provide more significant figures, at greater computational cost.
+            SCF_CONVERGENCE = 8
+            input_dict['keywords'] += f"\n   SCF_CONVERGENCE {SCF_CONVERGENCE}"
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
+    def generate_qchem_scan_angles(self,start_angle: int, step: int) -> (int, int, int, int):
+            """
+            Generates the angles for a Q-Chem scan. The scan is split into two parts, one from start_angle to 180, and one from -180 to end_angle.
+
+            Parameters
+            ----------
+            start_angle : int
+                The starting angle for the scan
+            step : int
+                The step size for the scan
+
+            Returns
+            -------
+            scan1_start : int
+                The starting angle for the first part of the scan
+            scan1_end : int
+                The ending angle for the first part of the scan
+            scan2_start : int
+                The starting angle for the second part of the scan
+            scan2_end : int
+                The ending angle for the second part of the scan
+            """
+
+            # First, we need to check that the start_angle is within the range of -180 to 180, and if not, convert it to be within that range
+            if start_angle > 180:
+                start_angle = start_angle - 360
+
+
+            # This sets the end angle but does not take into account the limit of -180 to 180
+            end_angle = start_angle - step
+
+            # This function wraps the scan2_start within the range of -180 to 180
+            wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
+
+            # This function converts the angles to be within the range of -180 to 180
+            convert_angle = lambda angle: angle % 360 if angle >= 0 else ( angle % 360 if angle <= -180 else (angle % 360) - 360)
+
+            # This converts the angles to be within the range of -180 to 180
+            start_angle = convert_angle(start_angle)
+            end_angle = convert_angle(end_angle)
+            
+            if start_angle == 0 and end_angle == 0:
+                scan1_start = start_angle
+                scan1_end = 180
+                scan2_start = -180
+                scan2_end = end_angle
+            elif start_angle == 180:
+                # This is a special case because the scan will be from 180 to 180
+                # This is not allowed in Q-Chem so we split it into two scans
+                # Arguably this could be done in one scan but it is easier to do it this way
+                # We will need to find the starting angle that when added by the step size will be 180
+                target_sum = 180
+                quotient = target_sum // step
+                starting_number = target_sum - (quotient * step)
+                scan1_start = starting_number
+                scan1_end = 180
+                scan2_start = -180
+                scan2_end = scan1_start - step
+            elif start_angle <= end_angle:
+                scan1_start = start_angle
+                scan1_end =  start_angle + (step * ((180 - start_angle)//step))
+                scan2_start = convert_angle(scan1_end)
+                scan2_end = end_angle
+            elif (start_angle + step) > 180:
+                # This is a special case because the scan will be from, for example, 178 to 178 for the first scan. Therefore, we should make it a single scan from end angle, 178, step size 
+                scan1_end = start_angle
+                scan1_start = wrap_within_range(scan1_end, step)
+                scan2_start = 0
+                scan2_end = 0
+            else:
+                scan1_start = start_angle
+                scan1_end = start_angle + (step * ((180 - start_angle)//step))
+                scan2_start = wrap_within_range(scan1_end, step)
+                scan2_end = end_angle
+                
+            if scan2_start == scan2_end:
+                scan2_start = 0
+                scan2_end = 0
+
+            return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
+
+    def generate_scan_angles(self, req_angle: int, step: int) -> (int, int):
+
+        # Convert the req angle if it is greater than 180 or less than -180
+        if req_angle > 180:
+            req_angle = req_angle - 360
+    
+        # This function converts the angles to be within the range of -180 to 180
+        convert_angle = lambda angle: angle % 360 if angle >= 0 else ( angle % 360 if angle <= -180 else (angle % 360) - 360)
+
+        req_angle = convert_angle(req_angle)
+        
+        start_angle = -180
+        end_angle = 180
+
+        new_start_angle = req_angle
+        while new_start_angle - step >= start_angle:
+            new_start_angle -= step
+
+        new_end_angle = req_angle
+        while new_end_angle + step <= end_angle:
+            new_end_angle += step
+        
+        return new_start_angle, new_end_angle
+
+
 
     def set_files(self) -> None:
         """
@@ -335,7 +535,7 @@ class QChemAdapter(JobAdapter):
             self.files_to_download.append(self.get_file_property_dictionary(
                 file_name=output_filenames[self.job_adapter]))
             # 2.3. checkfile
-            self.files_to_download.append(self.get_file_property_dictionary(file_name='orbitals.fchk'))
+            #self.files_to_download.append(self.get_file_property_dictionary(file_name='input.fchk'))
 
     def set_additional_file_paths(self) -> None:
         """
@@ -369,6 +569,63 @@ class QChemAdapter(JobAdapter):
         Execute a job to the server's queue.
         """
         self.legacy_queue_execution()
+    
+    def software_input_matching(self, basis):
+        """
+        Check if the user-specified software is compatible with the level of theory. If not, try to match the software with
+        similar methods. If no match is found, raise an error.
+
+        Matching is done by comparing the user-specified software with the software in the basis_sets.csv file.
+
+        Args:
+            basis (str): The basis set specified by the user.
+
+        Returns:
+            str: The matched basis set.
+
+        Raises:
+            ValueError: If the software is not compatible with the level of theory or if no match is found.
+        """
+        
+        # Read DataFrame of software basis sets
+        software_methods = pd.read_csv(os.path.join(ARC_PATH, 'data', 'basis_sets.csv'))
+
+        lowercase_software = [row.lower() for row in software_methods['software'].values]
+        if 'qchem' in lowercase_software:
+            software_methods = software_methods[software_methods['software'] == 'qchem']
+            if basis in software_methods['basis_set'].values:
+                return basis
+
+            # Attempt fuzzy matching
+            basis_match = self.attempt_fuzzy_matching(basis, software_methods)
+
+            if not basis_match:
+                raise ValueError(f"Unsupported basis in qchem: {basis}. Please check the basis set.")
+
+            logger.debug(f"Changing basis set from {basis} to {basis_match} to match qchem")
+            return basis_match
+
+        raise ValueError("Software not found or not compatible.")
+
+    def attempt_fuzzy_matching(self, basis, software_methods):
+        """
+        Helper function to perform fuzzy matching of the basis set.
+
+        Args:
+            basis (str): The basis set to match.
+            software_methods (DataFrame): DataFrame containing software and basis set information.
+
+        Returns:
+            str/None: Matched basis set or None if no match is found.
+        """
+        basis_match = process.extract(basis, software_methods['basis_set'].values, processor=utils.default_process, score_cutoff=99)
+        if len(basis_match) > 1:
+            raise ValueError(f"Too many matches for basis set: {basis}. Please refine your search.")
+
+        if len(basis_match) == 1:
+            return basis_match[0][0]
+
+        return None
 
 
 register_job_adapter('qchem', QChemAdapter)
