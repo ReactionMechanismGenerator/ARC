@@ -114,7 +114,7 @@ class TestParser(unittest.TestCase):
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
                                    741.8843, 749.3428, 777.1524, 855.3031, 871.055, 962.7075, 977.6181,
@@ -132,7 +132,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_0)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_modes_disp_1 = np.array(
@@ -143,7 +143,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_1)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([136.4446, 494.1267, 915.7812, 1131.4603, 1159.9315, 1225.148, 1446.5652,
                                    1474.8065, 1485.6423, 3046.2186, 3134.8026, 3147.5619], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
@@ -175,7 +175,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_2)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-1745.4843, 64.9973, 168.1583, 234.1226, 453.2505, 657.1672, 737.7965, 844.5179,
                                    1156.12, 1177.1321, 1390.4004, 1454.281, 1565.3214, 1680.0987, 3367.2838, 3512.739,
                                    3550.219, 3652.1575], np.float64)
@@ -220,7 +220,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_2)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'normal_mode', 'HO2', 'output.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, raise_error=False)
         expected_freqs = np.array([1224.9751, 1355.2709, 3158.763], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_modes_disp_3 = np.array(
@@ -230,7 +230,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_3)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, raise_error=False)
         self.assertEqual(freqs[-1], 3922.9230982968807)
         expected_normal_modes_disp_4_0 = np.array(
             [[0.008599578508578239, 0.01787645439208711, -0.04175706756233052],
