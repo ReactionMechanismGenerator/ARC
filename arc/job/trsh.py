@@ -193,24 +193,39 @@ def determine_ess_status(output_path: str,
                     keywords = ['SCF']
                     error = 'SCF failed'
                     break
-                elif 'error' in line and 'DIIS' not in line:
+                elif 'error' in line and 'DIIS' not in line and 'Q-Chem fatal error' not in line and 'Q-Chem error occurred in module' not in line:
                     # These are **normal** lines that we should not capture:
                     # "SCF converges when DIIS error is below 1.0E-08", or
                     # "Cycle       Energy         DIIS Error"
-                    keywords = ['SCF', 'DIIS']
-                    error = 'SCF failed'
-                    break
+                   keywords = ['SCF', 'DIIS']
+                   error = 'SCF failed'
+                   break
                 elif 'Invalid charge/multiplicity combination' in line:
                     raise SpeciesError(f'The multiplicity and charge combination for species '
                                        f'{species_label} are wrong.')
-                if 'opt' in job_type or 'conformer' in job_type or 'ts' in job_type:
-                    if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
-                        keywords = ['MaxOptCycles']
-                        error = 'Maximum optimization cycles reached.'
-                        break
-                    elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
-                        done = True
-                        break
+                elif 'FlexNet Licensing error' in line:
+                    # This is a special case, as it is not an error, but rather a license issue.
+                    # ARC cannot run QChem without a valid license. Therefore, we raise an error.
+                    # The user should check that the license server is active and that the license file is valid.
+                    raise ValueError('QChem license error. Check the license file.')
+                elif 'Error within run_minimization with minimization method' in line:
+                    # This error is unknown currently, so will try to run the job again.
+                    keywords = ['Minimization']
+                    error = 'Error within run_minimization with minimization method'
+                    break
+                if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line or 'Maximum optimization cycles reached' in line:
+                    # '	Maximum number of iterations reached during minimization algorithm.'
+	                # ' Try to increase the number of max iterations or lower threshold for convergence criteria.'
+                    keywords = ['MaxOptCycles']
+                    error = 'Maximum optimization cycles reached.'
+                    break
+                if 'Try to increase the number of max iterations or lower threshold for convergence criteria.' in line:
+                    keywords = ['MaxIter']
+                    error = 'Maximum number of iterations reached during minimization algorithm.'
+                    break
+                elif 'OPTIMIZATION CONVERGED' in line and done:  # `done` should already be assigned
+                    done = True
+                    break
             if done:
                 return 'done', keywords, '', ''
             error = error if error else 'QChem job terminated for an unknown reason.'
@@ -363,26 +378,48 @@ def determine_ess_status(output_path: str,
                 elif 'A further' in line and 'Mwords of memory are needed' in line and 'Increase memory to' in line:
                     # e.g.: `A further 246.03 Mwords of memory are needed for the triples to run.
                     # Increase memory to 996.31 Mwords.` (w/o the line break)
-                    keywords = ['Memory']
+                    pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                    matches = re.findall(pattern, line)
+                    memory_increase = float(matches[-1])
+                    error = f"Memory required: {memory_increase} MW"
+                    keywords=['Memory']
                     for line0 in reverse_lines:
                         if ' For full I/O' in line0 and 'increase memory by' in line0 and 'Mwords to' in line0:
-                            memory_increase = re.findall(r"[\d.]+", line0)[0]
-                            error = f"Additional memory required: {memory_increase} MW"
+                            pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                            matches = re.findall(pattern, line0)
+                            memory_increase = float(matches[-1])
+                            error = f"Memory required: {memory_increase} MW"
                             break
-                    error = f'Additional memory required: {line.split()[2]} MW' if 'error' not in locals() else error
+                        elif 'For minimal' in line0 and 'in triples' in line0 and 'increase memory by' in line0:
+                            pattern = r"(\d+(?:\.\d+)?)\s*Mwords(?![\s\S]*Mwords)"
+                            matches = re.findall(pattern, line0)
+                            memory_increase = float(matches[-1])
+                            error = f"Memory required: {memory_increase} MW"
+                            break                         
                     break
-                elif 'insufficient memory available - require' in line:
+                elif 'insufficient memory available - require' in line:                           
                     # e.g.: `insufficient memory available - require              228765625  have
                     #        62928590
                     #        the request was for real words`
                     keywords = ['Memory']
-                    error = f'Additional memory required: {float(line.split()[-2]) / 1e6} MW'
+                    numbers = re.findall(r'\d+', line)
+                    total = sum(int(number) for number in numbers)
+                    # It appears that the number is in words. Need to convert to MW.
+                    total /= 1e6
+                    error = f'Memory required: {total} MW'
                     break
-                elif 'Insufficient memory to allocate' in line or 'The problem occurs in memory' in line:
+                elif 'Insufficient memory to allocate' in line:
                     # e.g.: `Insufficient memory to allocate a new array of length 321843600 8-byte words
                     #        The problem occurs in memory`
                     keywords = ['Memory']
-                    error = 'Additional memory required'
+                    numbers = re.findall(r'\d+', line)
+                    size_of_each_element_bytes = 8
+                    # Calculating total memory
+                    # Just making sure that it is 8 bytes per element
+                    assert int(numbers[1]) == size_of_each_element_bytes
+                    # Assuming this is in words, need to convert to MW.
+                    total = int(numbers[0]) / 1e6
+                    error = f'Memory required: {total} MW'
                     break
                 elif 'Basis library exhausted' in line:
                     # e.g.:
@@ -451,26 +488,37 @@ def determine_job_log_memory_issues(job_log: Optional[str] = None) -> Tuple[List
     """
     keywords, error, line = list(), '', ''
     if job_log is not None:
-        if os.path.isfile(job_log):
-            with open(job_log, 'r') as f:
-                lines = f.readlines()
-        else:
+        lines = []
+        try:
+            if os.path.isfile(job_log):
+                # Check if the file is binary
+                with open(job_log, 'rb') as f:
+                    first_bytes = f.read(1024)  # Read first 1024 bytes to check
+                    is_binary = b'\x00' in first_bytes
+
+                # Read the file based on its type
+                with open(job_log, 'rb' if is_binary else 'r') as f:
+                    lines = f.readlines() if not is_binary else first_bytes.decode('utf-8').splitlines()
+            else:
+                lines = job_log.splitlines()
+
+        except ValueError:
+            job_log.replace('\x00', '')
             lines = job_log.splitlines()
+
         mem_usage = ''
         for line in lines:
             if 'MemoryUsage of job' in line:
-                # E.g.: "      3162  -  MemoryUsage of job (MB)"
                 mem_usage = f', used only {0.001 * int(line.split()[0])} GB'
             if 'memory exceeded' in line.lower():
                 keywords = ['Memory']
                 error = 'Insufficient job memory.'
                 break
             if 'using less than' in line and 'percent of requested' in line:
-                # e.g., "using less than 20 percent of requested"
                 keywords = ['Memory']
                 error = f'Memory requested is too high{mem_usage}.'
                 break
-    line = line if error else ''
+        line = line if error else ''
     return keywords, error, line
 
 
@@ -920,20 +968,75 @@ def trsh_ess_job(label: str,
     elif software == 'qchem':
         if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
             # this is a common error, increase max cycles and continue running from last geometry
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using max_cycles')
+            log_message = f'Troubleshooting {job_type} job in {software} for {label} using max cycles'
             ess_trsh_methods.append('max_cycles')
             trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
+            if 'DIIS_GDM' in ess_trsh_methods:
+                log_message += ' and DIIS_GDM and max SCF cycles'
+                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
+            if 'SYM_IGNORE' in ess_trsh_methods:
+                log_message += ' and SYM_IGNORE'
+                trsh_keyword += '\n   SYM_IGNORE     True'
+            logger.info(log_message)
         elif 'SCF' in job_status['keywords'] and 'DIIS_GDM' not in ess_trsh_methods:
             # change the SCF algorithm and increase max SCF cycles
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using the DIIS_GDM SCF algorithm')
+            log_message = f'Troubleshooting {job_type} job in {software} for {label} using DIIS_GDM and max SCF cycles'
             ess_trsh_methods.append('DIIS_GDM')
             trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
+            if 'SYM_IGNORE' in ess_trsh_methods:
+                log_message += ' and SYM_IGNORE'
+                trsh_keyword += '\n   SYM_IGNORE     True'
+            if 'max_cycles' in ess_trsh_methods:
+                log_message += ' and max_cycles'
+                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
+            logger.info(log_message)
+        elif 'MaxIter' in job_status['keywords'] and 'maxiter' not in ess_trsh_methods:
+            log_message = f'Troubleshooting {job_type} job in {software} for {label} using maxiter'
+            ess_trsh_methods.append('maxiter')
+            trsh_keyword = '\n   MAX_SCF_CYCLES 1000'
+            if 'max_cycles' in ess_trsh_methods:
+                log_message += ' and max_cycles'
+                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
+            if 'DIIS_GDM' in ess_trsh_methods:
+                log_message += ' and DIIS_GDM'
+                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM'
+            if 'SYM_IGNORE' in ess_trsh_methods:
+                log_message += ' and SYM_IGNORE'
+                trsh_keyword += '\n   SYM_IGNORE     True'
+            logger.info(log_message)
+        elif 'Minimization' in job_status['keywords']:
+            # Uncertain what this error is, but assuming it's just an error that means we need to re-run the job under the same conditions
+            # However, if this error persists, we will determine that the job is not converging and so we will
+            # determine it cannot be run and will not try again
+            if 'Minimization' in job_status['error']:
+                logger.warning(f'Could not troubleshoot {job_type} job in {software} for {label} with same conditions - Minimization error persists')
+                couldnt_trsh = True
+            else:
+                log_message = f'Troubleshooting {job_type} job in {software} for {label} with same conditions'
+                if 'maxiter' in ess_trsh_methods:
+                    log_message += ' and maxiter'
+                    trsh_keyword = '\n   MAX_SCF_CYCLES 1000'
+                if 'max_cycles' in ess_trsh_methods:
+                    log_message += ' and max_cycles'
+                    trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'
+                if 'DIIS_GDM' in ess_trsh_methods:
+                    log_message += ' and DIIS_GDM'
+                    trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM'
+                if 'SYM_IGNORE' in ess_trsh_methods:
+                    log_message += ' and SYM_IGNORE'
+                    trsh_keyword = '\n   SYM_IGNORE     True'                
         elif 'SYM_IGNORE' not in ess_trsh_methods:  # symmetry - look in manual, no symm if fails
             # change the SCF algorithm and increase max SCF cycles
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using SYM_IGNORE as well as the '
-                        f'DIIS_GDM SCF algorithm')
+            log_message = f'Troubleshooting {job_type} job in {software} for {label} using SYM_IGNORE'
             ess_trsh_methods.append('SYM_IGNORE')
-            trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 250\n   SYM_IGNORE     True'
+            trsh_keyword = '\n   SYM_IGNORE     True'
+            if 'max_cycles' in ess_trsh_methods:
+                log_message += ' and max_cycles'
+                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
+            if 'DIIS_GDM' in ess_trsh_methods:
+                log_message += ' and DIIS_GDM and increased max SCF cycles'
+                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
+            logger.info(log_message)
         else:
             couldnt_trsh = True
 
@@ -999,19 +1102,39 @@ def trsh_ess_job(label: str,
         if 'Memory' in job_status['keywords']:
             # Increase memory allocation.
             # molpro gives something like `'errored: additional memory (mW) required: 996.31'`.
-            # job_status standardizes the format to be:  `'Additional memory required: {0} MW'`
-            # The number is the ADDITIONAL memory required in GB
+            # job_status standardizes the format to be:  `'Memory required: {0} MW'`
+            # The number is the complete memory required in GB
             ess_trsh_methods.append('memory')
-            add_mem_str = job_status['error'].split()[-2]  # parse Molpro's requirement in MW
+            add_mem_str = re.findall(r'\d+(?:\.\d+)?', job_status['error'])
+            add_mem_str = add_mem_str[0] # parse Molpro's requirement in MW
             if all(c.isdigit() or c == '.' for c in add_mem_str):
                 add_mem = float(add_mem_str)
                 add_mem = int(np.ceil(add_mem / 100.0)) * 100  # round up to the next hundred
-                memory = memory_gb + add_mem / 128. + 5  # convert MW to GB, add 5 extra GB (be conservative)
+                # Reasons for this error:
+                # 1. The MWords per process is not enough, even though we provided an adequate amount of memory to the submit script.
+                # 2. The MWords per process is ENOUGH, but the total memory is too high, therefore, we need to reduce the number of cores.
+                #   Convert submit memory to MWords
+                ##  1 MWord = 7.45e-3 GB
+                ##  1 GB = 134.2 MWords
+                sumbit_mem_mwords = int(np.ceil(memory_gb / 7.45e-3))
+                ##  But, Molpro is actually requesting more memory per core, therefore
+                sumbit_mem_mwords_per_cpu = int(np.ceil(sumbit_mem_mwords / cpu_cores))
+
+                ##  Check if submit memory is enough
+                if sumbit_mem_mwords_per_cpu < add_mem:
+                    # Convert back to GB and also multiply by the number of cores
+                    memory = add_mem * 7.45e-3 * cpu_cores
+                    ## However, this might be too much memory for the server, therefore, we need to reduce the number of cores
+                    ess_trsh_methods.append('cpu')
+                    ess_trsh_methods.append(f'molpro_memory:{add_mem}')
+                else:
+                    ## The real issue occurs here, where the total memory is too high but
+                    memory = memory_gb # Don't change the submit memory
             else:
                 # The required memory is not specified
                 memory = memory_gb * 3  # convert MW to GB, add 5 extra GB (be conservative)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
-                        f'instead of {memory_gb} GB')
+                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using memory: {memory:.2f} GB '
+                            f'instead of {memory_gb} GB')
         elif 'shift' not in ess_trsh_methods:
             # Try adding a level shift for alpha- and beta-spin orbitals
             # Applying large negative level shifts like {rhf; shift,-1.0,-0.5}
@@ -1303,8 +1426,8 @@ def trsh_job_on_server(server: str,
 
     # find available node
     logger.error('Troubleshooting by changing node.')
-    ssh = SSHClient(server)
-    nodes = ssh.list_available_nodes()
+    with SSHClient(server) as ssh:
+        nodes = ssh.list_available_nodes()
     for node in nodes:
         if node not in server_nodes:
             server_nodes.append(node)
@@ -1327,7 +1450,7 @@ def trsh_job_on_server(server: str,
         insert_line_num = 5
     else:
         # Other software?
-        logger.denug(f'Unknown cluster software {cluster_soft} is encountered when '
+        logger.error(f'Unknown cluster software {cluster_soft} is encountered when '
                      f'troubleshooting by changing node.')
         return None, False
     for i, line in enumerate(content):
