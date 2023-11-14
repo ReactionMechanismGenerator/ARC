@@ -45,7 +45,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(Level(method='B3LYP', basis='6-311g+(d,f)').software, 'gaussian')
         level_3 = Level(method='B3LYP', basis='6-311g+(d,f)')
         level_3.deduce_software(job_type='irc')
-        self.assertEqual(level_3.software, 'gaussian')
+        self.assertEqual(level_3.software, 'qchem')
         self.assertEqual(Level(method='DLPNO-CCSD(T)', basis='def2-tzvp').software, 'orca')
         self.assertEqual(Level(method='PM6').software, 'gaussian')
         self.assertEqual(Level(method='HF').software, 'gaussian')
@@ -209,7 +209,7 @@ class TestLevel(unittest.TestCase):
         self.assertIsNone(level_2.compatible_ess)
         level_2.determine_compatible_ess()
         self.assertEqual(sorted(level_2.compatible_ess), sorted(['gaussian', 'qchem', 'terachem']))
-
+        
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

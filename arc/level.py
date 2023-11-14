@@ -15,7 +15,6 @@ from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, stand
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
-
 logger = get_logger()
 
 
@@ -499,12 +498,23 @@ class Level(object):
             self.software = 'orca'
 
         # Gaussian
-        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'irc' \
+        if self.method_type == 'composite' or job_type == 'composite' \
                 or any([sum(['iop' in value.lower() for value in subdict.values()]) for subdict in self.args.values()]):
             if 'gaussian' not in supported_ess:
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
+
+
+        # QChem & Gaussian for IRC jobs
+        if job_type == 'irc':
+            if 'qchem' in supported_ess:
+                self.software = 'qchem'
+            elif 'gaussian' in supported_ess:
+                self.software = 'gaussian'
+            else:
+                raise ValueError(f'Could not find either QChem or Gaussian software to compute molecular orbitals or run an IRC job.\n'
+                                f'levels_ess is:\n{levels_ess}')
 
         # TorchANI
         if 'torchani' in self.method:
