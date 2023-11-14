@@ -17,24 +17,34 @@ else
     exit 1
 fi
 
-# Set up Conda/Micromamba environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate base
     BASE=$MAMBA_ROOT_PREFIX
-    # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/micromamba.sh"
+    # Verify if the micromamba profile script exists
+    if [ -f "$BASE/etc/profile.d/micromamba.sh" ]; then
+        . "$BASE/etc/profile.d/micromamba.sh"
+    else
+        echo "File not found: $BASE/etc/profile.d/micromamba.sh"
+        exit 1
+    fi
 else
     BASE=$(conda info --base)
-    # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/conda.sh"
+    echo "Conda base directory: $BASE"
+    # Verify if the conda profile script exists
+    if [ -f "$BASE/etc/profile.d/conda.sh" ]; then
+        . "$BASE/etc/profile.d/conda.sh"
+    else
+        echo "File not found: $BASE/etc/profile.d/conda.sh"
+        exit 1
+    fi
 fi
 
 # clone the repo in the parent directory
 echo "Creating the Sella environment..."
 $COMMAND_PKG env create -f devtools/sella_environment.yml
 # Activate the environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     micromamba activate sella_env
 else
     conda activate sella_env
@@ -53,5 +63,5 @@ echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:'"$BASE"'/envs/sella_env/lib' >>
 echo 'export LD_LIBRARY_PATH=${OLD_LD_LIBRARY_PATH}' >> $BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
 echo 'unset OLD_LD_LIBRARY_PATH' >> $BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
 
-source ~/.bashrc
+. ~/.bashrc
 echo "Done installing Sella."
