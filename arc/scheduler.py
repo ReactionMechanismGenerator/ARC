@@ -1022,7 +1022,6 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
-            job.remove_remote_files()
             self.save_restart_dict()
             return True
 
