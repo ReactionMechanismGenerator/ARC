@@ -1116,12 +1116,12 @@ def trsh_ess_job(label: str,
                 #   Convert submit memory to MWords
                 ##  1 MWord = 7.45e-3 GB
                 ##  1 GB = 134.2 MWords
-                sumbit_mem_mwords = int(np.ceil(memory_gb / 7.45e-3))
+                submit_mem_mwords = int(np.ceil(memory_gb / 7.45e-3))
                 ##  But, Molpro is actually requesting more memory per core, therefore
-                sumbit_mem_mwords_per_cpu = int(np.ceil(sumbit_mem_mwords / cpu_cores))
+                submit_mem_mwords_per_cpu = int(np.ceil(submit_mem_mwords / cpu_cores))
 
                 ##  Check if submit memory is enough
-                if sumbit_mem_mwords_per_cpu < add_mem:
+                if submit_mem_mwords_per_cpu < add_mem:
                     # Convert back to GB and also multiply by the number of cores
                     memory = add_mem * 7.45e-3 * cpu_cores
                     ## However, this might be too much memory for the server, therefore, we need to reduce the number of cores
