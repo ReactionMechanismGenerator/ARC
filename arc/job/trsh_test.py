@@ -53,6 +53,15 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('Error termination via Lnk1e', line)
         self.assertIn('g09/l913.exe', line)
 
+        path = os.path.join(self.base_path['gaussian'], 'l301_checkfile.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='Zr2O4H', job_type='opt')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['CheckFile'])
+        self.assertEqual(error, 'No data on chk file.')
+        self.assertIn('Error termination via Lnk1e', line)
+        self.assertIn('g09/l301.exe', line)
+
         path = os.path.join(self.base_path['gaussian'], 'l301.out')
         status, keywords, error, line = trsh.determine_ess_status(
             output_path=path, species_label='Zr2O4H', job_type='opt')
@@ -61,6 +70,15 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, 'The basis set 6-311G is not appropriate for the this chemistry.')
         self.assertIn('Error termination via Lnk1e', line)
         self.assertIn('g16/l301.exe', line)
+
+        path = os.path.join(self.base_path['gaussian'], 'l401.out')
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label='Zr2O4H', job_type='opt')
+        self.assertEqual(status, 'errored')
+        self.assertEqual(keywords, ['CheckFile'])
+        self.assertEqual(error, 'Basis set data is not on the checkpoint file.')
+        self.assertIn('Error termination via Lnk1e', line)
+        self.assertIn('g09/l401.exe', line)
 
         path = os.path.join(self.base_path['gaussian'], 'l9999.out')
         status, keywords, error, line = trsh.determine_ess_status(
@@ -292,8 +310,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
-        self.assertFalse(remove_checkfile)
-        self.assertEqual(trsh_keyword, 'opt=(cartesian,nosymm)')
+        self.assertTrue(remove_checkfile)
+        self.assertEqual(trsh_keyword, ['opt=(cartesian,nosymm)', 'int=(Acc2E=14)'] )
 
         # Test Q-Chem
         software = 'qchem'
