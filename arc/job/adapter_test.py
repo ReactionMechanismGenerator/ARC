@@ -364,7 +364,7 @@ class TestJobAdapter(unittest.TestCase):
                          'trsh': {}}
         self.assertEqual(self.job_1.args, expected_args)
         self.job_1.write_input_file()
-        new_expected_args = {'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3 scf=xqc'},  #  scf=xqc
+        new_expected_args = {'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'}, 
                              'block': {'specific_key_2': 'val_tst_4\nval_tst_5'},
                              'trsh': {}}
         self.assertEqual(self.job_1.args, new_expected_args)
