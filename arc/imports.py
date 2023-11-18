@@ -24,7 +24,7 @@ if os.path.isfile(local_arc_settings_path):
         import settings as local_settings
     except ImportError:
         pass
-    if local_settings and 'pytest' not in sys.modules:
+    if local_settings:
         local_settings_dict = {key: val for key, val in vars(local_settings).items() if '__' not in key}
         settings.update(local_settings_dict)
         # Set global_ess_settings to None if using a local settings file (ARC's defaults are dummies)
