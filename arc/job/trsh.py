@@ -381,7 +381,7 @@ def determine_ess_status(output_path: str,
                     # e.g.: `Insufficient memory to allocate a new array of length 321843600 8-byte words
                     #        The problem occurs in memory`
                     keywords = ['Memory']
-                    error = f'Additional memory required'
+                    error = 'Additional memory required'
                     break
                 elif 'Basis library exhausted' in line:
                     # e.g.:
@@ -849,10 +849,9 @@ def trsh_ess_job(label: str,
                  or 'is not appropriate for the this chemistry' in job_status['error']):
         output_errors.append(f'Error: Could not recognize basis set {job_status["error"].split()[-1]} in {software}; ')
         couldnt_trsh = True
-        
-        
         logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
+
     elif software == 'gaussian':
         trsh_keyword = [] # initialize as a list
         logger_phrase = f'Troubleshooting {job_type} job in {software} for {label}'
@@ -900,7 +899,6 @@ def trsh_ess_job(label: str,
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
-        
         # Log information
         if logger_info:
             logger.info(f'{logger_phrase} {", ".join(logger_info)}')
@@ -1537,27 +1535,29 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
 
     return invalidate, invalidation_reason, message, actions
- 
-def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> bool:
+
+def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> Tuple[bool, List, bool]:
     """
     Check if the job requires removal of checkfile
     """
-    if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+    if 'CheckFile' in job_status.get('keywords', '') or 'checkfile=None' in ess_trsh_methods:
         ess_trsh_methods.append('checkfile=None')
         couldnt_trsh = False
         return True, ess_trsh_methods, couldnt_trsh
+
     return False, ess_trsh_methods, couldnt_trsh
 
-def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> list:
+def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
     """
     Check if the job requires change of 2 electron integral accuracy
     """
     if 'int=(Acc2E=14)' in ess_trsh_methods:
         trsh_keyword.append('int=(Acc2E=14)')
         couldnt_trsh = False
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> list:
+def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> Tuple[List, List, bool]:
     """
     Check if the job requires change of cartesian coordinate
     """
@@ -1569,10 +1569,10 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
             job_type == 'opt':
         trsh_keyword.append('opt=(cartesian,nosymm)')
         couldnt_trsh = False
-    
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> bool:
+def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
     """
     Check if the job requires change of scf
     """
@@ -1591,13 +1591,13 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
         trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
-def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> bool:
+def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> Tuple[List, List, bool, bool]:
     """
     Check if the job requires change of scf
     """
-    
     if 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
         # try a fine grid for SCF and integral
         ess_trsh_methods.append('fine')
@@ -1605,4 +1605,5 @@ def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt
         couldnt_trsh = False
     else:
         fine = False
+
     return ess_trsh_methods, trsh_keyword, fine, couldnt_trsh
