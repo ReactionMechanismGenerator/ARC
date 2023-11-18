@@ -54,3 +54,7 @@ timer.dat
 
 # .trunk folder
 .trunk
+
+# ignore files created from tests
+nul
+run.out
