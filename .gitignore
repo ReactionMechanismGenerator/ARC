@@ -51,3 +51,6 @@ timer.dat
 
 # .vscode
 .vscode
+
+# .trunk folder
+.trunk
