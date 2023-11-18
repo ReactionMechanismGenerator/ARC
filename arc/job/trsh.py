@@ -134,7 +134,7 @@ def determine_ess_status(output_path: str,
                                 or 'Basis set data is not on the checkpoint file' in additional_info \
                                 or 'Error in GetGes' in additional_info:
                             keywords = ['CheckFile']
-                            error = additional_info.rstrip()
+                            error = additional_info.strip()
                         elif 'GL301' in keywords:
                             if 'Atomic number out of range for' in forward_lines[len(forward_lines) - i - 2]:
                                 keywords.append('BasisSet')
@@ -849,60 +849,61 @@ def trsh_ess_job(label: str,
                  or 'is not appropriate for the this chemistry' in job_status['error']):
         output_errors.append(f'Error: Could not recognize basis set {job_status["error"].split()[-1]} in {software}; ')
         couldnt_trsh = True
-
+        
+        
+        logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
+                    '"Basis set data is not on the checkpoint file" by removing the checkfile.')
     elif software == 'gaussian':
-        if 'CheckFile' in job_status['keywords'] and 'checkfie=None' not in ess_trsh_methods:
-            # The checkfile doesn't match the new basis set, remove it and rerun the job.
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} that failed with '
-                        '"Basis set data is not on the checkpoint file" by removing the checkfile.')
-            ess_trsh_methods.append('checkfie=None')
-            remove_checkfile = True
-        elif 'InternalCoordinateError' in job_status['keywords'] \
-                and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
-            # try both cartesian and nosymm
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using opt=cartesian with nosyym')
-            ess_trsh_methods.append('cartesian')
-            trsh_keyword = 'opt=(cartesian,nosymm)'
-        elif 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
-            # try a fine grid for SCF and integral
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using a fine grid')
-            ess_trsh_methods.append('fine')
-            fine = True
-        elif 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
-            # try both qc and nosymm
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(qc,nosymm)')
-            ess_trsh_methods.append('scf=(qc,nosymm)')
-            trsh_keyword = 'scf=(qc,nosymm)'
-        elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
-            # Allows dynamic dumping for up to N SCF iterations (slower conversion)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=(NDump=30)')
-            ess_trsh_methods.append('scf=(NDump=30)')
-            trsh_keyword = 'scf=(NDump=30)'
-        elif 'SCF' in job_status['keywords'] and 'scf=NoDIIS' not in ess_trsh_methods:
-            # Switching off Pulay's Direct Inversion
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=NoDIIS')
-            ess_trsh_methods.append('scf=NoDIIS')
-            trsh_keyword = 'scf=NoDIIS'
-        elif 'SCF' in job_status['keywords'] and 'scf=nosymm' not in ess_trsh_methods:
-            # try running w/o considering symmetry
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using scf=nosymm')
-            ess_trsh_methods.append('scf=nosymm')
-            trsh_keyword = 'scf=nosymm'
-        elif 'int=(Acc2E=14)' not in ess_trsh_methods:  # does not work in g03
-            # Change integral accuracy (skip everything up to 1E-14 instead of 1E-12)
-            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using int=(Acc2E=14)')
-            ess_trsh_methods.append('int=(Acc2E=14)')
-            trsh_keyword = 'int=(Acc2E=14)'
-        elif 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
+        trsh_keyword = [] # initialize as a list
+        logger_phrase = f'Troubleshooting {job_type} job in {software} for {label}'
+        logger_info = []
+        couldnt_trsh = True
+        fine = False
+
+        # Check if Checkfile removal is in the keywords. Removal occurs when:
+        # - Basis Set Mismatch
+        # - Corrupt or Incomplete Data
+        # - Changing Computational Parameters
+        remove_checkfile, ess_trsh_methods, couldnt_trsh = trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh)
+        if remove_checkfile:
+             logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
+
+        # Check if InternalCoordinateError is in the keyword or opt=(cartesian,nosymm)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
+        if 'cartesian' in ess_trsh_methods:
+            logger_info.append('using opt=cartesian with nosyym')
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'int=(Acc2E=14)' in ess_trsh_methods:
+           logger_info.append('using int=(Acc2E=14)')
+
+        # Check if SCF is in the keyword
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'scf=(NDump=30)' in ess_trsh_methods:
+            logger_info.append('using scf=(NDump=30)')
+        if 'scf=(qc,nosymm)' in ess_trsh_methods:
+            logger_info.append('using scf=(qc,nosymm)')
+        if 'scf=(NoDIIS)' in ess_trsh_methods:
+            logger_info.append('using scf=(NoDIIS)')
+
+        # Check if unconverged is in the keyword
+        ess_trsh_methods, trsh_keyword, fine, couldnt_trsh = trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine)
+        if fine:
+            logger_info.append('using a fine grid')
+
+        # Check if memory is in the keyword
+        if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
             # Increase memory allocation
+            couldnt_trsh = False
             max_mem = servers[server].get('memory', 128)  # Node memory in GB, defaults to 128 if not specified
             memory = min(memory_gb * 2, max_mem * 0.95)
             if memory > memory_gb:
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
-        else:
-            couldnt_trsh = True
+        
+        # Log information
+        if logger_info:
+            logger.info(f'{logger_phrase} {", ".join(logger_info)}')
 
     elif software == 'qchem':
         if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
@@ -1536,3 +1537,72 @@ def scan_quality_check(label: str,
             return invalidate, invalidation_reason, message, actions
 
     return invalidate, invalidation_reason, message, actions
+ 
+def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> bool:
+    """
+    Check if the job requires removal of checkfile
+    """
+    if 'CheckFile' in job_status['keywords'] or 'checkfile=None' in ess_trsh_methods:
+        ess_trsh_methods.append('checkfile=None')
+        couldnt_trsh = False
+        return True, ess_trsh_methods, couldnt_trsh
+    return False, ess_trsh_methods, couldnt_trsh
+
+def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> list:
+    """
+    Check if the job requires change of 2 electron integral accuracy
+    """
+    if 'int=(Acc2E=14)' in ess_trsh_methods:
+        trsh_keyword.append('int=(Acc2E=14)')
+        couldnt_trsh = False
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword: list, couldnt_trsh: bool) -> list:
+    """
+    Check if the job requires change of cartesian coordinate
+    """
+    if 'InternalCoordinateError' in job_status['keywords'] \
+                and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
+        trsh_keyword.append('opt=(cartesian,nosymm)')
+        couldnt_trsh = False
+    elif 'opt=(cartesian,nosymm)' in ess_trsh_methods and \
+            job_type == 'opt':
+        trsh_keyword.append('opt=(cartesian,nosymm)')
+        couldnt_trsh = False
+    
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> bool:
+    """
+    Check if the job requires change of scf
+    """
+    scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
+    if 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
+        # try both qc and nosymm
+        ess_trsh_methods.append('scf=(qc,nosymm)')
+        couldnt_trsh = False
+    elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
+        # Switching off Pulay's Direct Inversion
+        ess_trsh_methods.append('scf=(NDump=30)')
+        couldnt_trsh = False
+    elif 'SCF' in job_status['keywords'] and 'scf=(NoDIIS)' not in ess_trsh_methods:
+        ess_trsh_methods.append('scf=(NoDIIS)')
+        couldnt_trsh = False
+    if any('scf' in keyword for keyword in ess_trsh_methods):
+        scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
+        trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine) -> bool:
+    """
+    Check if the job requires change of scf
+    """
+    
+    if 'Unconverged' in job_status['keywords'] and 'fine' not in ess_trsh_methods and not fine:
+        # try a fine grid for SCF and integral
+        ess_trsh_methods.append('fine')
+        fine = True
+        couldnt_trsh = False
+    else:
+        fine = False
+    return ess_trsh_methods, trsh_keyword, fine, couldnt_trsh
