@@ -110,19 +110,36 @@ class TestJobCommon(unittest.TestCase):
 
         input_dict = common.update_input_dict_with_args(args={'block': {'1': """a\nb"""}},
                                                         input_dict={'block': ''})
-        self.assertEqual(input_dict, {'block': """\n\na\nb\n"""})
+        self.assertEqual(input_dict, {'block': """\n\na\nb"""})
 
         input_dict = common.update_input_dict_with_args(args={'block': {'1': """a\nb"""}},
                                                         input_dict={'block': """x\ny\n"""})
-        self.assertEqual(input_dict, {'block': """x\ny\na\nb\n"""})
+        self.assertEqual(input_dict, {'block': """x\ny\na\nb"""})
 
         input_dict = common.update_input_dict_with_args(args={'keyword': {'scan_trsh': 'keyword 1'}},
                                                         input_dict={})
-        self.assertEqual(input_dict, {'scan_trsh': 'keyword 1 '})
+        self.assertEqual(input_dict, {'scan_trsh': 'keyword 1'})
 
         input_dict = common.update_input_dict_with_args(args={'keyword': {'opt': 'keyword 2'}},
                                                         input_dict={})
-        self.assertEqual(input_dict, {'keywords': 'keyword 2 '})
+        self.assertEqual(input_dict, {'keywords': 'keyword 2'})
+
+    def test_update_input_dict_with_multiple_args(self):
+        """Test the update_input_dict_with_args() function with multiple arguments in args."""
+        args = {
+            'block': {'1': 'block text 1'},
+            'keyword': {'opt': 'keyword opt'},
+            'trsh': ['trsh value 1']
+        }
+        input_dict = {'block': 'existing block', 'keywords': 'existing keywords', 'trsh': 'existing trsh'}
+        expected_dict = {
+            'block': 'existing block\nblock text 1',
+            'keywords': 'existing keywords keyword opt',
+            'trsh': 'existing trsh trsh value 1'
+        }
+
+        result_dict = common.update_input_dict_with_args(args=args, input_dict=input_dict)
+        self.assertEqual(result_dict, expected_dict)
 
     def test_set_job_args(self):
         """Test the set_job_args() function"""
@@ -151,6 +168,66 @@ class TestJobCommon(unittest.TestCase):
 
         ans = common.which(command=['python'], return_bool=False, raise_error=False)
         self.assertIn('bin/python', ans)
+    
+    def test_combine_parameters(self):
+        """Test the combine_parameters function for normal input."""
+        input_dict = {'param1': 'value1 term1 value2', 'param2': 'another value term2'}
+        terms = ['term1', 'term2']
+        expected_dict = {'param1': 'value1  value2', 'param2': 'another value '}
+        expected_parameters = ['term1', 'term2']
+
+        modified_dict, parameters = common.combine_parameters(input_dict, terms)
+        
+        self.assertEqual(modified_dict, expected_dict)
+        self.assertEqual(parameters, expected_parameters)
+
+    def test_combine_parameters_empty_input(self):
+        """Test the combine_parameters function with empty input."""
+        input_dict = {}
+        terms = ['term1', 'term2']
+        expected_dict = {}
+        expected_parameters = []
+
+        modified_dict, parameters = common.combine_parameters(input_dict, terms)
+        
+        self.assertEqual(modified_dict, expected_dict)
+        self.assertEqual(parameters, expected_parameters)
+
+    def test_combine_parameters_no_match(self):
+        """Test the combine_parameters function with no matching terms."""
+        input_dict = {'param1': 'value1 value2', 'param2': 'another value'}
+        terms = ['nonexistent']
+        expected_dict = {'param1': 'value1 value2', 'param2': 'another value'}
+        expected_parameters = []
+
+        modified_dict, parameters = common.combine_parameters(input_dict, terms)
+        
+        self.assertEqual(modified_dict, expected_dict)
+        self.assertEqual(parameters, expected_parameters)
+
+    def test_input_dict_strip(self):
+        """Test the input_dict_strip() function"""
+        input_dict = {
+            'key1': '  value1  ',
+            'key2': ' value2  ',
+            'key3': '\nvalue3\n',
+            'key4': ' value4\n',
+            'key5': None,
+            'key6': 42,  # Not a string, should remain unchanged
+            'key7': '\nvalue7 '
+        }
+
+        expected_stripped_dict = {
+            'key1': 'value1',
+            'key2': 'value2',
+            'key3': '\nvalue3\n',
+            'key4': 'value4\n',
+            'key6': 42,  # Should not be stripped
+            'key7': '\nvalue7'
+        }
+
+        stripped_dict = common.input_dict_strip(input_dict)
+        self.assertEqual(stripped_dict, expected_stripped_dict)
 
     @classmethod
     def tearDownClass(cls):

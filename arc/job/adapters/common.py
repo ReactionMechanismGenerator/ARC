@@ -7,6 +7,7 @@ import datetime
 import os
 import shutil
 import sys
+import re
 
 from pprint import pformat
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
@@ -220,8 +221,13 @@ def _initialize_adapter(obj: 'JobAdapter',
     if obj.execution_type != 'incore' and obj.job_adapter in obj.ess_settings.keys():
         obj.determine_job_array_parameters()
 
-    obj.scan_res = obj.args['trsh']['scan_res'] \
-        if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys() else rotor_scan_resolution
+    # Set scan_res if required by trsh
+    if obj.args and 'trsh' in obj.args.keys() and 'scan_res' in obj.args['trsh'].keys():
+        obj.scan_res = obj.args['trsh']['scan_res']
+        # Remove it from the args dict
+        obj.args['trsh'].pop('scan_res')
+    else:
+        obj.scan_res = rotor_scan_resolution
 
     obj.set_files()
     check_argument_consistency(obj)
@@ -280,29 +286,130 @@ def update_input_dict_with_args(args: dict,
     """
     Update the job input_dict attribute with keywords and blocks from the args attribute.
 
+    The function iterates over each key in the 'args' dictionary. Depending on the key type 
+    ('block', 'keyword', 'trsh'), it updates the 'input_dict' accordingly. For 'block' and 
+    'keyword' types, it appends the corresponding values to the 'input_dict'. For 'trsh', 
+    it handles both list and non-list values.
+    
     Args:
-        args (dict): The job arguments.
-        input_dict (dict): The job input dict.
+        args (dict): The job arguments with the following structure:
+            args = {
+                'block': {key1: value1, key2: value2, ...},
+                'keyword': {key1: value1, key2: value2, ...},
+                'trsh': {key1: value1, key2: value2, ... or key: [value1, value2, ...]},
+                ...
+            }
+
+        input_dict (dict): The job input dict with a structure that may be updated:
+            input_dict = {
+                'block': <block string>,
+                'keywords': <keywords string>,
+                'scan_trsh': <scan_trsh string>,
+                'trsh': <trsh string>,
+                ...
+            }
 
     Returns:
-        dict: The updated input_dict.
+        dict: The updated input_dict with appended or modified values based on the args.
+
+    Example:
+        Input args structure:
+            args = {
+                'block': {'1': 'block text 1', '2': 'block text 2'},
+                'keyword': {'opt': 'keyword opt', 'freq': 'keyword freq'},
+                'trsh': ['trsh value 1', 'trsh value 2']
+            }
+
+        Input input_dict structure:
+            input_dict = {
+                'block': 'existing block text',
+                'keywords': 'existing keywords',
+                'scan_trsh': 'existing scan_trsh',
+                'trsh': 'existing trsh'
+            }
+
+        Output input_dict structure:
+            input_dict = {
+                'block': 'existing block text\n\nblock text 1\nblock text 2\n',
+                'keywords': 'existing keywords keyword opt keyword freq ',
+                'scan_trsh': 'existing scan_trsh',
+                'trsh': 'existing trsh trsh value 1 trsh value 2 '
+            }
+
     """
     for arg_type, arg_dict in args.items():
         if arg_type == 'block' and arg_dict:
             input_dict['block'] = '\n\n' if not input_dict['block'] else input_dict['block']
             for block in arg_dict.values():
-                input_dict['block'] += f'{block}\n'
+                # Chek if input_dict['block'] already contains a value and that it ends with a newline
+                if input_dict['block'] and not input_dict['block'].endswith('\n'):
+                    input_dict['block'] += '\n'
+                input_dict['block'] += f'{block}'
         elif arg_type == 'keyword' and arg_dict:
             for key, value in arg_dict.items():
                 if key == 'scan_trsh':
                     if 'scan_trsh' not in input_dict.keys():
                         input_dict['scan_trsh'] = ''
-                    input_dict['scan_trsh'] += f'{value} '
+                    # Check if input_dict['scan_trsh'] already contains a value
+                    if input_dict['scan_trsh']:
+                        input_dict['scan_trsh'] += f' {value}'
+                    else:
+                        input_dict['scan_trsh'] += f'{value}'
                 else:
                     if 'keywords' not in input_dict.keys():
                         input_dict['keywords'] = ''
-                    input_dict['keywords'] += f'{value} '
+                # Check if input_dict['keywords'] already contains a value
+                    if input_dict['keywords']:
+                        input_dict['keywords'] += f' {value}'
+                    else:
+                        input_dict['keywords'] += f'{value}'
+        elif arg_type == 'trsh':
+            if isinstance(arg_dict, list):
+                # arg_dict is a list, iterate through its elements
+                for val in arg_dict:
+                    if 'trsh' not in input_dict.keys():
+                        input_dict['trsh'] = ''
+                    # Check if input_dict['trsh'] already contains a value
+                    if input_dict['trsh']:
+                        input_dict['trsh'] += f' {val}'
+                    else:
+                        input_dict['trsh'] += f'{val}'
+            else:
+                # arg_dict is a dictionary, proceed as before
+                for key, value in arg_dict.items():
+                    # Check if value is a list
+                    if isinstance(value, list):
+                        for val in value:
+                            if key not in input_dict.keys():
+                                input_dict[key] = ''
+                            if input_dict[key]:
+                                input_dict[key] += f' {val}'
+                            else:
+                                input_dict[key] += f'{val}'
+                    else:
+                        if key not in input_dict.keys():
+                            input_dict[key] = ''
+                        if input_dict[key]:
+                            input_dict[key] += f' {value}'
+                        else:
+                            input_dict[key] += f'{value}'
+
     return input_dict
+
+def input_dict_strip(input_dict: dict) -> dict:
+    """
+    Strip all values in the input dict of leading and trailing whitespace.
+    """
+    stripped_dict = {
+        key: (
+            val.rstrip() if isinstance(val, str) and val.startswith('\n') and not val.endswith('\n') else
+            val.lstrip() if isinstance(val, str) and not val.startswith('\n') and val.endswith('\n') else
+            val.strip() if isinstance(val, str) and not val.startswith('\n') and not val.endswith('\n') else val
+        )
+        for key, val in input_dict.items() if val is not None
+    }
+
+    return stripped_dict
 
 
 def set_job_args(args: Optional[dict],
@@ -380,3 +487,39 @@ def which(command: Union[str, list],
         return bool(ans)
     else:
         return ans
+
+def combine_parameters(input_dict: dict, terms: list) -> Tuple[dict, List]:
+    """
+    Extract and combine specific parameters from a dictionary's string values based on a list of terms.
+
+    This function iterates over each key-value pair in the input dictionary. If a value is a string,
+    it searches for occurrences of each term in the 'terms' list within the string. Each found term is 
+    appended to a 'parameters' list. The terms found are then removed from the string value in the dictionary.
+    The function returns a modified copy of the input dictionary with the terms removed from the string values,
+    and a list of extracted parameters.
+
+    Args:
+        input_dict (dict): A dictionary with string values from which terms are to be extracted.
+        terms (list): A list of string terms to be searched for within the dictionary's values.
+        
+    Returns:
+        tuple: A tuple containing two elements:
+            - A dictionary with the same structure as 'input_dict', but with the terms removed from the string values.
+            - A list of extracted parameters (terms found in the string values of the input dictionary).
+        
+    """
+
+    input_dict_copy = input_dict.copy()
+    parameters = []
+
+    for key, value in input_dict_copy.items():
+        if isinstance(value, str):
+            for term in terms:
+                matches = re.findall(term, value)
+                for match in matches:
+                    if match:
+                        parameters.append(match)
+                        value = re.sub(term, '', value)
+            input_dict_copy[key] = value
+
+    return input_dict_copy, parameters
