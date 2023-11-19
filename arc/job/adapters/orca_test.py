@@ -86,7 +86,7 @@ class TestOrcaAdapter(unittest.TestCase):
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
 %maxcore 1792
@@ -113,7 +113,7 @@ H      -0.53338088   -0.77135867   -0.54806440
         self.job_2.write_input_file()
         with open(os.path.join(self.job_2.local_path, input_filenames[self.job_2.job_adapter]), 'r') as f:
             content_2 = f.read()
-        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
 %maxcore 1792
@@ -131,7 +131,6 @@ end
 end
             
 
-
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
 O       1.35198769    0.01264937   -0.17195885
@@ -148,7 +147,7 @@ H      -0.53338088   -0.77135867   -0.54806440
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno 
+        job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
 %maxcore 1792
@@ -163,7 +162,6 @@ end
 
 !CPCM(water)
             
-
 
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242

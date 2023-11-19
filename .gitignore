@@ -51,3 +51,10 @@ timer.dat
 
 # .vscode
 .vscode
+
+# .trunk folder
+.trunk
+
+# ignore files created from tests
+nul
+run.out

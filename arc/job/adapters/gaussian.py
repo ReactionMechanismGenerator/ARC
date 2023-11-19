@@ -19,6 +19,7 @@ from arc.job.adapters.common import (_initialize_adapter,
                                      is_restricted,
                                      update_input_dict_with_args,
                                      which,
+                                     combine_parameters
                                      )
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command
@@ -48,7 +49,7 @@ input_template = """${checkfile}
 %%mem=${memory}mb
 %%NProcShared=${cpus}
 
-#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion}
+#P ${job_type_1} ${restricted}${method}${slash_1}${basis}${slash_2}${auxiliary_basis} ${job_type_2} ${fine} IOp(2/9=2000) ${keywords} ${dispersion} ${trsh}
 
 ${label}
 
@@ -218,8 +219,10 @@ class GaussianAdapter(JobAdapter):
                     'scan',
                     'slash_1',
                     'slash_2',
+                    'trsh'
                     ]:
             input_dict[key] = ''
+        update_input_dict_with_args(args=self.args, input_dict=input_dict)
         input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
         input_dict['basis'] = self.level.basis or ''
         input_dict['charge'] = self.charge
@@ -229,8 +232,10 @@ class GaussianAdapter(JobAdapter):
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
+        input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
+        integral_algorithm = 'Acc2E=14' if 'Acc2E=14' in input_dict['trsh'] else 'Acc2E=12'
+        input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if 'Acc2E=14' in input_dict['trsh'] else input_dict['trsh']
 
         if self.level.basis is not None:
             input_dict['slash_1'] = '/'
@@ -248,9 +253,10 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method[:2] == 'ro':
             self.add_to_args(val='use=L506')
-        elif not('no_xqc' in list(self.args['trsh'].values())):
+        elif not('no_xqc' in list(self.args['trsh'].values())) and 'qc' in input_dict['trsh']:
             # xqc will do qc (quadratic convergence) if the job fails w/o it, so use it by default.
-            self.add_to_args(val='scf=xqc')
+            # replace qc with xqc if it's not already there
+            input_dict['trsh'] = input_dict['trsh'].replace('qc', 'xqc')
 
         if self.level.method == 'cbs-qb3-paraskevas':
             # convert cbs-qb3-paraskevas to cbs-qb3
@@ -265,7 +271,22 @@ class GaussianAdapter(JobAdapter):
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
-                    input_dict['fine'] = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+                    input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                    # input_dict['trsh'] may have scf=(...) in it, so we need to  add the tight and direct keywords to it
+                    scf_start = input_dict['trsh'].find('scf=(')
+                    scf_end = input_dict['trsh'].find(')', scf_start)
+                    scf_fine_content = 'tight,direct'
+                    if scf_start != -1 and scf_end != -1:
+                        scf_content = input_dict['trsh'][scf_start + 5:scf_end]
+                        scf_fine_content += ',' + scf_content
+                        # Remove ')' if it's the last character in the scf content
+                        if scf_fine_content == ')':
+                            scf_fine_content = scf_fine_content[:-1]
+                        input_dict['trsh'] = input_dict['trsh'][:scf_start + 4] + '(' + scf_fine_content + ')' + input_dict['trsh'][scf_end + 1:]
+                    else:
+                        if input_dict['trsh']:
+                            input_dict['trsh'] += ' '
+                        input_dict['trsh'] += 'scf=(tight,direct)'
                 if self.is_ts:
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
@@ -273,13 +294,13 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] = f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = 'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type == 'sp':
-            input_dict['job_type_1'] = 'scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)'
+            input_dict['job_type_1'] = f'scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
 
         elif self.job_type == 'scan':
             scans, scans_strings = list(), list()
@@ -297,7 +318,7 @@ class GaussianAdapter(JobAdapter):
 
             ts = 'ts, ' if self.is_ts else ''
             input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
-                                       f'integral=(grid=ultrafine, Acc2E=12)'
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
             input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
             for scan in scans_strings:
                 input_dict['scan'] += f'D {scan} S {int(360 / self.scan_res)} {self.scan_res:.1f}\n'
@@ -305,7 +326,25 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03
-                input_dict['fine'] = 'scf=(direct) integral=(grid=ultrafine, Acc2E=12)'
+                input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+                # We need to add scf=(direct) to the trsh argument
+                # But we to check if it's already there, and
+                if 'direct' not in input_dict['trsh']:
+                    scf_start = input_dict['trsh'].find('scf=(')
+                    scf_end = input_dict['trsh'].find(')', scf_start)
+                    scf_fine_content = 'direct'
+                    if scf_start != -1 and scf_end != -1:
+                        scf_content = input_dict['trsh'][scf_start + 5:scf_end]
+                        scf_fine_content += ',' + scf_content
+                        # Remove ')' if it's the last character in the scf content
+                        if scf_fine_content == ')':
+                            scf_fine_content = scf_fine_content[:-1]
+                        input_dict['trsh'] = input_dict['trsh'][:scf_start + 4] + '(' + scf_fine_content + ')' + input_dict['trsh'][scf_end + 1:]
+                    else:
+                        if input_dict['trsh']:
+                            input_dict['trsh'] += ' '
+                        input_dict['trsh'] += 'scf=(direct)'
+                
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
         for constraint_tuple in self.constraints:
@@ -322,7 +361,12 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
                 else ' guess=mix'
 
-        input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
+        #Fix SCF
+        # This may be redundant due to additional fixes in the above code
+        terms = ['scf=\((.*?)\)', 'scf=(\w+)']
+        input_dict, parameters = combine_parameters(input_dict, terms)
+        if parameters:
+            input_dict['trsh'] += f" scf=({','.join(parameters)})"
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))

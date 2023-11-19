@@ -646,6 +646,8 @@ class Scheduler(object):
                             if successful_server_termination \
                                     and (job.directed_scan_type is None or job.directed_scan_type == 'ess'):
                                 self.check_scan_job(label=label, job=job)
+                            elif successful_server_termination and job.job_status[1]['status'] == 'errored':
+                                 self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
                             self.timer = False
                             break
                     elif 'irc' in job_name:
@@ -1884,6 +1886,10 @@ class Scheduler(object):
                     logger.debug(f'Energy for conformer {i} of {label} is None')
         else:
             logger.warning(f'Conformer {i} for {label} did not converge.')
+            if job.job_status[1]['status'] == 'errored' and job.times_rerun == 0:
+                job.times_rerun += 1
+                self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None) 
+                return True
             if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
                 return True
@@ -3237,7 +3243,9 @@ class Scheduler(object):
             warning_message += f'The error "{job.job_status[1]["error"]}" was derived from the following line in the ' \
                                f'log file:\n"{job.job_status[1]["line"]}".'
         logger.warning(warning_message)
-        if conformer is not None:
+        if self.species_dict[label].is_ts and conformer is not None:
+            xyz = self.species_dict[label].ts_guesses[conformer].get_xyz()
+        elif conformer is not None:
             xyz = self.species_dict[label].conformers[conformer]
         else:
             xyz = self.species_dict[label].final_xyz or self.species_dict[label].initial_xyz

@@ -15,7 +15,7 @@ from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
-
+import arc.job.trsh as trsh
 
 class TestGaussianAdapter(unittest.TestCase):
     """
@@ -130,6 +130,149 @@ class TestGaussianAdapter(unittest.TestCase):
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
                             )
+        cls.job_10 = GaussianAdapter(execution_type='local',
+                            job_type='optfreq',
+                            level=Level(method='wb97xd'),
+                            fine=True,
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
+                            testing=True,
+                            args={'trsh': {'trsh': ['int=(Acc2E=14)']}},
+                            )
+
+        # Setting up for ESS troubleshooting input file writing
+
+        label = 'anion'
+        level_of_theory = {'method': 'wb97xd'}
+        server = 'server1'
+        job_type = 'optfreq'
+        software = 'gaussian'
+        fine = True
+        memory_gb = 16
+        num_heavy_atoms = 2
+        ess_trsh_methods = ['int=(Acc2E=14)']
+        cpu_cores = 8
+
+        # Gaussian: Checkfile error
+        job_status = {'keywords': ['CheckFile']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        spc_11 = ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
+                                                    C	0.0000000	0.5518050	0.0000000
+                                                    O	-1.1894600	-0.2141940	0.0000000
+                                                    H	-1.9412580	0.3751850	0.0000000
+                                                    H	2.1054020	0.1451160	0.0000000
+                                                    H	1.1306240	-1.0387850	0.8830320
+                                                    H	1.1306240	-1.0387850	-0.8830320
+                                                    H	0.0476820	1.1930570	0.8835910
+                                                    H	0.0476820	1.1930570	-0.8835910"""],
+                           directed_rotors={'brute_force_sp': [[1, 2], [2, 3]]})
+        cls.job_11 = GaussianAdapter(execution_type='local',
+                            job_type='optfreq',
+                            level=Level(method='wb97xd'),
+                            fine=True,
+                            ess_trsh_methods=ess_trsh_methods,
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            species=[spc_11],
+                            testing=True,
+                            args=args
+                            )
+        
+        # Gaussian: Checkfile error and SCF error
+        # First SCF error - qc,nosymm
+        job_status = {'keywords': ['SCF']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_12 = GaussianAdapter(execution_type='local',
+                                          job_type='optfreq',
+                                          level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+        
+        # Gaussian: Additional SCF error
+        # Second SCF error - Includes previous SCF error and NDump=30
+        job_status = {'keywords': ['SCF']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_13 = GaussianAdapter(execution_type='local',
+                                          job_type='optfreq',
+                                          level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+        
+        # Gaussian: Additional SCF error
+        # Third SCF error - Includes previous SCF errors and NoDIIS
+        job_status = {'keywords': ['SCF']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_14 = GaussianAdapter(execution_type='local',
+                                          job_type='optfreq',
+                                          level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+
+        # Gaussian: Internal coordinate error including a checkfile error and SCF errors
+        #           Job type is switched to opt
+        job_status = {'keywords': ['InternalCoordinateError']}
+        job_type_15 = 'opt' # Need to switch job types for this error
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                          job_type_15, software, fine, memory_gb,  
+                                                                            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_15 = GaussianAdapter(execution_type='local',
+                                            job_type='opt',
+                                            level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -154,7 +297,7 @@ class TestGaussianAdapter(unittest.TestCase):
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0) scf=xqc  
+#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0)  
 
 spc1
 
@@ -172,7 +315,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
 
 spc1
 
@@ -190,7 +333,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(modredundant, calcfc, noeigentest, maxStep=5)  integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(tight, direct)
 
 ethanol
 
@@ -213,7 +356,6 @@ gaussian
 block
 
 
-
 """
         self.assertEqual(content_4, job_4_expected_input_file)
 
@@ -224,7 +366,7 @@ block
 %mem=14336mb
 %NProcShared=8
 
-#P  uwb97xd/def2tzvp freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000) scf=xqc  
+#P  uwb97xd/def2tzvp freq IOp(7/33=1)  integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000)    scf=(tight, direct)
 
 birad_singlet
 
@@ -242,7 +384,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000)   
 
 anion
 
@@ -260,7 +402,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000) scf=xqc  
+#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000)   
 
 IRC
 
@@ -319,6 +461,163 @@ O       0.00000000    0.00000000    1.00000000
     def test_gaussian_def2tzvp(self):
         """Test a Gaussian job using def2-tzvp"""
         self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
+    
+    def test_trsh_write_input_file(self):
+        """Test writing a trsh input file
+        1. Test with getting Acc2E14 as the trsh method and thus changing the input file integral algorithm, and is also 'fine' thus it will have direct and tight SCF (but not xqc)
+        2. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods, thus it will have both changes in the input file
+        3. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first SCF error thus it will have all three changes in the input file
+        4. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first and second SCF error and also the input file already has the integral algorithm change thus it will have all four changes in the input file
+        5. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first, second and third SCF error and also the input file already has the integral algorithm change and also the input file already has the scf algorithm change thus it will have all five changes in the input file
+        6. Test with all previous errors but now include an internal coordinate error thus it will have all six changes in the input file
+        """
+        self.job_10.write_input_file()
+        with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
+            content_10 = f.read()
+        job_10_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(tight,direct)
+
+anion
+
+-1 2
+O       0.00000000    0.00000000    1.00000000
+
+
+"""
+        self.assertEqual(content_10, job_10_expected_input_file)
+
+        self.job_11.write_input_file()
+        with open(os.path.join(self.job_11.local_path, input_filenames[self.job_11.job_adapter]), 'r') as f:
+            content_11 = f.read()
+        job_11_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(tight,direct)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_11, job_11_expected_input_file)
+
+        self.job_12.write_input_file()
+        with open(os.path.join(self.job_12.local_path, input_filenames[self.job_12.job_adapter]), 'r') as f:
+            content_12 = f.read()
+        job_12_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_12, job_12_expected_input_file)
+
+        self.job_13.write_input_file()
+        with open(os.path.join(self.job_13.local_path, input_filenames[self.job_13.job_adapter]), 'r') as f:
+            content_13 = f.read()
+        job_13_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm,NDump=30)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_13, job_13_expected_input_file)
+
+        self.job_14.write_input_file()
+        with open(os.path.join(self.job_14.local_path, input_filenames[self.job_14.job_adapter]), 'r') as f:
+            content_14 = f.read()
+        job_14_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm,NDump=30,NoDIIS)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_14, job_14_expected_input_file)
+
+        self.job_15.write_input_file()
+        with open(os.path.join(self.job_15.local_path, input_filenames[self.job_15.job_adapter]), 'r') as f:
+            content_15 = f.read()
+        job_15_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)   opt=(cartesian,nosymm)   scf=(tight,direct,xqc,nosymm,NDump=30,NoDIIS)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_15, job_15_expected_input_file)
 
     @classmethod
     def tearDownClass(cls):

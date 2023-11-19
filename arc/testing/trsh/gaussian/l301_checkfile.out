@@ -1,0 +1,259 @@
+ Entering Gaussian System, Link 0=g09
+ Initial command:
+ /usr/local/g09/l1.exe "/gtmp/calvin.p/scratch/g09/439484.zeus-master/Gau-69918.inp" -scrdir="/gtmp/calvin.p/scratch/g09/439484.zeus-master/"
+ Entering Link 1 = /usr/local/g09/l1.exe PID=     69919.
+  
+ Copyright (c) 1988,1990,1992,1993,1995,1998,2003,2009,2013,
+            Gaussian, Inc.  All Rights Reserved.
+  
+ This is part of the Gaussian(R) 09 program.  It is based on
+ the Gaussian(R) 03 system (copyright 2003, Gaussian, Inc.),
+ the Gaussian(R) 98 system (copyright 1998, Gaussian, Inc.),
+ the Gaussian(R) 94 system (copyright 1995, Gaussian, Inc.),
+ the Gaussian 92(TM) system (copyright 1992, Gaussian, Inc.),
+ the Gaussian 90(TM) system (copyright 1990, Gaussian, Inc.),
+ the Gaussian 88(TM) system (copyright 1988, Gaussian, Inc.),
+ the Gaussian 86(TM) system (copyright 1986, Carnegie Mellon
+ University), and the Gaussian 82(TM) system (copyright 1983,
+ Carnegie Mellon University). Gaussian is a federally registered
+ trademark of Gaussian, Inc.
+  
+ This software contains proprietary and confidential information,
+ including trade secrets, belonging to Gaussian, Inc.
+  
+ This software is provided under written license and may be
+ used, copied, transmitted, or stored only in accord with that
+ written license.
+  
+ The following legend is applicable only to US Government
+ contracts under FAR:
+  
+                    RESTRICTED RIGHTS LEGEND
+  
+ Use, reproduction and disclosure by the US Government is
+ subject to restrictions as set forth in subparagraphs (a)
+ and (c) of the Commercial Computer Software - Restricted
+ Rights clause in FAR 52.227-19.
+  
+ Gaussian, Inc.
+ 340 Quinnipiac St., Bldg. 40, Wallingford CT 06492
+  
+  
+ ---------------------------------------------------------------
+ Warning -- This program may not be used in any manner that
+ competes with the business of Gaussian, Inc. or will provide
+ assistance to any competitor of Gaussian, Inc.  The licensee
+ of this program is prohibited from giving any competitor of
+ Gaussian, Inc. access to this program.  By using this program,
+ the user acknowledges that Gaussian, Inc. is engaged in the
+ business of creating and licensing software in the field of
+ computational chemistry and represents and warrants to the
+ licensee that it is not a competitor of Gaussian, Inc. and that
+ it will not use this program in any manner prohibited above.
+ ---------------------------------------------------------------
+  
+
+ Cite this work as:
+ Gaussian 09, Revision D.01,
+ M. J. Frisch, G. W. Trucks, H. B. Schlegel, G. E. Scuseria, 
+ M. A. Robb, J. R. Cheeseman, G. Scalmani, V. Barone, B. Mennucci, 
+ G. A. Petersson, H. Nakatsuji, M. Caricato, X. Li, H. P. Hratchian, 
+ A. F. Izmaylov, J. Bloino, G. Zheng, J. L. Sonnenberg, M. Hada, 
+ M. Ehara, K. Toyota, R. Fukuda, J. Hasegawa, M. Ishida, T. Nakajima, 
+ Y. Honda, O. Kitao, H. Nakai, T. Vreven, J. A. Montgomery, Jr., 
+ J. E. Peralta, F. Ogliaro, M. Bearpark, J. J. Heyd, E. Brothers, 
+ K. N. Kudin, V. N. Staroverov, T. Keith, R. Kobayashi, J. Normand, 
+ K. Raghavachari, A. Rendell, J. C. Burant, S. S. Iyengar, J. Tomasi, 
+ M. Cossi, N. Rega, J. M. Millam, M. Klene, J. E. Knox, J. B. Cross, 
+ V. Bakken, C. Adamo, J. Jaramillo, R. Gomperts, R. E. Stratmann, 
+ O. Yazyev, A. J. Austin, R. Cammi, C. Pomelli, J. W. Ochterski, 
+ R. L. Martin, K. Morokuma, V. G. Zakrzewski, G. A. Voth, 
+ P. Salvador, J. J. Dannenberg, S. Dapprich, A. D. Daniels, 
+ O. Farkas, J. B. Foresman, J. V. Ortiz, J. Cioslowski, 
+ and D. J. Fox, Gaussian, Inc., Wallingford CT, 2013.
+ 
+ ******************************************
+ Gaussian 09:  EM64L-G09RevD.01 24-Apr-2013
+                15-May-2023 
+ ******************************************
+ %chk=check.chk
+ %mem=32768mb
+ %NProcShared=16
+ Will use up to   16 processors via shared memory.
+ ----------------------------------------------------------------------
+ #P guess=read b2plypd3/def2tzvp freq IOp(7/33=1) scf=(tight, direct) i
+ ntegral=(grid=ultrafine, Acc2E=12) IOp(2/9=2000) scf=xqc
+ ----------------------------------------------------------------------
+ 1/10=4,30=1,38=1/1,3;
+ 2/9=2000,12=2,17=6,18=5,40=1/2;
+ 3/5=44,7=101,11=9,16=1,25=1,30=1,71=2,74=-60,75=-5,116=-2,140=1/1,2,3;
+ 4/5=1/1;
+ 5/5=2,8=3,13=1,32=2,38=6,87=12,98=1/2,8;
+ 8/6=3,8=1,10=1,19=11,30=-1,87=12/1;
+ 9/15=3,16=-3,87=12/6;
+ 11/6=1,8=1,15=11,17=12,24=-1,27=1,28=-2,29=300,32=6,42=3,87=12/1,2,10;
+ 10/6=2,21=1,87=12/2;
+ 8/6=4,8=1,10=1,19=11,30=-1,87=12/11,4;
+ 10/5=1,20=4,87=12/2;
+ 11/12=2,14=11,16=1,17=2,28=-2,42=3,87=12/2,10,12;
+ 6/7=2,8=2,9=2,10=2/1;
+ 7/8=1,10=1,12=2,25=1,33=1,44=2,87=12/1,2,3,16;
+ 1/10=4,30=1/3;
+ 99//99;
+ Leave Link    1 at Mon May 15 13:52:48 2023, MaxMem=  4294967296 cpu:         0.9
+ (Enter /usr/local/g09/l101.exe)
+ ---
+ DMF
+ ---
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 1
+ C                    -2.49339   0.27299  -0.32162 
+ C                    -1.10105  -0.12419  -0.00514 
+ C                     0.03357  -0.24831  -0.74109 
+ C                     1.06361  -0.67586   0.15913 
+ C                     0.48984  -0.78454   1.38526 
+ C                     0.9918   -1.17367   2.72434 
+ O                    -0.83591  -0.44957   1.29912 
+ H                    -3.19712  -0.52852  -0.08955 
+ H                    -2.79393   1.15412   0.24828 
+ H                    -2.57546   0.50549  -1.38172 
+ H                     0.1254   -0.05834  -1.79689 
+ H                     2.09521  -0.87598  -0.07533 
+ H                     0.86503  -0.36466   3.44609 
+ H                     2.05127  -1.415     2.6619 
+ H                     0.46183  -2.04729   3.10827 
+ 
+ NAtoms=     15 NQM=       15 NQMF=       0 NMMI=      0 NMMIF=      0
+                NMic=       0 NMicF=      0.
+                    Isotopes and Nuclear Properties:
+ (Nuclear quadrupole moments (NQMom) in fm**2, nuclear magnetic moments (NMagM)
+  in nuclear magnetons)
+
+  Atom         1           2           3           4           5           6           7           8           9          10
+ IAtWgt=          12          12          12          12          12          12          16           1           1           1
+ AtmWgt=  12.0000000  12.0000000  12.0000000  12.0000000  12.0000000  12.0000000  15.9949146   1.0078250   1.0078250   1.0078250
+ NucSpn=           0           0           0           0           0           0           0           1           1           1
+ AtZEff=   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NQMom=    0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000   2.7928460   2.7928460   2.7928460
+ AtZNuc=   6.0000000   6.0000000   6.0000000   6.0000000   6.0000000   6.0000000   8.0000000   1.0000000   1.0000000   1.0000000
+
+  Atom        11          12          13          14          15
+ IAtWgt=           1           1           1           1           1
+ AtmWgt=   1.0078250   1.0078250   1.0078250   1.0078250   1.0078250
+ NucSpn=           1           1           1           1           1
+ AtZEff=   0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NQMom=    0.0000000   0.0000000   0.0000000   0.0000000   0.0000000
+ NMagM=    2.7928460   2.7928460   2.7928460   2.7928460   2.7928460
+ AtZNuc=   1.0000000   1.0000000   1.0000000   1.0000000   1.0000000
+ Leave Link  101 at Mon May 15 13:52:48 2023, MaxMem=  4294967296 cpu:         1.0
+ (Enter /usr/local/g09/l103.exe)
+
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+ Berny optimization.
+ Initialization pass.
+ Trust Radius=3.00D-01 FncErr=1.00D-07 GrdErr=1.00D-07
+ Number of steps in this run=      2 maximum allowed number of steps=      2.
+ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
+
+ Leave Link  103 at Mon May 15 13:52:48 2023, MaxMem=  4294967296 cpu:         0.2
+ (Enter /usr/local/g09/l202.exe)
+                          Input orientation:                          
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -2.493390    0.272985   -0.321616
+      2          6           0       -1.101054   -0.124185   -0.005136
+      3          6           0        0.033571   -0.248306   -0.741090
+      4          6           0        1.063610   -0.675860    0.159133
+      5          6           0        0.489843   -0.784542    1.385260
+      6          6           0        0.991801   -1.173666    2.724336
+      7          8           0       -0.835912   -0.449571    1.299117
+      8          1           0       -3.197119   -0.528519   -0.089545
+      9          1           0       -2.793929    1.154116    0.248282
+     10          1           0       -2.575461    0.505489   -1.381719
+     11          1           0        0.125403   -0.058340   -1.796888
+     12          1           0        2.095214   -0.875979   -0.075333
+     13          1           0        0.865026   -0.364657    3.446093
+     14          1           0        2.051268   -1.415002    2.661903
+     15          1           0        0.461831   -2.047293    3.108274
+ ---------------------------------------------------------------------
+                    Distance matrix (angstroms):
+                    1          2          3          4          5
+     1  C    0.000000
+     2  C    1.482060   0.000000
+     3  C    2.614046   1.358090   0.000000
+     4  C    3.712637   2.239888   1.433243   0.000000
+     5  C    3.596035   2.213645   2.239888   1.358090   0.000000
+     6  C    4.849451   3.596035   3.712637   2.614045   1.482061
+     7  O    2.428188   1.370129   2.226871   2.226871   1.370129
+     8  H    1.091559   2.136375   3.307626   4.270522   3.979232
+     9  H    1.091558   2.136375   3.307628   4.270523   3.979230
+    10  H    1.088399   2.113137   2.790280   4.124639   4.326250
+    11  H    3.023951   2.172305   1.076675   2.255567   3.284243
+    12  H    4.736672   3.284243   2.255566   1.076675   2.172305
+    13  H    5.087355   3.979231   4.270522   3.307626   2.136375
+    14  H    5.692504   4.326250   4.124638   2.790279   2.113136
+    15  H    5.087354   3.979231   4.270523   3.307627   2.136376
+                    6          7          8          9         10
+     6  C    0.000000
+     7  O    2.428188   0.000000
+     8  H    5.087356   2.740422   0.000000
+     9  H    5.087353   2.740419   1.762938   0.000000
+    10  H    5.692504   3.335424   1.767864   1.767866   0.000000
+    11  H    4.736672   3.265338   3.765002   3.765006   2.790150
+    12  H    3.023952   3.265339   5.303746   5.303747   5.042847
+    13  H    1.091559   2.740421   5.387820   5.091230   5.991817
+    14  H    1.088398   3.335424   5.991818   5.991817   6.437840
+    15  H    1.091559   2.740420   5.091231   5.387815   5.991817
+                   11         12         13         14         15
+    11  H    0.000000
+    12  H    2.740883   0.000000
+    13  H    5.303746   3.765004   0.000000
+    14  H    5.042847   2.790150   1.767866   0.000000
+    15  H    5.303747   3.765006   1.762938   1.767866   0.000000
+ Stoichiometry    C6H8O
+ Framework group  C1[X(C6H8O)]
+ Deg. of freedom    39
+ Full point group                 C1      NOp   1
+ Largest Abelian subgroup         C1      NOp   1
+ Largest concise Abelian subgroup C1      NOp   1
+                         Standard orientation:                         
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0       -2.424726    0.682143    0.000000
+      2          6           0       -1.106823    0.004179    0.000000
+      3          6           0       -0.716621   -1.296648    0.000000
+      4          6           0        0.716622   -1.296648    0.000000
+      5          6           0        1.106823    0.004179    0.000000
+      6          6           0        2.424726    0.682143    0.000000
+      7          8           0        0.000000    0.811766    0.000000
+      8          1           0       -2.545617    1.314515    0.881471
+      9          1           0       -2.545614    1.314521   -0.881467
+     10          1           0       -3.218920   -0.062079   -0.000003
+     11          1           0       -1.370442   -2.152070    0.000000
+     12          1           0        1.370441   -2.152071    0.000000
+     13          1           0        2.545615    1.314517   -0.881470
+     14          1           0        3.218920   -0.062079    0.000002
+     15          1           0        2.545614    1.314520    0.881468
+ ---------------------------------------------------------------------
+ Rotational constants (GHZ):      6.2014743      2.1345992      1.6198837
+ Leave Link  202 at Mon May 15 13:52:48 2023, MaxMem=  4294967296 cpu:         0.1
+ (Enter /usr/local/g09/l301.exe)
+ Standard basis: def2TZVP (5D, 7F)
+ Ernie: Thresh=  0.10000D-02 Tol=  0.10000D-05 Strict=F.
+ There are   300 symmetry adapted cartesian basis functions of A   symmetry.
+ There are   265 symmetry adapted basis functions of A   symmetry.
+   265 basis functions,   421 primitive gaussians,   300 cartesian basis functions
+    26 alpha electrons       26 beta electrons
+       nuclear repulsion energy       290.8652401896 Hartrees.
+ IExCor=  419 DFT=T Ex+Corr=B2PLYPD3 ExCW=0 ScaHFX=  0.530000
+ ScaDFX=  0.470000  0.470000  0.730000  0.730000 ScalE2=  0.270000  0.270000
+ IRadAn=      5 IRanWt=     -1 IRanGd=            0 ICorTp=0 IEmpDi=141
+ No data on chk file.
+ Error termination via Lnk1e in /usr/local/g09/l301.exe at Mon May 15 13:52:48 2023.
+ Job cpu time:       0 days  0 hours  0 minutes  3.0 seconds.
+ File lengths (MBytes):  RWF=      5 Int=      0 D2E=      0 Chk=      1 Scr=      1
