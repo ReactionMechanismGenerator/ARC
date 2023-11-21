@@ -31,7 +31,7 @@ class PYSCFScript:
         self.run()
     def read_input_file(self):
         with open(self.input_file, 'r') as f:
-            input_dict = yaml.load(f, Loader=yaml.FullLoader)
+            input_dict = yaml.safe_load(f, Loader=yaml.FullLoader)
         return input_dict
     def get_job_type(self):
         job_type = self.input_dict['job_type']
@@ -66,7 +66,7 @@ class PYSCFScript:
         mol.spin = self.spin # TODO: Is this correct [multiplicity -> spin]?
         mol.build()
         
-        if self.estricted:
+        if self.restricted:
             mf = dft.RKS(mol)
         else:
             mf = dft.UKS(mol)
