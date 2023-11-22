@@ -1,78 +1,493 @@
-#!/usr/bin/env python3
-# encoding: utf-8
+# https://github.com/nmardirossian/PySCF_Tutorial/blob/master/user_guide.ipynb
 
-"""
-A standalone script to run PySCF with the xyz data outputted from ARC.
-Should be run under the pyscf_env.
-"""
-
-# Parse the input.yml file
-
-import os
-import sys
-import yaml
-import argparse
-import pyscf
 from pyscf import gto, scf, dft
+import pandas
+pandas.set_option('display.max_columns', 500)
 
-class PYSCFScript:
+class PYSCFScript_VB:
     
-    def __init__(self, input_file):
+    def __init__(self, input_file) -> None:
         self.input_file = input_file
         self.input_dict = self.read_input_file()
-        self.job_type = self.get_job_type()
-        self.mol = self.get_mol()
+
+        # Method
         self.method = self.get_method()
+        # Molecule
+        self.molecule = self.get_molecule()
+        # Basis
         self.basis = self.get_basis()
+        # Charge
         self.charge = self.get_charge()
+        # Spin
         self.spin = self.get_spin()
+        # Unit
+        self.unit = self.get_unit()
+        # Restricted
         self.restricted = self.get_restricted()
+        # Conv tol
+        self.conv_tol = self.get_conv_tol()
+        # Conv Tol Grad
+        self.conv_tol_grad = self.get_conv_tol_grad()
+        # Direct scf tol
+        self.direct_scf_tol = self.get_direct_scf_tol()
+        # Init guess
+        self.init_guess = self.get_init_guess()
+        # Level Shift
+        self.level_shift = self.get_level_shift()
+        # Max cycles
+        self.max_cycle = self.get_max_cycle()
+        # Max memory
+        self.max_memory = self.get_max_memory()
+        # XC
+        self.xc = self.get_xc()
+        # NLC
+        self.nlc = self.get_nlc()
+        # xc grid
+        self.xc_grid = self.get_xc_grid()
+        # nlc grid
+        self.nlc_grid = self.get_nlc_grid()
+        # small_rho_cutoff
+        self.small_rho_cutoff = self.get_small_rho_cutoff()
+        # atomic radii
+        self.atomic_radii = self.get_atomic_radii()
+        # Becke scheme
+        self.becke_scheme = self.get_becke_scheme()
+        # Prune
+        self.prune = self.get_prune()
+        # Radi method
+        self.radi_method = self.get_radi_method()
+        # Radii Adjust
+        self.radii_adjust = self.get_radii_adjust()
+        # Algorithm
+        self.algorithm = self.get_algorithm()
+        # Datapath
+        self.datapath = self.get_datapath()
+        # getdict
+        self.getdict = self.get_getdict()
+        # lin depth
+        self.lin_depth = self.get_lin_depth()
+        # prop
+        self.prop = self.get_prop()
+        # scf type
+        self.scf_type = self.get_scf_type()
+        # Stable
+        self.stable = self.get_stable()
+        # Stable cyc
+        self.stable_cyc = self.get_stable_cyc()
+        # verbose
+        self.verbose = self.get_verbose()
+        # job type
+        self.job_type = self.get_job_type()
+        # is ts
         self.is_ts = self.get_ts_status()
-        self.run()
+
+        self.mol_eq = None
     def read_input_file(self):
-        with open(self.input_file, 'r') as f:
-            input_dict = yaml.safe_load(f, Loader=yaml.FullLoader)
+        # Check if input file is a YAML file
+        if isinstance(self.input_file, str) and self.input_file.endswith('.yml'):
+            with open(self.input_file, 'r') as f:
+                input_dict = yaml.load(f, Loader=yaml.FullLoader)
+        elif isinstance(self.input_file, dict):
+            input_dict = self.input_file
         return input_dict
+    
+    def get_method(self):
+        # Get method in input dict if exists
+        method = self.input_dict.get('xc_func', None)
+        return method
+    
+    def get_molecule(self):
+        # Get molecule in input dict if exists
+        molecule = self.input_dict['xyz']
+        return molecule
+    
+    def get_basis(self):
+        # Get basis in input dict if exists
+        basis = self.input_dict.get('basis', None)
+        return basis
+    
+    def get_charge(self):
+        # Get charge in input dict if exists
+        charge = self.input_dict.get('charge', 0)
+        return charge
+    
+    def get_spin(self):
+        # Get spin in input dict if exists
+        spin = self.input_dict.get('spin', 0)
+        return spin
+    
+    def get_unit(self):
+        # Get unit in input dict if exists
+        # TODO: Should check the validity of the unit
+        unit = self.input_dict.get('unit', 'Angstrom')
+        return unit
+    
+    def get_restricted(self):
+        # Get restricted in input dict if exists
+        restricted = self.input_dict.get('restricted', True)
+        return restricted
+    
+    def get_conv_tol(self):
+        # Get conv_tol in input dict if exists
+        conv_tol = self.input_dict.get('conv_tol', 1e-12)
+        return conv_tol
+    
+    def get_conv_tol_grad(self):
+        # Get conv_tol_grad in input dict if exists
+        conv_tol_grad = self.input_dict.get('conv_tol_grad', 1e-8)
+        return conv_tol_grad
+    
+    def get_direct_scf_tol(self):
+        # Get direct_scf_tol in input dict if exists
+        direct_scf_tol = self.input_dict.get('direct_scf_tol', 1e-13)
+        return direct_scf_tol
+    
+    def get_init_guess(self):
+        # Get init_guess in input dict if exists
+        init_guess = self.input_dict.get('init_guess', 'minao')
+        return init_guess
+    
+    def get_level_shift(self):
+        # Get level_shift in input dict if exists
+        level_shift = self.input_dict.get('level_shift', 0.0)
+        return level_shift
+    
+    def get_max_cycle(self):
+        # Get max_cycle in input dict if exists
+        max_cycle = self.input_dict.get('max_cycle', 100)
+        return max_cycle
+    
+    def get_max_memory(self):
+        # Get max_memory in input dict if exists
+        max_memory = self.input_dict.get('max_memory', 8000)
+        return max_memory
+    
+    def get_xc(self):
+        # Get xc in input dict if exists
+        xc = self.input_dict.get('xc', None)
+        return xc
+    
+    def get_nlc(self):
+        # Get nlc in input dict if exists
+        nlc = self.input_dict.get('nlc', None)
+        return nlc
+    
+    def get_xc_grid(self):
+        # Get xc_grid in input dict if exists
+        xc_grid = self.input_dict.get('xc_grid', 3)
+        return xc_grid
+    
+    def get_nlc_grid(self):
+        # Get nlc_grid in input dict if exists
+        nlc_grid = self.input_dict.get('nlc_grid', 3)
+        return nlc_grid
+    
+    def get_small_rho_cutoff(self):
+        # Get small_rho_cutoff in input dict if exists
+        small_rho_cutoff = self.input_dict.get('small_rho_cutoff', 1e-7)
+        return small_rho_cutoff
+    
+    def get_atomic_radii(self):
+        # Get atomic_radii in input dict if exists
+        atomic_radii = self.input_dict.get('atomic_radii', 'BRAGG')
+        atomic_radii.upper()
+        return atomic_radii
+    
+    def get_becke_scheme(self):
+        # Get becke_scheme in input dict if exists
+        becke_scheme = self.input_dict.get('becke_scheme', 'BECKE')
+        becke_scheme.upper()
+        return becke_scheme
+    
+    def get_prune(self):
+        # Get prune in input dict if exists
+        prune = self.input_dict.get('prune', 'NWCHEM')
+        if isinstance(prune, str):
+            prune = prune.upper()
+        return prune
+    
+    def get_radi_method(self):
+        # Get radi_method in input dict if exists
+        radi_method = self.input_dict.get('radi_method', 'TREUTLER_AHLRICHS')
+        radi_method.upper()
+        return radi_method
+    
+    def get_radii_adjust(self):
+        # Get radii_adjust in input dict if exists
+        radii_adjust = self.input_dict.get('radii_adjust', 'TREUTLER')
+        if isinstance(radii_adjust, str):
+            radii_adjust.upper()
+        return radii_adjust
+    
+    def get_algorithm(self):
+        # Get algorithm in input dict if exists
+        algorithm = self.input_dict.get('algorithm', 'DIIS')
+        algorithm.upper()
+        return algorithm
+    
+    def get_datapath(self):
+        # Get datapath in input dict if exists
+        datapath = self.input_dict.get('datapath', None)
+        return datapath
+    
+    def get_getdict(self):
+        # Get getdict in input dict if exists
+        getdict = self.input_dict.get('getdict', False)
+        return getdict
+    
+    def get_lin_depth(self):
+        # Get lin_depth in input dict if exists
+        lin_depth = self.input_dict.get('lin_depth', 1e-8)
+        return lin_depth
+    
+    def get_prop(self):
+        # Get prop in input dict if exists
+        prop = self.input_dict.get('prop', False)
+        return prop
+    
+    def get_scf_type(self):
+        # Get scf_type in input dict if exists
+        scf_type = self.input_dict.get('scf_type', None)
+        if scf_type:
+            scf_type.upper()
+        return scf_type
+    
+    def get_stable(self):
+        # Get stable in input dict if exists
+        stable = self.input_dict.get('stable', False)
+        return stable
+    
+    def get_stable_cyc(self):
+        # Get stable_cyc in input dict if exists
+        stable_cyc = self.input_dict.get('stable_cyc', 4)
+        return stable_cyc
+    
+    def get_verbose(self):
+        # Get verbose in input dict if exists
+        verbose = self.input_dict.get('verbose', 4)
+        return verbose
+    
     def get_job_type(self):
         job_type = self.input_dict['job_type']
         return job_type
-    def get_mol(self):
-        mol = self.input_dict['xyz']
-        return mol
-    def get_method(self):
-        method = self.input_dict['xc_func']
-        return method
-    def get_basis(self):
-        basis = self.input_dict['basis']
-        return basis
-    def get_charge(self):
-        charge = self.input_dict['charge']
-        return charge
-    def get_spin(self):
-        spin = self.input_dict['spin']
-        return spin
-    def get_restricted(self):
-        restricted = self.input_dict['restricted']
-        return restricted
+    
     def get_ts_status(self):
         is_ts = self.input_dict['is_ts']
+        if isinstance(is_ts, str):
+            if is_ts.upper() == 'TRUE':
+                is_ts = True
+            elif is_ts.upper() == 'FALSE':
+                is_ts = False
+            else:
+                raise ValueError('Invalid is_ts.')
         return is_ts
-    def run(self):
+    
+    def read_molecule(self, path):
 
+        charge = spin = 0
+        with open(path, 'r') as myfile:
+            output = myfile.read()
+            output = output.lstrip()
+            output = output.rstrip()
+            output = output.split('\n')
+
+        try:
+            int(output[0])
+        except ValueError:
+            try:
+                charge = int(output[0].split(' ')[0])
+                spin = int(output[0].split(' ')[1]) - 1
+            except ValueError:
+                molecule = output
+            else:
+                molecule = '\n'.join(output[1:])
+        else:
+            if int(output[0]) == len(output) - 2:
+                molecule = '\n'.join(output[2:])
+                try:
+                    charge = int(output[1].split(' ')[0])
+                    spin = int(output[1].split(' ')[1])-1
+                except ValueError:
+                    pass
+            else:
+                print ("THIS IS NOT A VALID XYZ FILE")
+
+        return (molecule, charge, spin)
+
+    def convert_to_custom_xyz(self, atoms_and_coordinates):
+        xyz_data = []
+        
+        for atom, coordinates in atoms_and_coordinates:
+            atom_line = f"{atom:<2}      {coordinates[0]: .8f}   {coordinates[1]: .8f}   {coordinates[2]: .8f}"
+            xyz_data.append(atom_line)
+        
+        return '\n'.join(xyz_data)
+    
+    def run(self):
+        
         mol = gto.Mole()
-        mol.atom = self.mol
+        
+        # Set mol attributes
+        try:
+            gto.Mole(atom=self.molecule, charge=self.charge, spin =self.spin).build()
+        except KeyError:
+            # Probable not relevant
+             (mol.atom, charge, spin) = self.read_molecule(self.datapath + self.molecule)
+        else:
+            mol.atom = self.molecule
         mol.basis = self.basis
         mol.charge = self.charge
-        mol.spin = self.spin # TODO: Is this correct [multiplicity -> spin]?
+        mol.spin = self.spin
+        mol.unit = self.unit
+        mol.verbose = self.verbose
         mol.build()
         
-        if self.restricted:
-            mf = dft.RKS(mol)
+        # Check method for density functional
+        DFT = False
+        if self.method != 'HF':
+            try:
+                # https://pyscf.org/_modules/pyscf/dft/libxc.html
+                dft.libxc.parse_xc(self.method)
+            except (ValueError, KeyError):
+                pass
+            else:
+                # Kohn-Sham (KS)
+                self.xc = self.method
+                self.method = 'KS'
+                
+        # Check if restricted
+        if not self.restricted and self.method in ['HF', 'KS', 'DFT'] and self.scf_type is None:
+            self.scf_type = 'R'
         else:
+            self.scf_type = 'U'
+            
+        # Create HF/KS/DFT object
+        if self.method in ['RHF', 'ROHF'] or (self.method == 'HF' and self.scf_type in ['R', 'RO']):
+            mf = scf.RHF(mol)
+            self.scf_type = 'R'
+        elif self.method == 'UHF' or (self.method == 'HF' and self.scf_type == 'U'):
+            mf = scf.UHF(mol)
+            self.scf_type = 'U'
+        elif self.method in ['RKS', 'ROKS', 'RDFT', 'RODFT'] or (self.method in ['KS', 'DFT'] and self.scf_type in ['R', 'RO']):
+            mf = dft.RKS(mol)
+            self.scf_type = 'R'
+            DFT = True
+        elif self.method in ['UKS', 'UDFT'] or (self.method in ['KS', 'DFT'] and self.scf_type == 'U'):
             mf = dft.UKS(mol)
-        mf.xc = self.method
+            self.scf_type = 'U'
+            DFT = True
+        else:
+            raise ValueError('Invalid method.')
         
-        # TODO: Check if TS
+        # Set HF attributes
+        mf.conv_check = False
+        mf.conv_tol = self.conv_tol
+        mf.conv_tol_grad = self.conv_tol_grad
+        mf.direct_scf_tol = self.direct_scf_tol
+        mf.init_guess = self.init_guess
+        mf.level_shift = self.level_shift
+        mf.max_cycle = self.max_cycle
+        mf.max_memory = self.max_memory
+        mf.verbose = self.verbose
+        
+        # Set KS attributes
+        if DFT:
+            mf.xc = self.xc
+            if mf.xc is None:
+                raise ValueError('No XC functional specified.')
+            mf.nlc = self.nlc
+            
+            if isinstance(self.xc_grid, int):
+                mf.grids.level = self.xc_grid
+            elif isinstance(self.xc_grid, tuple) or isinstance(self.xc_grid, dict):
+                mf.grids.atom_grid = self.xc_grid
+            else:
+                raise ValueError('Invalid xc_grid.')
+            
+            if isinstance(self.nlc_grid, int):
+                mf.nlcgrids.level = self.nlc_grid
+            elif isinstance(self.nlc_grid, tuple) or isinstance(self.nlc_grid, dict):
+                mf.nlcgrids.atom_grid = self.nlc_grid
+            else:
+                raise ValueError('Invalid nlc_grid.')
+            
+            if self.atomic_radii == 'BRAGG':
+                mf.grids.radi_method = dft.radi.BRAGG_RADII
+                mf.nlcgrids.radi_method = dft.radi.BRAGG_RADII
+            elif self.atomic_radii == 'COVALENT':
+                mf.grids.radi_method = dft.radi.COVALENT_RADII
+                mf.nlcgrids.radi_method = dft.radi.COVALENT_RADII
+            else:
+                raise ValueError('Invalid atomic_radii.')
+            
+            if self.becke_scheme == 'BECKE':
+                mf.grids.becke_scheme = dft.gen_grid.original_becke
+                mf.nlcgrids.becke_scheme = dft.gen_grid.original_becke
+            elif self.becke_scheme == 'STRATMANN':
+                mf.grids.becke_scheme = dft.gen_grid.stratmann
+                mf.nlcgrids.becke_scheme = dft.gen_grid.stratmann
+            else:
+                raise ValueError('Invalid becke_scheme.')
+            
+            if self.prune == 'NWCHEM':
+                mf.grids.prune = dft.gen_grid.nwchem_prune
+                mf.nlcgrids.prune = dft.gen_grid.nwchem_prune
+            elif self.prune == 'SG1':
+                mf.grids.prune = dft.gen_grid.sg1_prune
+                mf.nlcgrids.prune = dft.gen_grid.sg1_prune
+            elif self.prune == 'TREUTLER':
+                mf.grids.prune = dft.gen_grid.treutler_prune
+                mf.nlcgrids.prune = dft.gen_grid.treutler_prune
+            elif self.prune == 'NONE' or self.prune is None:
+                mf.grids.prune = None
+                mf.nlcgrids.prune = None
+            else:
+                raise ValueError('Invalid prune.')
+            
+            if self.radi_method in ['TREUTLER_AHLRICHS', 'TREUTLER', 'AHLRICHS']:
+                mf.grids.radi_method = dft.radi.treutler_ahlrichs
+                mf.nlcgrids.radi_method = dft.radi.treutler_ahlrichs
+            elif self.radi_method == 'DELLEY':
+                mf.grids.radi_method = dft.radi.delley
+                mf.nlcgrids.radi_method = dft.radi.delley
+            elif self.radi_method in ['MURA_KNOWLES', 'MURA', 'KNOWLES']:
+                mf.grids.radi_method = dft.radi.mura_knowles
+                mf.nlcgrids.radi_method = dft.radi.mura_knowles
+            elif self.radi_method in ['GAUSS_CHEBYSHEV', 'GAUSS', 'CHEBYSHEV']:
+                mf.grids.radi_method = dft.radi.gauss_chebyshev
+                mf.nlcgrids.radi_method = dft.radi.gauss_chebyshev
+            else:
+                raise ValueError('Invalid radi_method.')
+            
+            if self.radii_adjust == 'TREUTLER':
+                mf.grids.radii_adjust = dft.radi.treutler_atomic_radii_adjust
+                mf.nlcgrids.radii_adjust = dft.radi.treutler_atomic_radii_adjust
+            elif self.radii_adjust == 'BECKE':
+                mf.grids.radii_adjust = dft.radi.becke_atomic_radii_adjust
+                mf.nlcgrids.radii_adjust = dft.radi.becke_atomic_radii_adjust
+            elif self.radii_adjust == 'NONE' or self.radii_adjust is None:
+                mf.grids.radii_adjust = None
+                mf.nlcgrids.radii_adjust = None
+            else:
+                raise ValueError('Invalid radii_adjust.')
+            
+            mf.small_rho_cutoff = self.small_rho_cutoff
+        
+        # Select Optimizer
+        if self.algorithm == 'DIIS':
+            mf.diis = True
+        elif self.algorithm == 'EDIIS':
+            mf.diis = scf.diis.EDIIS()
+        elif self.algorithm == 'ADIIS':
+            mf.diis = scf.diis.ADIIS()
+        elif self.algorithm == 'NEWTON':
+            mf = mf.newton()
+        else:
+            raise ValueError('Invalid algorithm.')
+        
+        # Running the Kernel
+        
+                # TODO: Check if TS
         if self.is_ts and self.job_type == 'opt':
             from pyscf.qsdopt.qsd_optimizer import QSD
             optimizer = QSD(mf, stationary_point='TS')
@@ -90,7 +505,8 @@ class PYSCFScript:
 
             # gthres: Gradient norm to consider convergence. (Default: 1e-5)
 
-            optimizer.kernel(hess_update_freq=0, numhess_method='forward', max_iter=100, step=0.1, hmin=1e-6, gthres=1e-5)
+            self.mol_eq = optimizer.kernel(hess_update_freq=0, numhess_method='forward', max_iter=100, step=0.1, hmin=1e-6, gthres=1e-5)
+            
         
         if self.job_type == 'opt' and not self.is_ts:
             from pyscf.geomopt.geometric_solver import optimize
@@ -101,15 +517,28 @@ class PYSCFScript:
                                 'convergence_drms': 1.2e-3,  # Angstrom
                                 'convergence_dmax': 1.8e-3,  # Angstrom
                             }
-            mol_eq = optimize(mf, maxsteps=100, **conv_params) # TODO: Need to define maxsteps as a TRSH parameter
-            mf.kernel()
+            self.mol_eq = optimize(mf, maxsteps=100, **conv_params).kernel() # TODO: Need to define maxsteps as a TRSH parameter
+            print(self.mol_eq.atom)
+            print(self.convert_to_custom_xyz(self.mol_eq.atom))
+            ### Save the optimized geometry to the a YAML file
+            
             print('SCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
             
         if self.job_type == 'freq':
             #npip install git+https://github.com/pyscf/properties
-            from pyscf.prop.freq import rks            
-            w, modes = rks.Freq(mf).kernel()            
+            from pyscf.prop.freq import rks, uks
+            self.mol_eq = mf.run()
+            if DFT:
+                if self.scf_type == 'R':
+                    w, modes = rks.Freq(self.mol_eq).kernel()
+                elif self.scf_type == 'U':
+                    w, modes = uks.Freq(self.mol_eq).kernel()
+            
             print('Frequencies (cm-1):')
+            print(w)
+            print('Modes:')
+            print(modes)
+            
         
         # if self.job_type == 'scan':
         #     #https://github.com/pyscf/pyscf/blob/14d88828cd1f18f1e5358da1445355bde55322a1/examples/scf/30-scan_pes.py#L16
@@ -121,6 +550,3 @@ class PYSCFScript:
             mf.kernel()
             print('The single-point DFT energy is:', energy)
             
-        print('SCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
-        
-        
