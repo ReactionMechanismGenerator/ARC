@@ -187,7 +187,7 @@ class TestGaussianAdapter(unittest.TestCase):
         
         # Gaussian: Checkfile error and SCF error
         # First SCF error - qc,nosymm
-        job_status = {'keywords': ['SCF']}
+        job_status = {'keywords': ['SCF', 'NoSymm']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
@@ -297,7 +297,7 @@ class TestGaussianAdapter(unittest.TestCase):
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0)  
+#P opt=(calcfc)  cbs-qb3   IOp(2/9=2000) IOp(1/12=5,3/44=0)  
 
 spc1
 
@@ -333,7 +333,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5)  integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(tight, direct)
+#P opt=(modredundant, calcfc, noeigentest, maxStep=5) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(tight, direct)
 
 ethanol
 
@@ -384,7 +384,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc) uwb97xd/def2tzvp   IOp(2/9=2000)   
+#P opt=(calcfc)  uwb97xd/def2tzvp   IOp(2/9=2000)   
 
 anion
 
@@ -478,7 +478,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(tight,direct)
+#P opt=(calcfc,maxstep=5,tight)  uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 anion
 
@@ -496,7 +496,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(tight,direct)
+#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -522,7 +522,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm)
+#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -548,7 +548,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm,NDump=30)
+#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDump=30,direct,tight,xqc)
 
 ethanol
 
@@ -574,7 +574,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     scf=(tight,direct,xqc,nosymm,NDump=30,NoDIIS)
+#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDump=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -600,7 +600,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc, tight, maxstep=5) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)   opt=(cartesian,nosymm)   scf=(tight,direct,xqc,nosymm,NDump=30,NoDIIS)
+#P opt=(calcfc,cartesian,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDump=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
