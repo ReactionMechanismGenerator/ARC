@@ -333,7 +333,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(modredundant, calcfc, noeigentest, maxStep=5) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(tight, direct)
+#P opt=(calcfc,maxStep=5,modredundant,noeigentest) integral=(grid=ultrafine, Acc2E=12) guess=mix wb97xd/def2tzvp   IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -366,7 +366,7 @@ block
 %mem=14336mb
 %NProcShared=8
 
-#P  uwb97xd/def2tzvp freq IOp(7/33=1)  integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000)    scf=(tight, direct)
+#P  uwb97xd/def2tzvp freq IOp(7/33=1)  integral=(grid=ultrafine, Acc2E=12)  IOp(2/9=2000)    scf=(direct,tight)
 
 birad_singlet
 
