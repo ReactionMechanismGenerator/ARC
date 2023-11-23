@@ -97,7 +97,7 @@ def determine_ess_status(output_path: str,
                         error = 'The blank line after the coordinate section is missing, ' \
                                 'or charge/multiplicity was not specified correctly.'
                     elif 'l103.exe' in line:
-                        keywords = ['InternalCoordinateError', 'GL103']
+                        keywords = ['InternalCoordinateError', 'GL103','NoSymm']
                         error = 'Internal coordinate error'
                     elif 'l108.exe' in line:
                         keywords = ['InputError', 'GL108']
@@ -112,7 +112,7 @@ def determine_ess_status(output_path: str,
                     elif 'l401.exe' in line:
                         keywords = ['GL401']
                     elif 'l502.exe' in line:
-                        keywords = ['SCF', 'GL502']
+                        keywords = ['SCF', 'GL502', 'NoSymm']
                         error = 'Unconverged SCF'
                     elif 'l508.exe' in line:
                         keywords = ['no_xqc', 'GL508']
@@ -867,10 +867,10 @@ def trsh_ess_job(label: str,
         if remove_checkfile:
              logger_info.append('that failed with "Basis set data is not on the checkpoint file" by removing the checkfile.')
 
-        # Check if InternalCoordinateError is in the keyword or opt=(cartesian,nosymm)
+        # Check if InternalCoordinateError is in the keyword or opt=(cartesian)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword,couldnt_trsh)
         if 'cartesian' in ess_trsh_methods:
-            logger_info.append('using opt=cartesian with nosyym')
+            logger_info.append('using opt=cartesian')
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh)
         if 'int=(Acc2E=14)' in ess_trsh_methods:
            logger_info.append('using int=(Acc2E=14)')
@@ -879,10 +879,15 @@ def trsh_ess_job(label: str,
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
         if 'scf=(NDump=30)' in ess_trsh_methods:
             logger_info.append('using scf=(NDump=30)')
-        if 'scf=(qc,nosymm)' in ess_trsh_methods:
-            logger_info.append('using scf=(qc,nosymm)')
+        if 'scf=(qc)' in ess_trsh_methods:
+            logger_info.append('using scf=(qc)')
         if 'scf=(NoDIIS)' in ess_trsh_methods:
             logger_info.append('using scf=(NoDIIS)')
+
+        # Check if NoSymm
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'NoSymm' in ess_trsh_methods:
+            logger_info.append('using nosymm')
 
         # Check if unconverged is in the keyword
         ess_trsh_methods, trsh_keyword, fine, couldnt_trsh = trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine)
@@ -1540,8 +1545,11 @@ def trsh_keyword_checkfile(job_status, ess_trsh_methods, couldnt_trsh) -> Tuple[
     """
     Check if the job requires removal of checkfile
     """
-    if 'CheckFile' in job_status.get('keywords', '') or 'checkfile=None' in ess_trsh_methods:
+    if 'CheckFile' in job_status.get('keywords', '') and 'checkfile=None' not in ess_trsh_methods:
         ess_trsh_methods.append('checkfile=None')
+        couldnt_trsh = False
+        return True, ess_trsh_methods, couldnt_trsh
+    elif 'checkfile=None' in ess_trsh_methods:
         couldnt_trsh = False
         return True, ess_trsh_methods, couldnt_trsh
 
@@ -1551,7 +1559,11 @@ def trsh_keyword_intaccuracy(ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tu
     """
     Check if the job requires change of 2 electron integral accuracy
     """
-    if 'int=(Acc2E=14)' in ess_trsh_methods:
+    if 'int=(Acc2E=14)' not in ess_trsh_methods:
+        ess_trsh_methods.append('int=(Acc2E=14)')
+        trsh_keyword.append('int=(Acc2E=14)')
+        couldnt_trsh = False
+    elif 'int=(Acc2E=14)' not in trsh_keyword and 'int=(Acc2E=14)' in ess_trsh_methods:
         trsh_keyword.append('int=(Acc2E=14)')
         couldnt_trsh = False
 
@@ -1563,11 +1575,12 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
     """
     if 'InternalCoordinateError' in job_status['keywords'] \
                 and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
-        trsh_keyword.append('opt=(cartesian,nosymm)')
+        ess_trsh_methods.append('cartesian')
+        trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
-    elif 'opt=(cartesian,nosymm)' in ess_trsh_methods and \
-            job_type == 'opt':
-        trsh_keyword.append('opt=(cartesian,nosymm)')
+    elif 'cartesian' in ess_trsh_methods and \
+            job_type == 'opt' and 'cartesian' not in trsh_keyword:
+        trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
@@ -1577,9 +1590,9 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     Check if the job requires change of scf
     """
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
-    if 'SCF' in job_status['keywords'] and 'scf=(qc,nosymm)' not in ess_trsh_methods:
+    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods:
         # try both qc and nosymm
-        ess_trsh_methods.append('scf=(qc,nosymm)')
+        ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
         # Switching off Pulay's Direct Inversion
@@ -1607,3 +1620,17 @@ def trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt
         fine = False
 
     return ess_trsh_methods, trsh_keyword, fine, couldnt_trsh
+
+def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Check if the job requires change of nosymm
+    """
+    if 'NoSymm' in job_status['keywords'] and 'nosymm' not in ess_trsh_methods:
+        ess_trsh_methods.append('NoSymm')
+        trsh_keyword.append('nosymm')
+        couldnt_trsh = False
+    elif 'nosymm' not in trsh_keyword and any('NoSymm' in keyword for keyword in ess_trsh_methods):
+        trsh_keyword.append('nosymm')
+        couldnt_trsh = False
+
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
