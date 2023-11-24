@@ -304,14 +304,14 @@ class TestTrsh(unittest.TestCase):
         self.assertFalse(couldnt_trsh)
 
         # Gaussian: test 2
-        job_status = {'keywords': ['InternalCoordinateError']}
+        job_status = {'keywords': ['InternalCoordinateError', 'NoSymm']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
         self.assertTrue(remove_checkfile)
-        self.assertEqual(trsh_keyword, ['opt=(cartesian,nosymm)', 'int=(Acc2E=14)'] )
+        self.assertEqual(trsh_keyword, ['opt=(cartesian)', 'int=(Acc2E=14)', 'nosymm'] )
 
         # Test Q-Chem
         software = 'qchem'

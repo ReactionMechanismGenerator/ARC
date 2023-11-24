@@ -300,7 +300,10 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
         elif self.job_type == 'sp':
-            input_dict['job_type_1'] = f'scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
+            input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
 
         elif self.job_type == 'scan':
             scans, scans_strings = list(), list()
@@ -317,8 +320,11 @@ class GaussianAdapter(JobAdapter):
                 self.torsions = torsions_to_scans(scans, direction=-1)
 
             ts = 'ts, ' if self.is_ts else ''
-            input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5) scf=(tight, direct) ' \
+            input_dict['job_type_1'] = f'opt=({ts}modredundant, calcfc, noeigentest, maxStep=5)' \
                                        f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
             input_dict['scan'] = '\n\n' if not input_dict['scan'] else input_dict['scan']
             for scan in scans_strings:
                 input_dict['scan'] += f'D {scan} S {int(360 / self.scan_res)} {self.scan_res:.1f}\n'
@@ -361,12 +367,24 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
                 else ' guess=mix'
 
+        # Fix OPT
+        terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
+        input_dict, parameters_opt = combine_parameters(input_dict, terms_opt)
+        # If 'opt' parameters are found, concatenate and reinsert them
+        if parameters_opt:
+            # Remove duplicate parameters
+            combined_opt_params = ','.join(parameters_opt)
+            input_dict['job_type_1'] = f"opt=({combined_opt_params}) {input_dict['job_type_1']}"
+
         #Fix SCF
         # This may be redundant due to additional fixes in the above code
         terms = ['scf=\((.*?)\)', 'scf=(\w+)']
         input_dict, parameters = combine_parameters(input_dict, terms)
         if parameters:
             input_dict['trsh'] += f" scf=({','.join(parameters)})"
+
+        # Remove double spaces
+        input_dict['job_type_1'] = input_dict['job_type_1'].replace('  ', ' ')
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))

@@ -522,4 +522,15 @@ def combine_parameters(input_dict: dict, terms: list) -> Tuple[dict, List]:
                         value = re.sub(term, '', value)
             input_dict_copy[key] = value
 
+    # Parameters may appear as one word, so need to split them via comma
+    parameters = [param.split(',') for param in parameters]
+    # Flatten the list of lists
+    parameters = [item for sublist in parameters for item in sublist]
+    # Remove empty spaces from the beginning and end of each parameter
+    parameters = [param.strip() for param in parameters]
+    # Parameters may appear multiple times in the input_dict, so remove duplicates
+    parameters = list(set(parameters))
+    # Sort the list
+    parameters.sort()
+
     return input_dict_copy, parameters
