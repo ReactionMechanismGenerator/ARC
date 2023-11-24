@@ -1625,7 +1625,7 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
     """
     Check if the job requires change of nosymm
     """
-    if 'NoSymm' in job_status['keywords'] and 'nosymm' not in ess_trsh_methods:
+    if 'NoSymm' in job_status['keywords'] and 'NoSymm' not in ess_trsh_methods:
         ess_trsh_methods.append('NoSymm')
         trsh_keyword.append('nosymm')
         couldnt_trsh = False
