@@ -87,6 +87,7 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
         renamed_level = rename_level(str(level))
         project = 'scaling_' + renamed_level
         project_directory = os.path.join(ARC_PATH, 'Projects', 'scaling_factors', project)
+        logger.info(f'\nRunning in: {project_directory}\n')
         if os.path.isdir(project_directory):
             shutil.rmtree(project_directory)
 

@@ -43,6 +43,7 @@ from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
+from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 from arc.utils.scale import determine_scaling_factors
 
@@ -156,6 +157,7 @@ class ARC(object):
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
+        skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -223,6 +225,7 @@ class ARC(object):
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
+        skip_nmd (bool): Whether to skip normal mode displacement check.
 
     """
 
@@ -273,6 +276,7 @@ class ARC(object):
                  ts_guess_level: Optional[Union[str, dict, Level]] = None,
                  verbose=logging.INFO,
                  report_e_elect: Optional[bool] = False,
+                 skip_nmd: Optional[bool] = False,
                  ):
 
         if project is None:
@@ -289,6 +293,10 @@ class ARC(object):
         self.output = output
         self.standardize_output_paths()  # depends on self.project_directory
         self.running_jobs = running_jobs or dict()
+        for jobs in self.running_jobs.values():
+            for job in jobs:
+                if 'xyz' in job.keys():
+                    job['xyz'] = str_to_xyz(job['xyz'])
         self.lib_long_desc = ''
         self.unique_species_labels = list()
         self.rmg_database = rmgdb.make_rmg_database_object()
@@ -325,6 +333,7 @@ class ARC(object):
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters
         self.report_e_elect = report_e_elect
+        self.skip_nmd = skip_nmd
         for ts_adapter in self.ts_adapters or list():
             if ts_adapter.lower() not in _registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
@@ -533,6 +542,8 @@ class ARC(object):
             restart_dict['verbose'] = int(self.verbose)
         if self.report_e_elect:
             restart_dict['report_e_elect'] = self.report_e_elect
+        if self.skip_nmd:
+            restart_dict['skip_nmd'] = self.skip_nmd
         return restart_dict
 
     def write_input_file(self, path=None):
@@ -600,6 +611,7 @@ class ARC(object):
                                    fine_only=self.fine_only,
                                    ts_adapters=self.ts_adapters,
                                    report_e_elect=self.report_e_elect,
+                                   skip_nmd=self.skip_nmd,
                                    )
 
         save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
@@ -630,6 +642,7 @@ class ARC(object):
                             compare_to_rmg=self.compare_to_rmg,
                             three_params=self.three_params,
                             sp_level=self.arkane_level_of_theory,
+                            skip_nmd=self.skip_nmd,
                             )
 
         status_dict = self.summary()

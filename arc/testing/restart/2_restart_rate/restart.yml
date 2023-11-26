@@ -837,7 +837,7 @@ species:
     e_elect: true
     IRC: true
     freq: true
-    normal_mode_displacement: true
+    NMD: true
     warnings: ''
 
 specific_job_type: ''

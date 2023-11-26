@@ -25,7 +25,7 @@ from arkane.thermo import ThermoJob
 from arkane.ess import ess_factory
 
 import arc.plotter as plotter
-from arc.checks.ts import check_ts, ts_passed_all_checks
+from arc.checks.ts import check_ts, ts_passed_checks
 from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import InputError, RotorError
 from arc.imports import input_files
@@ -55,6 +55,7 @@ class ArkaneAdapter(StatmechAdapter):
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (ARCReaction, optional): The reaction object.
+        skip_nmd (bool, optional): Whether to skip the normal mode displacement check. ``True`` to skip.
         species_dict (dict, optional): Keys are labels, values are ARCSpecies objects.
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
@@ -72,6 +73,7 @@ class ArkaneAdapter(StatmechAdapter):
                  freq_scale_factor: float = 1.0,
                  species: ARCSpecies = None,
                  reaction: ARCReaction = None,
+                 skip_nmd: bool = False,
                  species_dict: dict = None,
                  T_min: tuple = None,
                  T_max: tuple = None,
@@ -85,6 +87,7 @@ class ArkaneAdapter(StatmechAdapter):
         self.freq_scale_factor = freq_scale_factor
         self.species = species
         self.reaction = reaction
+        self.skip_nmd = skip_nmd
         self.species_dict = species_dict
         self.T_min = T_min
         self.T_max = T_max
@@ -216,11 +219,12 @@ class ArkaneAdapter(StatmechAdapter):
                 check_ts(reaction=self.reaction,
                          checks=['energy', 'freq'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
+                         skip_nmd=self.skip_nmd,
                          )
-                if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
-                                                                       exemptions=['warnings', 'IRC', 'E0'],
-                                                                       verbose=True,
-                                                                       ):
+                if require_ts_convergence and not ts_passed_checks(species=self.reaction.ts_species,
+                                                                   exemptions=['warnings', 'IRC', 'E0'],
+                                                                   verbose=True,
+                                                                   ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     return None
