@@ -326,6 +326,7 @@
 <span class="sd">        trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list, optional): Entries represent different TS adapters.</span>
 <span class="sd">        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.</span>
+<span class="sd">        skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
@@ -381,6 +382,7 @@
 <span class="sd">        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list): Entries represent different TS adapters.</span>
 <span class="sd">        report_e_elect (bool): Whether to report electronic energy.</span>
+<span class="sd">        skip_nmd (bool): Whether to skip normal mode displacement check.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -416,6 +418,7 @@
                  <span class="n">freq_scale_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
                  <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">report_e_elect</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">skip_nmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">project</span> <span class="o">=</span> <span class="n">project</span>
@@ -448,6 +451,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="p">[</span><span class="n">ts_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">ts_adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span> <span class="o">=</span> <span class="n">report_e_elect</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span> <span class="o">=</span> <span class="n">skip_nmd</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rxn_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(),</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">species</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_list</span><span class="p">:</span>
@@ -2491,8 +2495,9 @@
                         <span class="n">check_ts</span><span class="p">(</span><span class="n">reaction</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rxn_dict</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">rxn_index</span><span class="p">],</span>
                                  <span class="n">job</span><span class="o">=</span><span class="n">job</span><span class="p">,</span>
                                  <span class="n">checks</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;freq&#39;</span><span class="p">],</span>
+                                 <span class="n">skip_nmd</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">,</span>
                                  <span class="p">)</span>
-                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">ts_checks</span><span class="p">[</span><span class="s1">&#39;normal_mode_displacement&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">ts_checks</span><span class="p">[</span><span class="s1">&#39;NMD&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
                         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;TS </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> did not pass the normal mode displacement check. &#39;</span>
                                     <span class="sa">f</span><span class="s1">&#39;Status is:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">species_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">ts_checks</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
                                     <span class="sa">f</span><span class="s1">&#39;Searching for a better TS conformer...&#39;</span><span class="p">)</span>

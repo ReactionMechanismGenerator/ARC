@@ -202,6 +202,7 @@
                         <span class="n">rmg_database</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RMGDatabase</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="n">compare_to_rmg</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                         <span class="n">three_params</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+                        <span class="n">skip_nmd</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Process an ARC project, generate thermo and rate coefficients using statistical mechanics (statmech).</span>
@@ -232,6 +233,7 @@
 <span class="sd">        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation</span>
 <span class="sd">                                       format (``True``, default) or classical two-parameter Arrhenius equation format</span>
 <span class="sd">                                       (``False``).</span>
+<span class="sd">        skip_nmd (bool, optional): Whether to skip the normal mode displacement check analysis. Defaults to ``False``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">T_min</span> <span class="o">=</span> <span class="n">T_min</span> <span class="ow">or</span> <span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
     <span class="n">T_max</span> <span class="o">=</span> <span class="n">T_max</span> <span class="ow">or</span> <span class="p">(</span><span class="mi">3000</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
@@ -293,6 +295,7 @@
                                                         <span class="n">T_max</span><span class="o">=</span><span class="n">T_max</span><span class="p">,</span>
                                                         <span class="n">T_count</span><span class="o">=</span><span class="n">T_count</span><span class="p">,</span>
                                                         <span class="n">three_params</span><span class="o">=</span><span class="n">three_params</span><span class="p">,</span>
+                                                        <span class="n">skip_nmd</span><span class="o">=</span><span class="n">skip_nmd</span><span class="p">,</span>
                                                         <span class="p">)</span>
                     <span class="n">statmech_adapter</span><span class="o">.</span><span class="n">compute_high_p_rate_coefficient</span><span class="p">()</span>
                     <span class="k">if</span> <span class="n">reaction</span><span class="o">.</span><span class="n">kinetics</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>

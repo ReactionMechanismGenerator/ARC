@@ -207,6 +207,7 @@
 <span class="kn">from</span> <span class="nn">arc.processor</span> <span class="kn">import</span> <span class="n">process_arc_project</span>
 <span class="kn">from</span> <span class="nn">arc.reaction</span> <span class="kn">import</span> <span class="n">ARCReaction</span>
 <span class="kn">from</span> <span class="nn">arc.scheduler</span> <span class="kn">import</span> <span class="n">Scheduler</span>
+<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="n">str_to_xyz</span>
 <span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
 <span class="kn">from</span> <span class="nn">arc.utils.scale</span> <span class="kn">import</span> <span class="n">determine_scaling_factors</span>
 
@@ -320,6 +321,7 @@
 <span class="sd">        running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.</span>
 <span class="sd">        ts_adapters (list, optional): Entries represent different TS adapters.</span>
 <span class="sd">        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.</span>
+<span class="sd">        skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
@@ -387,6 +389,7 @@
 <span class="sd">        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list): Entries represent different TS adapters.</span>
 <span class="sd">        report_e_elect (bool): Whether to report electronic energy.</span>
+<span class="sd">        skip_nmd (bool): Whether to skip normal mode displacement check.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
@@ -437,6 +440,7 @@
                  <span class="n">ts_guess_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">verbose</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
                  <span class="n">report_e_elect</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">skip_nmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="p">):</span>
 
         <span class="k">if</span> <span class="n">project</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -453,6 +457,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="n">output</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">standardize_output_paths</span><span class="p">()</span>  <span class="c1"># depends on self.project_directory</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span> <span class="o">=</span> <span class="n">running_jobs</span> <span class="ow">or</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">jobs</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">running_jobs</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">job</span> <span class="ow">in</span> <span class="n">jobs</span><span class="p">:</span>
+                <span class="k">if</span> <span class="s1">&#39;xyz&#39;</span> <span class="ow">in</span> <span class="n">job</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                    <span class="n">job</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">str_to_xyz</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lib_long_desc</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">unique_species_labels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">rmg_database</span> <span class="o">=</span> <span class="n">rmgdb</span><span class="o">.</span><span class="n">make_rmg_database_object</span><span class="p">()</span>
@@ -489,6 +497,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="n">freq_scale_factor</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="n">ts_adapters</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span> <span class="o">=</span> <span class="n">report_e_elect</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span> <span class="o">=</span> <span class="n">skip_nmd</span>
         <span class="k">for</span> <span class="n">ts_adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">ts_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_registered_job_adapters</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unknown TS adapter: &quot;</span><span class="si">{</span><span class="n">ts_adapter</span><span class="si">}</span><span class="s1">&quot;&#39;</span><span class="p">)</span>
@@ -697,6 +706,8 @@
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;verbose&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span><span class="p">:</span>
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;report_e_elect&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">:</span>
+            <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;skip_nmd&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span>
         <span class="k">return</span> <span class="n">restart_dict</span></div>
 
 <div class="viewcode-block" id="ARC.write_input_file"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.write_input_file">[docs]</a>    <span class="k">def</span> <span class="nf">write_input_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
@@ -764,6 +775,7 @@
                                    <span class="n">fine_only</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fine_only</span><span class="p">,</span>
                                    <span class="n">ts_adapters</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">,</span>
                                    <span class="n">report_e_elect</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span><span class="p">,</span>
+                                   <span class="n">skip_nmd</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">,</span>
                                    <span class="p">)</span>
 
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;status.yml&#39;</span><span class="p">),</span> <span class="n">content</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">output</span><span class="p">)</span>
@@ -794,6 +806,7 @@
                             <span class="n">compare_to_rmg</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compare_to_rmg</span><span class="p">,</span>
                             <span class="n">three_params</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">three_params</span><span class="p">,</span>
                             <span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span>
+                            <span class="n">skip_nmd</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">,</span>
                             <span class="p">)</span>
 
         <span class="n">status_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
