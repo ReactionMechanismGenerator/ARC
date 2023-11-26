@@ -2328,7 +2328,7 @@ class Scheduler(object):
                                  job=job,
                                  checks=['freq'],
                                  )
-                    if self.species_dict[label].ts_checks['normal_mode_displacement'] is False:
+                    if self.species_dict[label].ts_checks['NMD'] is False:
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')

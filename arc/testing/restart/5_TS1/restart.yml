@@ -385,7 +385,7 @@ species:
     IRC: null
     e_elect: null
     freq: true
-    normal_mode_displacement: true
+    NMD: true
     warnings: 'Could not determine TS e_elect relative to the wells; '
   ts_conf_spawned: true
   ts_guesses:

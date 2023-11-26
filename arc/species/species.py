@@ -1984,7 +1984,7 @@ class ARCSpecies(object):
     def populate_ts_checks(self):
         """Populate (or restart) the .ts_checks attribute with default (``None``) values."""
         if self.is_ts:
-            keys = ['E0', 'e_elect', 'IRC', 'freq', 'normal_mode_displacement']
+            keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
             self.ts_checks['warnings'] = ''
 

@@ -598,7 +598,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             'unsuccessful_methods': [], 'chosen_ts_method': 'gcn', 'chosen_ts': 4,
                             'rxn_zone_atom_indices': None, 'chosen_ts_list': [18, 23, 15, 22, 7, 5, 4],
                             'ts_checks': {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True,
-                                          'normal_mode_displacement': None, 'warnings': ''},
+                                          'NMD': None, 'warnings': ''},
                             'e_elect': -310902.61556421133, 'tsg_spawned': True, 'opt_level': 'b3lyp/6-31g(d,p)',
                             'bond_corrections': {}, 'mol': {'atoms': [
                      {'element': {'number': 6, 'isotope': -1}, 'radical_electrons': 0, 'charge': 0, 'label': '',
@@ -681,7 +681,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           restart_dict={'output': output},
                           )
         self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'normal_mode_displacement': None, 'warnings': ''})
+                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': None, 'warnings': ''})
 
         job_1 = job_factory(job_adapter='gaussian',
                             species=[ARCSpecies(label='SPC', smiles='C')],
@@ -695,11 +695,11 @@ H      -1.82570782    0.42754384   -0.56130718"""
         job_1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['freq'])
         self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'normal_mode_displacement': True, 'warnings': ''})
+                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
 
         sched.check_rxn_e0_by_spc('TS0')
         self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'normal_mode_displacement': True, 'warnings': ''})
+                         {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""

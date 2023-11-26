@@ -89,12 +89,12 @@ def check_ts(reaction: 'ARCReaction',
         if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
             check_rxn_e_elect(reaction=reaction, verbose=verbose)
 
-    if 'freq' in checks or (not reaction.ts_species.ts_checks['normal_mode_displacement'] and job is not None):
+    if 'freq' in checks or (not reaction.ts_species.ts_checks['NMD'] and job is not None):
         try:
             check_normal_mode_displacement(reaction, job=job)
         except (ValueError, KeyError) as e:
             logger.error(f'Could not check normal mode displacement, got: \n{e}')
-            reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+            reaction.ts_species.ts_checks['NMD'] = True
 
     if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
@@ -301,7 +301,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
         rmgdb.determine_family(reaction)
     amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.6, 0.8, 1]
     amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
-    reaction.ts_species.ts_checks['normal_mode_displacement'] = False
+    reaction.ts_species.ts_checks['NMD'] = False
     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=reaction) or list()
     freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file, raise_error=False)
     if not len(normal_modes_disp):
@@ -342,13 +342,13 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                     and not any(entry is None for entry in breaking) and not any(entry is None for entry in forming) \
                     and all(entry == breaking[0] for entry in breaking) and all(entry == forming[0] for entry in forming) \
                     and breaking[0] != forming[0]:
-                reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+                reaction.ts_species.ts_checks['NMD'] = True
                 done = True
                 break
-        if not got_expected_changing_bonds and not reaction.ts_species.ts_checks['normal_mode_displacement']:
+        if not got_expected_changing_bonds and not reaction.ts_species.ts_checks['NMD']:
             reaction.ts_species.ts_checks['warnings'] += 'Could not compare normal mode displacement to expected ' \
                                                          'breaking/forming bonds due to a missing RMG template; '
-            reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+            reaction.ts_species.ts_checks['NMD'] = True
             break
         if not len(rmg_reactions):
             # Just check that some bonds break/form, and that this is not a torsional saddle point.
@@ -358,7 +358,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
             reaction.ts_species.ts_checks['warnings'] += warning + '; '
             if any(bond not in dmat_bonds_2 for bond in dmat_bonds_1) \
                     or any(bond not in dmat_bonds_1 for bond in dmat_bonds_2):
-                reaction.ts_species.ts_checks['normal_mode_displacement'] = True
+                reaction.ts_species.ts_checks['NMD'] = True
                 break
         if done:
             break

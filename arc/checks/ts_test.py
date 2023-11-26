@@ -237,21 +237,21 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         """Test the check_ts() function."""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
         self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
         ts.check_ts(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out')
         self.rxn_7.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_7.ts_species.ts_checks['NMD'])
         ts.check_ts(reaction=self.rxn_7, job=self.job1)
-        self.assertTrue(self.rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_7.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
         self.rxn_8.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_8.ts_species.ts_checks['NMD'])
         ts.check_ts(reaction=self.rxn_8, job=self.job1)
-        self.assertTrue(self.rxn_8.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_8.ts_species.ts_checks['NMD'])
 
     def test_did_ts_pass_all_checks(self):
         """Test the did_ts_pass_all_checks() function."""
@@ -263,13 +263,13 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                           'e_elect': False,
                           'IRC': False,
                           'freq': False,
-                          'normal_mode_displacement': False,
+                          'NMD': False,
                           'warnings': '',
                           }
         for key in ['E0', 'e_elect', 'IRC', 'freq']:
             spc.ts_checks[key] = True
         self.assertFalse(ts.ts_passed_checks(spc))
-        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['NMD', 'warnings']))
         spc.ts_checks['e_elect'] = False
 
     def test_check_rxn_e_elect(self):
@@ -377,89 +377,89 @@ H                 -1.28677889    1.04716138   -1.01532486"""
     def test_check_normal_mode_displacement(self):
         """Test the check_normal_mode_displacement() function."""
         self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_intra_H_migration_CBS-QB3.out')
         self.rxn_2a.determine_family(rmg_database=self.rmgdb)
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
         self.rxn_2a.ts_species.populate_ts_checks()
 
         self.rxn_2b.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2b.ts_species.ts_checks['NMD'])
         ts.check_normal_mode_displacement(reaction=self.rxn_2b, job=self.job1)
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2b.ts_species.ts_checks['NMD'])
 
         # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_1.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_2.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_3.out')  # ** The correct TS. **
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_4.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_5.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_6.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_C3_intraH_7.out')  # A wrong TS.
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
                                                            'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
         self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         # CCO[O] + CC <=> CCOO + [CH2]C, incorrect TS:
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS0_composite_2043.out')
         self.rxn_4.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertFalse(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_4.ts_species.ts_checks['NMD'])
 
         # CCO[O] + CC <=> CCOO + [CH2]C, correct TS:
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS0_composite_2102.out')
         self.rxn_4.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertTrue(self.rxn_4.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_4.ts_species.ts_checks['NMD'])
 
         # NCC + H <=> CH3CHNH2 + H2, correct TS:
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS0_composite_2044.out')
         self.rxn_5.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_5, job=self.job1)
-        self.assertTrue(self.rxn_5.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_5.ts_species.ts_checks['NMD'])
 
         # NH2 + N2H3 <=> NH + N2H4:
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
@@ -490,7 +490,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         rxn_6.ts_species.mol_from_xyz()
         rxn_6.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=rxn_6, job=self.job1)
-        self.assertTrue(rxn_6.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(rxn_6.ts_species.ts_checks['NMD'])
 
         # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
@@ -526,7 +526,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         rxn_7.ts_species.mol_from_xyz()
         rxn_7.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
-        self.assertTrue(rxn_7.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(rxn_7.ts_species.ts_checks['NMD'])
 
     @work_in_progress
     def test_check_normal_mode_displacement_wip(self):
@@ -534,9 +534,9 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
                                                            'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
         self.rxn_3.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertFalse(self.rxn_3.ts_species.ts_checks['NMD'])
         ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
-        self.assertTrue(self.rxn_3.ts_species.ts_checks['normal_mode_displacement'])
+        self.assertTrue(self.rxn_3.ts_species.ts_checks['NMD'])
 
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
         """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
