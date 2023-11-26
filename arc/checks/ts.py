@@ -46,6 +46,7 @@ def check_ts(reaction: 'ARCReaction',
              output: Optional[dict] = None,
              sp_level: Optional['Level'] = None,
              freq_scale_factor: float = 1.0,
+             skip_nmd: bool = False,
              verbose: bool = True,
              ):
     """
@@ -68,6 +69,7 @@ def check_ts(reaction: 'ARCReaction',
         output (dict, optional): The Scheduler output dictionary.
         sp_level (Level, optional): The single-point energy level of theory.
         freq_scale_factor (float, optional): The frequency scaling factor.
+        skip_nmd (bool, optional): Whether to skip the normal mode displacement check.
         verbose (bool, optional): Whether to print logging messages.
     """
     checks = checks or list()
@@ -94,6 +96,9 @@ def check_ts(reaction: 'ARCReaction',
             check_normal_mode_displacement(reaction, job=job)
         except (ValueError, KeyError) as e:
             logger.error(f'Could not check normal mode displacement, got: \n{e}')
+            reaction.ts_species.ts_checks['NMD'] = True
+        if skip_nmd and not reaction.ts_species.ts_checks['NMD']:
+            logger.warning(f'Skipping normal mode displacement check for TS {reaction.ts_species.label}')
             reaction.ts_species.ts_checks['NMD'] = True
 
     if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])

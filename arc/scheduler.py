@@ -162,6 +162,7 @@ class Scheduler(object):
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
+        skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -217,6 +218,7 @@ class Scheduler(object):
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
+        skip_nmd (bool): Whether to skip normal mode displacement check.
     """
 
     def __init__(self,
@@ -252,6 +254,7 @@ class Scheduler(object):
                  freq_scale_factor: float = 1.0,
                  ts_adapters: List[str] = None,
                  report_e_elect: Optional[bool] = False,
+                 skip_nmd: Optional[bool] = False,
                  ) -> None:
 
         self.project = project
@@ -284,6 +287,7 @@ class Scheduler(object):
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
         self.output = dict()
         self.report_e_elect = report_e_elect
+        self.skip_nmd = skip_nmd
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
@@ -2327,6 +2331,7 @@ class Scheduler(object):
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
                                  checks=['freq'],
+                                 skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '

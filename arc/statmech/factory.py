@@ -40,6 +40,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                      freq_scale_factor: float = 1.0,
                      species: 'ARCSpecies' = None,
                      reaction: 'ARCReaction' = None,
+                     skip_nmd: bool = False,
                      species_dict: dict = None,
                      T_min: Optional[tuple] = None,
                      T_max: Optional[tuple] = None,
@@ -60,6 +61,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         species (ARCSpecies, optional): The species object.
         reaction (list, optional): The reaction object.
+        skip_nmd (bool, optional): Whether to skip the normal mode displacement check analysis.
         species_dict (dict, optional): Keys are labels, values are ARCSpecies objects.
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
@@ -79,6 +81,7 @@ def statmech_factory(statmech_adapter_label: str,  # add everything that goes in
                                                               freq_scale_factor=freq_scale_factor,
                                                               species=species,
                                                               reaction=reaction,
+                                                              skip_nmd=skip_nmd,
                                                               species_dict=species_dict,
                                                               T_min=T_min,
                                                               T_max=T_max,
