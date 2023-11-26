@@ -205,6 +205,30 @@ class TestJobCommon(unittest.TestCase):
         self.assertEqual(modified_dict, expected_dict)
         self.assertEqual(parameters, expected_parameters)
 
+    def test_combine_parameters_multiple_occurrences(self):
+        """Test the combine_parameters function with multiple occurrences of the same term."""
+        input_dict = {'param1': 'value1 term1 value2 term1', 'param2': 'another term2 value term2'}
+        terms = ['term1', 'term2']
+        expected_dict = {'param1': 'value1  value2 ', 'param2': 'another  value '}
+        expected_parameters = ['term1', 'term2']
+
+        modified_dict, parameters = common.combine_parameters(input_dict, terms)
+
+        self.assertEqual(modified_dict, expected_dict)
+        self.assertEqual(sorted(parameters), expected_parameters)
+
+    def test_combine_parameters_overlapping_terms(self):
+        """Test the combine_parameters function with overlapping terms."""
+        input_dict = {'param1': 'value term1 term123', 'param2': 'another term2 value'}
+        terms = ['term1', 'term123', 'term2']
+        expected_dict = {'param1': 'value  ', 'param2': 'another  value'}
+        expected_parameters = ['term1', 'term123', 'term2']
+
+        modified_dict, parameters = common.combine_parameters(input_dict, terms)
+
+        self.assertEqual(modified_dict, expected_dict)
+        self.assertEqual(sorted(parameters), expected_parameters)
+
     def test_input_dict_strip(self):
         """Test the input_dict_strip() function"""
         input_dict = {

@@ -514,7 +514,8 @@ def combine_parameters(input_dict: dict, terms: list) -> Tuple[dict, List]:
 
     for key, value in input_dict_copy.items():
         if isinstance(value, str):
-            for term in terms:
+            # Sort terms by length in descending order to handle overlapping terms
+            for term in sorted(terms, key=len, reverse=True):
                 matches = re.findall(term, value)
                 for match in matches:
                     if match:
