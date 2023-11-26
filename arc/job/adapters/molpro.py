@@ -325,19 +325,19 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
     def set_input_file_memory(self) -> None:
         """
         Set the input_file_memory attribute.
+
+        Molpro's memory is per cpu core and in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
+        The conversion from mW to GB was done using this (https://deviceanalytics.com/words-to-bytes-converter/)
+        specifying a 64-bit architecture.
+        See also:
+        https://www.molpro.net/pipermail/molpro-user/2010-April/003723.html
+        In the link, they describe the conversion of 100,000,000 Words (100Mword) is equivalent to
+        800,000,000 bytes (800 mb).
+        Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords]
+        The division by 1E6 is for converting into MWords
         """
-        # Molpro's memory is per cpu core and in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
-        # The conversion from mW to GB was done using this (https://deviceanalytics.com/words-to-bytes-converter/)
-        # specifying a 64-bit architecture.
-        #
-        # See also:
-        # https://www.molpro.net/pipermail/molpro-user/2010-April/003723.html
-        # In the link, they describe the conversion of 100,000,000 Words (100Mword) is equivalent to
-        # 800,000,000 bytes (800 mb).
-        # Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords]
-        # The division by 1E6 is for converting into MWords
-                # Due to Zeus's configuration, there is only 1 nproc so the memory should not be divided by cpu_cores.
-        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
+
+        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
         # We need to check if ess_trsh_methods=['cpu'] and ess_trsh_methods=['molpro_memory:] exists
         # If it does, we need to reduce the cpu_cores
         if self.ess_trsh_methods is not None:
@@ -352,21 +352,23 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
 
                 if memory_values:
                     min_memory_value = min(memory_values)
-                    required_cores = math.floor(max_memory / (min_memory_value * 7.45e-3))
+                    available_cores = math.floor(max_memory / (min_memory_value * 7.45e-3))
                     if self.core_change is None:
-                        self.core_change = required_cores
-                    elif self.core_change == required_cores:
+                        self.core_change = available_cores
+                    elif self.core_change == available_cores:
                         # We have already done this
                         # Reduce the cores by 1
-                        required_cores -= 1
-                    if required_cores < current_cpu_cores:
-                        self.cpu_cores = required_cores
+                        available_cores -= 1
+                    if available_cores < current_cpu_cores:
+                        self.cpu_cores = available_cores
                         logger.info(f'Changing the number of cpu_cores from {current_cpu_cores} to {self.cpu_cores}')
-            self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
-
-
-
-
+            # Situation may occur when the required memory per process by Molpro is only enough for 1 cpu core for us to use (for example, 4300 MW -> 32.04GB and if we have 64GB, we can only use 1 cpu core)
+            # And this means that for 1 CPU, we may end up using all 64GB of memory which approximates to 8600 MW. We need to take precaution here and not use all the memory. 
+            # We will therefore, limit the MW to 4300 MW
+            self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
+            if self.cpu_cores == 1 and self.input_file_memory > min_memory_value:
+                self.input_file_memory = min_memory_value
+                logger.info(f'Changing the input_file_memory from {self.input_file_memory} to {min_memory_value} as the number of cpu_cores will be restricted to 1 due to the memory requirements of Molpro')
         
     def execute_incore(self):
         """
