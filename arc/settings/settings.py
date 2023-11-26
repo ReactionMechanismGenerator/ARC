@@ -283,7 +283,7 @@ default_job_settings = {
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON = None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, KINBOT_PYTHON = None, None, None, None, None, None, None
 home = os.getenv("HOME") or os.path.expanduser("~")
 
 tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
@@ -315,6 +315,7 @@ gcn_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python'
 gcn_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'ts_gcn', 'bin', 'python')
 gcn_pypath_4 = os.path.join(home, '.conda', 'envs', 'ts_gcn', 'bin', 'python')
 gcn_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
+gc_pypath_6 = os.path.join(home, 'mambaforge', 'envs', 'ts_gcn', 'bin', 'python')
 for gcn_pypath in [gcn_pypath_1, gcn_pypath_2, gcn_pypath_3, gcn_pypath_4, gcn_pypath_5]:
     if os.path.isfile(gcn_pypath):
         TS_GCN_PYTHON = gcn_pypath
@@ -326,7 +327,8 @@ autotst_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'tst_env', 'bin', 'py
 autotst_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'tst_env', 'bin', 'python')
 autotst_pypath_4 = os.path.join(home, '.conda', 'envs', 'tst_env', 'bin', 'python')
 autotst_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
-for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4, autotst_pypath_5]:
+autotst_pypath_6 = os.path.join(home, 'mambaforge', 'envs', 'tst_env', 'bin', 'python')
+for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4, autotst_pypath_5, autotst_pypath_6]:
     if os.path.isfile(autotst_pypath):
         AUTOTST_PYTHON = autotst_pypath
         break
@@ -338,6 +340,7 @@ paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
+paths.append(os.path.join(home, 'mambaforge', 'envs', 'xtb_env', 'bin', 'xtb'))
 for xtb_path in paths:
     if os.path.isfile(xtb_path):
         XTB = xtb_path
@@ -349,7 +352,21 @@ arc_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'python
 arc_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'python')
 arc_pypath_4 = os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'python')
 arc_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
-for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_pypath_5]:
+arc_pypath_6 = os.path.join(home, 'mambaforge', 'envs', 'arc_env', 'bin', 'python')
+for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_pypath_5, arc_pypath_6]:
     if os.path.isfile(arc_pypath):
         ARC_PYTHON = arc_pypath
+        break
+
+
+kinbot_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                            'kinbot_env', 'bin', 'python')
+kinbot_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'kinbot_env', 'bin', 'python')
+kinbot_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'kinbot_env', 'bin', 'python')
+kinbot_pypath_4 = os.path.join(home, '.conda', 'envs', 'kinbot_env', 'bin', 'python')
+kinbot_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'kinbot_env', 'bin', 'python')
+kinbot_pypath_6 = os.path.join(home, 'mambaforge', 'envs', 'kinbot_env', 'bin', 'python')
+for kinbot_pypath in [kinbot_pypath_1, kinbot_pypath_2, kinbot_pypath_3, kinbot_pypath_4, kinbot_pypath_5, kinbot_pypath_6]:
+    if os.path.isfile(kinbot_pypath):
+        KINBOT_PYTHON = kinbot_pypath
         break

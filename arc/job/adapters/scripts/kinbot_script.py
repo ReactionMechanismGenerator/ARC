@@ -123,18 +123,25 @@ def save_yaml_file(path: str,
         f.write(yaml_str)
 
 def save_output_file(path,
-                     key = None,
-                     val = None,
-                     content_dict = None,
+                     key=None,
+                     val=None,
+                     content_dict=None,
                      ):
     """
     Save the output of a job to the YAML output file.
     Args:
+        path (str): The base directory path where the YAML file should be saved.
         key (str, optional): The key for the YAML output file.
         val (Union[float, dict, np.ndarray], optional): The value to be stored.
         content_dict (dict, optional): A dictionary to store.
     """
-    yml_out_path = os.path.join(path, 'output.yml')
+    # Extract the directory from the path
+    directory = os.path.dirname(path)
+
+    # Append 'output.yml' to this directory
+    yml_out_path = os.path.join(directory, 'output.yml')
+
+    # Rest of the code remains the same...
     content = read_yaml_file(yml_out_path) if os.path.isfile(yml_out_path) else dict()
     if content_dict is not None:
         content.update(content_dict)
@@ -147,7 +154,7 @@ def generate_coords(path: str, reaction_generator = None):
     for r, kinbot_rxn in enumerate(reaction_generator.species.reac_obj):
         step, fix, change, release = kinbot_rxn.get_constraints(step=20,
                                                                 geom=kinbot_rxn.species.geom)
-        
+
 
         dict_files[str(kinbot_rxn.instance_name)] = {}
 
@@ -197,7 +204,7 @@ def main():
     input_file = args.yml_path
     print(input_file)
     #project_directory = os.path.abspath(os.path.dirname(args.file))
-    file = read_yaml_file(os.path.join(str(args.yml_path), "input.yml"))
+    file = read_yaml_file(os.path.join(str(args.yml_path)))
     input_dict = dict(file[0])
     #if 'project' not in list(input_dict.keys()):
     #    raise ValueError('A project name must be provided!')

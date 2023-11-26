@@ -160,7 +160,7 @@ class KinBotAdapter(JobAdapter):
         """
         Write the input file to execute the job on the server.
         """
-        content = [{'mol':mol, 
+        content = [{'mol':mol,
                           'families': families,
                           'kinbot_xyz': kinbot_xyz,
                           'multiplicity': multiplicity,
@@ -239,7 +239,7 @@ class KinBotAdapter(JobAdapter):
                         #self.input_file_path = str(self.local_path) + '/input.yml'
                         commands = ['source ~/.bashrc',
                                     f'{KINBOT_PYTHON} {KINBOT_SCRIPT_PATH} '
-                                    f' {self.local_path}']
+                                    f' {self.local_path} + /input.yml']
                         command = '; '.join(commands)
                         output = subprocess.run(command, shell=True, executable='/bin/bash')
 
@@ -252,7 +252,7 @@ class KinBotAdapter(JobAdapter):
                         for i in range(len(output)):
 
                             temp_output = output[list(output.keys())[i]]
-                            ts_guess = TSGuess(method=f'KinBot',
+                            ts_guess = TSGuess(method='KinBot',
                                                 method_direction=method_direction,
                                                 method_index=method_index,
                                                 index=len(rxn.ts_species.ts_guesses),
