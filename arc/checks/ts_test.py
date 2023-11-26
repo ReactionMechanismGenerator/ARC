@@ -257,7 +257,7 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         """Test the did_ts_pass_all_checks() function."""
         spc = ARCSpecies(label='TS', is_ts=True)
         spc.populate_ts_checks()
-        self.assertFalse(ts.ts_passed_all_checks(spc))
+        self.assertFalse(ts.ts_passed_checks(spc))
 
         self.ts_checks = {'E0': False,
                           'e_elect': False,
@@ -268,8 +268,8 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                           }
         for key in ['E0', 'e_elect', 'IRC', 'freq']:
             spc.ts_checks[key] = True
-        self.assertFalse(ts.ts_passed_all_checks(spc))
-        self.assertTrue(ts.ts_passed_all_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
+        self.assertFalse(ts.ts_passed_checks(spc))
+        self.assertTrue(ts.ts_passed_checks(spc, exemptions=['normal_mode_displacement', 'warnings']))
         spc.ts_checks['e_elect'] = False
 
     def test_check_rxn_e_elect(self):

@@ -25,7 +25,7 @@ from arkane.thermo import ThermoJob
 from arkane.ess import ess_factory
 
 import arc.plotter as plotter
-from arc.checks.ts import check_ts, ts_passed_all_checks
+from arc.checks.ts import check_ts, ts_passed_checks
 from arc.common import ARC_PATH, get_logger, read_yaml_file
 from arc.exceptions import InputError, RotorError
 from arc.imports import input_files
@@ -217,10 +217,10 @@ class ArkaneAdapter(StatmechAdapter):
                          checks=['energy', 'freq'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          )
-                if require_ts_convergence and not ts_passed_all_checks(species=self.reaction.ts_species,
-                                                                       exemptions=['warnings', 'IRC', 'E0'],
-                                                                       verbose=True,
-                                                                       ):
+                if require_ts_convergence and not ts_passed_checks(species=self.reaction.ts_species,
+                                                                   exemptions=['warnings', 'IRC', 'E0'],
+                                                                   verbose=True,
+                                                                   ):
                     logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
                                  f'not computing rate coefficient.')
                     return None

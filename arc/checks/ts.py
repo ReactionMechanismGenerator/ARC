@@ -96,16 +96,16 @@ def check_ts(reaction: 'ARCReaction',
             logger.error(f'Could not check normal mode displacement, got: \n{e}')
             reaction.ts_species.ts_checks['normal_mode_displacement'] = True
 
-    if 'rotors' in checks or (ts_passed_all_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
+    if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
         invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction, job,
                                                               rxn_zone_atom_indices=rxn_zone_atom_indices)
 
 
-def ts_passed_all_checks(species: 'ARCSpecies',
-                         exemptions: Optional[List[str]] = None,
-                         verbose: bool = False,
-                         ) -> bool:
+def ts_passed_checks(species: 'ARCSpecies',
+                     exemptions: Optional[List[str]] = None,
+                     verbose: bool = False,
+                     ) -> bool:
     """
     Check whether the TS species passes all checks other than ones specified in ``exemptions``.
 
