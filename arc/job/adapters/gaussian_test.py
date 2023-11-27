@@ -208,7 +208,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                             )
         
         # Gaussian: Additional SCF error
-        # Second SCF error - Includes previous SCF error and NDump=30
+        # Second SCF error - Includes previous SCF error and NDamp=30
         job_status = {'keywords': ['SCF']}
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
@@ -518,7 +518,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -544,7 +544,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -570,7 +570,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDump=30,direct,tight,xqc)
+#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -596,7 +596,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDump=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -622,7 +622,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxstep=5,tight) guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDump=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -649,7 +649,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=mix wb97xd   IOp(2/9=2000)      nosymm  scf=(NDump=30,NoDIIS,direct,tight,xqc)
+#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)       nosymm  scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
