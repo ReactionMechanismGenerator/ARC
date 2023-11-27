@@ -858,7 +858,7 @@ def trsh_ess_job(label: str,
         logger_info = []
         couldnt_trsh = True
         fine = False
-
+        attempted_ess_trsh_methods = ess_trsh_methods.copy() if ess_trsh_methods else None
         # Check if Checkfile removal is in the keywords. Removal occurs when:
         # - Basis Set Mismatch
         # - Corrupt or Incomplete Data
@@ -877,8 +877,8 @@ def trsh_ess_job(label: str,
 
         # Check if SCF is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'scf=(NDump=30)' in ess_trsh_methods:
-            logger_info.append('using scf=(NDump=30)')
+        if 'scf=(NDamp=30)' in ess_trsh_methods:
+            logger_info.append('using scf=(NDamp=30)')
         if 'scf=(qc)' in ess_trsh_methods:
             logger_info.append('using scf=(qc)')
         if 'scf=(NoDIIS)' in ess_trsh_methods:
@@ -894,6 +894,7 @@ def trsh_ess_job(label: str,
         if fine:
             logger_info.append('using a fine grid')
 
+
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
             # Increase memory allocation
@@ -904,8 +905,15 @@ def trsh_ess_job(label: str,
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
-        # Log information
-        if logger_info:
+
+        if attempted_ess_trsh_methods:
+            if attempted_ess_trsh_methods == ess_trsh_methods:
+                logger.info(f'{logger_phrase} was not successful. Already attempted all possible troubleshooting methods. Will not troubleshoot again.')
+                couldnt_trsh = True
+            else:
+                if logger_info:
+                    logger.info(f'{logger_phrase} {", ".join(logger_info)}')
+        elif logger_info:
             logger.info(f'{logger_phrase} {", ".join(logger_info)}')
 
     elif software == 'qchem':
@@ -1594,13 +1602,17 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         # try both qc and nosymm
         ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
-    elif 'SCF' in job_status['keywords'] and 'scf=(NDump=30)' not in ess_trsh_methods:
+    elif 'SCF' in job_status['keywords'] and 'scf=(NDamp=30)' not in ess_trsh_methods:
         # Switching off Pulay's Direct Inversion
-        ess_trsh_methods.append('scf=(NDump=30)')
+        ess_trsh_methods.append('scf=(NDamp=30)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NoDIIS)' not in ess_trsh_methods:
         ess_trsh_methods.append('scf=(NoDIIS)')
         couldnt_trsh = False
+    elif 'SCF' in job_status['keywords'] and 'guess=INDO' not in ess_trsh_methods:
+        ess_trsh_methods.append('guess=INDO')
+        couldnt_trsh = False
+        trsh_keyword.append('guess=INDO')
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
         trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
