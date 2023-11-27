@@ -362,13 +362,13 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
                     if available_cores < current_cpu_cores:
                         self.cpu_cores = available_cores
                         logger.info(f'Changing the number of cpu_cores from {current_cpu_cores} to {self.cpu_cores}')
-            # Situation may occur when the required memory per process by Molpro is only enough for 1 cpu core for us to use (for example, 4300 MW -> 32.04GB and if we have 64GB, we can only use 1 cpu core)
-            # And this means that for 1 CPU, we may end up using all 64GB of memory which approximates to 8600 MW. We need to take precaution here and not use all the memory. 
-            # We will therefore, limit the MW to 4300 MW
-            self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
-            if self.cpu_cores == 1 and self.input_file_memory > min_memory_value:
-                self.input_file_memory = min_memory_value
-                logger.info(f'Changing the input_file_memory from {self.input_file_memory} to {min_memory_value} as the number of cpu_cores will be restricted to 1 due to the memory requirements of Molpro')
+                    # Situation may occur when the required memory per process by Molpro is only enough for 1 cpu core for us to use (for example, 4300 MW -> 32.04GB and if we have 64GB, we can only use 1 cpu core)
+                    # And this means that for 1 CPU, we may end up using all 64GB of memory which approximates to 8600 MW. We need to take precaution here and not use all the memory.
+                    # We will therefore, limit the MW to 4300 MW
+                    self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores))
+                    if self.cpu_cores == 1 and self.input_file_memory > min_memory_value:
+                        self.input_file_memory = min_memory_value
+                        logger.info(f'Changing the input_file_memory from {self.input_file_memory} to {min_memory_value} as the number of cpu_cores will be restricted to 1 due to the memory requirements of Molpro')
         
     def execute_incore(self):
         """

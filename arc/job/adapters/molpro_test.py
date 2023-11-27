@@ -64,6 +64,17 @@ class TestMolproAdapter(unittest.TestCase):
                                   job_memory_gb=64,
                                   )
 
+        cls.job_5 = MolproAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='CCSD(T)', basis='cc-pVQZ'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  testing=True,
+                                  ess_trsh_methods=['memory','cpu', 'molpro_memory: 2800 '],
+                                  job_memory_gb=64,
+                                  )
+
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         self.job_1.cpu_cores = 48
@@ -83,7 +94,6 @@ class TestMolproAdapter(unittest.TestCase):
 
         self.assertEqual(self.job_4.input_file_memory, 4300)
         self.assertEqual(self.job_4.cpu_cores, 1)
-
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
@@ -160,6 +170,15 @@ optg, savexyz='geometry.xyz'
 
 """
         self.assertEqual(content_2, job_2_expected_input_file)
+
+    def test_core_reduction_logic(self):
+        """Test the core reduction logic"""
+
+        # Job 5 again to trigger the condition of the core reduction logic
+        # Job 5 technically would be 3 CPUs prior to the reactive setting the input file memory.
+        self.job_5.set_input_file_memory()
+        self.assertEqual(self.job_5.input_file_memory, 4296)
+        self.assertEqual(self.job_5.cpu_cores, 2)
 
     def test_set_files(self):
         """Test setting files"""
