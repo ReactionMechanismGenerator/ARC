@@ -7,6 +7,7 @@ This module contains unit tests for the arc.lot module
 
 import os
 import unittest
+from unittest.mock import patch
 
 from arkane.modelchem import LevelOfTheory
 
@@ -45,7 +46,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(Level(method='B3LYP', basis='6-311g+(d,f)').software, 'gaussian')
         level_3 = Level(method='B3LYP', basis='6-311g+(d,f)')
         level_3.deduce_software(job_type='irc')
-        self.assertEqual(level_3.software, 'qchem')
+        self.assertEqual(level_3.software, 'gaussian')
         self.assertEqual(Level(method='DLPNO-CCSD(T)', basis='def2-tzvp').software, 'orca')
         self.assertEqual(Level(method='PM6').software, 'gaussian')
         self.assertEqual(Level(method='HF').software, 'gaussian')
@@ -60,6 +61,36 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(Level(method='b3p86', basis='6-311g+(d,f)').software, 'terachem')
         self.assertEqual(Level(method='new', basis='new', args={'keywords': {'general': 'iop(99/33=1)'}}).software,
                          'gaussian')
+
+    @patch('arc.level.supported_ess', new=['qchem', 'gaussian'])
+    def test_deduce_software_irc_with_both(self):
+        """Test deducing software for IRC job when both qchem and gaussian are supported."""
+        level = Level(method='B3LYP', basis='6-311g+(d,f)')
+        level.deduce_software(job_type='irc')
+        self.assertEqual(level.software, 'gaussian')  # gaussian is also available
+
+    @patch('arc.level.supported_ess', new=['qchem'])
+    def test_deduce_software_irc_with_only_gaussian(self):
+        """Test deducing software for IRC job when only gaussian is supported."""
+        level = Level(method='B3LYP', basis='6-311g+(d,f)')
+        level.deduce_software(job_type='irc')
+        self.assertEqual(level.software, 'qchem')  # Only qchem is available
+
+    @patch('arc.level.supported_ess', new=[])
+    def test_deduce_software_value_errors(self):
+        """Test various ValueError scenarios in deduce_software."""
+        test_cases = [
+            ('onedmin', None, 'onedmin'),
+            ('orbitals', None, 'qchem'),
+            ('composite', 'B3LYP', 'gaussian'),
+            ('irc', None, 'qchem or gaussian')
+        ]
+
+        for job_type, method, missing_software in test_cases:
+            with self.subTest(job_type=job_type, method=method, missing_software=missing_software):
+                level = Level(method=method or 'B3LYP', basis='6-311g+(d,f)' if not method else None)
+                with self.assertRaises(ValueError):
+                    level.deduce_software(job_type=job_type)
 
     def test_lower(self):
         """Test the Level.lower() method"""

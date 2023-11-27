@@ -505,10 +505,15 @@ class Level(object):
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
 
-
         # QChem & Gaussian for IRC jobs
         if job_type == 'irc':
-            if 'qchem' in supported_ess:
+            preferred_ess_order_for_irc = ['gaussian', 'qchem']
+
+            if 'qchem' in supported_ess and 'gaussian' in supported_ess:
+                # Use preferred order if both are available
+                relevant_software = get_ordered_intersection_of_two_lists(preferred_ess_order_for_irc, supported_ess)
+                self.software = relevant_software[0]
+            elif 'qchem' in supported_ess:
                 self.software = 'qchem'
             elif 'gaussian' in supported_ess:
                 self.software = 'gaussian'
