@@ -335,6 +335,16 @@ class TestTrsh(unittest.TestCase):
         self.assertTrue(couldnt_trsh)
         self.assertIn('Error: Could not troubleshoot opt for ethanol! The job ran out of disc space on server1; ', output_errors)
 
+        # Gaussian: test 6
+        job_status = {'keywords': ['SCF', 'GL502', 'NoSymm']}
+        ess_trsh_methods = ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm','scf=(NDamp=30)', 'guess=INDO' ]
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                    job_type, software, fine, memory_gb,
+                                                                    num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        self.assertTrue(couldnt_trsh)
+        self.assertIn("Error: Could not troubleshoot opt for ethanol! Tried troubleshooting with the following methods: ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm', 'scf=(NDamp=30)', 'guess=INDO']; ", output_errors)
+
         # Test Q-Chem
         software = 'qchem'
         ess_trsh_methods = ['change_node']

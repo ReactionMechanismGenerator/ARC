@@ -73,7 +73,7 @@ class TestARC(unittest.TestCase):
                    three_params=False,
                    ts_adapters=['heuristics', 'AutoTST', 'GCN', 'xtb_gsm'],
                    )
-        arc0.freq_level.args['keyword']['general'] = 'scf=(NDump=30)'
+        arc0.freq_level.args['keyword']['general'] = 'scf=(NDamp=30)'
         restart_dict = arc0.as_dict()
         long_thermo_description = restart_dict['species'][0]['long_thermo_description']
         self.assertIn('Bond corrections:', long_thermo_description)

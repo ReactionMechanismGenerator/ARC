@@ -364,8 +364,14 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] += f' SCRF=({self.level.solvation_method}, Solvent={self.level.solvent})'
 
         if self.species[0].number_of_atoms > 1:
-            input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
-                else ' guess=mix'
+            if input_dict['job_type_1']:
+                input_dict['job_type_1'] += ' '
+            if 'guess=INDO' in input_dict['trsh']:
+                input_dict['job_type_1'] += 'guess=INDO'
+                input_dict['trsh'] = input_dict['trsh'].replace('guess=INDO', '')
+            else:
+                input_dict['job_type_1'] += ' guess=read' if self.checkfile is not None and os.path.isfile(self.checkfile) \
+                    else ' guess=mix'
 
         # Fix OPT
         terms_opt = [r'opt=\((.*?)\)', r'opt=(\w+)']
