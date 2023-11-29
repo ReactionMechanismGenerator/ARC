@@ -149,7 +149,7 @@ def parse_frequencies(path: str,
 
 def parse_normal_mode_displacement(path: str,
                                    software: Optional[str] = None,
-                                   raise_error: bool = False, # TODO: Why is this true? What is it supposed to do?
+                                   raise_error: bool = False,
                                    ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Parse frequencies and normal mode displacement.

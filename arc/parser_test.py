@@ -244,6 +244,23 @@ class TestParser(unittest.TestCase):
              [-0.16184923713199378, -0.3376354950974596, 0.787886990928027]], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_4_0)
 
+        # QChem
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'normal_mode', 'HO2', 'qchem-freq.out')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, software='qchem', raise_error=False)
+        print(freqs)
+        expected_freqs = np.array([1164.75, 1431.41, 3582.24], np.float64)
+        np.testing.assert_allclose(freqs, expected_freqs, rtol=1e-5, atol=1e-8)
+        expected_normal_modes_disp_3 = np.array([[[-0.584,  0.091, -0.   ],
+                                                [ 0.612, -0.107,  0.   ],
+                                                [-0.448,  0.253,  0.   ]],
+                                                [[-0.065, -0.039, -0.   ],
+                                                [ 0.005,  0.057,  0.   ],
+                                                [ 0.951, -0.294, -0.   ]],
+                                                [[-0.001,  0.001,  0.   ],
+                                                [-0.021, -0.06 , -0.   ],
+                                                [ 0.348,  0.935,  0.   ]]])
+        np.testing.assert_allclose(normal_modes_disp, expected_normal_modes_disp_3, rtol=1e-5, atol=1e-8)
+
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
         path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'CH3C(O)O.gjf')
@@ -427,6 +444,12 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(traj_4[0]['symbols'], ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                                 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                                 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+        path_5 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'qchem-pes.out')
+        traj_5 = parser.parse_1d_scan_coords(path_5)
+        self.assertEqual(len(traj_5), 25)
+        self.assertEqual(traj_5[0]['symbols'], ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+        self.assertEqual(traj_5[0]['coords'][13], (-2.1002861161, 0.7502495424, -0.8796160845))
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""

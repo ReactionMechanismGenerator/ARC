@@ -70,11 +70,18 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level.software, 'gaussian')  # gaussian is also available
 
     @patch('arc.level.supported_ess', new=['qchem'])
-    def test_deduce_software_irc_with_only_gaussian(self):
+    def test_deduce_software_irc_with_only_qchem(self):
         """Test deducing software for IRC job when only gaussian is supported."""
         level = Level(method='B3LYP', basis='6-311g+(d,f)')
         level.deduce_software(job_type='irc')
         self.assertEqual(level.software, 'qchem')  # Only qchem is available
+    
+    @patch('arc.level.supported_ess', new=['gaussian'])
+    def test_deduce_software_irc_with_only_gaussian(self):
+        """Test deducing software for IRC job when only qchem is supported."""
+        level = Level(method='B3LYP', basis='6-311g+(d,f)')
+        level.deduce_software(job_type='irc')
+        self.assertEqual(level.software, 'gaussian')
 
     @patch('arc.level.supported_ess', new=[])
     def test_deduce_software_value_errors(self):

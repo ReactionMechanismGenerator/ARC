@@ -387,85 +387,80 @@ class QChemAdapter(JobAdapter):
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
     def generate_qchem_scan_angles(self,start_angle: int, step: int) -> (int, int, int, int):
-            """
-            Generates the angles for a Q-Chem scan. The scan is split into two parts, one from start_angle to 180, and one from -180 to end_angle.
+        """Generates angles for a Q-Chem dihedral scan, split into two segments.
 
-            Parameters
-            ----------
-            start_angle : int
-                The starting angle for the scan
-            step : int
-                The step size for the scan
+        This function computes the angles for a Q-Chem dihedral scan. The scan is
+        divided into two parts: one spanning from the start_angle to 180 degrees,
+        and the other from -180 degrees to the calculated end_angle based on the
+        step size.
 
-            Returns
-            -------
-            scan1_start : int
-                The starting angle for the first part of the scan
-            scan1_end : int
-                The ending angle for the first part of the scan
-            scan2_start : int
-                The starting angle for the second part of the scan
-            scan2_end : int
-                The ending angle for the second part of the scan
-            """
+        Args:
+            start_angle (int): The initial angle for the scan.
+            step (int): The incremental step size for the scan.
 
-            # First, we need to check that the start_angle is within the range of -180 to 180, and if not, convert it to be within that range
-            if start_angle > 180:
-                start_angle = start_angle - 360
+        Returns:
+            tuple of int: A tuple containing the start and end angles for both
+                        scan segments. It includes scan1_start, scan1_end,
+                        scan2_start, and scan2_end.
+        """
+
+        # First, we need to check that the start_angle is within the range of -180 to 180, and if not, convert it to be within that range
+        if start_angle > 180:
+            start_angle = start_angle - 360
 
 
-            # This sets the end angle but does not take into account the limit of -180 to 180
-            end_angle = start_angle - step
+        # This sets the end angle but does not take into account the limit of -180 to 180
+        end_angle = start_angle - step
 
-            # This function wraps the scan2_start within the range of -180 to 180
-            wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
+        # This function wraps the scan2_start within the range of -180 to 180
+        wrap_within_range = lambda number, addition: (number + addition) % 360 - 360 if (number + addition) % 360 > 180 else (number + addition) % 360
 
-            # This function converts the angles to be within the range of -180 to 180
-            convert_angle = lambda angle: angle % 360 if angle >= 0 else ( angle % 360 if angle <= -180 else (angle % 360) - 360)
+        # This function converts the angles to be within the range of -180 to 180
+        convert_angle = lambda angle: angle % 360 if angle >= 0 else ( angle % 360 if angle <= -180 else (angle % 360) - 360)
 
-            # This converts the angles to be within the range of -180 to 180
-            start_angle = convert_angle(start_angle)
-            end_angle = convert_angle(end_angle)
+        # This converts the angles to be within the range of -180 to 180
+        start_angle = convert_angle(start_angle)
+        end_angle = convert_angle(end_angle)
+
+        if start_angle == 0 and end_angle == 0:
+            scan1_start = start_angle
+            scan1_end = 180
+            scan2_start = -180
+            scan2_end = end_angle
+        elif start_angle == 180:
+            # This is a special case because the scan will be from 180 to 180
+            # This is not allowed in Q-Chem so we split it into two scans
+            # Arguably this could be done in one scan but it is easier to do it this way
+            # We will need to find the starting angle that when added by the step size will be 180
+            target_sum = 180
+            quotient = target_sum // step
+            starting_number = target_sum - (quotient * step)
+            scan1_start = starting_number
+            scan1_end = 180
+            scan2_start = -180
+            scan2_end = scan1_start - step
+        elif start_angle <= end_angle:
+            scan1_start = start_angle
+            scan1_end =  start_angle + (step * ((180 - start_angle)//step))
+            scan2_start = convert_angle(scan1_end)
+            scan2_end = end_angle
+        elif (start_angle + step) > 180:
+            # This is a special case because the scan will be from, for example, 178 to 178 for the first scan. Therefore, we should make it a single scan from end angle, 178, step size
+            scan1_end = start_angle
+            scan1_start = wrap_within_range(scan1_end, step)
+            scan2_start = 0
+            scan2_end = 0
+        else:
+            scan1_start = start_angle
+            scan1_end = start_angle + (step * ((180 - start_angle)//step))
+            scan2_start = wrap_within_range(scan1_end, step)
+            scan2_end = end_angle
             
-            if start_angle == 0 and end_angle == 0:
-                scan1_start = start_angle
-                scan1_end = 180
-                scan2_start = -180
-                scan2_end = end_angle
-            elif start_angle == 180:
-                # This is a special case because the scan will be from 180 to 180
-                # This is not allowed in Q-Chem so we split it into two scans
-                # Arguably this could be done in one scan but it is easier to do it this way
-                # We will need to find the starting angle that when added by the step size will be 180
-                target_sum = 180
-                quotient = target_sum // step
-                starting_number = target_sum - (quotient * step)
-                scan1_start = starting_number
-                scan1_end = 180
-                scan2_start = -180
-                scan2_end = scan1_start - step
-            elif start_angle <= end_angle:
-                scan1_start = start_angle
-                scan1_end =  start_angle + (step * ((180 - start_angle)//step))
-                scan2_start = convert_angle(scan1_end)
-                scan2_end = end_angle
-            elif (start_angle + step) > 180:
-                # This is a special case because the scan will be from, for example, 178 to 178 for the first scan. Therefore, we should make it a single scan from end angle, 178, step size 
-                scan1_end = start_angle
-                scan1_start = wrap_within_range(scan1_end, step)
-                scan2_start = 0
-                scan2_end = 0
-            else:
-                scan1_start = start_angle
-                scan1_end = start_angle + (step * ((180 - start_angle)//step))
-                scan2_start = wrap_within_range(scan1_end, step)
-                scan2_end = end_angle
-                
-            if scan2_start == scan2_end:
-                scan2_start = 0
-                scan2_end = 0
+        if scan2_start == scan2_end:
+            scan2_start = 0
+            scan2_end = 0
 
-            return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
+        return int(scan1_start), int(scan1_end), int(scan2_start), int(scan2_end)
 
     def generate_scan_angles(self, req_angle: int, step: int) -> (int, int):
 
