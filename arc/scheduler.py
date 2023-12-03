@@ -178,6 +178,7 @@ class Scheduler(object):
                              Keys are species/TS label, values are lists of job names (e.g. 'conformer3', 'opt_a123').
         server_job_ids (list): A list of relevant job IDs currently running on the server.
         output (dict): Output dictionary with status per job type and final QM file paths for all species.
+        output_multi_spc (dict): Output dictionary with status per job type of multi-species clusters.
         ess_settings (dict): A dictionary of available ESS and a corresponding server list.
         restart_dict (dict): A restart dictionary parsed from a YAML restart file.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
@@ -286,6 +287,7 @@ class Scheduler(object):
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
         self.output = dict()
+        self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
 
@@ -296,6 +298,7 @@ class Scheduler(object):
             self.rxn_dict[rxn.index] = rxn
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
+            self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
@@ -1164,9 +1167,13 @@ class Scheduler(object):
                                                or self.species_dict[label].get_xyz(generate=False)
         if self.species_dict[label].initial_xyz is None:
             raise SpeciesError(f'Cannot execute opt job for {label} without xyz (got None for Species.initial_xyz)')
-        label = label if self.species_dict[label].multi_species is None \
-            else [species.label for species in self.species_list
-                  if species.multi_species == self.species_dict[label].multi_species]
+        if self.species_dict[label].multi_species:
+            key = 'fine' if fine else 'opt'
+            if self.output_multi_spc[self.species_dict[label].multi_species].get(key, False):
+                return
+            self.output_multi_spc[self.species_dict[label].multi_species][key] = True
+            label = [species.label for species in self.species_list
+                     if species.multi_species == self.species_dict[label].multi_species]
         self.run_job(label=label, 
                      xyz=self.species_dict[label].initial_xyz if isinstance(label, str) else None,
                      level_of_theory=self.opt_level,
@@ -1185,10 +1192,14 @@ class Scheduler(object):
         if 'composite' not in self.job_dict[label].keys():  # Check whether composite jobs have been spawned yet.
             # We're spawning the first composite job for this species.
             self.job_dict[label]['composite'] = dict()
-        if self.species_dict[label].final_xyz is not None:
-            xyz = self.species_dict[label].final_xyz
-        else:
-            xyz = self.species_dict[label].initial_xyz
+        xyz = self.species_dict[label].final_xyz if self.species_dict[label].final_xyz is not None \
+            else self.species_dict[label].initial_xyz
+        if self.species_dict[label].multi_species:
+            if self.output_multi_spc[self.species_dict[label].multi_species].get('composite', False):
+                return
+            self.output_multi_spc[self.species_dict[label].multi_species]['composite'] = True
+            label = [species.label for species in self.species_list
+                     if species.multi_species == self.species_dict[label].multi_species]
         self.run_job(label=label, xyz=xyz, level_of_theory=self.composite_method, job_type='composite',
                      fine=self.job_types['fine'])
 
@@ -1203,6 +1214,12 @@ class Scheduler(object):
         if 'freq' not in self.job_dict[label].keys():  # Check whether freq jobs have been spawned yet.
             # We're spawning the first freq job for this species.
             self.job_dict[label]['freq'] = dict()
+        if self.species_dict[label].multi_species:
+            if self.output_multi_spc[self.species_dict[label].multi_species].get('freq', False):
+                return
+            self.output_multi_spc[self.species_dict[label].multi_species]['freq'] = True
+            label = [species.label for species in self.species_list
+                     if species.multi_species == self.species_dict[label].multi_species]
         if self.job_types['freq']:
             self.run_job(label=label, xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=self.freq_level, job_type='freq')
@@ -1291,6 +1308,12 @@ class Scheduler(object):
                              level_of_theory='ccsd/vdz',
                              job_type='sp')
         if self.job_types['sp']:
+            if self.species_dict[label].multi_species:
+                if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
+                    return
+                self.output_multi_spc[self.species_dict[label].multi_species]['sp'] = True
+                label = [species.label for species in self.species_list
+                         if species.multi_species == self.species_dict[label].multi_species]
             self.run_job(label=label,
                          xyz=self.species_dict[label].get_xyz(generate=False),
                          level_of_theory=level,
@@ -1371,6 +1394,12 @@ class Scheduler(object):
                         if torsions == scan_job.torsions and scan_job.job_name in self.running_jobs[label]:
                             break
                     else:
+                        if self.species_dict[label].multi_species:
+                            if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
+                                return
+                            self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
+                            label = [species.label for species in self.species_list
+                                     if species.multi_species == self.species_dict[label].multi_species]
                         self.run_job(label=label,
                                      xyz=self.species_dict[label].get_xyz(generate=False),
                                      level_of_theory=self.scan_level,
@@ -3574,6 +3603,7 @@ class Scheduler(object):
         if self.save_restart and self.restart_dict is not None:
             logger.debug('Creating a restart file...')
             self.restart_dict['output'] = self.output
+            self.restart_dict['output_multi_spc'] = self.output_multi_spc
             self.restart_dict['species'] = [spc.as_dict() for spc in self.species_dict.values()]
             self.restart_dict['running_jobs'] = dict()
             for spc in self.species_dict.values():
@@ -3649,6 +3679,8 @@ class Scheduler(object):
                 if label is None or species.label == label:
                     if species.label not in self.output:
                         self.output[species.label] = dict()
+                    if species.multi_species not in self.output_multi_spc:
+                        self.output_multi_spc[species.multi_species] = dict()
                     if 'paths' not in self.output[species.label]:
                         self.output[species.label]['paths'] = dict()
                     path_keys = ['geo', 'freq', 'sp', 'composite']
