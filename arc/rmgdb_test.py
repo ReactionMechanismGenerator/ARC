@@ -131,5 +131,6 @@ class TestRMGDB(unittest.TestCase):
         self.assertIsNone(self.rmgdb.kinetics)
         rmgdb.load_rmg_database(rmgdb=self.rmgdb)
 
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
