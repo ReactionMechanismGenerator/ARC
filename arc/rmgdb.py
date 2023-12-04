@@ -213,6 +213,24 @@ def determine_reaction_family(rmgdb: RMGDatabase,
         return None, False
 
 
+def match_family_by_label(rmgdb: RMGDatabase,
+                          family_label: str,
+                          ) -> Optional['KineticsFamily']:
+    """
+    Find a family in the RMG database by its label.
+
+    Args:
+        rmgdb (RMGDatabase): The RMG database instance.
+        family_label (str): The family label.
+
+    Returns: Optional[KineticsFamily]
+        The corresponding family object instance.
+    """
+    for family in rmgdb.kinetics.families.values():
+        if family.label == family_label:
+            return family
+
+
 def loop_families(rmgdb: RMGDatabase,
                   reaction: Reaction,
                   ) -> List[Tuple['KineticsFamily', list]]:
@@ -227,79 +245,20 @@ def loop_families(rmgdb: RMGDatabase,
     Returns: List[Tuple['KineticsFamily', list]]
         Entries are tuples of a corresponding RMG KineticsFamily instance and a list of degenerate reactions.
     """
-    reaction = reaction.copy()  # Use a copy to avoid changing atom order in the molecules by RMG.
-    for spc in reaction.reactants + reaction.products:
-        generate_resonance_structures(spc)
-    fam_list = list()
-    for family in rmgdb.kinetics.families.values():
-        family.save_order = True
-        degenerate_reactions = list()
-        family_reactions_by_r = list()  # Family reactions for the specified reactants.
-        family_reactions_by_rnp = list()  # Family reactions for the specified reactants and products.
-
-        if len(reaction.reactants) == 1:
-            for reactant0 in reaction.reactants[0].molecule:
-                fam_rxn = family.generate_reactions(reactants=[reactant0],
-                                                    products=reaction.products,
-                                                    delete_labels=False,
+    rxn_copy = reaction.copy()
+    reactions_f = rmgdb.kinetics.generate_reactions(reactants=rxn_copy.reactants,
+                                                    products=rxn_copy.products,
+                                                    only_families=True,
+                                                    resonance=True,
                                                     )
-                if fam_rxn:
-                    family_reactions_by_r.extend(fam_rxn)
-        elif len(reaction.reactants) == 2:
-            for reactant0 in reaction.reactants[0].molecule:
-                for reactant1 in reaction.reactants[1].molecule:
-                    fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1],
-                                                        products=reaction.products,
-                                                        delete_labels=False,
-                                                        )
-                    if fam_rxn:
-                        family_reactions_by_r.extend(fam_rxn)
-        elif len(reaction.reactants) == 3:
-            for reactant0 in reaction.reactants[0].molecule:
-                for reactant1 in reaction.reactants[1].molecule:
-                    for reactant2 in reaction.reactants[2].molecule:
-                        fam_rxn = family.generate_reactions(reactants=[reactant0, reactant1, reactant2],
-                                                            products=reaction.products,
-                                                            delete_labels=False,
-                                                            )
-                        if fam_rxn:
-                            family_reactions_by_r.extend(fam_rxn)
-
-        if len(reaction.products) == 1:
-            for fam_rxn in family_reactions_by_r:
-                for product0 in reaction.products[0].molecule:
-                    if same_species_lists([product0], fam_rxn.products, save_order=True):
-                        family_reactions_by_rnp.append(fam_rxn)
-            degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
-                                                             same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics,
-                                                             save_order=True
-                                                             )
-        elif len(reaction.products) == 2:
-            for fam_rxn in family_reactions_by_r:
-                for product0 in reaction.products[0].molecule:
-                    for product1 in reaction.products[1].molecule:
-                        if same_species_lists([product0, product1], fam_rxn.products, save_order=True):
-                            family_reactions_by_rnp.append(fam_rxn)
-            degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
-                                                             same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics,
-                                                             save_order=True
-                                                             )
-        elif len(reaction.products) == 3:
-            for fam_rxn in family_reactions_by_r:
-                for product0 in reaction.products[0].molecule:
-                    for product1 in reaction.products[1].molecule:
-                        for product2 in reaction.products[2].molecule:
-                            if same_species_lists([product0, product1, product2], fam_rxn.products, save_order=True):
-                                family_reactions_by_rnp.append(fam_rxn)
-            degenerate_reactions = find_degenerate_reactions(rxn_list=family_reactions_by_rnp,
-                                                             same_reactants=False,
-                                                             kinetics_database=rmgdb.kinetics,
-                                                             save_order=True
-                                                             )
-        if degenerate_reactions:
-            fam_list.append((family, degenerate_reactions))
+    reactions_r = rmgdb.kinetics.generate_reactions(reactants=rxn_copy.products,
+                                                    products=rxn_copy.reactants,
+                                                    only_families=True,
+                                                    resonance=True,
+                                                    )
+    fam_list = list()
+    for rxn in reactions_f + reactions_r:
+        fam_list.append((match_family_by_label(rmgdb=rmgdb, family_label=rxn.family), rxn))
     return fam_list
 
 
