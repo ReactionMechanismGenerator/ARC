@@ -1088,23 +1088,18 @@ def make_bond_changes(rxn: 'ARCReaction',
 def assign_labels_to_products(rxn: 'ARCReaction',
                               p_label_dict: dict):
     """
-    Add the indices to the reactants and products.
+    Add labels to the atoms of the reactants and products.
 
     Args:
         rxn: ARCReaction object to be mapped
         p_label_dict: the labels of the products
-        Consider changing in rmgpy.
-
-    Returns:
-        Adding labels to the atoms of the reactants and products, to be identified later.
     """
-
     atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
+    for product_ in rxn.p_species:
+        for atom in product_.mol.atoms:
             if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
                 atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
+            atom_index += 1
 
 
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -1169,7 +1164,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
 
 def map_pairs(pairs):
     """
-    A function that maps the mached species together
+    A function that maps the matched species together.
 
     Args:
         pairs: A list of the pairs of reactants and species
@@ -1181,7 +1176,6 @@ def map_pairs(pairs):
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
-
     return maps
 
 
@@ -1196,20 +1190,23 @@ def label_species_atoms(spcs):
     for spc in spcs:
         for atom in spc.mol.atoms:
             atom.label = str(index)
-            index+=1
+            index += 1
 
 
-def glue_maps(maps, pairs_of_reactant_and_products):
+def glue_maps(maps: List[List[int]],
+              pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]]
+              ) -> List[int]:
     """
     a function that joins together the maps from the parts of the reaction.
 
     Args:
-        rxn: ARCReaction that requires atom mapping
-        maps: The list of all maps of the isomorphic cuts.
+        maps (List[List[int]]): The list of all maps of the isomorphic cuts.
+        pairs_of_reactant_and_products (List[Tuple[ARCSpecies, ARCSpecies]]): The list of all pairs of reactants and products.
 
     Returns:
-        an Atom Map of the compleate reaction.
+        List[int]: An Atom Map of the complete reaction.
     """
+    # print(f'maps: {maps}, pairs_of_reactant_and_products: {pairs_of_reactant_and_products}')
     am_dict = dict()
     for _map, pair in zip(maps, pairs_of_reactant_and_products):
         r_atoms = pair[0].mol.atoms
@@ -1221,16 +1218,16 @@ def glue_maps(maps, pairs_of_reactant_and_products):
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
     """
-    A function for determining whether or not the species in question containt the bond specified by the bond dissociation indices.
+    A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
     
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
         bde (Tuple[int, int]): The bde in question.
-        add_bdes (bool): Whether or not to add the bde to the species.
+        add_bdes (bool): Whether to add the bde to the species.
     
     Returns:
-        bool: Whether or not the bde is based on the atom labels.
+        bool: Whether the bde is based on the atom labels.
     """
     bde = convert_list_index_0_to_1(bde, direction=-1)
     index1, index2 = bde[0], bde[1]

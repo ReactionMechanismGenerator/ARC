@@ -22,9 +22,9 @@ from arc.species.species import ARCSpecies
 from arc.species.zmat import _compare_zmats
 
 
-class TestHeuristicsAdapter(unittest.TestCase):
+class TestLinearAdapter(unittest.TestCase):
     """
-    Contains unit tests for the HeuristicsAdapter class.
+    Contains unit tests for the LinearAdapter class.
     """
 
     @classmethod
@@ -129,7 +129,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         rxn_1.ts_species.e0 = 391.6
         self.assertAlmostEquals(get_rxn_weight(rxn_1), 0.3417832)
 
-    def test_interpolate_isomerization(self):
+    def test_interpolate_intra_h_migration(self):
         """Test the interpolate_isomerization() function."""
         nc3h7_xyz = """C                  0.00375165   -0.48895802   -1.20586379
                        C                  0.00375165   -0.48895802    0.28487510
@@ -164,8 +164,9 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                         H       0.76979130    1.33747945    0.33815513
                                         H      -0.04544494    0.70455273    1.77835334
                                         H      -1.00071642    1.24557408    0.38839197""")
-        ts_xyz = interpolate_isomerization(rxn, use_weights=False)
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_ts_xyz))
+        ts_xyzs = interpolate_isomerization(rxn, use_weights=False)
+        self.assertEqual(len(ts_xyzs), 2)
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
 
         nc3h7.e0 = 101.55
         ic3h7.e0 = 88.91
@@ -182,8 +183,51 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                         H       0.79813573    1.38347069    0.43772483
                                         H      -0.03897336    0.76031233    1.86961141
                                         H      -0.97425159    1.33180895    0.47825005""")
-        ts_xyz = interpolate_isomerization(rxn, use_weights=True)
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_ts_xyz))
+        ts_xyzs = interpolate_isomerization(rxn, use_weights=True)
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
+
+    def test_interpolate_no2_ono_isomerization(self):
+        """Test the interpolate_isomerization() function."""
+        c2h5no2_xyz = """C      -1.12362739   -0.04664655   -0.08575959
+                         C       0.24488022   -0.51587553    0.36119196
+                         N       0.57726975   -1.77875156   -0.37104243
+                         O       1.16476543   -1.66382529   -1.45384186
+                         O       0.24561669   -2.84385320    0.16410116
+                         H      -1.87655344   -0.80826847    0.13962125
+                         H      -1.14729169    0.14493421   -1.16405294
+                         H      -1.41423043    0.87863077    0.42354512
+                         H       1.02430791    0.21530309    0.12674144
+                         H       0.27058353   -0.73979548    1.43184405"""
+        c2h5ono_xyz = """C      -1.36894499    0.07118059   -0.24801399
+                         C      -0.01369535    0.17184136    0.42591278
+                         O      -0.03967083   -0.62462610    1.60609048
+                         N       1.23538512   -0.53558048    2.24863846
+                         O       1.25629155   -1.21389295    3.27993827
+                         H      -2.16063255    0.41812452    0.42429392
+                         H      -1.39509985    0.66980796   -1.16284741
+                         H      -1.59800183   -0.96960842   -0.49986392
+                         H       0.19191326    1.21800574    0.68271847
+                         H       0.76371340   -0.19234475   -0.25650067"""
+        c2h5no2 = ARCSpecies(label='C2H5NO2', smiles='CC[N+](=O)[O-]', xyz=c2h5no2_xyz)
+        c2h5ono = ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c2h5ono_xyz)
+
+        rxn = ARCReaction(r_species=[c2h5no2], p_species=[c2h5ono])
+        expected_ts_xyz = str_to_xyz("""C       0.01099731   -0.46789926   -1.15958911
+                                        C       0.01099731   -0.46789926    0.33114978
+                                        C       0.01099731    0.94103865    0.90031155
+                                        H       0.57795661   -1.24174248   -1.65467180
+                                        H      -0.39690222    0.34527841   -1.69240298
+                                        H      -1.19440431   -1.28933062   -0.47327539
+                                        H       0.89689057   -1.16420498    0.45967951
+                                        H       0.76979130    1.33747945    0.33815513
+                                        H      -0.04544494    0.70455273    1.77835334
+                                        H      -1.00071642    1.24557408    0.38839197""")
+        ts_xyzs = interpolate_isomerization(rxn, use_weights=False)
+        for xyz in ts_xyzs:
+            print('\n\n\n')
+            print(xyz_to_str(xyz))
+        self.assertEqual(len(ts_xyzs), 1)
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
 
     @classmethod
     def tearDownClass(cls):

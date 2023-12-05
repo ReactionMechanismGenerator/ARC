@@ -221,40 +221,41 @@ class LinearAdapter(JobAdapter):
                                                           )
 
             t0_0 = datetime.datetime.now()
-            xyz_0 = interpolate(rxn=rxn, use_weights=False)
+            xyzs_0 = interpolate(rxn=rxn, use_weights=False)
             t_ex_0 = datetime.datetime.now() - t0_0
 
             t0_1 = datetime.datetime.now()
-            xyz_1 = interpolate(rxn=rxn, use_weights=True)
+            xyzs_1 = interpolate(rxn=rxn, use_weights=True)
             t_ex_1 = datetime.datetime.now() - t0_1
 
-            for method_index, (xyz, t0, t_ex) in enumerate(zip([xyz_0, xyz_1], [t0_0, t0_1], [t_ex_0, t_ex_1])):
-                if colliding_atoms(xyz):
-                    continue
-                unique = True
-                for other_tsg in rxn.ts_species.ts_guesses:
-                    if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                        if 'linear' not in other_tsg.method.lower():
-                            other_tsg.method += f' and Linear {method_index}'
-                        unique = False
-                        break
-                if unique:
-                    ts_guess = TSGuess(method=f'linear {method_index}',
-                                       index=len(rxn.ts_species.ts_guesses),
-                                       method_index=method_index,
-                                       t0=t0,
-                                       execution_time=t_ex,
-                                       success=True,
-                                       family=family_label,
-                                       xyz=xyz,
-                                       )
-                    rxn.ts_species.ts_guesses.append(ts_guess)
-                    save_geo(xyz=xyz,
-                             path=self.local_path,
-                             filename=f'Linear {method_index}',
-                             format_='xyz',
-                             comment=f'Linear {method_index}, family: {family_label}',
-                             )
+            for method_index, (xyzs, t0, t_ex) in enumerate(zip([xyzs_0, xyzs_1], [t0_0, t0_1], [t_ex_0, t_ex_1])):
+                for xyz in xyzs:
+                    if colliding_atoms(xyz):
+                        continue
+                    unique = True
+                    for other_tsg in rxn.ts_species.ts_guesses:
+                        if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                            if 'linear' not in other_tsg.method.lower():
+                                other_tsg.method += f' and Linear {method_index}'
+                            unique = False
+                            break
+                    if unique:
+                        ts_guess = TSGuess(method=f'linear {method_index}',
+                                           index=len(rxn.ts_species.ts_guesses),
+                                           method_index=method_index,
+                                           t0=t0,
+                                           execution_time=t_ex,
+                                           success=True,
+                                           family=family_label,
+                                           xyz=xyz,
+                                           )
+                        rxn.ts_species.ts_guesses.append(ts_guess)
+                        save_geo(xyz=xyz,
+                                 path=self.local_path,
+                                 filename=f'Linear {method_index}',
+                                 format_='xyz',
+                                 comment=f'Linear {method_index}, family: {family_label}',
+                                 )
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method])
@@ -275,7 +276,7 @@ class LinearAdapter(JobAdapter):
 
 def interpolate(rxn: 'ARCReaction',
                 use_weights: bool = False,
-                ) -> Optional[dict]:
+                ) -> Optional[List[dict]]:
     """
     Search for a TS by interpolating internal coords.
 
@@ -284,7 +285,7 @@ def interpolate(rxn: 'ARCReaction',
         use_weights (bool, optional): Whether to use the well energies to determine relative interpolation weights.
 
     Returns:
-        Optional[dict]: The XYZ coordinates guess.
+        Optional[List[dict]]: Entries are the XYZ coordinate guesses.
     """
     if rxn.is_isomerization():
         return interpolate_isomerization(rxn=rxn, use_weights=use_weights)
@@ -295,7 +296,7 @@ def interpolate(rxn: 'ARCReaction',
 
 def interpolate_isomerization(rxn: 'ARCReaction',
                               use_weights: bool = False,
-                              ) -> Optional[dict]:
+                              ) -> Optional[List[dict]]:
     """
     Search for a TS of an isomerization reaction by interpolating internal coords.
 
@@ -304,23 +305,25 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         use_weights (bool, optional): Whether to use the well energies to determine relative interpolation weights.
 
     Returns:
-        Optional[dict]: The XYZ coordinates guess.
+        Optional[List[dict]]: Entries are the XYZ coordinate guesses.
     """
     rxn.r_species[0].get_xyz()
     rxn.p_species[0].get_xyz()
     r_zmat = xyz_to_zmat(xyz=rxn.r_species[0].get_xyz(),
                          consolidate=False,
                          atom_order=list(range(sum(r.number_of_atoms for r in rxn.r_species))))
-    p_zmat = xyz_to_zmat(xyz=rxn.p_species[0].get_xyz(),
-                         consolidate=False,
-                         atom_order=rxn.atom_map)
     weight = get_rxn_weight(rxn) if use_weights else 0.5
-    if weight is None:
+    if weight is None or rxn.atom_maps is None:
         return None
-    ts_zmat = average_zmat_params(zmat_1=r_zmat, zmat_2=p_zmat, weight=weight)
-    if ts_zmat is None:
-        return None
-    return zmat_to_xyz(ts_zmat)
+    ts_xyzs = list()
+    for atom_map in rxn.atom_maps:
+        p_zmat = xyz_to_zmat(xyz=rxn.p_species[0].get_xyz(),
+                             consolidate=False,
+                             atom_order=atom_map)
+        ts_zmat = average_zmat_params(zmat_1=r_zmat, zmat_2=p_zmat, weight=weight)
+        if ts_zmat is not None:
+            ts_xyzs.append(zmat_to_xyz(ts_zmat))
+    return ts_xyzs
 
 
 def average_zmat_params(zmat_1: dict,

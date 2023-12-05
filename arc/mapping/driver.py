@@ -257,10 +257,12 @@ def map_rxn(rxn: 'ARCReaction',
             logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
             return None
 
-        atom_map = map_pairs(pairs_of_reactant_and_products)
-        if atom_map is not None:
-            atom_map = glue_maps(atom_map, pairs_of_reactant_and_products)
+        atom_map_list = map_pairs(pairs_of_reactant_and_products)
+        if isinstance(atom_map_list, list) and all(e is not None for e in atom_map_list):
+            atom_map = glue_maps(atom_map_list, pairs_of_reactant_and_products)
             atom_maps.append(atom_map)
+
+    print(f'atom_maps: {atom_maps}')
 
     return atom_maps
 

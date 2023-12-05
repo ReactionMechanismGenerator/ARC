@@ -698,7 +698,7 @@ class TestMappingEngine(unittest.TestCase):
         rxn_1_test.determine_family(self.db)
         rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_1_test, backend="ARC")
         r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_1_test,
-                                                                                      rmg_reaction=rmg_reactions[0])
+                                                                                          rmg_reaction=rmg_reactions[0])
         assign_labels_to_products(rxn_1_test, p_label_dict)
         reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
         label_species_atoms(reactants), label_species_atoms(products)
@@ -709,7 +709,7 @@ class TestMappingEngine(unittest.TestCase):
         p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
-        atom_map = glue_maps(maps,pairs_of_reactant_and_products)
+        atom_map = glue_maps(maps, pairs_of_reactant_and_products)
         self.assertEqual(len(atom_map), self.r_1.mol.get_num_atoms() + self.r_2.mol.get_num_atoms())
         atoms_r = [atom for atom in self.r_1.mol.copy(deep=True).atoms] + [atom for atom in self.r_2.mol.copy(deep=True).atoms]
         atoms_p = [atom for atom in self.p_1.mol.copy(deep=True).atoms] + [atom for atom in self.p_2.mol.copy(deep=True).atoms]

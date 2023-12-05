@@ -28,6 +28,7 @@ from arc.species.converter import (check_isomorphism,
                                    )
 from arc.species.species import (ARCSpecies,
                                  TSGuess,
+                                 add_missing_radicals,
                                  are_coords_compliant_with_graph,
                                  check_atom_balance,
                                  check_label,
@@ -35,6 +36,8 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 fix_mol_electronic_configuration,
+                                 get_atom_theoretical_charge,
                                  split_mol,
                                  )
 from arc.species.xyz_to_2d import MolGraph
@@ -115,6 +118,26 @@ class TestARCSpecies(unittest.TestCase):
                                xyz={'symbols': ('O', 'N', 'O', 'H'), 'isotopes': (16, 14, 16, 1),
                                     'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
                                                (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))})
+
+    def test_hypervalance_N_atom_type_after_perception(self):
+        """Test that the N atom type is set to N5dc after xyz perception of an NO2 group"""
+        c2h5no2 = ARCSpecies(label='C2H5NO2', smiles='CC[N+](=O)[O-]')
+        atom_types = [a.atomtype.label for a in c2h5no2.mol.atoms]
+        self.assertIn('N5dc', atom_types)
+
+        c2h5no2_xyz = """C      -1.12362739   -0.04664655   -0.08575959
+                         C       0.24488022   -0.51587553    0.36119196
+                         N       0.57726975   -1.77875156   -0.37104243
+                         O       1.16476543   -1.66382529   -1.45384186
+                         O       0.24561669   -2.84385320    0.16410116
+                         H      -1.87655344   -0.80826847    0.13962125
+                         H      -1.14729169    0.14493421   -1.16405294
+                         H      -1.41423043    0.87863077    0.42354512
+                         H       1.02430791    0.21530309    0.12674144
+                         H       0.27058353   -0.73979548    1.43184405"""
+        c2h5no2 = ARCSpecies(label='C2H5NO2', smiles='CC[N+](=O)[O-]', xyz=c2h5no2_xyz)
+        atom_types = [a.atomtype.label for a in c2h5no2.mol.atoms]
+        self.assertIn('N5dc', atom_types)
 
     def test_from_yml_file(self):
         """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
@@ -2588,9 +2611,6 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         """Test that ARC represents O2 and S2 correctly."""
         o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O   0.0000000   0.0000000   0.6029240
                                                             O   0.0000000   0.0000000  -0.6029240""")
-        for mol in o2.mol_list:
-            print(f'mol lost')
-            print(mol.to_smiles())
         self.assertEqual(o2.multiplicity, 3)
         self.assertEqual(o2.mol.to_smiles(), '[O][O]')
         self.assertEqual(o2.mol.to_adjacency_list(), """multiplicity 3
@@ -2631,6 +2651,27 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         for m in molecules:
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
+
+    def test_molecule_perception(self):
+        """Test that ARC perceives molecules correctly from xyz including the electronic configuration."""
+        c2h2no2_xyz = {'coords': ((1.8953828083622057, 0.8695975650550358, 0.6461465212661076),
+                                  (1.3601473931706598, -0.04212583715410005, 0.0034200061443233247),
+                                  (1.8529583069008781, -0.6310931351538215, -0.9666668585141432),
+                                  (-0.010154355673379136, -0.4652844276756663, 0.43320585211058743),
+                                  (-1.0281604639422022, 0.36855062612122236, -0.3158851121891869),
+                                  (-0.11071296591935365, -1.5314728469286516, 0.20909234121344752),
+                                  (-0.07635985361458197, -0.31625218083177237, 1.5151037167736001),
+                                  (-2.042322710601489, 0.08102183703582924, -0.021667016484293297),
+                                  (-0.9033569412063314, 1.436005790671757, -0.10388682333330314),
+                                  (-0.937421217476434, 0.23105260886017234, -1.3988626269871478)),
+                       'isotopes': (16, 14, 16, 12, 12, 1, 1, 1, 1, 1),
+                       'symbols': ('O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        spc = ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=c2h2no2_xyz)
+        self.assertEqual(spc.multiplicity, 1)
+        self.assertEqual(spc.charge, 0)
+        print(spc.mol.to_smiles())
+        print(spc.mol.to_adjacency_list())
+        self.assertIn('[N+]', spc.mol.to_smiles())
 
     def test_get_atom_theoretical_charge(self):
         """Test getting the theoretical charge of an atom."""

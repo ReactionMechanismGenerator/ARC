@@ -463,7 +463,7 @@ class ARCReaction(object):
         """
         if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
-            reactants, products = self.get_reactants_and_products(arc=False)  # Returns RMG Species.
+            reactants, products = self.get_reactants_and_products(arc=False)
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def arc_species_from_rmg_reaction(self):

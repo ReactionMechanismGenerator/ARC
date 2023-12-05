@@ -91,8 +91,8 @@ class ARCSpecies(object):
                               'directed_scan_type': ``str``,
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
-                             }
-                          1: {}, ...
+                             },
+                          1: {...},
                          }
 
     Args:
@@ -1545,6 +1545,7 @@ class ARCSpecies(object):
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
                      get_cheap: bool = False,
+                     multiplicity: Optional[int] = None,
                      ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
@@ -1556,6 +1557,8 @@ class ARCSpecies(object):
         Args:
             xyz (dict, optional): Alternative coordinates to use.
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
+            multiplicity (int, optional): The multiplicity to use for the generated molecule.
+                                          If not given, self.multiplicity will be used.
         """
         if xyz is None:
             xyz = self.get_xyz(generate=get_cheap, return_format='dict')
@@ -1596,11 +1599,17 @@ class ARCSpecies(object):
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
+                mol_b.multiplicity = multiplicity if multiplicity is not None else mol_b.multiplicity
                 self.mol = mol_b
             elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
+                mol_s.multiplicity = multiplicity if multiplicity is not None else mol_s.multiplicity
                 self.mol = mol_s
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
+        if self.mol is not None:
+            self.mol = fix_mol_electronic_configuration(mol=self.mol,
+                                                        multiplicity=multiplicity or self.multiplicity)
+            self.mol.update_atomtypes(log_species=False, raise_exception=False)
 
     def process_xyz(self, xyz_list: Union[list, str, dict]):
         """
