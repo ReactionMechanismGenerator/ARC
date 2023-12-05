@@ -290,17 +290,16 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                 break
     # Families:
     fam_list = loop_families(rmgdb, reaction)
-    for family, degenerate_reactions in fam_list:
-        for deg_rxn in degenerate_reactions:
-            template = family.retrieve_template(deg_rxn.template)
-            kinetics = family.estimate_kinetics_using_rate_rules(template)[0]
-            kinetics.change_rate(deg_rxn.degeneracy)
-            kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
-            deg_rxn.kinetics = kinetics
-            deg_rxn.comment = f'Family: {deg_rxn.family}'
-            deg_rxn.reactants = reaction.reactants
-            deg_rxn.products = reaction.products
-        rmg_reactions.extend(degenerate_reactions)
+    for family, rxn in fam_list:
+        template = family.retrieve_template(rxn.template)
+        kinetics = family.estimate_kinetics_using_rate_rules(template)[0]
+        kinetics.change_rate(rxn.degeneracy)
+        kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
+        rxn.kinetics = kinetics
+        rxn.comment = f'Family: {rxn.family}'
+        rxn.reactants = reaction.reactants
+        rxn.products = reaction.products
+        rmg_reactions.append(rxn)
     worked_through_nist_fams = []
     # NIST:
     for family, degenerate_reactions in fam_list:
