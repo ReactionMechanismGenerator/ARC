@@ -35,7 +35,8 @@ class TestARCReaction(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.rmgdb.kinetics.families = None
+        if cls.rmgdb.kinetics is not None:
+            cls.rmgdb.kinetics.families = None
         rmgdb.load_families_only(cls.rmgdb, "all")
         
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
