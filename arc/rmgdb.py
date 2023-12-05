@@ -6,10 +6,9 @@ import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from rmgpy import settings as rmg_settings
-from rmgpy.data.kinetics.common import find_degenerate_reactions
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy.exceptions import KineticsError
-from rmgpy.reaction import same_species_lists, Reaction
+from rmgpy.reaction import Reaction
 
 from arc.common import get_logger, generate_resonance_structures
 from arc.exceptions import InputError
