@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -33,7 +33,7 @@ from arc.job.local import (change_mode,
                            rename_output,
                            submit_job,
                            )
-from arc.job.trsh import trsh_job_on_server
+from arc.job.trsh import trsh_job_on_server, trsh_job_queue
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
 from arc.species.converter import xyz_to_str
@@ -493,12 +493,23 @@ class JobAdapter(ABC):
             # If your server has different node architectures, implement something similar here.
             architecture = '\n#$ -l harpertown' if self.cpu_cores <= 8 else '\n#$ -l magnycours'
 
+        # Extract the 'queue' dictionary from servers[self.server], defaulting to an empty dictionary if 'queue' is not a key
+        settings_queues = servers[self.server].get('queue', {})
+
+        # Get the first item from the 'queue' dictionary if it is not empty, else default to None
+        default_queue, default_walltime = next(iter(settings_queues.items())) if settings_queues else (None, None)
+
+        # Add queue to the attempted_queus if not already there
+        if default_queue not in self.attempted_queues:
+            self.attempted_queues.append(default_queue)
+        
         submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
             else pipe_submit[self.server]
         try:
             submit_script = submit_script.format(
                 name=self.job_server_name,
                 un=servers[self.server]['un'],
+                queue= self.queue if self.queue is not None else default_queue,
                 t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
                 memory=int(self.submit_script_memory) if (isinstance(self.submit_script_memory, int) or isinstance(self.submit_script_memory, float)) else self.submit_script_memory,
                 cpus=self.cpu_cores,
@@ -891,6 +902,20 @@ class JobAdapter(ABC):
                         self.job_status[1]['status'] = 'errored'
                         self.job_status[1]['keywords'] = ['ServerTimeLimit']
                         self.job_status[1]['error'] = 'Job cancelled by the server since it reached the maximal ' \
+                                                      'time limit.'
+                        self.job_status[1]['line'] = line
+                        break
+                    # =>> PBS: job killed: walltime 10837 exceeded limit 10800
+                    elif 'job killed' in line and 'exceeded limit' in line:
+                        logger.warning(f'Looks like the job was killed on {self.server} due to time limit. '
+                                       f'Got: {line}')
+                        time_limit = int(line.split('limit')[1].split()[0])/3600
+                        new_max_job_time = self.max_job_time - time_limit if self.max_job_time > time_limit else 1
+                        logger.warning(f'Setting max job time to {new_max_job_time} (was {time_limit})')
+                        self.max_job_time = new_max_job_time
+                        self.job_status[1]['status'] = 'errored'
+                        self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                        self.job_status[1]['error'] = 'Job killed by the server since it reached the maximal ' \
                                                       'time limit.'
                         self.job_status[1]['line'] = line
                         break
@@ -1312,6 +1337,27 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+
+    def troubleshoot_queue(self):
+        """
+        Troubleshoot queue errors.
+        """
+        queues, run_job = trsh_job_queue(job_name=self.job_name,
+                                            server=self.server,
+                                            max_time=self.max_job_time,
+                                            attempted_queues = self.attempted_queues,
+                                            )
+        
+        if queues is not None:
+            # We use self.max_job_time to determine which queues to troubleshoot.
+            filtered_queues = {queue_name: walltime for queue_name, walltime in queues.items() if convert_to_hours(walltime) >= self.max_job_time}
+
+            # Now we sort the queues by walltime, and choose the one with the longest walltime.
+            sorted_queues = sorted(filtered_queues.items(), key=lambda x: convert_to_hours(x[1]), reverse=True)
+            self.queue = sorted_queues[0][0]
+            if self.queue not in self.attempted_queues:
+                self.attempted_queues.append(self.queue)
+        return run_job
 
     def save_output_file(self,
                          key: Optional[str] = None,

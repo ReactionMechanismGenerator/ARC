@@ -193,6 +193,18 @@ class TestJobAdapter(unittest.TestCase):
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
+        cls.job_5 = GaussianAdapter(execution_type='queue',
+                                    job_name='spc1',
+                                    job_type='opt',
+                                    job_id='123456',
+                                    job_num=101,
+                                    job_server_name = 'server1',
+                                    level=Level(method='cbs-qb3'),
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    testing=True,
+                                    )
 
     def test_determine_job_array_parameters(self):
         """Test determining job array parameters"""
@@ -403,6 +415,14 @@ class TestJobAdapter(unittest.TestCase):
                                        'remote': os.path.join(self.job_1.remote_path, 'm.x'),
                                        'source': 'input_files',
                                        'make_x': True})
+    
+    def test_determine_job_status(self):
+        """Test determining the job status"""
+        self.job_5.determine_job_status()
+        self.assertEqual(self.job_5.job_status[0], 'done')
+        self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
+
 
     @classmethod
     def tearDownClass(cls):
