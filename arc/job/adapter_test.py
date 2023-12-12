@@ -431,6 +431,13 @@ class TestJobAdapter(unittest.TestCase):
                                        'remote': os.path.join(self.job_1.remote_path, 'm.x'),
                                        'source': 'input_files',
                                        'make_x': True})
+    
+    def test_determine_job_status(self):
+        """Test determining the job status"""
+        self.job_5.determine_job_status()
+        self.assertEqual(self.job_5.job_status[0], 'done')
+        self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
 
     def test_determine_job_status(self):
         """Test determining the job status"""
