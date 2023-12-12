@@ -109,6 +109,8 @@ def _initialize_adapter(obj: 'JobAdapter',
                         rotor_index: Optional[int] = None,
                         server: Optional[str] = None,
                         server_nodes: Optional[list] = None,
+                        queue: Optional[str] = None,
+                        attempted_queues: Optional[List[str]] = None,
                         species: Optional[List['ARCSpecies']] = None,
                         testing: bool = False,
                         times_rerun: int = 0,
@@ -171,6 +173,8 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.rotor_index = rotor_index
     obj.run_time = None
     obj.server = server
+    obj.queue = queue
+    obj.attempted_queues = attempted_queues or list()
     obj.server_nodes = server_nodes or list()
     obj.species = [species] if species is not None and not isinstance(species, list) else species
     obj.submit_script_memory = None
