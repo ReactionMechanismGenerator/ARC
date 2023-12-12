@@ -827,7 +827,7 @@ touch final_time
     },
     'pbs_sample': {
         'gaussian': """#!/bin/bash -l
-#PBS -q batch
+#PBS -q {queue}
 #PBS -l nodes=1:ppn={cpus}
 #PBS -l mem={memory}mb
 #PBS -l walltime=48:00:00
