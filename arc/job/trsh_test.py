@@ -7,14 +7,14 @@ This module contains unit tests of the arc.job.trsh module
 
 import os
 import unittest
+from unittest.mock import patch
 
 import arc.job.trsh as trsh
 from arc.common import ARC_PATH
 from arc.imports import settings
 from arc.parser import parse_1d_scan_energies
 
-
-supported_ess = settings['supported_ess']
+supported_ess = settings["supported_ess"]
 
 
 class TestTrsh(unittest.TestCase):
@@ -28,253 +28,312 @@ class TestTrsh(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        path = os.path.join(ARC_PATH, 'arc', 'testing', 'trsh')
+        path = os.path.join(ARC_PATH, "arc", "testing", "trsh")
         cls.base_path = {ess: os.path.join(path, ess) for ess in supported_ess}
+        cls.server = "test_server"
+        cls.job_name = "test_job"
+        cls.job_id = "123"
+        cls.servers = {
+            "test_server": {
+                "queue": {"short_queue": "1:00:00", "long_queue": "100:00:00"},
+                " cluster_soft": "pbs",
+            }
+        }
 
     def test_determine_ess_status(self):
         """Test the determine_ess_status() function"""
 
         # Gaussian
 
-        path = os.path.join(self.base_path['gaussian'], 'converged.out')
+        path = os.path.join(self.base_path["gaussian"], "converged.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='OH', job_type='opt')
-        self.assertEqual(status, 'done')
+            output_path=path, species_label="OH", job_type="opt"
+        )
+        self.assertEqual(status, "done")
         self.assertEqual(keywords, list())
-        self.assertEqual(error, '')
-        self.assertEqual(line, '')
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
-        path = os.path.join(self.base_path['gaussian'], 'l913.out')
+        path = os.path.join(self.base_path["gaussian"], "l913.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='tst', job_type='composite')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MaxOptCycles', 'GL913'])
-        self.assertEqual(error, 'Maximum optimization cycles reached.')
-        self.assertIn('Error termination via Lnk1e', line)
-        self.assertIn('g09/l913.exe', line)
+            output_path=path, species_label="tst", job_type="composite"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MaxOptCycles", "GL913"])
+        self.assertEqual(error, "Maximum optimization cycles reached.")
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g09/l913.exe", line)
 
-        path = os.path.join(self.base_path['gaussian'], 'l301_checkfile.out')
+        path = os.path.join(self.base_path["gaussian"], "l301_checkfile.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='Zr2O4H', job_type='opt')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['CheckFile'])
-        self.assertEqual(error, 'No data on chk file.')
-        self.assertIn('Error termination via Lnk1e', line)
-        self.assertIn('g09/l301.exe', line)
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile"])
+        self.assertEqual(error, "No data on chk file.")
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g09/l301.exe", line)
 
-        path = os.path.join(self.base_path['gaussian'], 'l301.out')
+        path = os.path.join(self.base_path["gaussian"], "l301.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='Zr2O4H', job_type='opt')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['GL301', 'BasisSet'])
-        self.assertEqual(error, 'The basis set 6-311G is not appropriate for the this chemistry.')
-        self.assertIn('Error termination via Lnk1e', line)
-        self.assertIn('g16/l301.exe', line)
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["GL301", "BasisSet"])
+        self.assertEqual(
+            error, "The basis set 6-311G is not appropriate for the this chemistry."
+        )
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g16/l301.exe", line)
 
-        path = os.path.join(self.base_path['gaussian'], 'l401.out')
+        path = os.path.join(self.base_path["gaussian"], "l401.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='Zr2O4H', job_type='opt')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['CheckFile'])
-        self.assertEqual(error, 'Basis set data is not on the checkpoint file.')
-        self.assertIn('Error termination via Lnk1e', line)
-        self.assertIn('g09/l401.exe', line)
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["CheckFile"])
+        self.assertEqual(error, "Basis set data is not on the checkpoint file.")
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g09/l401.exe", line)
 
-        path = os.path.join(self.base_path['gaussian'], 'l9999.out')
+        path = os.path.join(self.base_path["gaussian"], "l9999.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='Zr2O4H', job_type='opt')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Unconverged', 'GL9999'])
-        self.assertEqual(error, 'Unconverged')
-        self.assertIn('Error termination via Lnk1e', line)
-        self.assertIn('g16/l9999.exe', line)
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Unconverged", "GL9999"])
+        self.assertEqual(error, "Unconverged")
+        self.assertIn("Error termination via Lnk1e", line)
+        self.assertIn("g16/l9999.exe", line)
 
-        path = os.path.join(self.base_path['gaussian'], 'syntax.out')
+        path = os.path.join(self.base_path["gaussian"], "syntax.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='Zr2O4H', job_type='opt')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Syntax'])
-        self.assertEqual(error, 'There was a syntax error in the Gaussian input file. Check your Gaussian input file '
-                                'template under arc/job/inputs.py. Alternatively, perhaps the level of theory is not '
-                                'supported by Gaussian in the specific format it was given.')
+            output_path=path, species_label="Zr2O4H", job_type="opt"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Syntax"])
+        self.assertEqual(
+            error,
+            "There was a syntax error in the Gaussian input file. Check your Gaussian input file "
+            "template under arc/job/inputs.py. Alternatively, perhaps the level of theory is not "
+            "supported by Gaussian in the specific format it was given.",
+        )
         self.assertFalse(line)
 
         # QChem
 
-        path = os.path.join(self.base_path['qchem'], 'H2_opt.out')
+        path = os.path.join(self.base_path["qchem"], "H2_opt.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='H2', job_type='opt')
-        self.assertEqual(status, 'done')
+            output_path=path, species_label="H2", job_type="opt"
+        )
+        self.assertEqual(status, "done")
         self.assertEqual(keywords, list())
-        self.assertEqual(error, '')
-        self.assertEqual(line, '')
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
         # Molpro
 
-        path = os.path.join(self.base_path['molpro'], 'unrecognized_basis_set.out')
+        path = os.path.join(self.base_path["molpro"], "unrecognized_basis_set.out")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='I', job_type='sp')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['BasisSet'])
-        self.assertEqual(error, 'Unrecognized basis set 6-311G**')
-        self.assertIn(' ? Basis library exhausted', line)  # line includes '\n'
+            output_path=path, species_label="I", job_type="sp"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["BasisSet"])
+        self.assertEqual(error, "Unrecognized basis set 6-311G**")
+        self.assertIn(" ? Basis library exhausted", line)  # line includes '\n'
 
         # Orca
 
         # test detection of a successful job
-        path = os.path.join(self.base_path['orca'], 'orca_successful_sp.log')
+        path = os.path.join(self.base_path["orca"], "orca_successful_sp.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'done')
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "done")
         self.assertEqual(keywords, list())
-        self.assertEqual(error, '')
-        self.assertEqual(line, '')
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
         # test detection of a successful job
         # notice that the log file in this example has a different format under the line
         # ***  Starting incremental Fock matrix formation  ***
         # compared to the above example. It is important to make sure that ARC's Orca trsh algorithm parse this
         # log file successfully
-        path = os.path.join(self.base_path['orca'], 'orca_successful_sp_scf.log')
+        path = os.path.join(self.base_path["orca"], "orca_successful_sp_scf.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'done')
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "done")
         self.assertEqual(keywords, list())
-        self.assertEqual(error, '')
-        self.assertEqual(line, '')
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
         # test detection of SCF energy diverge issue
-        path = os.path.join(self.base_path['orca'], 'orca_scf_blow_up_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_scf_blow_up_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['SCF'])
-        expected_error_msg = 'The SCF energy seems diverged during iterations. ' \
-                             'SCF energy after initial iteration is -1076.6615662471. ' \
-                             'SCF energy after final iteration is -20006124.68383977. ' \
-                             'The ratio between final and initial SCF energy is 18581.627979509627. ' \
-                             'This ratio is greater than the default threshold of 2. ' \
-                             'Please consider using alternative methods or larger basis sets.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["SCF"])
+        expected_error_msg = (
+            "The SCF energy seems diverged during iterations. "
+            "SCF energy after initial iteration is -1076.6615662471. "
+            "SCF energy after final iteration is -20006124.68383977. "
+            "The ratio between final and initial SCF energy is 18581.627979509627. "
+            "This ratio is greater than the default threshold of 2. "
+            "Please consider using alternative methods or larger basis sets."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('', line)
+        self.assertIn("", line)
 
         # test detection of insufficient memory causes SCF failure
-        path = os.path.join(self.base_path['orca'], 'orca_scf_memory_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_scf_memory_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['SCF', 'Memory'])
-        expected_error_msg = 'Orca suggests to increase per cpu core memory to 789.0 MB.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["SCF", "Memory"])
+        expected_error_msg = (
+            "Orca suggests to increase per cpu core memory to 789.0 MB."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertEqual(' Error  (ORCA_SCF): Not enough memory available!', line)
+        self.assertEqual(" Error  (ORCA_SCF): Not enough memory available!", line)
 
         # test detection of insufficient memory causes MDCI failure
-        path = os.path.join(self.base_path['orca'], 'orca_mdci_memory_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_mdci_memory_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI', 'Memory'])
-        expected_error_msg = 'Orca suggests to increase per cpu core memory to 10218 MB.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "Memory"])
+        expected_error_msg = (
+            "Orca suggests to increase per cpu core memory to 10218 MB."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('Please increase MaxCore', line)
+        self.assertIn("Please increase MaxCore", line)
 
         # test detection of too many cpu cores causes MDCI failure
-        path = os.path.join(self.base_path['orca'], 'orca_too_many_cores.log')
+        path = os.path.join(self.base_path["orca"], "orca_too_many_cores.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI', 'cpu'])
-        expected_error_msg = 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ' \
-                             'The maximum number of cpu cores can be used for this job is 10.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "cpu"])
+        expected_error_msg = (
+            "Orca cannot utilize cpu cores more than electron pairs in a molecule. "
+            "The maximum number of cpu cores can be used for this job is 10."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('parallel calculation exceeds', line)
+        self.assertIn("parallel calculation exceeds", line)
 
         # test detection of generic GTOInt failure
-        path = os.path.join(self.base_path['orca'], 'orca_GTOInt_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_GTOInt_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['GTOInt', 'Memory'])
-        expected_error_msg = 'GTOInt error in Orca. Assuming memory allocation error.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["GTOInt", "Memory"])
+        expected_error_msg = "GTOInt error in Orca. Assuming memory allocation error."
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('ORCA finished by error termination in GTOInt', line)
+        self.assertIn("ORCA finished by error termination in GTOInt", line)
 
         # test detection of generic MDCI failure
-        path = os.path.join(self.base_path['orca'], 'orca_mdci_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_mdci_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI', 'Memory'])
-        expected_error_msg = 'MDCI error in Orca. Assuming memory allocation error.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "Memory"])
+        expected_error_msg = "MDCI error in Orca. Assuming memory allocation error."
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('ORCA finished by error termination in MDCI', line)
+        self.assertIn("ORCA finished by error termination in MDCI", line)
 
         # test detection of generic MDCI failure in Orca version 4.2.x log files
-        path = os.path.join(self.base_path['orca'], 'orca_mdci_error_2.log')
+        path = os.path.join(self.base_path["orca"], "orca_mdci_error_2.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI', 'Memory'])
-        expected_error_msg = 'MDCI error in Orca. Assuming memory allocation error.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "Memory"])
+        expected_error_msg = "MDCI error in Orca. Assuming memory allocation error."
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('ORCA finished by error termination in MDCI', line)
+        self.assertIn("ORCA finished by error termination in MDCI", line)
 
         # test detection of MDCI failure in Orca version 4.1.x log files (no memory/cpu suggestions compared to 4.2.x)
-        path = os.path.join(self.base_path['orca'], 'orca_mdci_error_3.log')
+        path = os.path.join(self.base_path["orca"], "orca_mdci_error_3.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['MDCI', 'cpu'])
-        expected_error_msg = 'Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC will ' \
-                             'estimate the number of cpu cores needed based on the number of heavy atoms in the ' \
-                             'molecule.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "cpu"])
+        expected_error_msg = (
+            "Orca cannot utilize cpu cores more than electron pairs in a molecule. ARC will "
+            "estimate the number of cpu cores needed based on the number of heavy atoms in the "
+            "molecule."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('Number of processes in parallel calculation exceeds number of pairs', line)
+        self.assertIn(
+            "Number of processes in parallel calculation exceeds number of pairs", line
+        )
 
         # test detection of multiplicty and charge combination error
-        path = os.path.join(self.base_path['orca'], 'orca_multiplicity_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_multiplicity_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Input'])
-        expected_error_msg = 'The multiplicity and charge combination for species test are wrong.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Input"])
+        expected_error_msg = (
+            "The multiplicity and charge combination for species test are wrong."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('Error : multiplicity', line)
+        self.assertIn("Error : multiplicity", line)
 
         # test detection of input keyword error
-        path = os.path.join(self.base_path['orca'], 'orca_input_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_input_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Syntax'])
-        expected_error_msg = 'There was keyword syntax error in the Orca input file. In particular, keywords ' \
-                             'XTB1 can either be duplicated or illegal. Please check your Orca ' \
-                             'input file template under arc/job/inputs.py. Alternatively, perhaps the level of ' \
-                             'theory or the job option is not supported by Orca in the format it was given.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Syntax"])
+        expected_error_msg = (
+            "There was keyword syntax error in the Orca input file. In particular, keywords "
+            "XTB1 can either be duplicated or illegal. Please check your Orca "
+            "input file template under arc/job/inputs.py. Alternatively, perhaps the level of "
+            "theory or the job option is not supported by Orca in the format it was given."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('XTB1', line)
+        self.assertIn("XTB1", line)
 
         # test detection of basis set error (e.g., input contains elements not supported by specified basis)
-        path = os.path.join(self.base_path['orca'], 'orca_basis_error.log')
+        path = os.path.join(self.base_path["orca"], "orca_basis_error.log")
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Basis'])
-        expected_error_msg = 'There was a basis set error in the Orca input file. In particular, basis for atom type ' \
-                             'Br is missing. Please check if specified basis set supports this atom.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Basis"])
+        expected_error_msg = (
+            "There was a basis set error in the Orca input file. In particular, basis for atom type "
+            "Br is missing. Please check if specified basis set supports this atom."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('There are no CABS', line)
+        self.assertIn("There are no CABS", line)
 
         # test detection of wavefunction convergence failure
-        path = os.path.join(self.base_path['orca'], 'orca_wavefunction_not_converge_error.log')
+        path = os.path.join(
+            self.base_path["orca"], "orca_wavefunction_not_converge_error.log"
+        )
         status, keywords, error, line = trsh.determine_ess_status(
-            output_path=path, species_label='test', job_type='sp', software='orca')
-        self.assertEqual(status, 'errored')
-        self.assertEqual(keywords, ['Convergence'])
-        expected_error_msg = 'Specified wavefunction method is not converged. Please restart calculation with larger ' \
-                             'max iterations or with different convergence flags.'
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Convergence"])
+        expected_error_msg = (
+            "Specified wavefunction method is not converged. Please restart calculation with larger "
+            "max iterations or with different convergence flags."
+        )
         self.assertEqual(error, expected_error_msg)
-        self.assertIn('This wavefunction IS NOT FULLY CONVERGED!', line)
+        self.assertIn("This wavefunction IS NOT FULLY CONVERGED!", line)
 
     def test_trsh_ess_job(self):
         """Test the trsh_ess_job() function"""
@@ -343,12 +402,15 @@ class TestTrsh(unittest.TestCase):
                                                                     job_type, software, fine, memory_gb,
                                                                     num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertTrue(couldnt_trsh)
-        self.assertIn("Error: Could not troubleshoot opt for ethanol! Tried troubleshooting with the following methods: ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm', 'scf=(NDamp=30)', 'guess=INDO']; ", output_errors)
+        self.assertIn(
+            "Error: Could not troubleshoot opt for ethanol! Tried troubleshooting with the following methods: ['scf=(NoDIIS)', 'int=(Acc2E=14)', 'checkfile=None', 'scf=(qc)', 'NoSymm', 'scf=(NDamp=30)', 'guess=INDO']; ",
+            output_errors,
+        )
 
         # Test Q-Chem
-        software = 'qchem'
-        ess_trsh_methods = ['change_node']
-        job_status = {'keywords': ['MaxOptCycles', 'Unconverged']}
+        software = "qchem"
+        ess_trsh_methods = ["change_node"]
+        job_status = {"keywords": ["MaxOptCycles", "Unconverged"]}
         # Q-Chem: test 1
         output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
@@ -365,16 +427,18 @@ class TestTrsh(unittest.TestCase):
         self.assertIn('DIIS_GDM', ess_trsh_methods)
 
         # Test Molpro
-        software = 'molpro'
+        software = "molpro"
 
         # Molpro: test
-        path = os.path.join(self.base_path['molpro'], 'insufficient_memory.out')
-        label = 'TS'
-        level_of_theory = {'method': 'mrci', 'basis': 'aug-cc-pV(T+d)Z'}
-        server = 'server1'
-        status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
-        job_status = {'keywords': keywords, 'error': error}
-        job_type = 'sp'
+        path = os.path.join(self.base_path["molpro"], "insufficient_memory.out")
+        label = "TS"
+        level_of_theory = {"method": "mrci", "basis": "aug-cc-pV(T+d)Z"}
+        server = "server1"
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="TS", job_type="sp"
+        )
+        job_status = {"keywords": keywords, "error": error}
+        job_type = "sp"
         fine = True
         memory_gb = 32.0
         ess_trsh_methods = ['change_node']
@@ -394,7 +458,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(memory, 96.0)
-        
+
         # Molpro: Insuffienct Memory 3 Test
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path,
@@ -634,20 +698,111 @@ class TestTrsh(unittest.TestCase):
                           (2.461024, -0.893605, -0.429469),
                           (-3.255509, -1.417186, -0.119474))}
         self.assertEqual(actions, {'change conformer': xyz})
+        self.assertEqual(actions, {"change conformer": xyz})
 
     def test_trsh_scan_job(self):
         """Test troubleshooting problematic 1D rotor scan"""
-        case = {'label': 'CH2OOH',
-                'scan_res': 4.0,
-                'scan': [4, 1, 2, 3],
-                'scan_list': [[4, 1, 2, 3], [1, 2, 3, 6]],
-                'methods': {'freeze': [[5, 1, 2, 3], [2, 1, 4, 5]]},
-                'log_file': os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out'),
-                }
+        case = {
+            "label": "CH2OOH",
+            "scan_res": 4.0,
+            "scan": [4, 1, 2, 3],
+            "scan_list": [[4, 1, 2, 3], [1, 2, 3, 6]],
+            "methods": {"freeze": [[5, 1, 2, 3], [2, 1, 4, 5]]},
+            "log_file": os.path.join(
+                ARC_PATH, "arc", "testing", "rotor_scans", "CH2OOH.out"
+            ),
+        }
         scan_trsh, scan_res = trsh.trsh_scan_job(**case)
-        self.assertEqual(scan_trsh, 'D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n')
+        self.assertEqual(scan_trsh, "D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n")
         self.assertEqual(scan_res, 4.0)
 
+    @patch(
+        "arc.common.get_logger"
+    )
+    @patch(
+        "arc.job.local.execute_command"
+    )
+    @patch(
+        "arc.job.trsh.servers",
+        {
+            "test_server": {
+                "cluster_soft": "PBS",
+                "un": "test_user",
+                "queue": {"short_queue": "24:00:0", "long_queue": "3600:00:00"},
+            }
+        },
+    )
+    def test_user_queue_setting_trsh(self, mock_logger, mock_execute_command):
+        """ Test the trsh_job_queue function with user specified queue """
+        # Mocking the groups and qstat command outputs
+        mock_execute_command.side_effect = [
+            (["users group1"], []),  # Simulates 'groups' command output
+            (
+                ["Queue Memory CPU Time Walltime Node Run Que Lm State"],
+                [],
+            ),  # Simulates 'qstat' command output
+        ]
 
-if __name__ == '__main__':
+        # Call the trsh_job_queue function with test data
+        result, success = trsh.trsh_job_queue("test_server", "test_job", 24)
+
+        # Assertions
+        self.assertIn("short_queue", result)
+        self.assertIn("long_queue", result)
+        self.assertTrue(success)
+
+        # Now put in 'short_queue' in attempted_queues
+        result, success = trsh.trsh_job_queue(
+            "test_server", "test_job", 24, attempted_queues=["short_queue"]
+        )
+
+        # Assertions
+        self.assertNotIn("short_queue", result)
+        self.assertIn("long_queue", result)
+        self.assertTrue(success)
+
+        # Now put in 'long_queue' in attempted_queues
+        result, success = trsh.trsh_job_queue(
+            "test_server", "test_job", 24, attempted_queues=["long_queue"]
+        )
+
+        # Assertions
+        self.assertIn("short_queue", result)
+        self.assertNotIn("long_queue", result)
+        self.assertTrue(success)
+
+    @patch('arc.job.trsh.servers', {
+        'test_server': {
+            'cluster_soft': 'PBS',
+            'un': 'test_user',
+            'queue': {},
+        }
+    })
+    @patch('arc.job.trsh.execute_command')
+    def test_query_pbs_trsh_job_queue(self, mock_execute_command):
+        """ Test the trsh_job_queue function with PBS queue """
+        # Setting up the mock responses for execute_command
+        mock_execute_command.side_effect = [
+            (["users group1"], []),
+            (["Queue Memory CPU Time Walltime Node Run Que Lm State",
+              "---------------- ------ -------- -------- ---- ----- ----- ----  -----",
+              "workq -- -- -- -- 0 0 -- D S",
+              "maytal_q -- -- -- -- 7 0 -- E R",
+              # ... add other queue lines as needed
+              ], []),  # Simulates 'qstat -q' command output
+            # Simulate 'qstat -Qf {queue_name}' for each queue
+            (["Queue: maytal_q", "other info", "resources_default.walltime = 48:00:00", "acl_groups = group1"], []),  # For maytal_q
+        ]
+
+        # Call the trsh_job_queue function with test data
+        result, success = trsh.trsh_job_queue("test_server", "test_job", 24, attempted_queues=None)
+
+        # Assertions to verify function behavior
+        self.assertIsNotNone(result)
+        self.assertIn('maytal_q', result.keys())
+        self.assertIn('48:00:00', result.values())
+        self.assertTrue(success)
+
+
+if __name__ == "__main__":
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
