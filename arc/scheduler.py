@@ -784,7 +784,16 @@ class Scheduler(object):
             self.deduce_job_adapter(level=Level(repr=level_of_theory), job_type=job_type)
         args = {'keyword': {}, 'block': {}}
         if trsh:
-            args['trsh'] = {'trsh': trsh}
+            if isinstance(trsh, (str, list)):
+                args['trsh'] = {'trsh': trsh}
+            elif isinstance(trsh, dict) and 'trsh' in args:
+                for key, value in trsh.items():
+                    if isinstance(args['trsh'][key], list) and isinstance(value, list) and key in args['trsh']:
+                        args['trsh'][key].extend(value)
+                    else:
+                        args['trsh'][key] = value
+            else:
+                args['trsh'] = trsh
         if shift:
             args['shift'] = shift
         if scan_trsh:
