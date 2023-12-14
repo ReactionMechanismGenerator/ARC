@@ -241,7 +241,7 @@ def submit_job(path: str,
     job_status, job_id = '', ''
     submit_cmd = submit_cmd or submit_command[cluster_soft]
     submit_filename = submit_filename or submit_filenames[cluster_soft]
-    cmd = f"cd {path}; {submit_cmd} {submit_filename}"
+    cmd = f'cd "{path}"; {submit_cmd} {submit_filename}'
     stdout, stderr = execute_command(cmd)
     if not len(stdout):
         time.sleep(10)
@@ -390,7 +390,7 @@ def change_mode(mode: str,
     if os.path.isfile(path):
         path = os.path.dirname(path)
     recursive = ' -R' if recursive else ''
-    command = [f'cd {path}'] if path else []
+    command = [f'cd "{path}"'] if path else []
     command.append(f'chmod{recursive} {mode} {file_name}')
     execute_command(command=command)
 
