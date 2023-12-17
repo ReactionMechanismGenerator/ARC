@@ -1722,11 +1722,14 @@ def is_xyz_mol_match(mol: 'Molecule',
            return False
     return True
 
-def convert_to_hours(time_str:str):
+def convert_to_hours(time_str:str) -> float:
     """Convert walltime string in format HH:MM:SS to hours.
 
     Args:
         time_str (str): A time string in format HH:MM:SS
+    
+    Returns:
+        float: The time in hours
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600

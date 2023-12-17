@@ -1133,9 +1133,9 @@ def trsh_job_queue(server: str,
         Tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.
     """
 
-    server_queues = servers[server].get('queue', dict())
+    server_queues = servers[server].get('queues', dict())
     cluster_soft = servers[server].get('cluster_soft','Undefined')
-    exclude_queues = servers[server].get('exclude_queues', list())
+    excluded_queues = servers[server].get('excluded_queues', list())
 
     # Check if there are any available queues in server_queues that hasn't been tried yet
     if len(server_queues) >  1:
@@ -1253,8 +1253,8 @@ def trsh_job_queue(server: str,
                         if not any(group in queue_name for group in user_groups) and acl_groups is None:
                             queues.pop(queue_name, None)  # Queue name does not contain any of the user's groups, remove the queue
             # Check if any of the found queues are part of the excluded queues list
-            if exclude_queues:
-                for queue in exclude_queues:
+            if excluded_queues:
+                for queue in excluded_queues:
                     if queue in queues:
                         queues.pop(queue, None)
             if len(queues) == 0:

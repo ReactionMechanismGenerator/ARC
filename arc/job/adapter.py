@@ -494,7 +494,7 @@ class JobAdapter(ABC):
             architecture = '\n#$ -l harpertown' if self.cpu_cores <= 8 else '\n#$ -l magnycours'
 
         # Extract the 'queue' dictionary from servers[self.server], defaulting to an empty dictionary if 'queue' is not a key
-        settings_queues = servers[self.server].get('queue', {})
+        settings_queues = servers[self.server].get('queues', {})
 
         # Get the first item from the 'queue' dictionary if it is not empty, else default to None
         default_queue, default_walltime = next(iter(settings_queues.items())) if settings_queues else (None, None)
@@ -879,6 +879,7 @@ class JobAdapter(ABC):
         """
         Determine the Job's status. Updates self.job_status.
         """
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
         if self.job_status[0] == 'errored':
             return
         self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
@@ -905,8 +906,8 @@ class JobAdapter(ABC):
                                                       'time limit.'
                         self.job_status[1]['line'] = line
                         break
-                    # =>> PBS: job killed: walltime 10837 exceeded limit 10800
-                    elif 'job killed' in line and 'exceeded limit' in line:
+                    elif 'job killed' in line and 'exceeded limit' in line and cluster_soft == 'pbs':
+                        # =>> PBS: job killed: walltime 10837 exceeded limit 10800
                         logger.warning(f'Looks like the job was killed on {self.server} due to time limit. '
                                        f'Got: {line}')
                         time_limit = int(line.split('limit')[1].split()[0])/3600
@@ -1338,15 +1339,17 @@ class JobAdapter(ABC):
             # resubmit job
             self.execute()
 
-    def troubleshoot_queue(self):
-        """
-        Troubleshoot queue errors.
+    def troubleshoot_queue(self) -> bool:
+        """Troubleshoot queue errors.
+
+        Returns:
+            Boolean: Whether to run the job again.
         """
         queues, run_job = trsh_job_queue(job_name=self.job_name,
-                                            server=self.server,
-                                            max_time=self.max_job_time,
-                                            attempted_queues = self.attempted_queues,
-                                            )
+                                         server=self.server,
+                                         max_time=self.max_job_time,
+                                         attempted_queues = self.attempted_queues,
+                                        )
         
         if queues is not None:
             # We use self.max_job_time to determine which queues to troubleshoot.
