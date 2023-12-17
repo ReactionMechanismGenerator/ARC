@@ -77,8 +77,6 @@ class TestMolproAdapter(unittest.TestCase):
             content_1 = f.read()
         job_1_expected_input_file = """***,spc1
 memory,40,m;
-file,1,file1.int    !allocate permanent integral file
-file,2,file2.wfu    !allocate permanent wave-function (dump) file
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
@@ -108,8 +106,6 @@ uccsd(t)-f12;
             content_2 = f.read()
         job_2_expected_input_file = """***,spc1
 memory,40,m;
-file,1,file1.int    !allocate permanent integral file
-file,2,file2.wfu    !allocate permanent wave-function (dump) file
 
 geometry={angstrom;
 O       0.00000000    0.00000000    1.00000000}
