@@ -1133,18 +1133,18 @@ def trsh_job_queue(server: str,
         Tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.
     """
 
-    server_queues = servers[server].get('queue', list())
+    server_queues = servers[server].get('queue', dict())
     cluster_soft = servers[server].get('cluster_soft','Undefined')
     exclude_queues = servers[server].get('exclude_queues', list())
 
     # Check if there are any available queues in server_queues that hasn't been tried yet
     if len(server_queues) >  1:
         # Make sure that the queue is not already in the attempted_queues list
-        server_queues = [
-                queue for queue in server_queues
-                if (attempted_queues is None or queue not in attempted_queues)
-                and convert_to_hours(server_queues[queue]) >= max_time
-        ]
+        server_queues = {
+            queue: walltime for queue, walltime in server_queues.items()
+            if (attempted_queues is None or queue not in attempted_queues)
+            and convert_to_hours(walltime) >= max_time
+        }
         if len(server_queues) == 0:
             logger.error(f' Could not troubleshoot {job_name} on {server} as all available queues have been tried. Will attempt to query the server for additional queues.')
         else:
