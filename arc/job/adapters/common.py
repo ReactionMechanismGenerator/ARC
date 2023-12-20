@@ -114,7 +114,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         times_rerun: int = 0,
                         torsions: Optional[List[List[int]]] = None,
                         tsg: Optional[int] = None,
-                        xyz: Optional[dict] = None,
+                        xyz: Optional[List[dict]] = None,
                         ):
     """
     A common Job adapter initializer function.
@@ -180,18 +180,34 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
     obj.tsg = tsg
     obj.workers = None
-    obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    if not obj.run_multi_species:
+        obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    else:
+        obj.xyz = list()
+        if obj.species is not None:
+            for spc in obj.species:
+                obj.xyz.append(spc.get_xyz() if xyz is None else xyz)
 
     if obj.job_num is None or obj.job_name is None or obj.job_server_name:
         obj._set_job_number()
 
     if obj.species is not None:
-        obj.charge = obj.species[0].charge
-        obj.multiplicity = obj.species[0].multiplicity
-        obj.is_ts = obj.species[0].is_ts
-        obj.species_label = obj.species[0].label
-        if len(obj.species) > 1:
-            obj.species_label += f'_and_{len(obj.species) - 1}_others'
+        if not obj.run_multi_species:
+            obj.charge = obj.species[0].charge
+            obj.multiplicity = obj.species[0].multiplicity
+            obj.is_ts = obj.species[0].is_ts
+            obj.species_label = obj.species[0].label
+            if len(obj.species) > 1:
+                obj.species_label += f'_and_{len(obj.species) - 1}_others'
+        else:
+            obj.charge = list()
+            obj.multiplicity = list()
+            obj.is_ts = obj.species[0].is_ts
+            obj.species_label = list()
+            for spc in obj.species:
+                obj.charge.append(spc.charge) 
+                obj.multiplicity.append(spc.multiplicity)
+                obj.species_label.append(spc.label)
     elif obj.reactions is not None:
         obj.charge = obj.reactions[0].charge
         obj.multiplicity = obj.reactions[0].multiplicity
