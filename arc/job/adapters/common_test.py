@@ -56,12 +56,26 @@ class TestJobCommon(unittest.TestCase):
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
                                     )
+        cls.job_multi = GaussianAdapter(execution_type='incore',
+                                    job_type='scan',
+                                    torsions=[[1, 2, 3, 4]],
+                                    level=Level(method='wb97xd', basis='def2tzvp'),
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=2, multi_species='mltspc1'),
+                                            ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=1, multi_species='mltspc1')],
+                                    testing=True,
+                                    args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
+                                    run_multi_species = True,
+                                    )
 
     def test_is_restricted(self):
         """Test the is_restricted() function"""
         self.assertTrue(common.is_restricted(self.job_1))
         self.assertFalse(common.is_restricted(self.job_2))
         self.assertFalse(common.is_restricted(self.job_3))
+        benchmark_list = [False, True]
+        self.assertEqual(common.is_restricted(self.job_multi),benchmark_list)
 
     def test_check_argument_consistency(self):
         """Test the check_argument_consistency() function"""

@@ -115,7 +115,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         times_rerun: int = 0,
                         torsions: Optional[List[List[int]]] = None,
                         tsg: Optional[int] = None,
-                        xyz: Optional[List[dict]] = None,
+                        xyz: Optional[Union[dict,List[dict]]] = None,
                         ):
     """
     A common Job adapter initializer function.
@@ -251,25 +251,51 @@ def _initialize_adapter(obj: 'JobAdapter',
     check_argument_consistency(obj)
 
 
-def is_restricted(obj) -> bool:
+def is_restricted(obj: 'JobAdapter') -> Union[bool, List[bool]]:
     """
     Check whether a Job Adapter should be executed as restricted or unrestricted.
+    If the job adapter contains a list of species, return True or False per species.
 
     Args:
         obj: The job adapter object.
 
     Returns:
+        Union[bool, List[bool]]: Whether to run as restricted (``True``) or not (``False``).
+    """
+    if not obj.run_multi_species:
+        return is_species_restricted(obj)
+    else:
+        return [is_species_restricted(obj, species) for species in obj.species]
+
+
+def is_species_restricted(obj: 'JobAdapter',
+                          species: Optional['ARCSpecies'] = None,
+                          ) -> bool:
+    """
+    Check whether a species should be executed as restricted or unrestricted.
+
+    Args:
+        obj: The job adapter object.
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
-    if (obj.multiplicity > 1 and obj.level.method_type != 'composite') \
-            or (obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1):
+
+    if obj.level.method_type in ['force_field','composite','semiempirical']:
+        return True
+    
+    multiplicity = obj.multiplicity if species is None else species.multiplicity
+    number_of_radicals = obj.species[0].number_of_radicals if species is None else species.number_of_radicals
+    species_label = obj.species[0].label if species is None else species.label
+    if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
         # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
         # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
         # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
         # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {obj.species_label} which has '
-                        f'{obj.species[0].number_of_radicals} radicals and multiplicity {obj.multiplicity}.')
+        if number_of_radicals is not None and number_of_radicals > 1:
+            logger.info(f'Using an unrestricted method for species {species_label} which has '
+                        f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
         return False
     return True
 
