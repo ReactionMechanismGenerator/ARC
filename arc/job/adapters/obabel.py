@@ -64,6 +64,7 @@ class OpenbabelAdapter(JobAdapter):
         job_status (list, optional): The job's server and ESS statuses.
         level (Level, optional): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
+        run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
         reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str): The server to run on.
@@ -105,6 +106,7 @@ class OpenbabelAdapter(JobAdapter):
                  level: Optional[Level] = None,
                  max_job_time: Optional[float] = None,
                  reactions: Optional[List['ARCReaction']] = None,
+                 run_multi_species: bool = False,
                  rotor_index: Optional[int] = None,
                  server: Optional[str] = None,
                  server_nodes: Optional[list] = None,
@@ -155,6 +157,7 @@ class OpenbabelAdapter(JobAdapter):
                             job_status=job_status,
                             level=level,
                             max_job_time=max_job_time,
+                            run_multi_species=run_multi_species,
                             reactions=reactions,
                             rotor_index=rotor_index,
                             server=server,
