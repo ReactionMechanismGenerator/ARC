@@ -292,7 +292,8 @@ class GaussianAdapter(JobAdapter):
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
                     keywords.extend(['tight', 'maxstep=5'])
-            input_dict['job_type_1'] = f"opt=({', '.join(key for key in keywords)})"
+            input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
+                else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
             input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
