@@ -51,7 +51,7 @@ input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary
 ${job_type_2}
 %%maxcore ${memory}
 %%pal # job parallelization settings
-nprocs ${cpus}
+nprocs 1
 end
 %%scf # recommended SCF settings
 MaxIter 500
