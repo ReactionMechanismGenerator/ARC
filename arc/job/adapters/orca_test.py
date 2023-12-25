@@ -91,7 +91,7 @@ class TestOrcaAdapter(unittest.TestCase):
 
 %maxcore 1792
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500
@@ -118,7 +118,7 @@ H      -0.53338088   -0.77135867   -0.54806440
 
 %maxcore 1792
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500
@@ -153,7 +153,7 @@ H      -0.53338088   -0.77135867   -0.54806440
 
 %maxcore 1792
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500
