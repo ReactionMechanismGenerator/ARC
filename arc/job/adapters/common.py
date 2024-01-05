@@ -105,6 +105,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         job_status: Optional[List[Union[dict, str]]] = None,
                         level: Optional[Level] = None,
                         max_job_time: Optional[float] = None,
+                        run_multi_species: bool = False,
                         reactions: Optional[List['ARCReaction']] = None,
                         rotor_index: Optional[int] = None,
                         server: Optional[str] = None,
@@ -164,6 +165,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
     obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level
     obj.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
+    obj.run_multi_species = run_multi_species
     obj.number_of_processes = 0
     obj.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
     obj.remote_path = None
