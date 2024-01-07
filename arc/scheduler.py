@@ -422,10 +422,7 @@ class Scheduler(object):
                     # conformers weren't asked for, assign initial_xyz
                     species.initial_xyz = species.conformers[0]
                 if species.label not in self.running_jobs:
-                    if not species.multi_species:
-                        self.running_jobs[species.label] = list()
-                    else:
-                        self.running_jobs[species.multi_species] = list()
+                    self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
@@ -594,9 +591,21 @@ class Scheduler(object):
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
+                                multi_species = any(spc.multi_species == label for spc in self.species_list)
+                                if multi_species:
+                                    self.multi_species_path_dict = plotter.make_multi_species_output_file(species_list=self.species_list,
+                                                                                                          label=label, 
+                                                                                                          path=job.local_path_to_xyz or job.local_path_to_output_file)
                                 success = self.parse_opt_geo(label=label, job=job)
                                 if success:
+                                    if not self.job_types['sp']:
+                                        self.parse_opt_e_elect(label=label, job=job)
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
+                                if multi_species:
+                                    plotter.delete_multi_species_output_file(species_list=self.species_list,
+                                                                             label=label, 
+                                                                             multi_species_path_dict=self.multi_species_path_dict
+                                                                             )
                             self.timer = False
                             break
                     elif 'freq' in job_name:
@@ -1438,12 +1447,12 @@ class Scheduler(object):
             return None
 
         # Spawn IRC if requested and if relevant.
-        if label in self.output and self.job_types['irc'] and self.species_dict[label].is_ts:
+        if label in self.output.keys() and self.job_types['irc'] and self.species_dict[label].is_ts:
             self.run_irc_job(label=label, irc_direction='forward')
             self.run_irc_job(label=label, irc_direction='reverse')
 
         # Spawn freq (or check it if this is a composite job) for polyatomic molecules.
-        if label in self.output and self.species_dict[label].number_of_atoms > 1:
+        if label in self.output.keys() and self.species_dict[label].number_of_atoms > 1:
             if 'freq' not in job_name and self.job_types['freq']:
                 # This is either an opt or a composite job (not an optfreq job), spawn freq.
                 self.run_freq_job(label)
@@ -1457,7 +1466,7 @@ class Scheduler(object):
 
         # Perceive the Molecule from xyz.
         # Useful for TS species where xyz might not be given at the outset to perceive a .mol attribute.
-        if label in self.output and self.species_dict[label].mol is None:
+        if label in self.output.keys() and self.species_dict[label].mol is None:
             self.species_dict[label].mol_from_xyz()
 
         # Spawn scan jobs.
@@ -1476,11 +1485,11 @@ class Scheduler(object):
             self.run_orbitals_job(label)
 
         # Spawn onedmin job.
-        if label in self.output and self.job_types['onedmin'] and not self.species_dict[label].is_ts:
+        if label in self.output.keys() and self.job_types['onedmin'] and not self.species_dict[label].is_ts:
             self.run_onedmin_job(label)
 
         # Spawn bde jobs.
-        if label in self.output and self.job_types['bde'] and self.species_dict[label].bdes is not None:
+        if label in self.output.keys() and self.job_types['bde'] and self.species_dict[label].bdes is not None:
             bde_species_list = self.species_dict[label].scissors()
             for bde_species in bde_species_list:
                 if bde_species.label != 'H':
@@ -1504,7 +1513,7 @@ class Scheduler(object):
                                             if species.number_of_atoms > 1])
 
         # Check whether any reaction was waiting for this species to spawn TS search jobs.
-        if label in self.output and not self.species_dict[label].is_ts:
+        if label in self.output.keys() and not self.species_dict[label].is_ts:
             self.spawn_ts_jobs()
 
     def spawn_ts_jobs(self):
@@ -2246,6 +2255,30 @@ class Scheduler(object):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
+    def parse_opt_e_elect(self,
+                          label: str,
+                          job: 'JobAdapter',
+                          ) -> bool:
+        """
+        Parse electronic energy for 'opt' or 'optfreq' job if it converged successfully.
+
+        Args:
+            label (str): The species label.
+            job (JobAdapter): The optimization job object.
+        """
+        multi_species = any(spc.multi_species == label for spc in self.species_list)
+
+        if multi_species:
+            for spc in self.species_list:
+                if spc.multi_species == label:
+                    self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
+                    self.save_e_elect(spc.label)
+        else:
+            e_elect_value = parser.parse_e_elect(path=job.local_path_to_xyz or job.local_path_to_output_file) \
+                if label in self.species_dict.keys() else dict()
+            self.species_dict[label].e_elect = e_elect_value
+            self.save_e_elect(label)
+
     def parse_opt_geo(self,
                       label: str,
                       job: 'JobAdapter',
@@ -2264,15 +2297,18 @@ class Scheduler(object):
             bool: Whether the job converged successfully.
         """
         success = False
+        multi_species_opt_xyzs = dict()
         logger.debug(f'parsing opt geo for {job.job_name}')
         if job.job_status[1]['status'] == 'done':
             multi_species = any(spc.multi_species == label for spc in self.species_list)
-            species_labels = [spc.label for spc in self.species_list if spc.multi_species == label]
+            species_labels = [spc.label for spc in self.species_list if spc.multi_species == label]\
+                if multi_species else list()
             opt_xyz = parser.parse_xyz_from_file(path=job.local_path_to_xyz or job.local_path_to_output_file) \
                 if label in self.species_dict.keys() else dict()
-            opt_xyz_dict = parser.parse_multi_species_xyz_from_file(path=job.local_path_to_xyz or job.local_path_to_output_file,
-                                                                    species_name_list=species_labels) \
-                if multi_species else list()
+            if multi_species:
+                for spc in self.species_list:
+                    if spc.multi_species == label:
+                        multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
 
             if not job.fine and self.job_types['fine'] \
                     and not job.level.method_type == 'wavefunction' \
@@ -2282,7 +2318,7 @@ class Scheduler(object):
                 if multi_species:
                     for spc in self.species_list:
                         if spc.multi_species == label:
-                            spc.initial_xyz = opt_xyz_dict[spc.label]
+                            spc.initial_xyz = multi_species_opt_xyzs[spc.label]
                 else:
                     self.species_dict[label].initial_xyz = opt_xyz
                 self.run_job(label=species_labels if multi_species else label,
@@ -2296,8 +2332,7 @@ class Scheduler(object):
                 if multi_species:
                     for spc in self.species_list:
                         if spc.multi_species == label:
-                            # spc.final_xyz = opt_xyz_dict[spc.label]
-                            self.species_dict[spc.label].final_xyz = opt_xyz_dict[spc.label]
+                            self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                             self.post_opt_geo_work(spc.label, job)
                 else:
                     self.species_dict[label].final_xyz = opt_xyz
@@ -3552,8 +3587,8 @@ class Scheduler(object):
                         + [self.job_dict[spc.label]['tsg'][get_i_from_job_name(job_name)].as_dict()
                            for job_name in self.running_jobs[spc.label] if 'tsg' in job_name]
             logger.debug(f'Dumping restart dictionary:\n{self.restart_dict}')
-            save_yaml_file(path=self.restart_path, content=self.restart_dict)
-
+            save_yaml_file(path=self.restart_path, content=self.restart_dict)    
+    
     def make_reaction_labels_info_file(self):
         """
         A helper function for creating the `reactions labels.info` file.
