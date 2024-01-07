@@ -1547,3 +1547,74 @@ def clean_scan_results(results: dict) -> dict:
         # filter high values
         results_ = {key: val for key, val in results_.items() if val['energy'] < 0.5 * max_val}
     return results_
+
+
+def make_multi_species_output_file(species_list: List['ARCSpecies'],
+                                   label: str,
+                                   path: str,
+                                   software: Optional[str] = 'gaussian'
+                                   ) -> dict:
+        """
+        Slice the big cluster output file down to individual multi species output file.
+        
+        Args:
+            species_list: The species list to be processed.
+            label (str): The multi_species label.
+            path: The path to the job object.
+            software: The software used for the calculation.
+
+        Returns:
+            dict: path to each of the individual species.
+        """
+
+        if not os.path.isfile(path):
+            raise InputError(f'Could not find file {path}')
+
+        output_folder = os.path.dirname(path)
+        end_keywords = "Normal termination of Gaussian "
+        species_label_list = [spc.label for spc in species_list if spc.multi_species == label]
+        output_file_path_dict = dict()
+        for spc_label in species_label_list:
+            with open(path, 'r') as input_file:
+                # Split the content based on lines containing start and end keywords
+                sections = []
+                current_section = []
+                in_section = False
+                line = input_file.readline()
+                while line != '':
+                    if spc_label == line.strip():
+                        in_section = True
+                        current_section.append(line)
+                    elif in_section and end_keywords in line:
+                        current_section.append(line)
+                        sections.append(current_section)
+                        current_section = []
+                        in_section = False
+                    elif in_section:
+                        current_section.append(line)
+                    line = input_file.readline()
+                # Write sections to separate files
+                output_file_path = f"{output_folder}/{spc_label}.log"
+                with open(output_file_path, 'w') as output_file:
+                    for inner_list in sections:
+                        line = ' '.join(map(str, inner_list))
+                        output_file.write(software + '\n' + line + '\n')
+                output_file_path_dict[spc_label] = output_file_path   
+        return output_file_path_dict
+
+
+def delete_multi_species_output_file(species_list: List['ARCSpecies'],
+                                     label: str,
+                                     multi_species_path_dict: dict,
+                                     ):
+    """
+    Delete all the individual multi species output file sliced fromthe the big cluster output file.
+    
+    Args:
+        species_list: The species list to be processed.
+        label (str): The multi_species label.
+        multi_species_path: The dict of all the paths to the relevant species.
+    """
+    species_label_list = [spc.label for spc in species_list if spc.multi_species == label]
+    for spc_label in species_label_list:
+        os.remove(multi_species_path_dict[spc_label])
