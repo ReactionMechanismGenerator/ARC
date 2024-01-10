@@ -61,6 +61,7 @@ def job_factory(job_adapter: str,
                 job_status: Optional[List[Union[dict, str]]] = None,
                 level: Optional['Level'] = None,
                 max_job_time: Optional[float] = None,
+                run_multi_species: bool = False,
                 reactions: Optional[List['ARCReaction']] = None,
                 rotor_index: Optional[int] = None,
                 server: Optional[str] = None,
@@ -123,6 +124,7 @@ def job_factory(job_adapter: str,
                                      line from the ESS log file are given as well.
         level (Level): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
+        run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
         reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str, optional): The server's name.
@@ -197,6 +199,7 @@ def job_factory(job_adapter: str,
                                                               job_status=job_status,
                                                               level=level,
                                                               max_job_time=max_job_time,
+                                                              run_multi_species=run_multi_species,
                                                               reactions=reactions,
                                                               rotor_index=rotor_index,
                                                               server=server,
