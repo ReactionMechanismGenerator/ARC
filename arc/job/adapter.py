@@ -1356,7 +1356,10 @@ class JobAdapter(ABC):
             filtered_queues = {queue_name: walltime for queue_name, walltime in queues.items() if convert_to_hours(walltime) >= self.max_job_time}
 
             # Now we sort the queues by walltime, and choose the one with the longest walltime.
-            sorted_queues = sorted(filtered_queues.items(), key=lambda x: convert_to_hours(x[1]), reverse=True)
+            #sorted_queues = sorted(filtered_queues.items(), key=lambda x: convert_to_hours(x[1]), reverse=True)
+            # Sort queue time from shortest to longest
+            sorted_queues = sorted(filtered_queues.items(), key=lambda x: convert_to_hours(x[1]), reverse=False)
+
             self.queue = sorted_queues[0][0]
             if self.queue not in self.attempted_queues:
                 self.attempted_queues.append(self.queue)
