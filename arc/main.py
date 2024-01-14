@@ -351,11 +351,13 @@ class ARC(object):
                     raise InputError(f'Missing label on RMG Species object {spc}')
                 indices_to_pop.append(i)
                 is_ts = spc.label[:2] == 'TS' and all(char.isdigit() for char in spc.label[2:])
-                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc)
+                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc, compute_thermo=self.compute_thermo,)
                 converted_species.append(arc_spc)
             elif isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
+                if not self.compute_thermo:
+                    spc['compute_thermo'] = False
                 converted_species.append(ARCSpecies(species_dict=spc))
             elif not isinstance(spc, ARCSpecies):
                 raise ValueError(f'A species should either be an RMG Species object, an ARCSpecies object, '
@@ -748,7 +750,7 @@ class ARC(object):
             t0 = time.time()
             logger.info('\n\n\n ***** Running ESS diagnostics: *****\n')
 
-        for software in ['gaussian', 'molpro', 'onedmin', 'orca', 'qchem', 'terachem']:
+        for software in ['gaussian', 'molpro', 'onedmin', 'orca', 'qchem', 'terachem', 'pyscf']:
             self.ess_settings[software] = list()
 
         # first look for ESS locally (e.g., when running ARC itself on a server)

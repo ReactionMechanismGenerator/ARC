@@ -1,0 +1,2549 @@
+#INFO: **** input file is /home/calvin/Code/ARC/arc/job/adapters/scripts/pyscf_script.py ****
+# https://github.com/nmardirossian/PySCF_Tutorial/blob/master/user_guide.ipynb
+import logging
+from pyscf import gto, scf, dft
+import sys
+import pandas
+import yaml
+import os
+import argparse
+pandas.set_option('display.max_columns', 500)
+
+def parse_command_line_arguments():
+    """
+    Parse command-line arguments using argparse.
+    """
+    parser = argparse.ArgumentParser(description='Run PySCF script with a YAML configuration file.')
+    parser.add_argument('yml_path', type=str, help='Path to the YAML input file.')
+    args = parser.parse_args()
+    return args
+
+class PYSCFScript_VB:
+    
+    def __init__(self, input_file, output_file) -> None:
+        self.input_file = input_file
+        self.output_file = output_file
+        self.input_dict = self.read_yaml_file()
+
+        # Method
+        self.method = self.get_method()
+        # Molecule
+        self.molecule = self.get_molecule()
+        # Basis
+        self.basis = self.get_basis()
+        # Charge
+        self.charge = self.get_charge()
+        # Spin
+        self.spin = self.get_spin()
+        # Unit
+        self.unit = self.get_unit()
+        # Restricted
+        self.restricted = self.get_restricted()
+        # Conv tol
+        self.conv_tol = self.get_conv_tol()
+        # Conv Tol Grad
+        self.conv_tol_grad = self.get_conv_tol_grad()
+        # Direct scf tol
+        self.direct_scf_tol = self.get_direct_scf_tol()
+        # Init guess
+        self.init_guess = self.get_init_guess()
+        # Level Shift
+        self.level_shift = self.get_level_shift()
+        # Max cycles
+        self.max_cycle = self.get_max_cycle()
+        # Max memory
+        self.max_memory = self.get_max_memory()
+        # XC
+        self.xc = self.get_xc()
+        # NLC
+        self.nlc = self.get_nlc()
+        # xc grid
+        self.xc_grid = self.get_xc_grid()
+        # nlc grid
+        self.nlc_grid = self.get_nlc_grid()
+        # small_rho_cutoff
+        self.small_rho_cutoff = self.get_small_rho_cutoff()
+        # atomic radii
+        self.atomic_radii = self.get_atomic_radii()
+        # Becke scheme
+        self.becke_scheme = self.get_becke_scheme()
+        # Prune
+        self.prune = self.get_prune()
+        # Radi method
+        self.radi_method = self.get_radi_method()
+        # Radii Adjust
+        self.radii_adjust = self.get_radii_adjust()
+        # Algorithm
+        self.algorithm = self.get_algorithm()
+        # Datapath
+        self.datapath = self.get_datapath()
+        # getdict
+        self.getdict = self.get_getdict()
+        # lin depth
+        self.lin_depth = self.get_lin_depth()
+        # prop
+        self.prop = self.get_prop()
+        # scf type
+        self.scf_type = self.get_scf_type()
+        # Stable
+        self.stable = self.get_stable()
+        # Stable cyc
+        self.stable_cyc = self.get_stable_cyc()
+        # verbose
+        self.verbose = self.get_verbose()
+        # job type
+        self.job_type = self.get_job_type()
+        # is ts
+        self.is_ts = self.get_ts_status()
+
+        self.mol_eq = None
+    def read_yaml_file(self):
+        # Check if input file is a YAML file
+        input_dict = None  # Initialize input_dict to ensure it's always defined
+
+        try:
+            if isinstance(self.input_file, str) and self.input_file.endswith('.yml'):
+                with open(self.input_file, 'r') as f:
+                    input_dict = yaml.load(f, Loader=yaml.FullLoader)
+            elif isinstance(self.input_file, dict):
+                input_dict = self.input_file
+        except FileNotFoundError:
+            raise FileNotFoundError('Could not find input file.')
+
+        # Check if input_dict was successfully populated
+        if input_dict is None:
+            raise ValueError("Input file is not valid or not a .yml file")
+
+        return input_dict
+    
+    def get_method(self):
+        # Get method in input dict if exists
+        method = self.input_dict.get('xc_func', None)
+        return method
+    
+    def get_molecule(self):
+        # Get molecule in input dict if exists
+        molecule = self.input_dict['xyz']
+        return molecule
+    
+    def get_basis(self):
+        # Get basis in input dict if exists
+        basis = self.input_dict.get('basis', None)
+        return basis
+    
+    def get_charge(self):
+        # Get charge in input dict if exists
+        charge = self.input_dict.get('charge', 0)
+        return charge
+    
+    def get_spin(self):
+        # Get spin in input dict if exists
+        spin = self.input_dict.get('spin', 0)
+        return spin
+    
+    def get_unit(self):
+        # Get unit in input dict if exists
+        # TODO: Should check the validity of the unit
+        unit = self.input_dict.get('unit', 'ANG')
+        return unit
+    
+    def get_restricted(self):
+        # Get restricted in input dict if exists
+        restricted = self.input_dict.get('restricted', True)
+        return restricted
+    
+    def get_conv_tol(self):
+        # Get conv_tol in input dict if exists
+        conv_tol = self.input_dict.get('conv_tol', 1e-12)
+        return conv_tol
+    
+    def get_conv_tol_grad(self):
+        # Get conv_tol_grad in input dict if exists
+        conv_tol_grad = self.input_dict.get('conv_tol_grad', 1e-8)
+        return conv_tol_grad
+    
+    def get_direct_scf_tol(self):
+        # Get direct_scf_tol in input dict if exists
+        direct_scf_tol = self.input_dict.get('direct_scf_tol', 1e-13)
+        return direct_scf_tol
+    
+    def get_init_guess(self):
+        # Get init_guess in input dict if exists
+        init_guess = self.input_dict.get('init_guess', 'minao')
+        return init_guess
+    
+    def get_level_shift(self):
+        # Get level_shift in input dict if exists
+        level_shift = self.input_dict.get('level_shift', 0.0)
+        return level_shift
+    
+    def get_max_cycle(self):
+        # Get max_cycle in input dict if exists
+        max_cycle = self.input_dict.get('max_cycle', 100)
+        return max_cycle
+    
+    def get_max_memory(self):
+        # Get max_memory in input dict if exists
+        max_memory = self.input_dict.get('max_memory', 8000)
+        return max_memory
+    
+    def get_xc(self):
+        # Get xc in input dict if exists
+        xc = self.input_dict.get('xc', None)
+        return xc
+    
+    def get_nlc(self):
+        # Get nlc in input dict if exists
+        nlc = self.input_dict.get('nlc', None)
+        return nlc
+    
+    def get_xc_grid(self):
+        # Get xc_grid in input dict if exists
+        xc_grid = self.input_dict.get('xc_grid', 3)
+        return xc_grid
+    
+    def get_nlc_grid(self):
+        # Get nlc_grid in input dict if exists
+        nlc_grid = self.input_dict.get('nlc_grid', 3)
+        return nlc_grid
+    
+    def get_small_rho_cutoff(self):
+        # Get small_rho_cutoff in input dict if exists
+        small_rho_cutoff = self.input_dict.get('small_rho_cutoff', 1e-7)
+        return small_rho_cutoff
+    
+    def get_atomic_radii(self):
+        # Get atomic_radii in input dict if exists
+        atomic_radii = self.input_dict.get('atomic_radii', 'BRAGG')
+        atomic_radii.upper()
+        return atomic_radii
+    
+    def get_becke_scheme(self):
+        # Get becke_scheme in input dict if exists
+        becke_scheme = self.input_dict.get('becke_scheme', 'BECKE')
+        becke_scheme.upper()
+        return becke_scheme
+    
+    def get_prune(self):
+        # Get prune in input dict if exists
+        # scheme to reduce number of grids, can be one of
+        # | gen_grid.nwchem_prune (default) | gen_grid.sg1_prune | gen_grid.treutler_prune | None : to switch off grid pruning
+        prune = self.input_dict.get('prune', 'None')
+        if isinstance(prune, str):
+            prune = prune.upper()
+        return prune
+    
+    def get_radi_method(self):
+        # Get radi_method in input dict if exists
+        radi_method = self.input_dict.get('radi_method', 'TREUTLER_AHLRICHS')
+        radi_method.upper()
+        return radi_method
+    
+    def get_radii_adjust(self):
+        # Get radii_adjust in input dict if exists
+        radii_adjust = self.input_dict.get('radii_adjust', 'TREUTLER')
+        if isinstance(radii_adjust, str):
+            radii_adjust.upper()
+        return radii_adjust
+    
+    def get_algorithm(self):
+        # Get algorithm in input dict if exists
+        algorithm = self.input_dict.get('algorithm', 'DIIS')
+        algorithm.upper()
+        return algorithm
+    
+    def get_datapath(self):
+        # Get datapath in input dict if exists
+        datapath = self.input_dict.get('datapath', None)
+        return datapath
+    
+    def get_getdict(self):
+        # Get getdict in input dict if exists
+        getdict = self.input_dict.get('getdict', False)
+        return getdict
+    
+    def get_lin_depth(self):
+        # Get lin_depth in input dict if exists
+        lin_depth = self.input_dict.get('lin_depth', 1e-8)
+        return lin_depth
+    
+    def get_prop(self):
+        # Get prop in input dict if exists
+        prop = self.input_dict.get('prop', False)
+        return prop
+    
+    def get_scf_type(self):
+        # Get scf_type in input dict if exists
+        scf_type = self.input_dict.get('scf_type', None)
+        if scf_type:
+            scf_type.upper()
+        return scf_type
+    
+    def get_stable(self):
+        # Get stable in input dict if exists
+        stable = self.input_dict.get('stable', False)
+        return stable
+    
+    def get_stable_cyc(self):
+        # Get stable_cyc in input dict if exists
+        stable_cyc = self.input_dict.get('stable_cyc', 4)
+        return stable_cyc
+    
+    def get_verbose(self):
+        # Get verbose in input dict if exists
+        verbose = self.input_dict.get('verbose', 4)
+        return verbose
+    
+    def get_job_type(self):
+        job_type = self.input_dict['job_type']
+        return job_type
+    
+    def get_ts_status(self):
+        is_ts = self.input_dict['is_ts']
+        if isinstance(is_ts, str):
+            if is_ts.upper() == 'TRUE':
+                is_ts = True
+            elif is_ts.upper() == 'FALSE':
+                is_ts = False
+            else:
+                raise ValueError('Invalid is_ts.')
+        return is_ts
+    
+    def read_molecule(self, path):
+
+        charge = spin = 0
+        with open(path, 'r') as myfile:
+            output = myfile.read()
+            output = output.lstrip()
+            output = output.rstrip()
+            output = output.split('\n')
+
+        try:
+            int(output[0])
+        except ValueError:
+            try:
+                charge = int(output[0].split(' ')[0])
+                spin = int(output[0].split(' ')[1]) - 1
+            except ValueError:
+                molecule = output
+            else:
+                molecule = '\n'.join(output[1:])
+        else:
+            if int(output[0]) == len(output) - 2:
+                molecule = '\n'.join(output[2:])
+                try:
+                    charge = int(output[1].split(' ')[0])
+                    spin = int(output[1].split(' ')[1])-1
+                except ValueError:
+                    pass
+            else:
+                print ("THIS IS NOT A VALID XYZ FILE")
+
+        return (molecule, charge, spin)
+
+    def convert_to_custom_xyz(self, atoms_and_coordinates):
+        xyz_data = []
+        xyz_data.append('\n')
+        for index, coordinates in enumerate(atoms_and_coordinates):
+            atom_line = f"{self.mol_eq.atom_symbol(index):<2}      {coordinates[0]: .8f}   {coordinates[1]: .8f}   {coordinates[2]: .8f}"
+            xyz_data.append(atom_line)
+        
+        return '\n'.join(xyz_data)
+    
+    def run(self):
+        
+        mol = gto.Mole()
+        
+        # Set mol attributes
+        try:
+            gto.Mole(atom=self.molecule, charge=self.charge, spin =self.spin).build()
+        except KeyError:
+            # Probable not relevant
+             (mol.atom, charge, spin) = self.read_molecule(self.datapath + self.molecule)
+        else:
+            mol.atom = self.molecule
+        mol.basis = self.basis
+        mol.charge = self.charge
+        mol.spin = self.spin
+        mol.unit = self.unit
+        mol.verbose = self.verbose
+        mol.output = self.output_file
+        mol.build()
+        
+        # Check method for density functional
+        DFT = False
+        if self.method != 'HF':
+            try:
+                # https://pyscf.org/_modules/pyscf/dft/libxc.html
+                dft.libxc.parse_xc(self.method)
+            except (ValueError, KeyError):
+                pass
+            else:
+                # Kohn-Sham (KS)
+                self.xc = self.method
+                self.method = 'KS'
+                
+        # Check if restricted
+        if not self.restricted and self.method in ['HF', 'KS', 'DFT'] and self.scf_type is None:
+            self.scf_type = 'R'
+        else:
+            self.scf_type = 'U'
+            
+        # Create HF/KS/DFT object
+        if self.method in ['RHF', 'ROHF'] or (self.method == 'HF' and self.scf_type in ['R', 'RO']):
+            mf = scf.RHF(mol)
+            self.scf_type = 'R'
+        elif self.method == 'UHF' or (self.method == 'HF' and self.scf_type == 'U'):
+            mf = scf.UHF(mol)
+            self.scf_type = 'U'
+        elif self.method in ['RKS', 'ROKS', 'RDFT', 'RODFT'] or (self.method in ['KS', 'DFT'] and self.scf_type in ['R', 'RO']):
+            mf = dft.RKS(mol)
+            self.scf_type = 'R'
+            DFT = True
+        elif self.method in ['UKS', 'UDFT'] or (self.method in ['KS', 'DFT'] and self.scf_type == 'U'):
+            mf = dft.UKS(mol)
+            self.scf_type = 'U'
+            DFT = True
+        else:
+            raise ValueError('Invalid method.')
+        
+        # Set HF attributes
+        mf.conv_check = False
+        mf.conv_tol = self.conv_tol
+        mf.conv_tol_grad = self.conv_tol_grad
+        mf.direct_scf_tol = self.direct_scf_tol
+        mf.init_guess = self.init_guess
+        mf.level_shift = self.level_shift
+        mf.max_cycle = self.max_cycle
+        mf.max_memory = self.max_memory
+        mf.verbose = self.verbose
+        
+        # Set KS attributes
+        if DFT:
+            mf.xc = self.xc
+            if mf.xc is None:
+                raise ValueError('No XC functional specified.')
+            mf.nlc = self.nlc
+            
+            if isinstance(self.xc_grid, int):
+                mf.grids.level = self.xc_grid
+            elif isinstance(self.xc_grid, tuple) or isinstance(self.xc_grid, dict):
+                mf.grids.atom_grid = self.xc_grid
+            else:
+                raise ValueError('Invalid xc_grid.')
+            
+            if isinstance(self.nlc_grid, int):
+                mf.nlcgrids.level = self.nlc_grid
+            elif isinstance(self.nlc_grid, tuple) or isinstance(self.nlc_grid, dict):
+                mf.nlcgrids.atom_grid = self.nlc_grid
+            else:
+                raise ValueError('Invalid nlc_grid.')
+            
+            if self.atomic_radii == 'BRAGG':
+                mf.grids.radi_method = dft.radi.BRAGG_RADII
+                mf.nlcgrids.radi_method = dft.radi.BRAGG_RADII
+            elif self.atomic_radii == 'COVALENT':
+                mf.grids.radi_method = dft.radi.COVALENT_RADII
+                mf.nlcgrids.radi_method = dft.radi.COVALENT_RADII
+            else:
+                raise ValueError('Invalid atomic_radii.')
+            
+            if self.becke_scheme == 'BECKE':
+                mf.grids.becke_scheme = dft.gen_grid.original_becke
+                mf.nlcgrids.becke_scheme = dft.gen_grid.original_becke
+            elif self.becke_scheme == 'STRATMANN':
+                mf.grids.becke_scheme = dft.gen_grid.stratmann
+                mf.nlcgrids.becke_scheme = dft.gen_grid.stratmann
+            else:
+                raise ValueError('Invalid becke_scheme.')
+            
+            if self.prune == 'NWCHEM':
+                mf.grids.prune = dft.gen_grid.nwchem_prune
+                mf.nlcgrids.prune = dft.gen_grid.nwchem_prune
+            elif self.prune == 'SG1':
+                mf.grids.prune = dft.gen_grid.sg1_prune
+                mf.nlcgrids.prune = dft.gen_grid.sg1_prune
+            elif self.prune == 'TREUTLER':
+                mf.grids.prune = dft.gen_grid.treutler_prune
+                mf.nlcgrids.prune = dft.gen_grid.treutler_prune
+            elif self.prune == 'NONE' or self.prune is None:
+                mf.grids.prune = None
+                mf.nlcgrids.prune = None
+            else:
+                raise ValueError('Invalid prune.')
+            
+            if self.radi_method in ['TREUTLER_AHLRICHS', 'TREUTLER', 'AHLRICHS']:
+                mf.grids.radi_method = dft.radi.treutler_ahlrichs
+                mf.nlcgrids.radi_method = dft.radi.treutler_ahlrichs
+            elif self.radi_method == 'DELLEY':
+                mf.grids.radi_method = dft.radi.delley
+                mf.nlcgrids.radi_method = dft.radi.delley
+            elif self.radi_method in ['MURA_KNOWLES', 'MURA', 'KNOWLES']:
+                mf.grids.radi_method = dft.radi.mura_knowles
+                mf.nlcgrids.radi_method = dft.radi.mura_knowles
+            elif self.radi_method in ['GAUSS_CHEBYSHEV', 'GAUSS', 'CHEBYSHEV']:
+                mf.grids.radi_method = dft.radi.gauss_chebyshev
+                mf.nlcgrids.radi_method = dft.radi.gauss_chebyshev
+            else:
+                raise ValueError('Invalid radi_method.')
+            
+            if self.radii_adjust == 'TREUTLER':
+                mf.grids.radii_adjust = dft.radi.treutler_atomic_radii_adjust
+                mf.nlcgrids.radii_adjust = dft.radi.treutler_atomic_radii_adjust
+            elif self.radii_adjust == 'BECKE':
+                mf.grids.radii_adjust = dft.radi.becke_atomic_radii_adjust
+                mf.nlcgrids.radii_adjust = dft.radi.becke_atomic_radii_adjust
+            elif self.radii_adjust == 'NONE' or self.radii_adjust is None:
+                mf.grids.radii_adjust = None
+                mf.nlcgrids.radii_adjust = None
+            else:
+                raise ValueError('Invalid radii_adjust.')
+            
+            mf.small_rho_cutoff = self.small_rho_cutoff
+        
+        # Select Optimizer
+        if self.algorithm == 'DIIS':
+            mf.diis = True
+        elif self.algorithm == 'EDIIS':
+            mf.diis = scf.diis.EDIIS()
+        elif self.algorithm == 'ADIIS':
+            mf.diis = scf.diis.ADIIS()
+        elif self.algorithm == 'NEWTON':
+            mf = mf.newton()
+        else:
+            raise ValueError('Invalid algorithm.')
+        
+        # Running the Kernel
+        
+                # TODO: Check if TS
+        if self.is_ts and self.job_type == 'opt':
+            from pyscf.qsdopt.qsd_optimizer import QSD
+            #optimizer = QSD(mf, stationary_point='TS')
+
+            # hess_update_freq: Frequency for numerical reevaluation of hessian. = 0 evaluates the numerical hessian in the first iteration and is updated with an BFGS rule, unless approaching a trap region, where it is reevaluated. (Default: 0)
+
+            # numhess_method: Method for evaluating numerical hessian. Forward and central differences are available with “forward” and “central”, respectively. (Default: “forward”)
+
+            # max_iter: Maximum number of optimization steps. (Default: 100)
+
+            # step: Maximum norm between two optimization steps. (Default: 0.1)
+
+            # hmin: Minimum distance between current geometry and stationary point of the quadratic form to consider convergence reached. (Default: 1e-6)
+
+            # gthres: Gradient norm to consider convergence. (Default: 1e-5)
+
+            #self.mol_eq = optimizer.kernel(hess_update_freq=0, numhess_method='forward', max_iter=100, step=0.1, hmin=1e-6, gthres=1e-5)
+            
+            ####
+            # The initial and maximum trust radii may be adjusted by passing (for example) --trust 0.02 --tmax 0.06 on the command line,
+            # which is double the default values of 0.01 and 0.03 respectively. Increasing these parameters beyond 0.03 and 0.10 respectively is not recommended.
+            prefix = os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_opt_ts')
+
+            # Additional options for geomeTRIC
+            geometric_options = {
+                'prefix': prefix,
+                'transition': True, 'trust': 0.02, 'tmax': 0.06}
+            self.mol_eq = mf.Gradients().optimizer(solver='geomeTRIC').kernel(geometric_options)
+        
+        if self.job_type == 'opt' and not self.is_ts:
+            from pyscf.geomopt.geometric_solver import optimize
+            prefix = os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_opt')
+            conv_params = { # These are the default settings
+                                'prefix': prefix,
+                                'convergence_energy': 1e-6,  # Eh
+                                'convergence_grms': 3e-4,    # Eh/Bohr
+                                'convergence_gmax': 4.5e-4,  # Eh/Bohr
+                                'convergence_drms': 1.2e-3,  # Angstrom
+                                'convergence_dmax': 1.8e-3,  # Angstrom
+                            }
+            self.mol_eq = optimize(mf, maxsteps=100, **conv_params) # TODO: Need to define maxsteps as a TRSH parameter
+            logging.info(self.mol_eq.kernel())
+            #logging.info(self.mol_eq.atom)
+            if self.unit == 'Bohr':
+                logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='Bohr')))
+            else:
+                logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='ANG')))
+            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
+
+        if self.job_type == 'freq':
+            logging.basicConfig(filename='output_freq.log', level=logging.INFO, format='%(asctime)s %(message)s')
+            #pip install git+https://github.com/pyscf/properties
+            from pyscf.prop.freq import rks, uks
+            self.mol_eq = mf.run()
+            if DFT:
+                if self.scf_type == 'R':
+                    w, modes = rks.Freq(self.mol_eq).kernel()
+                elif self.scf_type == 'U':
+                    w, modes = uks.Freq(self.mol_eq).kernel()
+            print('Frequencies (cm-1):')
+            logging.info('Frequencies (cm-1):')
+            print(w)
+            logging.info(w)
+            print('Modes:')
+            logging.info('Modes:')
+            print(modes)
+            logging.info(modes)
+            
+            logging.info('Freuqency calculation complete.')
+            
+        
+        # if self.job_type == 'scan':
+        #     #https://github.com/pyscf/pyscf/blob/14d88828cd1f18f1e5358da1445355bde55322a1/examples/scf/30-scan_pes.py#L16
+        #     # Requires manual development for the code. Not feasible at the moment.
+        #     scan_results = []
+        #     for value in np.arange(self.start, self.end, self.step_size):
+        #         upd
+        if self.job_type == 'sp':
+            mf.kernel()
+            logging.info('The single-point DFT energy is:', energy)
+            
+
+# # Run the script
+if __name__ == '__main__':
+    args = parse_command_line_arguments()
+    input_file = args.yml_path  # Directly use the provided path
+    input_dir = os.path.dirname(os.path.abspath(input_file))
+    output_file = os.path.join(input_dir, 'output.log')
+    script = PYSCFScript_VB(input_file, output_file)  # Initialize the script with the YAML file path
+    script.run()
+
+# input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/input.yml'
+# output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/output.log'
+
+# # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/input.yml'
+# # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/output.log'
+
+# # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/input.yml'
+# # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/output.log'
+
+# script = PYSCFScript_VB(input_file, output_file)
+# script.run()
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='calvin-System-Product-Name', release='6.2.0-39-generic', version='#40~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Nov 16 10:53:04 UTC 2', machine='x86_64')  Threads 20
+Python 3.10.13 | packaged by conda-forge | (main, Oct 26 2023, 18:07:37) [GCC 12.3.0]
+numpy 1.26.0  scipy 1.11.3
+Date: Wed Jan 10 13:42:29 2024
+PySCF version 2.4.0
+PySCF path  /home/calvin/mambaforge/envs/pyscf_env/lib/python3.10/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 9
+[INPUT] num. electrons = 26
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = ANG
+[INPUT] Symbol           X                Y                Z      unit          X                Y                Z       unit  Magmom
+[INPUT]  1 C     -0.937906740000   0.280664430000   0.105729420000 AA   -1.772386868984   0.530378905607   0.199799647109 Bohr   0.0
+[INPUT]  2 C      0.356599060000  -0.449549970000   0.050201740000 AA    0.673874559677  -0.849526322606   0.094867539577 Bohr   0.0
+[INPUT]  3 O      0.366265300000  -1.593979790000  -0.380126320000 AA    0.692141105932  -3.012185251192  -0.718334637539 Bohr   0.0
+[INPUT]  4 H     -1.689239150000  -0.333321950000   0.613291510000 AA   -3.192199352393  -0.629887196806   1.158952988421 Bohr   0.0
+[INPUT]  5 H     -0.855320210000   1.239099970000   0.625780270000 AA   -1.616320945705   2.341559584257   1.182553324456 Bohr   0.0
+[INPUT]  6 H     -1.307048890000   0.460011510000  -0.909488780000 AA   -2.469964433517   0.869295768048  -1.718684707565 Bohr   0.0
+[INPUT]  7 H      0.762810070000  -0.500365900000   1.064830090000 AA    1.441502117360  -0.945554513072   2.012237239296 Bohr   0.0
+[INPUT]  8 H      1.042870510000   0.121375610000  -0.582360960000 AA    1.970739647285   0.229366661102  -1.100502720039 Bohr   0.0
+[INPUT]  9 H      1.278200180000  -1.930310320000  -0.352034730000 AA    2.415448272570  -3.647757840222  -0.665249226035 Bohr   0.0
+
+nuclear repulsion = 85.9867832345622
+number of shells = 57
+number of NR pGTOs = 186
+number of NR cGTOs = 129
+basis = def2-tzvp
+ecp = {}
+CPU time:         2.57
+Create scanner for <class 'pyscf.grad.uks.Gradients'>
+Create scanner for <class 'pyscf.dft.uks.UKS'>
+
+Geometry optimization cycle 1
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C  -0.937907   0.280664   0.105729    0.000000  0.000000  0.000000
+   C   0.356599  -0.449550   0.050202    0.000000  0.000000  0.000000
+   O   0.366265  -1.593980  -0.380126    0.000000  0.000000  0.000000
+   H  -1.689239  -0.333322   0.613292    0.000000  0.000000  0.000000
+   H  -0.855320   1.239100   0.625780    0.000000  0.000000  0.000000
+   H  -1.307049   0.460012  -0.909489    0.000000  0.000000  0.000000
+   H   0.762810  -0.500366   1.064830    0.000000  0.000000  0.000000
+   H   1.042871   0.121376  -0.582361    0.000000  0.000000  0.000000
+   H   1.278200  -1.930310  -0.352035    0.000000  0.000000  0.000000
+New geometry
+   1 C     -0.937906740000   0.280664430000   0.105729420000 AA   -1.772386868984   0.530378905607   0.199799647109 Bohr
+
+   2 C      0.356599060000  -0.449549970000   0.050201740000 AA    0.673874559677  -0.849526322606   0.094867539577 Bohr
+
+   3 O      0.366265300000  -1.593979790000  -0.380126320000 AA    0.692141105932  -3.012185251192  -0.718334637539 Bohr
+
+   4 H     -1.689239150000  -0.333321950000   0.613291510000 AA   -3.192199352393  -0.629887196806   1.158952988421 Bohr
+
+   5 H     -0.855320210000   1.239099970000   0.625780270000 AA   -1.616320945705   2.341559584257   1.182553324456 Bohr
+
+   6 H     -1.307048890000   0.460011510000  -0.909488780000 AA   -2.469964433517   0.869295768048  -1.718684707565 Bohr
+
+   7 H      0.762810070000  -0.500365900000   1.064830090000 AA    1.441502117360  -0.945554513072   2.012237239296 Bohr
+
+   8 H      1.042870510000   0.121375610000  -0.582360960000 AA    1.970739647285   0.229366661102  -1.100502720039 Bohr
+
+   9 H      1.278200180000  -1.930310320000  -0.352034730000 AA    2.415448272570  -3.647757840222  -0.665249226035 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 128 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.621757583246
+  alpha nocc = 13  HOMO = -0.296435406966569  LUMO = 0.0065707925157551
+  beta  nocc = 13  HOMO = -0.296499642225431  LUMO = 0.00566873732001833
+cycle= 1 E= -154.972188473724  delta_E= 0.65  |g|= 0.506  |ddm|= 1.41
+  alpha nocc = 13  HOMO = -0.135141639735787  LUMO = 0.033087660389707
+  beta  nocc = 13  HOMO = -0.135133987268186  LUMO = 0.0330723256713754
+cycle= 2 E= -154.863067478395  delta_E= 0.109  |g|= 0.747  |ddm|= 1.43
+  alpha nocc = 13  HOMO = -0.262178612468895  LUMO = 0.0109280158647057
+  beta  nocc = 13  HOMO = -0.262124552737815  LUMO = 0.0109237702057444
+cycle= 3 E= -155.063904953593  delta_E= -0.201  |g|= 0.052  |ddm|= 1.09
+  alpha nocc = 13  HOMO = -0.254204373899494  LUMO = 0.0159703328331075
+  beta  nocc = 13  HOMO = -0.254187778609312  LUMO = 0.0159708488374058
+cycle= 4 E= -155.064707556113  delta_E= -0.000803  |g|= 0.0247  |ddm|= 0.0513
+  alpha nocc = 13  HOMO = -0.255683550699877  LUMO = 0.015668788166226
+  beta  nocc = 13  HOMO = -0.255679305848881  LUMO = 0.015670048221504
+cycle= 5 E= -155.064978289774  delta_E= -0.000271  |g|= 0.00366  |ddm|= 0.0172
+  alpha nocc = 13  HOMO = -0.255866179741074  LUMO = 0.0154638169445714
+  beta  nocc = 13  HOMO = -0.255866433717388  LUMO = 0.0154647024163597
+cycle= 6 E= -155.06498381009  delta_E= -5.52e-06  |g|= 0.000738  |ddm|= 0.00264
+  alpha nocc = 13  HOMO = -0.255782560042141  LUMO = 0.0154996143383666
+  beta  nocc = 13  HOMO = -0.255783147006316  LUMO = 0.0155001453261457
+cycle= 7 E= -155.064984018592  delta_E= -2.09e-07  |g|= 0.000273  |ddm|= 0.000602
+  alpha nocc = 13  HOMO = -0.255814371357048  LUMO = 0.0154942417514602
+  beta  nocc = 13  HOMO = -0.255814938532056  LUMO = 0.0154945011649179
+cycle= 8 E= -155.06498405295  delta_E= -3.44e-08  |g|= 3.59e-05  |ddm|= 0.00022
+  alpha nocc = 13  HOMO = -0.255817114144185  LUMO = 0.0154920932957566
+  beta  nocc = 13  HOMO = -0.255817433627888  LUMO = 0.0154921914463425
+cycle= 9 E= -155.064984054051  delta_E= -1.1e-09  |g|= 1.15e-05  |ddm|= 4.66e-05
+  alpha nocc = 13  HOMO = -0.255816175990218  LUMO = 0.0154926604781192
+  beta  nocc = 13  HOMO = -0.255816242769613  LUMO = 0.01549266279605
+cycle= 10 E= -155.064984054243  delta_E= -1.92e-10  |g|= 2.97e-06  |ddm|= 2.35e-05
+  alpha nocc = 13  HOMO = -0.255815988704498  LUMO = 0.0154927448466729
+  beta  nocc = 13  HOMO = -0.255815989732684  LUMO = 0.0154927367795274
+cycle= 11 E= -155.064984054252  delta_E= -9.32e-12  |g|= 8.3e-07  |ddm|= 5.25e-06
+  alpha nocc = 13  HOMO = -0.255816288454075  LUMO = 0.0154926160784184
+  beta  nocc = 13  HOMO = -0.25581628554979  LUMO = 0.0154926108170071
+cycle= 12 E= -155.064984054252  delta_E= 5.12e-13  |g|= 4.35e-07  |ddm|= 1.13e-06
+  alpha nocc = 13  HOMO = -0.255816208520757  LUMO = 0.0154926443491432
+  beta  nocc = 13  HOMO = -0.255816204766596  LUMO = 0.0154926416137322
+cycle= 13 E= -155.064984054253  delta_E= -7.96e-13  |g|= 4.11e-08  |ddm|= 4.72e-07
+  alpha nocc = 13  HOMO = -0.255816200045133  LUMO = 0.0154926478376413
+  beta  nocc = 13  HOMO = -0.255816198391117  LUMO = 0.0154926467880199
+cycle= 14 E= -155.064984054253  delta_E= 5.68e-14  |g|= 2.14e-08  |ddm|= 7.82e-08
+  alpha nocc = 13  HOMO = -0.255816200675571  LUMO = 0.0154926471021358
+  beta  nocc = 13  HOMO = -0.255816199656568  LUMO = 0.0154926464728155
+cycle= 15 E= -155.064984054253  delta_E= 8.53e-14  |g|= 9.07e-09  |ddm|= 1.92e-08
+converged SCF energy = -155.064984054253  <S^2> = -1.7763568e-14  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 544 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0245631009     0.0036413492     0.0080311427
+1 C    -0.0346473074    -0.1790190464    -0.0751196819
+2 O     0.0089990941     0.2174130827     0.0843160476
+3 H     0.0008253795    -0.0021854887    -0.0014443724
+4 H    -0.0028013417     0.0031937314     0.0015034307
+5 H     0.0018733232    -0.0017309604    -0.0012750764
+6 H    -0.0055552448    -0.0209330461    -0.0149920106
+7 H    -0.0075223891    -0.0253091161    -0.0054300141
+8 H     0.0142709083     0.0049474759     0.0044024784
+----------------------------------------------
+cycle 1: E = -155.064984054  dE = -155.065  norm(grad) = 0.309411
+
+Geometry optimization cycle 2
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C  -0.944796   0.297838   0.106228   -0.006889  0.017174  0.000498
+   C   0.362871  -0.418376   0.072320    0.006272  0.031174  0.022118
+   O   0.368056  -1.607609  -0.353967    0.001791 -0.013629  0.026159
+   H  -1.692475  -0.315263   0.620070   -0.003236  0.018059  0.006778
+   H  -0.875101   1.265211   0.609891   -0.019781  0.026111 -0.015889
+   H  -1.310803   0.455856  -0.913522   -0.003754 -0.004156 -0.004033
+   H   0.764959  -0.443890   1.092229    0.002149  0.056476  0.027399
+   H   1.048217   0.151774  -0.566148    0.005346  0.030398  0.016213
+   H   1.274558  -1.951131  -0.323322   -0.003642 -0.020821  0.028713
+New geometry
+   1 C     -0.944795845275   0.297838157883   0.106227627266 AA   -1.785405391197   0.562832547844   0.200741122396 Bohr
+
+   2 C      0.362871028668  -0.418376126833   0.072320201393 AA    0.685726862721  -0.790616296771   0.136665373907 Bohr
+
+   3 O      0.368056075567  -1.607608818230  -0.353967134490 AA    0.695525181303  -3.037940381890  -0.668900941282 Bohr
+
+   4 H     -1.692475410224  -0.315262913233   0.620069506335 AA   -3.198314997884  -0.595760563243   1.171761545168 Bohr
+
+   5 H     -0.875100811044   1.265211139803   0.609890773449 AA   -1.653700864258   2.390902543976   1.152526527718 Bohr
+
+   6 H     -1.310802679606   0.455855847098  -0.913521962008 AA   -2.477058067802   0.861442703298  -1.726306316971 Bohr
+
+   7 H      0.764959318014  -0.443889649977   1.092228982651 AA    1.445563607481  -0.838829867986   2.064013642523 Bohr
+
+   8 H      1.048216589218   0.151773987887  -0.566147669320 AA    1.980842272848   0.286811269940  -1.069864041076 Bohr
+
+   9 H      1.274558157364  -1.951131197441  -0.323321534082 AA    2.408565847248  -3.687103596258  -0.610989149588 Bohr
+
+
+WARN: Large deviations found between the input molecule and the molecule from chkfile
+Initial guess density matrix may have large error.
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 268 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.070480971594
+  alpha nocc = 13  HOMO = -0.259629596729684  LUMO = 0.0203524959013053
+  beta  nocc = 13  HOMO = -0.259629596378023  LUMO = 0.0203524956456045
+cycle= 1 E= -155.082179966868  delta_E= -0.0117  |g|= 0.0193  |ddm|= 0.0676
+  alpha nocc = 13  HOMO = -0.259307476428263  LUMO = 0.0180945978658953
+  beta  nocc = 13  HOMO = -0.259307476260192  LUMO = 0.0180945977659459
+cycle= 2 E= -155.082209843677  delta_E= -2.99e-05  |g|= 0.019  |ddm|= 0.0358
+  alpha nocc = 13  HOMO = -0.261982539145776  LUMO = 0.0178466106519251
+  beta  nocc = 13  HOMO = -0.261982539027342  LUMO = 0.0178466105793347
+cycle= 3 E= -155.082333484598  delta_E= -0.000124  |g|= 0.00565  |ddm|= 0.0206
+  alpha nocc = 13  HOMO = -0.26093364083426  LUMO = 0.0181435938665635
+  beta  nocc = 13  HOMO = -0.260933640756536  LUMO = 0.0181435938197
+cycle= 4 E= -155.082343325871  delta_E= -9.84e-06  |g|= 0.000467  |ddm|= 0.00456
+  alpha nocc = 13  HOMO = -0.260997915444854  LUMO = 0.0181038462260883
+  beta  nocc = 13  HOMO = -0.260997915403311  LUMO = 0.0181038462014882
+cycle= 5 E= -155.082343414266  delta_E= -8.84e-08  |g|= 8.6e-05  |ddm|= 0.000413
+  alpha nocc = 13  HOMO = -0.260989278004924  LUMO = 0.0181099900101493
+  beta  nocc = 13  HOMO = -0.260989277984407  LUMO = 0.0181099899982238
+cycle= 6 E= -155.082343417415  delta_E= -3.15e-09  |g|= 3.9e-05  |ddm|= 8.36e-05
+  alpha nocc = 13  HOMO = -0.260992102079175  LUMO = 0.018109792460446
+  beta  nocc = 13  HOMO = -0.260992102065816  LUMO = 0.0181097924527479
+cycle= 7 E= -155.082343418136  delta_E= -7.21e-10  |g|= 7e-06  |ddm|= 2.96e-05
+  alpha nocc = 13  HOMO = -0.260991405562921  LUMO = 0.018110062335698
+  beta  nocc = 13  HOMO = -0.260991405556108  LUMO = 0.0181100623318218
+cycle= 8 E= -155.08234341816  delta_E= -2.42e-11  |g|= 7.7e-07  |ddm|= 8.82e-06
+  alpha nocc = 13  HOMO = -0.260991492425894  LUMO = 0.0181100030970515
+  beta  nocc = 13  HOMO = -0.260991492422336  LUMO = 0.0181100030950405
+cycle= 9 E= -155.08234341816  delta_E= -3.41e-13  |g|= 3.33e-07  |ddm|= 1.2e-06
+  alpha nocc = 13  HOMO = -0.260991457322141  LUMO = 0.0181100138979623
+  beta  nocc = 13  HOMO = -0.260991457320084  LUMO = 0.0181100138968053
+cycle= 10 E= -155.082343418161  delta_E= -3.98e-13  |g|= 1e-07  |ddm|= 3.06e-07
+  alpha nocc = 13  HOMO = -0.260991468919  LUMO = 0.0181100101409429
+  beta  nocc = 13  HOMO = -0.26099146891792  LUMO = 0.0181100101403456
+cycle= 11 E= -155.082343418161  delta_E= 1.14e-13  |g|= 9.23e-09  |ddm|= 1.01e-07
+converged SCF energy = -155.082343418161  <S^2> = 0  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 568 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0216358053     0.0058691444     0.0081987473
+1 C    -0.0326085226    -0.1255121002    -0.0521821353
+2 O     0.0101491676     0.1532086708     0.0574214917
+3 H     0.0004658378    -0.0022028324    -0.0013973045
+4 H    -0.0027507068     0.0026645157     0.0011670026
+5 H     0.0014961776    -0.0016611822    -0.0013000452
+6 H    -0.0042235466    -0.0163193886    -0.0095280000
+7 H    -0.0053032672    -0.0185960922    -0.0053162632
+8 H     0.0111501840     0.0025533843     0.0029225267
+----------------------------------------------
+cycle 2: E = -155.082343418  dE = -0.0173594  norm(grad) = 0.218926
+
+Geometry optimization cycle 3
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C  -0.936899   0.290371   0.098880    0.007897 -0.007468 -0.007348
+   C   0.416375  -0.353218   0.067421    0.053504  0.065158 -0.004900
+   O   0.444183  -1.586719  -0.392991    0.076127  0.020890 -0.039024
+   H  -1.652579  -0.364499   0.605787    0.039896 -0.049236 -0.014283
+   H  -0.917844   1.254861   0.609840   -0.042743 -0.010350 -0.000051
+   H  -1.309415   0.437470  -0.919607    0.001388 -0.018386 -0.006086
+   H   0.819267  -0.362423   1.090229    0.054308  0.081466 -0.002000
+   H   1.076701   0.259906  -0.562174    0.028485  0.108132  0.003973
+   H   1.351950  -1.915589  -0.376092    0.077392  0.035542 -0.052770
+New geometry
+   1 C     -0.936898854491   0.290370568476   0.098880072961 AA   -1.770482241407   0.548720849055   0.186856257073 Bohr
+
+   2 C      0.416374664109  -0.353218327346   0.067420653854 AA    0.786834080374  -0.667485900860   0.127406570923 Bohr
+
+   3 O      0.444183045155  -1.586718849664  -0.392991284595 AA    0.839384304519  -2.998464062550  -0.742645897225 Bohr
+
+   4 H     -1.652579209134  -0.364499206510   0.605786871795 AA   -3.122922104413  -0.688803672925   1.144771277549 Bohr
+
+   5 H     -0.917843869141   1.254861020673   0.609839562381 AA   -1.734473537787   2.371343653464   1.152429752825 Bohr
+
+   6 H     -1.309415056999   0.437469920085  -0.919607465266 AA   -2.474435841110   0.826698336695  -1.737806251458 Bohr
+
+   7 H      0.819267341365  -0.362423417536   1.090229008128 AA    1.548190897980  -0.684881000271   2.060234238417 Bohr
+
+   8 H      1.076701373029   0.259906344559  -0.562174218568 AA    2.034670712969   0.491151809253  -1.062355307385 Bohr
+
+   9 H      1.351949784098  -1.915589026375  -0.376091692997 AA    2.554814826110  -3.619938627070  -0.710710297488 Bohr
+
+
+WARN: Large deviations found between the input molecule and the molecule from chkfile
+Initial guess density matrix may have large error.
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 288 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.07888831117
+  alpha nocc = 13  HOMO = -0.268249139447025  LUMO = 0.0230070906253849
+  beta  nocc = 13  HOMO = -0.268249139446652  LUMO = 0.0230070906251424
+cycle= 1 E= -155.097650814072  delta_E= -0.0188  |g|= 0.027  |ddm|= 0.0919
+  alpha nocc = 13  HOMO = -0.263459893792082  LUMO = 0.0216939652012095
+  beta  nocc = 13  HOMO = -0.263459893791887  LUMO = 0.0216939652011139
+cycle= 2 E= -155.09765325305  delta_E= -2.44e-06  |g|= 0.0293  |ddm|= 0.0537
+  alpha nocc = 13  HOMO = -0.268736276985076  LUMO = 0.0210217861087683
+  beta  nocc = 13  HOMO = -0.268736276984937  LUMO = 0.0210217861086976
+cycle= 3 E= -155.097960599162  delta_E= -0.000307  |g|= 0.00728  |ddm|= 0.0313
+  alpha nocc = 13  HOMO = -0.2673471663832  LUMO = 0.0214227644638606
+  beta  nocc = 13  HOMO = -0.26734716638311  LUMO = 0.0214227644638194
+cycle= 4 E= -155.097977035395  delta_E= -1.64e-05  |g|= 0.000881  |ddm|= 0.00559
+  alpha nocc = 13  HOMO = -0.267355634990037  LUMO = 0.0214110217660547
+  beta  nocc = 13  HOMO = -0.267355634989984  LUMO = 0.0214110217660346
+cycle= 5 E= -155.097977281581  delta_E= -2.46e-07  |g|= 0.000366  |ddm|= 0.000666
+  alpha nocc = 13  HOMO = -0.267401406188405  LUMO = 0.021390937836714
+  beta  nocc = 13  HOMO = -0.267401406188377  LUMO = 0.0213909378367002
+cycle= 6 E= -155.097977342887  delta_E= -6.13e-08  |g|= 8.13e-05  |ddm|= 0.000291
+  alpha nocc = 13  HOMO = -0.267393364212582  LUMO = 0.0213967484925862
+  beta  nocc = 13  HOMO = -0.267393364212565  LUMO = 0.0213967484925675
+cycle= 7 E= -155.09797734617  delta_E= -3.28e-09  |g|= 6.89e-06  |ddm|= 6.07e-05
+  alpha nocc = 13  HOMO = -0.267392410092308  LUMO = 0.0213971988421718
+  beta  nocc = 13  HOMO = -0.267392410092301  LUMO = 0.0213971988421608
+cycle= 8 E= -155.097977346193  delta_E= -2.25e-11  |g|= 2.79e-06  |ddm|= 1.16e-05
+  alpha nocc = 13  HOMO = -0.267392513078739  LUMO = 0.0213971157247588
+  beta  nocc = 13  HOMO = -0.267392513078734  LUMO = 0.0213971157247599
+cycle= 9 E= -155.097977346195  delta_E= -2.56e-12  |g|= 7.8e-07  |ddm|= 2.19e-06
+  alpha nocc = 13  HOMO = -0.267392509056702  LUMO = 0.021397105725489
+  beta  nocc = 13  HOMO = -0.267392509056699  LUMO = 0.0213971057254985
+cycle= 10 E= -155.097977346197  delta_E= -1.42e-12  |g|= 8.44e-08  |ddm|= 7.47e-07
+  alpha nocc = 13  HOMO = -0.267392515100957  LUMO = 0.0213971055384947
+  beta  nocc = 13  HOMO = -0.267392515100955  LUMO = 0.0213971055385004
+cycle= 11 E= -155.097977346196  delta_E= 2.27e-13  |g|= 1.34e-08  |ddm|= 1.31e-07
+  alpha nocc = 13  HOMO = -0.267392515215852  LUMO = 0.0213971058031486
+  beta  nocc = 13  HOMO = -0.26739251521585  LUMO = 0.021397105803154
+cycle= 12 E= -155.097977346197  delta_E= -2.27e-13  |g|= 6.77e-09  |ddm|= 1.94e-08
+converged SCF energy = -155.097977346197  <S^2> = 1.7763568e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 579 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0158384929     0.0077769445     0.0075410542
+1 C    -0.0236989559    -0.0718202990    -0.0319844080
+2 O     0.0083205179     0.0854045303     0.0340121915
+3 H    -0.0000820606    -0.0019279690    -0.0014945784
+4 H    -0.0023465411     0.0014665634     0.0007186877
+5 H     0.0008007267    -0.0013857942    -0.0011603438
+6 H    -0.0022135840    -0.0099769286    -0.0040959030
+7 H    -0.0024470060    -0.0104408119    -0.0049226336
+8 H     0.0058370773     0.0009053424     0.0013724466
+----------------------------------------------
+cycle 3: E = -155.097977346  dE = -0.0156339  norm(grad) = 0.126278
+
+Geometry optimization cycle 4
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C  -0.952637   0.330660   0.003835   -0.015738  0.040289 -0.095045
+   C   0.427185  -0.281965   0.046766    0.010810  0.071253 -0.020655
+   O   0.414452  -1.560553  -0.451165   -0.029731  0.026166 -0.058173
+   H  -1.676717  -0.336944   0.477338   -0.024138  0.027556 -0.128449
+   H  -0.972179   1.292983   0.516843   -0.054335  0.038122 -0.092997
+   H  -1.277739   0.475685  -1.029198    0.031676  0.038215 -0.109590
+   H   0.787999  -0.288707   1.085141   -0.031268  0.073717 -0.005088
+   H   1.117328   0.340095  -0.540743    0.040627  0.080189  0.021432
+   H   1.302588  -1.928511  -0.414559   -0.049362 -0.012922 -0.038467
+New geometry
+   1 C     -0.952637287527   0.330659933952   0.003834602476 AA   -1.800223569474   0.624856715537   0.007246348477 Bohr
+
+   2 C      0.427185102377  -0.281964898625   0.046765590109 AA    0.807262847986  -0.532836435143   0.088374157360 Bohr
+
+   3 O      0.414451646120  -1.560552985931  -0.451164743078 AA    0.783200103042  -2.949017746283  -0.852577801477 Bohr
+
+   4 H     -1.676716881227  -0.336943532737   0.477337870411 AA   -3.168535693953  -0.636730996316   0.902037843961 Bohr
+
+   5 H     -0.972178541124   1.292982746484   0.516842563584 AA   -1.837151186903   2.443383274642   0.976690894692 Bohr
+
+   6 H     -1.277739172869   0.475684968210  -1.029197574521 AA   -2.414577095350   0.898914311490  -1.944901543911 Bohr
+
+   7 H      0.787998846714  -0.288706557657   1.085141013886 AA    1.489102006763  -0.545576324338   2.050619322778 Bohr
+
+   8 H      1.117328136583   0.340095284413  -0.540742532340 AA    2.111444169413   0.642686943797  -1.021855290026 Bohr
+
+   9 H      1.302587795791  -1.928511113285  -0.414558747222 AA    2.461534187247  -3.644357832288  -0.783402494793 Bohr
+
+
+WARN: Large deviations found between the input molecule and the molecule from chkfile
+Initial guess density matrix may have large error.
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 298 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.086051580147
+  alpha nocc = 13  HOMO = -0.276788871283907  LUMO = 0.0247454315862604
+  beta  nocc = 13  HOMO = -0.276788871283905  LUMO = 0.0247454315862633
+cycle= 1 E= -155.106752591276  delta_E= -0.0207  |g|= 0.0306  |ddm|= 0.109
+  alpha nocc = 13  HOMO = -0.267884079367773  LUMO = 0.0254534853874421
+  beta  nocc = 13  HOMO = -0.267884079367772  LUMO = 0.0254534853874377
+cycle= 2 E= -155.106700883412  delta_E= 5.17e-05  |g|= 0.0352  |ddm|= 0.0582
+  alpha nocc = 13  HOMO = -0.275021624900785  LUMO = 0.024335835106843
+  beta  nocc = 13  HOMO = -0.275021624900786  LUMO = 0.0243358351068439
+cycle= 3 E= -155.107143345713  delta_E= -0.000442  |g|= 0.00813  |ddm|= 0.0352
+  alpha nocc = 13  HOMO = -0.273651655576499  LUMO = 0.0246059486299284
+  beta  nocc = 13  HOMO = -0.2736516555765  LUMO = 0.0246059486299229
+cycle= 4 E= -155.10716334266  delta_E= -2e-05  |g|= 0.00119  |ddm|= 0.00556
+  alpha nocc = 13  HOMO = -0.273628339071105  LUMO = 0.0246097220793146
+  beta  nocc = 13  HOMO = -0.273628339071107  LUMO = 0.0246097220792996
+cycle= 5 E= -155.107163836093  delta_E= -4.93e-07  |g|= 0.000443  |ddm|= 0.000886
+  alpha nocc = 13  HOMO = -0.273685276854182  LUMO = 0.024582338363783
+  beta  nocc = 13  HOMO = -0.273685276854183  LUMO = 0.0245823383637818
+cycle= 6 E= -155.107163929111  delta_E= -9.3e-08  |g|= 8.01e-05  |ddm|= 0.000345
+  alpha nocc = 13  HOMO = -0.27367712806458  LUMO = 0.024588355262197
+  beta  nocc = 13  HOMO = -0.273677128064581  LUMO = 0.0245883552621949
+cycle= 7 E= -155.107163932433  delta_E= -3.32e-09  |g|= 8.62e-06  |ddm|= 6.27e-05
+  alpha nocc = 13  HOMO = -0.273675989294561  LUMO = 0.0245887617763157
+  beta  nocc = 13  HOMO = -0.273675989294562  LUMO = 0.0245887617763189
+cycle= 8 E= -155.107163932466  delta_E= -3.28e-11  |g|= 3.17e-06  |ddm|= 1.24e-05
+  alpha nocc = 13  HOMO = -0.273676016010882  LUMO = 0.0245887457475858
+  beta  nocc = 13  HOMO = -0.273676016010881  LUMO = 0.0245887457475856
+cycle= 9 E= -155.107163932471  delta_E= -4.55e-12  |g|= 8.76e-07  |ddm|= 2.43e-06
+  alpha nocc = 13  HOMO = -0.273675993120138  LUMO = 0.0245887549748634
+  beta  nocc = 13  HOMO = -0.273675993120138  LUMO = 0.0245887549748615
+cycle= 10 E= -155.107163932472  delta_E= -7.67e-13  |g|= 1.03e-07  |ddm|= 8.37e-07
+  alpha nocc = 13  HOMO = -0.273676004077995  LUMO = 0.024588748102191
+  beta  nocc = 13  HOMO = -0.273676004077996  LUMO = 0.0245887481021876
+cycle= 11 E= -155.107163932471  delta_E= 4.26e-13  |g|= 1.36e-08  |ddm|= 1.66e-07
+  alpha nocc = 13  HOMO = -0.27367600437013  LUMO = 0.024588748754093
+  beta  nocc = 13  HOMO = -0.273676004370131  LUMO = 0.0245887487540963
+cycle= 12 E= -155.107163932471  delta_E= -1.42e-13  |g|= 7.41e-09  |ddm|= 1.29e-08
+converged SCF energy = -155.107163932471  <S^2> = -1.4210855e-14  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 584 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0059633178     0.0044997292     0.0041860791
+1 C    -0.0094399368    -0.0304221973    -0.0141973845
+2 O     0.0053458010     0.0338548037     0.0145867713
+3 H    -0.0004948362    -0.0010556696    -0.0015811473
+4 H    -0.0008580901     0.0000380282     0.0002552393
+5 H    -0.0001185811    -0.0007887795    -0.0003872939
+6 H    -0.0004581741    -0.0031485068    -0.0012220045
+7 H    -0.0006746023    -0.0035282770    -0.0021686072
+8 H     0.0007559922     0.0005537886     0.0005190820
+----------------------------------------------
+cycle 4: E = -155.107163932  dE = -0.00918659  norm(grad) = 0.0520849
+
+Geometry optimization cycle 5
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.011970   0.439626  -0.073008    0.964608  0.108967 -0.076843
+   C   1.175581  -0.438649   0.338619    0.748396 -0.156684  0.291853
+   O   0.976836  -1.723180  -0.206804    0.562384 -0.162627  0.244360
+   H  -0.931290  -0.017256   0.230493    0.745427  0.319688 -0.246845
+   H   0.088828   1.422155   0.396473    1.061006  0.129172 -0.120369
+   H  -0.007376   0.573107  -1.155893    1.270363  0.097422 -0.126696
+   H   1.238185  -0.486890   1.433666    0.450186 -0.198184  0.348524
+   H   2.116381  -0.005523  -0.025151    0.999053 -0.345619  0.515592
+   H   1.717966  -2.287750   0.034842    0.415378 -0.359239  0.449401
+New geometry
+   1 C      0.011970277177   0.439626455758  -0.073008491379 AA    0.022620545500   0.830773598496  -0.137966053474 Bohr
+
+   2 C      1.175580698737  -0.438648778754   0.338618787744 AA    2.221525557937  -0.828926056720   0.639896769468 Bohr
+
+   3 O      0.976836050190  -1.723179974746  -0.206804271385 AA    1.845952603460  -3.256338215605  -0.390803434308 Bohr
+
+   4 H     -0.931289961398  -0.017255730678   0.230492955736 AA   -1.759882969599  -0.032608605061   0.435568559983 Bohr
+
+   5 H      0.088827656661   1.422155165528   0.396473193211 AA    0.167859943376   2.687483769484   0.749225750901 Bohr
+
+   6 H     -0.007376027428   0.573106861432  -1.155893325172 AA   -0.013938671726   1.083015008216  -2.184321813787 Bohr
+
+   7 H      1.238184600776  -0.486890119102   1.433665511700 AA    2.339829787121  -0.920088977859   2.709235171348 Bohr
+
+   8 H      2.116381054062  -0.005523485412  -0.025150540518 AA    3.999380567396  -0.010437874682  -0.047527633463 Bohr
+
+   9 H      1.717965593029  -2.287750384744   0.034842194216 AA    3.246484462250  -4.323221668535   0.065842204647 Bohr
+
+
+WARN: Large deviations found between the input molecule and the molecule from chkfile
+Initial guess density matrix may have large error.
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 303 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -154.922886244899
+  alpha nocc = 13  HOMO = -0.368291800990513  LUMO = -0.0377240579240797
+  beta  nocc = 13  HOMO = -0.368291800990514  LUMO = -0.0377240579240836
+cycle= 1 E= -155.093044880163  delta_E= -0.17  |g|= 0.176  |ddm|= 0.386
+  alpha nocc = 13  HOMO = -0.23640055764962  LUMO = 0.0382819957060552
+  beta  nocc = 13  HOMO = -0.236400557649621  LUMO = 0.0382819957060595
+cycle= 2 E= -155.08430105034  delta_E= 0.00874  |g|= 0.229  |ddm|= 0.353
+  alpha nocc = 13  HOMO = -0.277134956055107  LUMO = 0.0268683085835333
+  beta  nocc = 13  HOMO = -0.277134956055107  LUMO = 0.0268683085835357
+cycle= 3 E= -155.10928019401  delta_E= -0.025  |g|= 0.0148  |ddm|= 0.192
+  alpha nocc = 13  HOMO = -0.275155138588497  LUMO = 0.0262504372799152
+  beta  nocc = 13  HOMO = -0.275155138588498  LUMO = 0.0262504372799114
+cycle= 4 E= -155.109315377586  delta_E= -3.52e-05  |g|= 0.0111  |ddm|= 0.018
+  alpha nocc = 13  HOMO = -0.276976705807136  LUMO = 0.0258835878429096
+  beta  nocc = 13  HOMO = -0.276976705807138  LUMO = 0.0258835878429068
+cycle= 5 E= -155.109356789279  delta_E= -4.14e-05  |g|= 0.0012  |ddm|= 0.00776
+  alpha nocc = 13  HOMO = -0.276875693438235  LUMO = 0.0259558649608099
+  beta  nocc = 13  HOMO = -0.276875693438232  LUMO = 0.0259558649608122
+cycle= 6 E= -155.109357321623  delta_E= -5.32e-07  |g|= 0.000131  |ddm|= 0.000875
+  alpha nocc = 13  HOMO = -0.276858145874007  LUMO = 0.0259566910215595
+  beta  nocc = 13  HOMO = -0.276858145874008  LUMO = 0.0259566910215649
+cycle= 7 E= -155.109357329653  delta_E= -8.03e-09  |g|= 4.35e-05  |ddm|= 0.000206
+  alpha nocc = 13  HOMO = -0.276856006204626  LUMO = 0.0259580204080199
+  beta  nocc = 13  HOMO = -0.276856006204626  LUMO = 0.0259580204080232
+cycle= 8 E= -155.109357330496  delta_E= -8.43e-10  |g|= 1.38e-05  |ddm|= 3.45e-05
+  alpha nocc = 13  HOMO = -0.276853668973807  LUMO = 0.0259591011763091
+  beta  nocc = 13  HOMO = -0.276853668973806  LUMO = 0.0259591011763048
+cycle= 9 E= -155.109357330584  delta_E= -8.87e-11  |g|= 3.01e-06  |ddm|= 1.21e-05
+  alpha nocc = 13  HOMO = -0.276853764201019  LUMO = 0.0259590703899583
+  beta  nocc = 13  HOMO = -0.276853764201021  LUMO = 0.0259590703899637
+cycle= 10 E= -155.109357330589  delta_E= -5.06e-12  |g|= 4.63e-07  |ddm|= 4.73e-06
+  alpha nocc = 13  HOMO = -0.27685381892938  LUMO = 0.0259590431903133
+  beta  nocc = 13  HOMO = -0.276853818929381  LUMO = 0.0259590431903139
+cycle= 11 E= -155.109357330589  delta_E= 1.71e-13  |g|= 1.42e-07  |ddm|= 6.12e-07
+  alpha nocc = 13  HOMO = -0.2768537931373  LUMO = 0.0259590565154315
+  beta  nocc = 13  HOMO = -0.2768537931373  LUMO = 0.0259590565154269
+cycle= 12 E= -155.109357330589  delta_E= 1.14e-13  |g|= 2.07e-08  |ddm|= 2.65e-07
+  alpha nocc = 13  HOMO = -0.276853793356733  LUMO = 0.0259590574117339
+  beta  nocc = 13  HOMO = -0.276853793356734  LUMO = 0.0259590574117286
+cycle= 13 E= -155.109357330589  delta_E= -3.41e-13  |g|= 2.98e-08  |ddm|= 1.47e-08
+  alpha nocc = 13  HOMO = -0.276853793138831  LUMO = 0.0259590562654638
+  beta  nocc = 13  HOMO = -0.27685379313883  LUMO = 0.0259590562654647
+cycle= 14 E= -155.109357330589  delta_E= 1.14e-13  |g|= 3.74e-09  |ddm|= 2.1e-08
+converged SCF energy = -155.109357330589  <S^2> = -7.1054274e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 586 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0002044915     0.0001024047     0.0002282250
+1 C    -0.0016050416    -0.0086962777    -0.0035890174
+2 O     0.0012345763     0.0093541621     0.0040943567
+3 H     0.0001145475    -0.0002300477    -0.0003809911
+4 H    -0.0001493622    -0.0001012931     0.0001936164
+5 H     0.0001018002     0.0001946304    -0.0000346899
+6 H     0.0002231779    -0.0001124217    -0.0004249859
+7 H    -0.0003758582    -0.0006558973    -0.0002788840
+8 H     0.0002237457     0.0001294756     0.0001989037
+----------------------------------------------
+cycle 5: E = -155.109357331  dE = -0.0021934  norm(grad) = 0.0140821
+
+Geometry optimization cycle 6
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   1.527628   1.944655  -2.297665    1.515658  1.505028 -2.224656
+   C   1.216877   0.466001  -2.383794    0.041297  0.904650 -2.722413
+   O   0.604163   0.074286  -1.169117   -0.372673  1.797466 -0.962313
+   H   2.211341   2.142775  -1.471012    3.142631  2.160031 -1.701504
+   H   1.990056   2.292539  -3.223598    1.901228  0.870384 -3.620072
+   H   0.613493   2.517250  -2.130704    0.620869  1.944143 -0.974811
+   H   2.139099  -0.103008  -2.554974    0.900914  0.383882 -3.988640
+   H   0.547197   0.274245  -3.232869   -1.569184  0.279768 -3.207718
+   H   0.418366  -0.869339  -1.200185   -1.299600  1.418411 -1.235027
+New geometry
+   1 C      1.527627872096   1.944654642015  -2.297664892646 AA    2.886798298514   3.674864680272  -4.341957373128 Bohr
+
+   2 C      1.216877266181   0.466001018752  -2.383793970557 AA    2.299564760291   0.880614299209  -4.504717741742 Bohr
+
+   3 O      0.604163186515   0.074285947316  -1.169117136826 AA    1.141702957059   0.140380095331  -2.209311196138 Bohr
+
+   4 H      2.211341353283   2.142775248772  -1.471011501024 AA    4.178829525630   4.049258366676  -2.779808863020 Bohr
+
+   5 H      1.990055968442   2.292538815113  -3.223598309076 AA    3.760660752912   4.332270490498  -6.091717939765 Bohr
+
+   6 H      0.613492548729   2.517249559212  -2.130704358888 AA    1.159332896559   4.756912254093  -4.026447690716 Bohr
+
+   7 H      2.139098638080  -0.103008143015  -2.554974477125 AA    4.042310579400  -0.194657178898  -4.828202017020 Bohr
+
+   8 H      0.547197317036   0.274244737314  -3.232868749574 AA    1.034053065296   0.518247444626  -6.109236533360 Bohr
+
+   9 H      0.418365670626  -0.869339467768  -1.200184654662 AA    0.790596537402  -1.642813503356  -2.268020296217 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 305 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -147.683467019741
+  alpha nocc = 13  HOMO = -1.83157094806689  LUMO = -1.67818341068793
+  beta  nocc = 13  HOMO = -1.83157094806689  LUMO = -1.67818341068793
+cycle= 1 E= -152.869900072461  delta_E= -5.19  |g|= 2.13  |ddm|=    2
+  alpha nocc = 13  HOMO = 0.0703458564997186  LUMO = 0.170799593537794
+  beta  nocc = 13  HOMO = 0.0703458564997205  LUMO = 0.170799593537797
+cycle= 2 E= -149.092772250757  delta_E= 3.78  |g|= 2.64  |ddm|= 10.1
+  alpha nocc = 13  HOMO = -0.328071197271291  LUMO = -0.0549667036556183
+  beta  nocc = 13  HOMO = -0.328071197271291  LUMO = -0.0549667036556171
+cycle= 3 E= -154.964405131406  delta_E= -5.87  |g|= 0.497  |ddm|= 9.98
+  alpha nocc = 13  HOMO = -0.332305312330179  LUMO = 0.00242124299709068
+  beta  nocc = 13  HOMO = -0.332305312330178  LUMO = 0.00242124299709111
+cycle= 4 E= -155.088420360443  delta_E= -0.124  |g|= 0.237  |ddm|= 0.468
+  alpha nocc = 13  HOMO = -0.269038092556601  LUMO = 0.0233237217284219
+  beta  nocc = 13  HOMO = -0.269038092556601  LUMO = 0.0233237217284183
+cycle= 5 E= -155.103770010677  delta_E= -0.0153  |g|= 0.124  |ddm|= 0.233
+  alpha nocc = 13  HOMO = -0.276569278897125  LUMO = 0.0273891530250331
+  beta  nocc = 13  HOMO = -0.276569278897125  LUMO = 0.0273891530250356
+cycle= 6 E= -155.109406104429  delta_E= -0.00564  |g|= 0.0156  |ddm|= 0.0746
+  alpha nocc = 13  HOMO = -0.277460641099402  LUMO = 0.0260428630045132
+  beta  nocc = 13  HOMO = -0.277460641099401  LUMO = 0.0260428630045181
+cycle= 7 E= -155.109509858602  delta_E= -0.000104  |g|= 0.0033  |ddm|= 0.0146
+  alpha nocc = 13  HOMO = -0.277188533686422  LUMO = 0.0261480818419222
+  beta  nocc = 13  HOMO = -0.277188533686422  LUMO = 0.0261480818419198
+cycle= 8 E= -155.109513151179  delta_E= -3.29e-06  |g|= 0.00179  |ddm|= 0.00279
+  alpha nocc = 13  HOMO = -0.277256561542443  LUMO = 0.0261327728961226
+  beta  nocc = 13  HOMO = -0.277256561542444  LUMO = 0.0261327728961165
+cycle= 9 E= -155.109514599201  delta_E= -1.45e-06  |g|= 0.000164  |ddm|= 0.00107
+  alpha nocc = 13  HOMO = -0.27721476015589  LUMO = 0.0261494533841993
+  beta  nocc = 13  HOMO = -0.277214760155891  LUMO = 0.0261494533841999
+cycle= 10 E= -155.109514612476  delta_E= -1.33e-08  |g|= 3.07e-05  |ddm|= 0.000176
+  alpha nocc = 13  HOMO = -0.277217962133242  LUMO = 0.026148831217118
+  beta  nocc = 13  HOMO = -0.277217962133241  LUMO = 0.0261488312171209
+cycle= 11 E= -155.109514612961  delta_E= -4.85e-10  |g|= 4.12e-06  |ddm|= 3.61e-05
+  alpha nocc = 13  HOMO = -0.277218620574605  LUMO = 0.0261485450844454
+  beta  nocc = 13  HOMO = -0.277218620574605  LUMO = 0.0261485450844453
+cycle= 12 E= -155.10951461297  delta_E= -9.35e-12  |g|= 9.51e-07  |ddm|= 4.29e-06
+  alpha nocc = 13  HOMO = -0.277218629183678  LUMO = 0.0261485448299842
+  beta  nocc = 13  HOMO = -0.277218629183677  LUMO = 0.0261485448299854
+cycle= 13 E= -155.109514612971  delta_E= -6.54e-13  |g|= 1.92e-07  |ddm|= 1.23e-06
+  alpha nocc = 13  HOMO = -0.27721860243505  LUMO = 0.0261485592406062
+  beta  nocc = 13  HOMO = -0.27721860243505  LUMO = 0.0261485592406073
+cycle= 14 E= -155.10951461297  delta_E= 5.97e-13  |g|= 3.64e-08  |ddm|= 1.91e-07
+  alpha nocc = 13  HOMO = -0.277218601307047  LUMO = 0.0261485563052349
+  beta  nocc = 13  HOMO = -0.277218601307049  LUMO = 0.0261485563052364
+cycle= 15 E= -155.109514612971  delta_E= -1.02e-12  |g|= 1.76e-08  |ddm|= 5.12e-08
+  alpha nocc = 13  HOMO = -0.277218602077258  LUMO = 0.026148556848298
+  beta  nocc = 13  HOMO = -0.277218602077256  LUMO = 0.0261485568482967
+cycle= 16 E= -155.109514612971  delta_E= -8.53e-14  |g|= 6.95e-09  |ddm|= 9.92e-09
+converged SCF energy = -155.109514612971  <S^2> = 1.7763568e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 551 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0001031906    -0.0005212982     0.0002269979
+1 C    -0.0014600811    -0.0017775469     0.0054652410
+2 O     0.0025636633     0.0021609251    -0.0057442071
+3 H    -0.0001285640    -0.0002680151    -0.0000492298
+4 H    -0.0000953077    -0.0000537867    -0.0001428981
+5 H    -0.0001944667     0.0000803841     0.0000600085
+6 H    -0.0005484966     0.0001599857     0.0001603603
+7 H    -0.0002292848     0.0000740175     0.0001980414
+8 H     0.0002087900     0.0001562347    -0.0001808027
+----------------------------------------------
+cycle 6: E = -155.109514613  dE = -0.000157282  norm(grad) = 0.00896958
+
+Geometry optimization cycle 7
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.141551   0.672199  -0.247461   -1.386077 -1.272456  2.050204
+   C   1.270168  -0.317634  -0.047739    0.053291 -0.783635  2.336055
+   O   0.821227  -1.593362  -0.479576    0.217064 -1.667648  0.689542
+   H  -0.744830   0.354426   0.303769   -2.956171 -1.788349  1.774780
+   H   0.435059   1.661788   0.108373   -1.554997 -0.630751  3.331971
+   H  -0.121433   0.747894  -1.303838   -0.734926 -1.769355  0.826866
+   H   1.560122  -0.346188   1.010549   -0.578977 -0.243179  3.565523
+   H   2.150314  -0.002507  -0.623218    1.603117 -0.276752  2.609651
+   H   1.532604  -2.231751  -0.367404    1.114239 -1.362411  0.832780
+New geometry
+   1 C      0.141550830849   0.672198941685  -0.247461072547 AA    0.267492303010   1.270271901007  -0.467633653606 Bohr
+
+   2 C      1.270168436116  -0.317633619467  -0.047738579424 AA    2.400270476327  -0.600240548747  -0.090212840688 Bohr
+
+   3 O      0.821227329284  -1.593361747899  -0.479575557304 AA    1.551894738355  -3.011017320887  -0.906266459340 Bohr
+
+   4 H     -0.744829682891   0.354426160895   0.303768790679 AA   -1.407524110111   0.669768375472   0.574039819573 Bohr
+
+   5 H      0.435058797672   1.661788294965   0.108372727869 AA    0.822141975683   3.140324754492   0.204794775045 Bohr
+
+   6 H     -0.121433435519   0.747894087916  -1.303838382586 AA   -0.229475935495   1.413314996343  -2.463897453783 Bohr
+
+   7 H      1.560121920051  -0.346187635626   1.010548542093 AA    2.948203149827  -0.654199819044   1.909659980134 Bohr
+
+   8 H      2.150314192839  -0.002506839986  -0.623217946242 AA    4.063504906230  -0.004737241012  -1.177711234312 Bohr
+
+   9 H      1.532604180064  -2.231750662861  -0.367404353191 AA    2.896202157685  -4.217397531125  -0.694293604503 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 271 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -148.761647095823
+  alpha nocc = 13  HOMO = -1.68629650849981  LUMO = -1.48999894241812
+  beta  nocc = 13  HOMO = -1.68629650849981  LUMO = -1.48999894241812
+cycle= 1 E= -153.12785823306  delta_E= -4.37  |g|=    2  |ddm|= 1.87
+  alpha nocc = 13  HOMO = 0.0777511820977364  LUMO = 0.156588494994494
+  beta  nocc = 13  HOMO = 0.0777511820977365  LUMO = 0.156588494994488
+cycle= 2 E= -149.489344454531  delta_E= 3.64  |g|= 2.56  |ddm|= 10.7
+  alpha nocc = 13  HOMO = -0.318031227519276  LUMO = -0.0487751182380711
+  beta  nocc = 13  HOMO = -0.318031227519278  LUMO = -0.0487751182380784
+cycle= 3 E= -154.981947676854  delta_E= -5.49  |g|= 0.464  |ddm|= 10.6
+  alpha nocc = 13  HOMO = -0.333739899911544  LUMO = 0.00193824935006598
+  beta  nocc = 13  HOMO = -0.333739899911545  LUMO = 0.00193824935007359
+cycle= 4 E= -155.088358983665  delta_E= -0.106  |g|= 0.235  |ddm|= 0.46
+  alpha nocc = 13  HOMO = -0.270228350896154  LUMO = 0.0233255019115325
+  beta  nocc = 13  HOMO = -0.270228350896155  LUMO = 0.0233255019115278
+cycle= 5 E= -155.104639437617  delta_E= -0.0163  |g|= 0.114  |ddm|= 0.228
+  alpha nocc = 13  HOMO = -0.276792258786764  LUMO = 0.0272737340986344
+  beta  nocc = 13  HOMO = -0.276792258786763  LUMO = 0.027273734098627
+cycle= 6 E= -155.109410157035  delta_E= -0.00477  |g|= 0.018  |ddm|= 0.0689
+  alpha nocc = 13  HOMO = -0.277325409060361  LUMO = 0.0262540122837829
+  beta  nocc = 13  HOMO = -0.27732540906036  LUMO = 0.0262540122837806
+cycle= 7 E= -155.109523725413  delta_E= -0.000114  |g|= 0.0081  |ddm|= 0.0155
+  alpha nocc = 13  HOMO = -0.277401992920356  LUMO = 0.0261661081766542
+  beta  nocc = 13  HOMO = -0.277401992920358  LUMO = 0.0261661081766495
+cycle= 8 E= -155.109551473738  delta_E= -2.77e-05  |g|= 0.00117  |ddm|= 0.00503
+  alpha nocc = 13  HOMO = -0.277384856978307  LUMO = 0.0261818349297251
+  beta  nocc = 13  HOMO = -0.277384856978308  LUMO = 0.0261818349297258
+cycle= 9 E= -155.109552061855  delta_E= -5.88e-07  |g|= 0.000132  |ddm|= 0.000824
+  alpha nocc = 13  HOMO = -0.277352140995339  LUMO = 0.0261940656628252
+  beta  nocc = 13  HOMO = -0.277352140995339  LUMO = 0.0261940656628378
+cycle= 10 E= -155.109552069985  delta_E= -8.13e-09  |g|= 2.95e-05  |ddm|= 0.00017
+  alpha nocc = 13  HOMO = -0.277353582429453  LUMO = 0.0261942001259726
+  beta  nocc = 13  HOMO = -0.277353582429454  LUMO = 0.0261942001259857
+cycle= 11 E= -155.109552070416  delta_E= -4.3e-10  |g|= 3.95e-06  |ddm|= 3.26e-05
+  alpha nocc = 13  HOMO = -0.277354184386444  LUMO = 0.0261939779979624
+  beta  nocc = 13  HOMO = -0.277354184386445  LUMO = 0.0261939779979659
+cycle= 12 E= -155.109552070424  delta_E= -8.64e-12  |g|= 9.67e-07  |ddm|= 4.84e-06
+  alpha nocc = 13  HOMO = -0.277354246290407  LUMO = 0.0261939344735908
+  beta  nocc = 13  HOMO = -0.277354246290408  LUMO = 0.0261939344735906
+cycle= 13 E= -155.109552070424  delta_E= 5.12e-13  |g|= 1.98e-07  |ddm|= 1.22e-06
+  alpha nocc = 13  HOMO = -0.277354207456123  LUMO = 0.0261939546553754
+  beta  nocc = 13  HOMO = -0.277354207456123  LUMO = 0.0261939546553721
+cycle= 14 E= -155.109552070425  delta_E= -9.09e-13  |g|= 2.72e-08  |ddm|= 1.9e-07
+  alpha nocc = 13  HOMO = -0.27735420848733  LUMO = 0.02619395115526
+  beta  nocc = 13  HOMO = -0.277354208487329  LUMO = 0.0261939511552575
+cycle= 15 E= -155.109552070425  delta_E= -5.68e-14  |g|= 1.49e-08  |ddm|= 3.45e-08
+  alpha nocc = 13  HOMO = -0.2773542094394  LUMO = 0.0261939516810712
+  beta  nocc = 13  HOMO = -0.2773542094394  LUMO = 0.0261939516810712
+cycle= 16 E= -155.109552070425  delta_E= -2.27e-13  |g|= 3.49e-09  |ddm|= 1.03e-08
+converged SCF energy = -155.109552070425  <S^2> = -3.5527137e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 552 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0000113073    -0.0000478632     0.0000697785
+1 C    -0.0012264209    -0.0038450459    -0.0009651859
+2 O     0.0012322120     0.0037103412     0.0013089198
+3 H     0.0000170162    -0.0001195034    -0.0001428036
+4 H     0.0000050822    -0.0000442843     0.0001120946
+5 H     0.0000668658     0.0001271590    -0.0000987113
+6 H     0.0000608857     0.0001835571    -0.0001789388
+7 H    -0.0001395063    -0.0000655944    -0.0000952921
+8 H    -0.0000089338     0.0000858946     0.0000137069
+----------------------------------------------
+cycle 7: E = -155.10955207  dE = -3.74575e-05  norm(grad) = 0.00586647
+
+Geometry optimization cycle 8
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.228737   0.616181  -0.191507    0.087186 -0.056018  0.055954
+   C   1.336658  -0.367060   0.122249    0.066489 -0.049427  0.169987
+   O   0.952553  -1.642414  -0.381584    0.131325 -0.049052  0.097991
+   H  -0.708477   0.293662   0.264717    0.036353 -0.060764 -0.039052
+   H   0.478725   1.606918   0.193320    0.043666 -0.054871  0.084948
+   H   0.076428   0.691772  -1.269395    0.197862 -0.056122  0.034444
+   H   1.500858  -0.413155   1.206557   -0.059264 -0.066967  0.196008
+   H   2.274751  -0.035500  -0.341367    0.124436 -0.032993  0.281851
+   H   1.652346  -2.276511  -0.195881    0.119741 -0.044760  0.171523
+New geometry
+   1 C      0.228736892852   0.616181019605  -0.191507237752 AA    0.432250082073   1.164413370209  -0.361896230223 Bohr
+
+   2 C      1.336657647738  -0.367060124528   0.122248851087 AA    2.525916876530  -0.693643106607   0.231016847596 Bohr
+
+   3 O      0.952552825271  -1.642413848389  -0.381584263671 AA    1.800063958943  -3.103712356648  -0.721089751782 Bohr
+
+   4 H     -0.708477178536   0.293661915443   0.264716815033 AA   -1.338827832938   0.554940593403   0.500242280979 Bohr
+
+   5 H      0.478725001903   1.606917763941   0.193320387561 AA    0.904659142579   3.036634478547   0.365322586786 Bohr
+
+   6 H      0.076428311814   0.691772487444  -1.269394560184 AA    0.144428577491   1.307260541779  -2.398808062760 Bohr
+
+   7 H      1.500858304877  -0.413154796177   1.206556563082 AA    2.836211147997  -0.780749411824   2.280061458021 Bohr
+
+   8 H      2.274750618083  -0.035500041543  -0.341367084439 AA    4.298655669862  -0.067085355927  -0.645090297531 Bohr
+
+   9 H      1.652345615320  -2.276510634439  -0.195881410537 AA    3.122480676082  -4.301981618750  -0.370162218809 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 273 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.091060939272
+  alpha nocc = 13  HOMO = -0.286384995000784  LUMO = 0.020437896385721
+  beta  nocc = 13  HOMO = -0.286384995000784  LUMO = 0.0204378963857213
+cycle= 1 E= -155.109361866131  delta_E= -0.0183  |g|= 0.0197  |ddm|= 0.109
+  alpha nocc = 13  HOMO = -0.273339308351846  LUMO = 0.0273823185023054
+  beta  nocc = 13  HOMO = -0.273339308351846  LUMO = 0.027382318502311
+cycle= 2 E= -155.109338693469  delta_E= 2.32e-05  |g|= 0.0231  |ddm|= 0.0383
+  alpha nocc = 13  HOMO = -0.277736595920964  LUMO = 0.0262487302468403
+  beta  nocc = 13  HOMO = -0.277736595920963  LUMO = 0.0262487302468428
+cycle= 3 E= -155.109587978773  delta_E= -0.000249  |g|= 0.00204  |ddm|= 0.0192
+  alpha nocc = 13  HOMO = -0.277286191734268  LUMO = 0.0262886088453272
+  beta  nocc = 13  HOMO = -0.277286191734267  LUMO = 0.026288608845334
+cycle= 4 E= -155.109588377429  delta_E= -3.99e-07  |g|= 0.00192  |ddm|= 0.00289
+  alpha nocc = 13  HOMO = -0.277535263058951  LUMO = 0.0262622010233831
+  beta  nocc = 13  HOMO = -0.27753526305895  LUMO = 0.0262622010233793
+cycle= 5 E= -155.109589651256  delta_E= -1.27e-06  |g|= 0.000186  |ddm|= 0.00127
+  alpha nocc = 13  HOMO = -0.277512872864346  LUMO = 0.0262611984811761
+  beta  nocc = 13  HOMO = -0.277512872864347  LUMO = 0.0262611984811719
+cycle= 6 E= -155.109589663451  delta_E= -1.22e-08  |g|= 2.17e-05  |ddm|= 0.000158
+  alpha nocc = 13  HOMO = -0.277506090759265  LUMO = 0.0262643063544879
+  beta  nocc = 13  HOMO = -0.277506090759266  LUMO = 0.0262643063544829
+cycle= 7 E= -155.109589663676  delta_E= -2.25e-10  |g|= 6.56e-06  |ddm|= 2.59e-05
+  alpha nocc = 13  HOMO = -0.277506485769447  LUMO = 0.0262640823549136
+  beta  nocc = 13  HOMO = -0.277506485769447  LUMO = 0.0262640823549111
+cycle= 8 E= -155.109589663695  delta_E= -1.9e-11  |g|= 2.32e-06  |ddm|= 6.62e-06
+  alpha nocc = 13  HOMO = -0.277506401662516  LUMO = 0.0262640909458949
+  beta  nocc = 13  HOMO = -0.277506401662516  LUMO = 0.0262640909458909
+cycle= 9 E= -155.109589663697  delta_E= -2.22e-12  |g|= 4.23e-07  |ddm|= 2.18e-06
+  alpha nocc = 13  HOMO = -0.277506426155222  LUMO = 0.0262640988486094
+  beta  nocc = 13  HOMO = -0.277506426155223  LUMO = 0.0262640988486088
+cycle= 10 E= -155.109589663697  delta_E= 5.68e-14  |g|= 6.52e-08  |ddm|= 4.12e-07
+  alpha nocc = 13  HOMO = -0.277506420721689  LUMO = 0.0262640987431331
+  beta  nocc = 13  HOMO = -0.277506420721689  LUMO = 0.0262640987431339
+cycle= 11 E= -155.109589663697  delta_E= -2.27e-13  |g|= 1.12e-08  |ddm|= 1.66e-07
+  alpha nocc = 13  HOMO = -0.277506420377294  LUMO = 0.0262640986324485
+  beta  nocc = 13  HOMO = -0.277506420377293  LUMO = 0.0262640986324459
+cycle= 12 E= -155.109589663698  delta_E= -3.98e-13  |g|= 5.23e-09  |ddm|= 7.19e-09
+converged SCF energy = -155.109589663698  <S^2> = 5.3290705e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 591 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0000060184    -0.0000217180     0.0000642473
+1 C    -0.0004221817    -0.0017965985    -0.0005154832
+2 O     0.0004408232     0.0014806639     0.0005855536
+3 H     0.0000082500    -0.0000476284    -0.0000552860
+4 H     0.0000272396    -0.0000230532     0.0000444317
+5 H     0.0000205166     0.0000707841    -0.0000672979
+6 H     0.0000186150     0.0002178698    -0.0000159912
+7 H    -0.0000248279     0.0000901221    -0.0000260761
+8 H    -0.0000329285     0.0000261822    -0.0000338489
+----------------------------------------------
+cycle 8: E = -155.109589664  dE = -3.75933e-05  norm(grad) = 0.00254655
+
+Geometry optimization cycle 9
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.409305   1.853759  -1.924984    0.180568  1.237578 -1.733477
+   C   0.347350   0.427691  -2.428992   -0.989308  0.794751 -2.551241
+   O  -0.161639  -0.385325  -1.395114   -1.114192  1.257089 -1.013530
+   H   1.070316   1.924451  -1.059898    1.778793  1.630789 -1.324615
+   H   0.786611   2.513361  -2.708944    0.307886  0.906443 -2.902264
+   H  -0.583046   2.199757  -1.628143   -0.659474  1.507984 -0.358748
+   H   1.351671   0.102985  -2.733441   -0.149187  0.516140 -3.939998
+   H  -0.295319   0.380724  -3.319005   -2.570070  0.416224 -2.977638
+   H  -0.212922  -1.296253  -1.699992   -1.865268  0.980257 -1.504110
+New geometry
+   1 C      0.409304883740   1.853758942495  -1.924983858790 AA    0.773474131716   3.503096702279  -3.637692287321 Bohr
+
+   2 C      0.347349749742   0.427690791518  -2.428991912257 AA    0.656395896449   0.808218461968  -4.590129472949 Bohr
+
+   3 O     -0.161639373570  -0.385325079797  -1.395113945580 AA   -0.305454146994  -0.728158869743  -2.636383269707 Bohr
+
+   4 H      1.070316307697   1.924450656978  -1.059897698972 AA    2.022604688203   3.636684681927  -2.002916371113 Bohr
+
+   5 H      0.786611085379   2.513360981350  -2.708943716336 AA    1.486479517912   4.749563906919  -5.119161710737 Bohr
+
+   6 H     -0.583045602628   2.199756850475  -1.628142561178 AA   -1.101796507098   4.156937988034  -3.076743532374 Bohr
+
+   7 H      1.351671068329   0.102984966910  -2.733441008261 AA    2.554288129641   0.194613382407  -5.165454883269 Bohr
+
+   8 H     -0.295319408262   0.380723511272  -3.319005086577 AA   -0.558072800884   0.719463165486  -6.272010619670 Bohr
+
+   9 H     -0.212922391996  -1.296253443026  -1.699991534231 AA   -0.402365006660  -2.449563995345  -3.212518413776 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 311 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -148.63516973464
+  alpha nocc = 13  HOMO = -1.72249781335656  LUMO = -1.5093613421085
+  beta  nocc = 13  HOMO = -1.72249781335655  LUMO = -1.5093613421085
+cycle= 1 E= -153.107631849452  delta_E= -4.47  |g|= 2.02  |ddm|= 1.89
+  alpha nocc = 13  HOMO = 0.0832858325085972  LUMO = 0.152730622172845
+  beta  nocc = 13  HOMO = 0.0832858325086015  LUMO = 0.152730622172836
+cycle= 2 E= -149.442292153252  delta_E= 3.67  |g|= 2.59  |ddm|= 10.7
+  alpha nocc = 13  HOMO = -0.321181572645594  LUMO = -0.0501398354180526
+  beta  nocc = 13  HOMO = -0.321181572645595  LUMO = -0.0501398354180564
+cycle= 3 E= -154.984056215579  delta_E= -5.54  |g|= 0.457  |ddm|= 10.6
+  alpha nocc = 13  HOMO = -0.329795670286814  LUMO = 0.0022537325399274
+  beta  nocc = 13  HOMO = -0.329795670286812  LUMO = 0.0022537325399263
+cycle= 4 E= -155.090656026537  delta_E= -0.107  |g|= 0.216  |ddm|= 0.457
+  alpha nocc = 13  HOMO = -0.269141786253336  LUMO = 0.024024981432713
+  beta  nocc = 13  HOMO = -0.269141786253335  LUMO = 0.0240249814327142
+cycle= 5 E= -155.104884493535  delta_E= -0.0142  |g|= 0.11  |ddm|= 0.22
+  alpha nocc = 13  HOMO = -0.27727975169605  LUMO = 0.0270538857517552
+  beta  nocc = 13  HOMO = -0.277279751696047  LUMO = 0.027053885751756
+cycle= 6 E= -155.109263571368  delta_E= -0.00438  |g|= 0.0194  |ddm|= 0.0696
+  alpha nocc = 13  HOMO = -0.277074370147754  LUMO = 0.026281886769952
+  beta  nocc = 13  HOMO = -0.277074370147755  LUMO = 0.0262818867699506
+cycle= 7 E= -155.1093914233  delta_E= -0.000128  |g|= 0.00855  |ddm|= 0.0157
+  alpha nocc = 13  HOMO = -0.27740009889192  LUMO = 0.0261046997362516
+  beta  nocc = 13  HOMO = -0.277400098891918  LUMO = 0.0261046997362491
+cycle= 8 E= -155.109421698404  delta_E= -3.03e-05  |g|= 0.00108  |ddm|= 0.00546
+  alpha nocc = 13  HOMO = -0.277364613205007  LUMO = 0.0261207497639728
+  beta  nocc = 13  HOMO = -0.277364613205006  LUMO = 0.0261207497639725
+cycle= 9 E= -155.109422201827  delta_E= -5.03e-07  |g|= 9.64e-05  |ddm|= 0.000715
+  alpha nocc = 13  HOMO = -0.277333277072642  LUMO = 0.0261359354814817
+  beta  nocc = 13  HOMO = -0.277333277072642  LUMO = 0.0261359354814811
+cycle= 10 E= -155.109422206295  delta_E= -4.47e-09  |g|= 2.45e-05  |ddm|= 0.000116
+  alpha nocc = 13  HOMO = -0.277336288717288  LUMO = 0.0261346222467071
+  beta  nocc = 13  HOMO = -0.277336288717288  LUMO = 0.0261346222467094
+cycle= 11 E= -155.109422206598  delta_E= -3.03e-10  |g|= 2.34e-06  |ddm|= 2.06e-05
+  alpha nocc = 13  HOMO = -0.277336702128355  LUMO = 0.0261345652095671
+  beta  nocc = 13  HOMO = -0.277336702128354  LUMO = 0.0261345652095739
+cycle= 12 E= -155.1094222066  delta_E= -1.88e-12  |g|= 6.62e-07  |ddm|= 2.77e-06
+  alpha nocc = 13  HOMO = -0.277336695423806  LUMO = 0.0261345452725753
+  beta  nocc = 13  HOMO = -0.277336695423807  LUMO = 0.0261345452725762
+cycle= 13 E= -155.109422206599  delta_E= 7.96e-13  |g|= 1.53e-07  |ddm|= 8.85e-07
+  alpha nocc = 13  HOMO = -0.277336674352562  LUMO = 0.0261345579761547
+  beta  nocc = 13  HOMO = -0.277336674352564  LUMO = 0.0261345579761504
+cycle= 14 E= -155.1094222066  delta_E= -5.12e-13  |g|= 2.48e-08  |ddm|= 1.72e-07
+  alpha nocc = 13  HOMO = -0.277336673978176  LUMO = 0.0261345564413313
+  beta  nocc = 13  HOMO = -0.277336673978176  LUMO = 0.0261345564413261
+cycle= 15 E= -155.1094222066  delta_E= 3.41e-13  |g|= 1.52e-08  |ddm|= 1.64e-08
+  alpha nocc = 13  HOMO = -0.277336674627812  LUMO = 0.0261345560960908
+  beta  nocc = 13  HOMO = -0.277336674627813  LUMO = 0.0261345560960906
+cycle= 16 E= -155.1094222066  delta_E=    0  |g|= 6.54e-09  |ddm|= 2.13e-08
+converged SCF energy = -155.1094222066  <S^2> = -3.5527137e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 557 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0004361572    -0.0006095415    -0.0001248840
+1 C    -0.0027946151    -0.0059747232     0.0074460599
+2 O     0.0028921387     0.0052974092    -0.0066400139
+3 H    -0.0000362882    -0.0003484315    -0.0000707783
+4 H    -0.0001675016    -0.0003870413    -0.0003903002
+5 H    -0.0005048192     0.0001862507     0.0001502926
+6 H     0.0001704383     0.0009054834    -0.0003597041
+7 H     0.0000526692     0.0005908231    -0.0002007911
+8 H    -0.0000473975     0.0003727358     0.0001784798
+----------------------------------------------
+cycle 9: E = -155.109422207  dE = 0.000167457  norm(grad) = 0.013504
+
+Geometry optimization cycle 10
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.505080   2.224458  -3.224518    0.095775  0.370699 -1.299534
+   C  -0.080354   0.828518  -3.164771   -0.427704  0.400827 -0.735779
+   O   0.146687   0.311679  -1.862441    0.308326  0.697004 -0.467327
+   H   1.577237   2.198907  -3.023176    0.506920  0.274456 -1.963279
+   H   0.349179   2.662713  -4.212323   -0.437432  0.149352 -1.503379
+   H   0.032981   2.868874  -2.481446    0.616026  0.669117 -0.853303
+   H   0.392467   0.194447  -3.926192   -0.959204  0.091462 -1.192751
+   H  -1.154501   0.865434  -3.388271   -0.859182  0.484711 -0.069266
+   H  -0.217710  -0.577315  -1.807063   -0.004787  0.718938 -0.107072
+New geometry
+   1 C      0.505080086010   2.224457892425  -3.224517925723 AA    0.954463033531   4.203616192310  -6.093455763367 Bohr
+
+   2 C     -0.080353875529   0.828517923255  -3.164770520617 AA   -0.151846817797   1.565671964245  -5.980549531064 Bohr
+
+   3 O      0.146687017414   0.311678673412  -1.862440925189 AA    0.277198288941   0.588987331616  -3.519503271789 Bohr
+
+   4 H      1.577236713000   2.198907100899  -3.023176297256 AA    2.980545421179   4.155332194061  -5.712975228090 Bohr
+
+   5 H      0.349179248519   2.662713333990  -4.212322931724 AA    0.659853148083   5.031798949468  -7.960136689184 Bohr
+
+   6 H      0.032980766636   2.868873923085  -2.481446051441 AA    0.062324616320   5.421386000538  -4.689253430107 Bohr
+
+   7 H      0.392466925757   0.194446643471  -3.926191737142 AA    0.741655002630   0.367450902001  -7.419427095729 Bohr
+
+   8 H     -1.154501024607   0.865434483747  -3.388271358658 AA   -2.181690747037   1.635434153036  -6.402904903571 Bohr
+
+   9 H     -0.217709513804  -0.577315072814  -1.807063233810 AA   -0.411411355802  -1.090967375202  -3.414854601672 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 290 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -153.970424281049
+  alpha nocc = 13  HOMO = -0.720382080743684  LUMO = -0.328476076830994
+  beta  nocc = 13  HOMO = -0.720382080743683  LUMO = -0.328476076830994
+cycle= 1 E= -154.848806650032  delta_E= -0.878  |g|= 0.714  |ddm|= 0.922
+  alpha nocc = 13  HOMO = -0.118837872146847  LUMO = 0.0695546620044598
+  beta  nocc = 13  HOMO = -0.118837872146845  LUMO = 0.0695546620044626
+cycle= 2 E= -154.647274839801  delta_E= 0.202  |g|= 0.973  |ddm|= 1.61
+  alpha nocc = 13  HOMO = -0.288435747139098  LUMO = 0.0260208395600727
+  beta  nocc = 13  HOMO = -0.288435747139097  LUMO = 0.0260208395600734
+cycle= 3 E= -155.107086217739  delta_E= -0.46  |g|= 0.0846  |ddm|= 1.13
+  alpha nocc = 13  HOMO = -0.2707905125277  LUMO = 0.0266659679698487
+  beta  nocc = 13  HOMO = -0.270790512527699  LUMO = 0.0266659679698483
+cycle= 4 E= -155.108375850906  delta_E= -0.00129  |g|= 0.0584  |ddm|= 0.0993
+  alpha nocc = 13  HOMO = -0.277349993897319  LUMO = 0.0261443720360872
+  beta  nocc = 13  HOMO = -0.277349993897319  LUMO = 0.0261443720360941
+cycle= 5 E= -155.109543669589  delta_E= -0.00117  |g|= 0.00443  |ddm|= 0.0356
+  alpha nocc = 13  HOMO = -0.277382260008603  LUMO = 0.0263416805969823
+  beta  nocc = 13  HOMO = -0.277382260008601  LUMO = 0.0263416805969881
+cycle= 6 E= -155.109551717842  delta_E= -8.05e-06  |g|= 0.000477  |ddm|= 0.00349
+  alpha nocc = 13  HOMO = -0.277581808256562  LUMO = 0.0262454047064877
+  beta  nocc = 13  HOMO = -0.277581808256562  LUMO = 0.0262454047064893
+cycle= 7 E= -155.109551824232  delta_E= -1.06e-07  |g|= 9.37e-05  |ddm|= 0.00063
+  alpha nocc = 13  HOMO = -0.277572875610595  LUMO = 0.0262507128835775
+  beta  nocc = 13  HOMO = -0.277572875610593  LUMO = 0.026250712883569
+cycle= 8 E= -155.10955182767  delta_E= -3.44e-09  |g|= 2.96e-05  |ddm|= 8.64e-05
+  alpha nocc = 13  HOMO = -0.277568091330824  LUMO = 0.0262517918660509
+  beta  nocc = 13  HOMO = -0.277568091330824  LUMO = 0.0262517918660517
+cycle= 9 E= -155.109551828011  delta_E= -3.41e-10  |g|= 1.13e-05  |ddm|= 2.63e-05
+  alpha nocc = 13  HOMO = -0.27756830925844  LUMO = 0.0262515859078846
+  beta  nocc = 13  HOMO = -0.277568309258441  LUMO = 0.0262515859078822
+cycle= 10 E= -155.109551828069  delta_E= -5.83e-11  |g|= 1.48e-06  |ddm|= 7.68e-06
+  alpha nocc = 13  HOMO = -0.277568189414831  LUMO = 0.0262516836167764
+  beta  nocc = 13  HOMO = -0.277568189414832  LUMO = 0.0262516836167723
+cycle= 11 E= -155.10955182807  delta_E= -5.12e-13  |g|= 4.24e-07  |ddm|= 1.42e-06
+  alpha nocc = 13  HOMO = -0.277568209485862  LUMO = 0.0262516772927737
+  beta  nocc = 13  HOMO = -0.277568209485862  LUMO = 0.0262516772927705
+cycle= 12 E= -155.10955182807  delta_E= -4.55e-13  |g|= 3.69e-08  |ddm|= 4.84e-07
+  alpha nocc = 13  HOMO = -0.277568220250981  LUMO = 0.0262516734404159
+  beta  nocc = 13  HOMO = -0.277568220250979  LUMO = 0.0262516734404184
+cycle= 13 E= -155.10955182807  delta_E= -5.68e-14  |g|= 1.75e-08  |ddm|= 5.33e-08
+  alpha nocc = 13  HOMO = -0.277568219903797  LUMO = 0.026251673323775
+  beta  nocc = 13  HOMO = -0.277568219903797  LUMO = 0.0262516733237689
+cycle= 14 E= -155.10955182807  delta_E= 8.53e-13  |g|= 6.41e-09  |ddm|= 1.44e-08
+converged SCF energy = -155.10955182807  <S^2> = -1.7763568e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 613 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0000823814    -0.0000437774     0.0000471737
+1 C     0.0003788507    -0.0025411910     0.0042021771
+2 O    -0.0005534759     0.0018015567    -0.0034958801
+3 H     0.0000280120     0.0000339521    -0.0000454516
+4 H     0.0000624647     0.0000690340     0.0000059180
+5 H     0.0000372364    -0.0000788593    -0.0000495291
+6 H    -0.0001036897     0.0004671993    -0.0003956485
+7 H     0.0001932932     0.0002430025    -0.0003380922
+8 H     0.0000600751     0.0000753146     0.0000592671
+----------------------------------------------
+cycle 10: E = -155.109551828  dE = -0.000129621  norm(grad) = 0.00637772
+
+Geometry optimization cycle 11
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C  -0.649956   2.342968  -5.850007   -1.155036  0.118510 -2.625489
+   C  -0.920445   2.121021  -4.377271   -0.840092  1.292503 -1.212500
+   O   0.292907   1.706250  -3.761801    0.146220  1.394572 -1.899361
+   H  -0.303324   1.420318  -6.317666   -1.880560 -0.778590 -3.294490
+   H  -1.558976   2.671100  -6.357743   -1.908155  0.008386 -2.145420
+   H   0.118252   3.106183  -5.986086    0.085271  0.237309 -3.504640
+   H  -1.697332   1.356618  -4.247707   -2.089799  1.162172 -0.321515
+   H  -1.286611   3.048400  -3.918430   -0.132110  2.182965 -0.530159
+   H   0.134142   1.561273  -2.823725    0.351852  2.138588 -1.016662
+New geometry
+   1 C     -0.649955679429   2.342968000842  -5.850006861649 AA   -1.228238227227   4.427567840212 -11.054910795343 Bohr
+
+   2 C     -0.920445402348   2.121021298839  -4.377270971590 AA   -1.739389723052   4.008149359175  -8.271843309314 Bohr
+
+   3 O      0.292906657185   1.706250307229  -3.761801483548 AA    0.553513362141   3.224345780618  -7.108774538889 Bohr
+
+   4 H     -0.303323700994   1.420317555639  -6.317666024843 AA   -0.573198721968   2.684011190069 -11.938658533423 Bohr
+
+   5 H     -1.558976061272   2.671099711578  -6.357743254709 AA   -2.946037790558   5.047646906288 -12.014393521701 Bohr
+
+   6 H      0.118252162132   3.106182821617  -5.986085792505 AA    0.223464200068   5.869834825684 -11.312062705984 Bohr
+
+   7 H     -1.697332395646   1.356618181970  -4.247707221932 AA   -3.207493370122   2.563636819528  -8.027003306789 Bohr
+
+   8 H     -1.286611487204   3.048399564139  -3.918430228549 AA   -2.431343339535   5.760640294466  -7.404759970174 Bohr
+
+   9 H      0.134142187252   1.561272789362  -2.823725213498 AA    0.253491995657   2.950377977631  -5.336067304541 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 286 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -149.962146647614
+  alpha nocc = 13  HOMO = -1.57530919132733  LUMO = -1.278318104273
+  beta  nocc = 13  HOMO = -1.57530919132733  LUMO = -1.27831810427299
+cycle= 1 E= -153.478121189736  delta_E= -3.52  |g|= 1.82  |ddm|= 1.73
+  alpha nocc = 13  HOMO = 0.108665272285382  LUMO = 0.120624031707234
+  beta  nocc = 13  HOMO = 0.108665272285382  LUMO = 0.120624031707202
+cycle= 2 E= -150.014472960752  delta_E= 3.46  |g|= 2.53  |ddm|=   14
+  alpha nocc = 13  HOMO = -0.311592269800989  LUMO = -0.0393660499201116
+  beta  nocc = 13  HOMO = -0.311592269800988  LUMO = -0.039366049920106
+cycle= 3 E= -155.018275892357  delta_E=   -5  |g|= 0.384  |ddm|= 13.8
+  alpha nocc = 13  HOMO = -0.322562723835381  LUMO = 0.00487879049716199
+  beta  nocc = 13  HOMO = -0.32256272383538  LUMO = 0.00487879049716102
+cycle= 4 E= -155.094081504843  delta_E= -0.0758  |g|= 0.192  |ddm|= 0.426
+  alpha nocc = 13  HOMO = -0.271743733005575  LUMO = 0.0239020950049947
+  beta  nocc = 13  HOMO = -0.271743733005574  LUMO = 0.0239020950049933
+cycle= 5 E= -155.106604230203  delta_E= -0.0125  |g|= 0.0877  |ddm|= 0.184
+  alpha nocc = 13  HOMO = -0.277978201397522  LUMO = 0.0266612038339648
+  beta  nocc = 13  HOMO = -0.277978201397522  LUMO = 0.0266612038339643
+cycle= 6 E= -155.10944040503  delta_E= -0.00284  |g|= 0.0194  |ddm|= 0.0578
+  alpha nocc = 13  HOMO = -0.276643597001345  LUMO = 0.0264585413154924
+  beta  nocc = 13  HOMO = -0.276643597001343  LUMO = 0.0264585413154859
+cycle= 7 E= -155.109553782044  delta_E= -0.000113  |g|= 0.00799  |ddm|= 0.015
+  alpha nocc = 13  HOMO = -0.277334741109982  LUMO = 0.0262112381219927
+  beta  nocc = 13  HOMO = -0.277334741109982  LUMO = 0.0262112381219917
+cycle= 8 E= -155.109579241755  delta_E= -2.55e-05  |g|= 0.000653  |ddm|= 0.00533
+  alpha nocc = 13  HOMO = -0.277345540176748  LUMO = 0.0262040971900035
+  beta  nocc = 13  HOMO = -0.27734554017675  LUMO = 0.026204097190003
+cycle= 9 E= -155.109579418062  delta_E= -1.76e-07  |g|= 8.8e-05  |ddm|= 0.000472
+  alpha nocc = 13  HOMO = -0.277321958792622  LUMO = 0.0262165652296077
+  beta  nocc = 13  HOMO = -0.277321958792624  LUMO = 0.0262165652296176
+cycle= 10 E= -155.109579421749  delta_E= -3.69e-09  |g|= 2.41e-05  |ddm|= 0.000102
+  alpha nocc = 13  HOMO = -0.277323501260967  LUMO = 0.0262155779207584
+  beta  nocc = 13  HOMO = -0.277323501260968  LUMO = 0.0262155779207568
+cycle= 11 E= -155.109579422047  delta_E= -2.98e-10  |g|= 3.27e-06  |ddm|= 2.06e-05
+  alpha nocc = 13  HOMO = -0.277323896325523  LUMO = 0.0262155970737766
+  beta  nocc = 13  HOMO = -0.277323896325522  LUMO = 0.0262155970737756
+cycle= 12 E= -155.109579422052  delta_E= -4.83e-12  |g|= 1.03e-06  |ddm|= 4.08e-06
+  alpha nocc = 13  HOMO = -0.277323912254884  LUMO = 0.0262155417307054
+  beta  nocc = 13  HOMO = -0.277323912254883  LUMO = 0.0262155417307078
+cycle= 13 E= -155.109579422053  delta_E= -7.96e-13  |g|= 1.55e-07  |ddm|= 1.13e-06
+  alpha nocc = 13  HOMO = -0.277323874591781  LUMO = 0.0262155571746754
+  beta  nocc = 13  HOMO = -0.27732387459178  LUMO = 0.0262155571746757
+cycle= 14 E= -155.109579422052  delta_E= 8.53e-13  |g|= 3.01e-08  |ddm|= 1.71e-07
+  alpha nocc = 13  HOMO = -0.277323880575886  LUMO = 0.0262155545792813
+  beta  nocc = 13  HOMO = -0.277323880575884  LUMO = 0.0262155545792825
+cycle= 15 E= -155.109579422053  delta_E= -9.66e-13  |g|= 3.21e-09  |ddm|= 3.17e-08
+converged SCF energy = -155.109579422053  <S^2> = -3.5527137e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 557 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0000297144    -0.0001761235    -0.0001799198
+1 C     0.0020621800    -0.0007263759     0.0007413816
+2 O    -0.0024938918     0.0008587195    -0.0012209313
+3 H    -0.0000109007    -0.0000010678     0.0002175961
+4 H    -0.0000218002     0.0000670938     0.0002495863
+5 H     0.0001444099     0.0001219298     0.0000638897
+6 H     0.0002532929    -0.0000857705     0.0001559658
+7 H     0.0001963670    -0.0000898626     0.0000453736
+8 H    -0.0001117565     0.0000498606    -0.0000763681
+----------------------------------------------
+cycle 11: E = -155.109579422  dE = -2.7594e-05  norm(grad) = 0.00376319
+
+Geometry optimization cycle 12
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.464742   2.273972  -3.414887    1.114698 -0.068996  2.435120
+   C  -0.155014   0.900993  -3.259292    0.765432 -1.220029  1.117979
+   O   0.189904   0.403714  -1.970417   -0.103003 -1.302536  1.791384
+   H   1.550510   2.216428  -3.323632    1.853834  0.796111  2.994034
+   H   0.220976   2.693526  -4.392977    1.779952  0.022426  1.964766
+   H   0.092074   2.951398  -2.644955   -0.026178 -0.154785  3.341131
+   H   0.217023   0.230914  -4.045059    1.914355 -1.125704  0.202648
+   H  -1.245113   0.967259  -3.369144    0.041498 -2.081141  0.549286
+   H  -0.196410  -0.470577  -1.857863   -0.330552 -2.031849  0.965862
+New geometry
+   1 C      0.464741877842   2.273972107591  -3.414886868595 AA    0.878234867738   4.297184498247  -6.453200928018 Bohr
+
+   2 C     -0.155013796771   0.900992702171  -3.259291898705 AA   -0.292933621425   1.702629447335  -6.159169048566 Bohr
+
+   3 O      0.189903798605   0.403714316658  -1.970417462594 AA    0.358866169378   0.762909491050  -3.723549355363 Bohr
+
+   4 H      1.550510039020   2.216428069516  -3.323631814282 AA    2.930039327136   4.188442026183  -6.280753867885 Bohr
+
+   5 H      0.220975647963   2.693525879734  -4.392977280359 AA    0.417583454849   5.090026222125  -8.301523931314 Bohr
+
+   6 H      0.092074211354   2.951398293885  -2.644955019530 AA    0.173995042593   5.577334459951  -4.998240598705 Bohr
+
+   7 H      0.217022525560   0.230914086909  -4.045059010477 AA    0.410113136170   0.436364382562  -7.644053687506 Bohr
+
+   8 H     -1.245113432264   0.967258842972  -3.369144017284 AA   -2.352923380996   1.827854304781  -6.366759466884 Bohr
+
+   9 H     -0.196409845808  -0.470576519952  -1.857863249775 AA   -0.371160816745  -0.889260743361  -3.510852718970 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 291 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -150.758182141521
+  alpha nocc = 13  HOMO = -1.42463519906809  LUMO = -1.11541797870236
+  beta  nocc = 13  HOMO = -1.42463519906809  LUMO = -1.11541797870236
+cycle= 1 E= -153.724948220706  delta_E= -2.97  |g|= 1.66  |ddm|= 1.62
+  alpha nocc = 13  HOMO = 0.094333050450961  LUMO = 0.107718143475134
+  beta  nocc = 13  HOMO = 0.0943330504509599  LUMO = 0.107718143475142
+cycle= 2 E= -150.498694022263  delta_E= 3.23  |g|= 2.36  |ddm|= 12.9
+  alpha nocc = 13  HOMO = -0.294828234328355  LUMO = -0.0337753760268679
+  beta  nocc = 13  HOMO = -0.294828234328355  LUMO = -0.0337753760268506
+cycle= 3 E= -155.019920325784  delta_E= -4.52  |g|= 0.386  |ddm|= 12.8
+  alpha nocc = 13  HOMO = -0.330470005452194  LUMO = 0.00474866412965448
+  beta  nocc = 13  HOMO = -0.330470005452193  LUMO = 0.00474866412965102
+cycle= 4 E= -155.089119464824  delta_E= -0.0692  |g|= 0.229  |ddm|= 0.441
+  alpha nocc = 13  HOMO = -0.273543589565672  LUMO = 0.0225364104776102
+  beta  nocc = 13  HOMO = -0.273543589565673  LUMO = 0.0225364104776122
+cycle= 5 E= -155.106460512192  delta_E= -0.0173  |g|= 0.0911  |ddm|= 0.207
+  alpha nocc = 13  HOMO = -0.277600906766468  LUMO = 0.0267426070570482
+  beta  nocc = 13  HOMO = -0.277600906766469  LUMO = 0.0267426070570429
+cycle= 6 E= -155.109435726465  delta_E= -0.00298  |g|= 0.0193  |ddm|= 0.057
+  alpha nocc = 13  HOMO = -0.27701552289036  LUMO = 0.0265151128749373
+  beta  nocc = 13  HOMO = -0.277015522890361  LUMO = 0.0265151128749374
+cycle= 7 E= -155.109565274065  delta_E= -0.00013  |g|= 0.00719  |ddm|= 0.0141
+  alpha nocc = 13  HOMO = -0.277538006283764  LUMO = 0.026269603786802
+  beta  nocc = 13  HOMO = -0.277538006283765  LUMO = 0.026269603786801
+cycle= 8 E= -155.109586591265  delta_E= -2.13e-05  |g|= 0.000569  |ddm|= 0.00474
+  alpha nocc = 13  HOMO = -0.277559482716422  LUMO = 0.0262617809732947
+  beta  nocc = 13  HOMO = -0.277559482716421  LUMO = 0.026261780973293
+cycle= 9 E= -155.109586722711  delta_E= -1.31e-07  |g|= 8.6e-05  |ddm|= 0.000473
+  alpha nocc = 13  HOMO = -0.277538306001857  LUMO = 0.0262705857340115
+  beta  nocc = 13  HOMO = -0.277538306001861  LUMO = 0.0262705857340075
+cycle= 10 E= -155.109586726081  delta_E= -3.37e-09  |g|= 1.98e-05  |ddm|= 0.000101
+  alpha nocc = 13  HOMO = -0.277539219164009  LUMO = 0.0262705893008778
+  beta  nocc = 13  HOMO = -0.27753921916401  LUMO = 0.0262705893008793
+cycle= 11 E= -155.109586726271  delta_E= -1.89e-10  |g|= 1.58e-06  |ddm|= 1.67e-05
+  alpha nocc = 13  HOMO = -0.277539639220045  LUMO = 0.0262704361376166
+  beta  nocc = 13  HOMO = -0.277539639220048  LUMO = 0.0262704361376052
+cycle= 12 E= -155.109586726272  delta_E= -1.42e-12  |g|= 5.17e-07  |ddm|= 2.21e-06
+  alpha nocc = 13  HOMO = -0.277539620512481  LUMO = 0.0262704466740661
+  beta  nocc = 13  HOMO = -0.277539620512481  LUMO = 0.0262704466740678
+cycle= 13 E= -155.109586726272  delta_E= -1.71e-13  |g|= 1.46e-07  |ddm|= 6.63e-07
+  alpha nocc = 13  HOMO = -0.277539592492378  LUMO = 0.0262704561386554
+  beta  nocc = 13  HOMO = -0.277539592492381  LUMO = 0.0262704561386549
+cycle= 14 E= -155.109586726272  delta_E= -2.27e-13  |g|= 2.43e-08  |ddm|= 1.75e-07
+  alpha nocc = 13  HOMO = -0.277539594364838  LUMO = 0.0262704539950509
+  beta  nocc = 13  HOMO = -0.277539594364837  LUMO = 0.0262704539950567
+cycle= 15 E= -155.109586726273  delta_E= -2.27e-13  |g|= 2.08e-08  |ddm|= 1.13e-08
+  alpha nocc = 13  HOMO = -0.277539597431932  LUMO = 0.0262704531283015
+  beta  nocc = 13  HOMO = -0.277539597431932  LUMO = 0.0262704531283098
+cycle= 16 E= -155.109586726272  delta_E= 4.55e-13  |g|= 2.44e-09  |ddm|= 1.68e-08
+converged SCF energy = -155.109586726272  <S^2> = 8.8817842e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 559 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0000493198     0.0000513061    -0.0000062818
+1 C     0.0003241089    -0.0010505338     0.0018138492
+2 O    -0.0004332616     0.0006664293    -0.0015143957
+3 H    -0.0000020766    -0.0000035677    -0.0000085522
+4 H    -0.0000158055    -0.0000117668     0.0000065726
+5 H     0.0000008696     0.0000010812     0.0000098376
+6 H    -0.0000339827     0.0001689683    -0.0001495053
+7 H     0.0000522651     0.0001036951    -0.0001527109
+8 H     0.0000301444     0.0000355617     0.0000145417
+----------------------------------------------
+cycle 12: E = -155.109586726  dE = -7.30422e-06  norm(grad) = 0.00274243
+
+Geometry optimization cycle 13
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.636558   2.230467  -3.277804    0.171816 -0.043505  0.137083
+   C   0.050062   0.838565  -3.167729    0.205076 -0.062428  0.091563
+   O   0.276933   0.366886  -1.841388    0.087029 -0.036828  0.129029
+   H   1.708338   2.211795  -3.073980    0.157828 -0.004633  0.249652
+   H   0.482113   2.631003  -4.281746    0.261137 -0.062523  0.111231
+   H   0.163586   2.902824  -2.560398    0.071511 -0.048575  0.084557
+   H   0.523597   0.173344  -3.901226    0.306574 -0.057570  0.143833
+   H  -1.024499   0.865653  -3.389735    0.220615 -0.101606 -0.020591
+   H  -0.088795  -0.519389  -1.757332    0.107615 -0.048813  0.100531
+New geometry
+   1 C      0.636557561106   2.230467345948  -3.277803565327 AA    1.202919453011   4.214972413626  -6.194151028591 Bohr
+
+   2 C      0.050061849508   0.838564645792  -3.167729015171 AA    0.094603184859   1.584657518290  -5.986140275511 Bohr
+
+   3 O      0.276932607645   0.366886304290  -1.841388006230 AA    0.523326783410   0.693314633963  -3.479719020833 Bohr
+
+   4 H      1.708337627202   2.211794911311  -3.073979521039 AA    3.228290243700   4.179686626084  -5.808979407286 Bohr
+
+   5 H      0.482112928280   2.631003057748  -4.281745785912 AA    0.911061395561   4.971875212038  -8.091326870385 Bohr
+
+   6 H      0.163585600095   2.902823548048  -2.560398038944 AA    0.309131982103   5.485541493749  -4.838451063477 Bohr
+
+   7 H      0.523596531447   0.173344374364  -3.901226028396 AA    0.989454044206   0.327573392781  -7.372248743693 Bohr
+
+   8 H     -1.024498886859   0.865653190889  -3.389734519384 AA   -1.936022311086   1.635847449637  -6.405669876619 Bohr
+
+   9 H     -0.088795122590  -0.519389040330  -1.757332019679 AA   -0.167798462892  -0.981503038324  -3.320876227123 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 280 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.092576428029
+  alpha nocc = 13  HOMO = -0.285955090481719  LUMO = 0.0208401223521715
+  beta  nocc = 13  HOMO = -0.285955090481716  LUMO = 0.020840122352172
+cycle= 1 E= -155.109396251943  delta_E= -0.0168  |g|= 0.0175  |ddm|= 0.103
+  alpha nocc = 13  HOMO = -0.273713341163215  LUMO = 0.0273066758331353
+  beta  nocc = 13  HOMO = -0.273713341163216  LUMO = 0.0273066758331203
+cycle= 2 E= -155.109389647149  delta_E= 6.6e-06  |g|= 0.0208  |ddm|= 0.035
+  alpha nocc = 13  HOMO = -0.277847366737863  LUMO = 0.0262967011252662
+  beta  nocc = 13  HOMO = -0.277847366737864  LUMO = 0.0262967011252626
+cycle= 3 E= -155.109585561733  delta_E= -0.000196  |g|= 0.00207  |ddm|= 0.0176
+  alpha nocc = 13  HOMO = -0.277402901240051  LUMO = 0.0263257574604179
+  beta  nocc = 13  HOMO = -0.277402901240054  LUMO = 0.0263257574604171
+cycle= 4 E= -155.109585668378  delta_E= -1.07e-07  |g|= 0.00208  |ddm|= 0.00288
+  alpha nocc = 13  HOMO = -0.277637845645739  LUMO = 0.0263060564574912
+  beta  nocc = 13  HOMO = -0.277637845645739  LUMO = 0.0263060564574965
+cycle= 5 E= -155.109587232258  delta_E= -1.56e-06  |g|= 0.00012  |ddm|= 0.00132
+  alpha nocc = 13  HOMO = -0.277620378856887  LUMO = 0.0263050250731115
+  beta  nocc = 13  HOMO = -0.277620378856888  LUMO = 0.0263050250731131
+cycle= 6 E= -155.109587238242  delta_E= -5.98e-09  |g|= 2.58e-05  |ddm|= 0.000127
+  alpha nocc = 13  HOMO = -0.277614605847796  LUMO = 0.0263076705021868
+  beta  nocc = 13  HOMO = -0.277614605847796  LUMO = 0.0263076705021909
+cycle= 7 E= -155.109587238579  delta_E= -3.37e-10  |g|= 6.66e-06  |ddm|= 2.91e-05
+  alpha nocc = 13  HOMO = -0.277614645090602  LUMO = 0.0263077542647128
+  beta  nocc = 13  HOMO = -0.277614645090603  LUMO = 0.0263077542647163
+cycle= 8 E= -155.109587238598  delta_E= -1.92e-11  |g|= 2.14e-06  |ddm|= 5.92e-06
+  alpha nocc = 13  HOMO = -0.277614522976032  LUMO = 0.0263078015393792
+  beta  nocc = 13  HOMO = -0.277614522976031  LUMO = 0.0263078015393812
+cycle= 9 E= -155.1095872386  delta_E= -1.56e-12  |g|= 4.2e-07  |ddm|= 1.97e-06
+  alpha nocc = 13  HOMO = -0.277614586890576  LUMO = 0.0263077746521304
+  beta  nocc = 13  HOMO = -0.277614586890577  LUMO = 0.0263077746521279
+cycle= 10 E= -155.1095872386  delta_E= -8.24e-13  |g|= 3.51e-08  |ddm|= 4.6e-07
+  alpha nocc = 13  HOMO = -0.277614582882085  LUMO = 0.0263077766474344
+  beta  nocc = 13  HOMO = -0.277614582882083  LUMO = 0.0263077766474336
+cycle= 11 E= -155.1095872386  delta_E= 7.39e-13  |g|= 7.16e-09  |ddm|= 8.43e-08
+converged SCF energy = -155.1095872386  <S^2> = 1.7763568e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 594 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0000169992     0.0000829309     0.0000032749
+1 C    -0.0000573742    -0.0007543512     0.0009432543
+2 O    -0.0000802282     0.0002794595    -0.0005024648
+3 H     0.0000274273     0.0000331433    -0.0000205685
+4 H     0.0000151771     0.0000146637    -0.0000025064
+5 H     0.0000217641    -0.0000149280    -0.0000180401
+6 H    -0.0000157272     0.0001824624    -0.0002413979
+7 H     0.0000233356     0.0001290430    -0.0002182634
+8 H     0.0000479269     0.0000425865     0.0000511494
+----------------------------------------------
+cycle 13: E = -155.109587239  dE = -5.12327e-07  norm(grad) = 0.00140477
+
+Geometry optimization cycle 14
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.635533   2.231103  -3.279137   -0.001024  0.000636 -0.001333
+   C   0.048939   0.839522  -3.168704   -0.001122  0.000958 -0.000975
+   O   0.276614   0.367144  -1.842268   -0.000318  0.000258 -0.000880
+   H   1.707427   2.212064  -3.076087   -0.000911  0.000269 -0.002108
+   H   0.480362   2.631645  -4.282953   -0.001751  0.000642 -0.001207
+   H   0.163221   2.903544  -2.561327   -0.000364  0.000720 -0.000929
+   H   0.521627   0.173584  -3.901993   -0.001970  0.000240 -0.000767
+   H  -1.025860   0.866343  -3.389361   -0.001361  0.000690  0.000374
+   H  -0.089560  -0.519034  -1.758733   -0.000765  0.000355 -0.001401
+New geometry
+   1 C      0.635533165653   2.231103344749  -3.279136761166 AA    1.200983626162   4.216174277177  -6.196670403596 Bohr
+
+   2 C      0.048939363119   0.839522484443  -3.168703950435 AA    0.092481993006   1.586467571012  -5.987982636149 Bohr
+
+   3 O      0.276614258363   0.367144329889  -1.842267528377 AA    0.522725190456   0.693802231677  -3.481381076811 Bohr
+
+   4 H      1.707426608744   2.212063751916  -3.076087477015 AA    3.226568668321   4.180194661199  -5.812962866763 Bohr
+
+   5 H      0.480362013565   2.631645184984  -4.282953137411 AA    0.907752646282   4.973088656650  -8.093608434054 Bohr
+
+   6 H      0.163221401374   2.903544013399  -2.561327252472 AA    0.308443746265   5.486902975944  -4.840207022557 Bohr
+
+   7 H      0.521626544445   0.173584006655  -3.901993054290 AA    0.985731308304   0.328026232183  -7.373698212563 Bohr
+
+   8 H     -1.025860265799   0.866342952898  -3.389360883862 AA   -1.938594944434   1.637150910924  -6.404963807812 Bohr
+
+   9 H     -0.089560216046  -0.519033828981  -1.758733341001 AA   -0.169244279984  -0.980831786159  -3.323524340633 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 314 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.10942687889
+  alpha nocc = 13  HOMO = -0.277624778756024  LUMO = 0.0262845375966684
+  beta  nocc = 13  HOMO = -0.277624778756024  LUMO = 0.0262845375966737
+cycle= 1 E= -155.109588541028  delta_E= -0.000162  |g|= 0.000275  |ddm|= 0.00108
+  alpha nocc = 13  HOMO = -0.277510355730945  LUMO = 0.0263117810489571
+  beta  nocc = 13  HOMO = -0.277510355730947  LUMO = 0.026311781048954
+cycle= 2 E= -155.10958852393  delta_E= 1.71e-08  |g|= 0.000377  |ddm|= 0.000531
+  alpha nocc = 13  HOMO = -0.277582230884661  LUMO = 0.0262985204823457
+  beta  nocc = 13  HOMO = -0.277582230884662  LUMO = 0.026298520482344
+cycle= 3 E= -155.109588576366  delta_E= -5.24e-08  |g|= 5.35e-05  |ddm|= 0.000298
+  alpha nocc = 13  HOMO = -0.277577304335441  LUMO = 0.0262976281287965
+  beta  nocc = 13  HOMO = -0.277577304335442  LUMO = 0.0262976281287882
+cycle= 4 E= -155.109588577177  delta_E= -8.11e-10  |g|= 1.77e-05  |ddm|= 3.99e-05
+  alpha nocc = 13  HOMO = -0.277578387725962  LUMO = 0.0262976509150402
+  beta  nocc = 13  HOMO = -0.277578387725962  LUMO = 0.0262976509150375
+cycle= 5 E= -155.109588577291  delta_E= -1.14e-10  |g|= 5.2e-06  |ddm|= 1.21e-05
+  alpha nocc = 13  HOMO = -0.277578399762964  LUMO = 0.0262976728479302
+  beta  nocc = 13  HOMO = -0.277578399762964  LUMO = 0.0262976728479376
+cycle= 6 E= -155.109588577304  delta_E= -1.31e-11  |g|= 4.77e-07  |ddm|= 3.34e-06
+  alpha nocc = 13  HOMO = -0.277578315834941  LUMO = 0.0262977028545534
+  beta  nocc = 13  HOMO = -0.277578315834942  LUMO = 0.0262977028545519
+cycle= 7 E= -155.109588577304  delta_E= 6.25e-13  |g|= 8.91e-08  |ddm|= 4.22e-07
+  alpha nocc = 13  HOMO = -0.277578320124726  LUMO = 0.026297697027646
+  beta  nocc = 13  HOMO = -0.277578320124727  LUMO = 0.0262976970276487
+cycle= 8 E= -155.109588577304  delta_E=    0  |g|= 2.98e-08  |ddm|= 9.83e-08
+  alpha nocc = 13  HOMO = -0.277578317598795  LUMO = 0.0262976979192353
+  beta  nocc = 13  HOMO = -0.277578317598789  LUMO = 0.0262976979192395
+cycle= 9 E= -155.109588577305  delta_E= -1.14e-12  |g|= 9.51e-09  |ddm|= 1.6e-08
+  alpha nocc = 13  HOMO = -0.277578316596274  LUMO = 0.0262976981310658
+  beta  nocc = 13  HOMO = -0.277578316596273  LUMO = 0.0262976981310687
+cycle= 10 E= -155.109588577305  delta_E= 1.14e-13  |g|= 8.63e-09  |ddm|= 5.91e-09
+converged SCF energy = -155.109588577305  <S^2> = -3.5527137e-15  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 595 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C     0.0000079477     0.0000489070    -0.0000237255
+1 C     0.0000069609    -0.0004706029     0.0006788984
+2 O    -0.0000612215     0.0001886192    -0.0003514876
+3 H     0.0000090956     0.0000121728    -0.0000161959
+4 H     0.0000064495     0.0000060829     0.0000003795
+5 H     0.0000096464    -0.0000048412    -0.0000026708
+6 H    -0.0000351757     0.0001250871    -0.0001602774
+7 H     0.0000278214     0.0000791420    -0.0001646392
+8 H     0.0000279238     0.0000105807     0.0000341717
+----------------------------------------------
+cycle 14: E = -155.109588577  dE = -1.33871e-06  norm(grad) = 0.000963212
+
+Geometry optimization cycle 15
+Cartesian coordinates (Angstrom)
+ Atom        New coordinates             dX        dY        dZ
+   C   0.625279   2.233025  -3.270453   -0.010254  0.001922  0.008684
+   C   0.037971   0.841554  -3.166736   -0.010969  0.002031  0.001968
+   O   0.262700   0.363573  -1.841133   -0.013914 -0.003571  0.001135
+   H   1.696628   2.212622  -3.064772   -0.010798  0.000558  0.011316
+   H   0.472705   2.637465  -4.273102   -0.007657  0.005820  0.009851
+   H   0.151465   2.902921  -2.551238   -0.011757 -0.000623  0.010089
+   H   0.511993   0.177072  -3.900368   -0.009634  0.003488  0.001625
+   H  -1.036552   0.868844  -3.388341   -0.010691  0.002501  0.001020
+   H  -0.104707  -0.522563  -1.762507   -0.015147 -0.003529 -0.003773
+New geometry
+   1 C      0.625278876374   2.233025206510  -3.270453080652 AA    1.181605827823   4.219806069554  -6.180260625672 Bohr
+
+   2 C      0.037970632889   0.841553887997  -3.166735651216 AA    0.071754096936   1.590306367377  -5.984263089694 Bohr
+
+   3 O      0.262700235229   0.363573146322  -1.841132903876 AA    0.496431497442   0.687053672794  -3.479236947251 Bohr
+
+   4 H      1.696628355081   2.212622157065  -3.064771871116 AA    3.206162926275   4.181249893998  -5.791579470681 Bohr
+
+   5 H      0.472705497940   2.637465390904  -4.273102414938 AA    0.893283928682   4.984087251827  -8.074993266451 Bohr
+
+   6 H      0.151464734982   2.902921434697  -2.551237967386 AA    0.286226866645   5.485726472707  -4.821141036951 Bohr
+
+   7 H      0.511992693244   0.177071842820  -3.900368210822 AA    0.967525968009   0.334617287302  -7.370627703413 Bohr
+
+   8 H     -1.036551699208   0.868843693386  -3.388340986577 AA   -1.958798825455   1.641876625554  -6.403036481268 Bohr
+
+   9 H     -0.104707392391  -0.522562774864  -1.762506663115 AA   -0.197868294836  -0.987500527386  -3.330654886008 Bohr
+
+
+
+******** <class 'pyscf.scf.hf.UKS_Scanner'> ********
+method = UKS_Scanner
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp2h5u0e_0
+max_memory 8000 MB (current use 314 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7f3f40d68e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.109405018652
+  alpha nocc = 13  HOMO = -0.277530589840362  LUMO = 0.026344902008208
+  beta  nocc = 13  HOMO = -0.277530589840363  LUMO = 0.0263449020082067
+cycle= 1 E= -155.109589286574  delta_E= -0.000184  |g|= 0.000665  |ddm|= 0.00463
+  alpha nocc = 13  HOMO = -0.277443827089183  LUMO = 0.0262822153249696
+  beta  nocc = 13  HOMO = -0.277443827089181  LUMO = 0.0262822153249692
+cycle= 2 E= -155.109589393726  delta_E= -1.07e-07  |g|= 0.000626  |ddm|= 0.00127
+  alpha nocc = 13  HOMO = -0.277570806379302  LUMO = 0.026279667525935
+  beta  nocc = 13  HOMO = -0.277570806379303  LUMO = 0.0262796675259361
+cycle= 3 E= -155.109589512822  delta_E= -1.19e-07  |g|= 0.000245  |ddm|= 0.000658
+  alpha nocc = 13  HOMO = -0.277524794342009  LUMO = 0.026292944270881
+  beta  nocc = 13  HOMO = -0.277524794342009  LUMO = 0.0262929442708817
+cycle= 4 E= -155.109589532221  delta_E= -1.94e-08  |g|= 3.25e-05  |ddm|= 0.000174
+  alpha nocc = 13  HOMO = -0.27752801795142  LUMO = 0.0262906529273417
+  beta  nocc = 13  HOMO = -0.277528017951422  LUMO = 0.0262906529273425
+cycle= 5 E= -155.109589532603  delta_E= -3.82e-10  |g|= 8.93e-06  |ddm|= 2.84e-05
+  alpha nocc = 13  HOMO = -0.277529108314692  LUMO = 0.0262902310948298
+  beta  nocc = 13  HOMO = -0.277529108314691  LUMO = 0.0262902310948289
+cycle= 6 E= -155.109589532637  delta_E= -3.39e-11  |g|= 2.25e-06  |ddm|= 6.69e-06
+  alpha nocc = 13  HOMO = -0.277528691932022  LUMO = 0.0262903855421832
+  beta  nocc = 13  HOMO = -0.277528691932022  LUMO = 0.026290385542193
+cycle= 7 E= -155.109589532639  delta_E= -2.13e-12  |g|= 2.68e-07  |ddm|= 1.91e-06
+  alpha nocc = 13  HOMO = -0.277528706858965  LUMO = 0.0262903680680779
+  beta  nocc = 13  HOMO = -0.277528706858965  LUMO = 0.026290368068075
+cycle= 8 E= -155.10958953264  delta_E= -2.56e-13  |g|= 4.99e-08  |ddm|= 2.65e-07
+  alpha nocc = 13  HOMO = -0.277528711938861  LUMO = 0.0262903663039217
+  beta  nocc = 13  HOMO = -0.277528711938861  LUMO = 0.0262903663039194
+cycle= 9 E= -155.109589532639  delta_E= 3.13e-13  |g|= 2.01e-08  |ddm|= 5.14e-08
+  alpha nocc = 13  HOMO = -0.277528711694754  LUMO = 0.0262903666165699
+  beta  nocc = 13  HOMO = -0.277528711694755  LUMO = 0.0262903666165646
+cycle= 10 E= -155.109589532639  delta_E= 5.12e-13  |g|= 3.89e-09  |ddm|= 9.93e-09
+converged SCF energy = -155.109589532639  <S^2> = 1.0658141e-14  2S+1 = 1
+
+
+******** <class 'pyscf.grad.rhf.Gradients_Scanner'> for <class 'pyscf.scf.hf.UKS_Scanner'> ********
+unit = Eh/Bohr
+max_memory 4000 MB (current use 595 MB)
+grid_response = False
+--------------- UKS_Scanner gradients ---------------
+         x                y                z
+0 C    -0.0000013556    -0.0000047195    -0.0000014790
+1 C     0.0000341112    -0.0000943216     0.0002299631
+2 O    -0.0000338827     0.0000807142    -0.0001774692
+3 H    -0.0000010819    -0.0000030104    -0.0000064862
+4 H    -0.0000049341     0.0000004488     0.0000013770
+5 H     0.0000026859     0.0000004927     0.0000031074
+6 H    -0.0000147115     0.0000152787    -0.0000201890
+7 H     0.0000134846     0.0000078011    -0.0000311618
+8 H     0.0000079299    -0.0000017441    -0.0000043027
+----------------------------------------------
+cycle 15: E = -155.109589533  dE = -9.55334e-07  norm(grad) = 0.000323078

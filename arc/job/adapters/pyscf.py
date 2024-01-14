@@ -35,12 +35,12 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 # TODO: add PySCF to the list of supported ESS and settings
-default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames, TANI_PYTHON = \
+default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames, PYSCF_PYTHON = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
-    settings['output_filenames'], settings['servers'], settings['submit_filenames'], settings['TANI_PYTHON']
+    settings['output_filenames'], settings['servers'], settings['submit_filenames'], settings['PYSCF_PYTHON']
 
 # TODO: add PySCF scripts
-PYSCF_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'tani_script.py')
+PYSCF_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'pyscf_script.py')
 
 class PYSCFAdapter(JobAdapter):
     """
@@ -228,22 +228,6 @@ class PYSCFAdapter(JobAdapter):
         
         save_yaml_file(path=os.path.join(self.local_path, "input.yml"), content=input_dict)
 
-    def check_settings(self, settings):
-        options = {"model" : ['ani1ccx', 'ani1x', 'ani2x'],
-                   "device" : ["cpu", "cuda"],
-                   "engine" : ["bfgs", "scipyfminbfgs", "scipyfmingc"]}
-        for key in options.keys():
-            if key in settings.keys() and not settings[key].lower() in options[key]:
-                logger.error(f"Found wrong setting. Got: {settings[key]}.")
-                return False
-        if "fmax" in settings.keys() and not isinstance(settings["fmax"], (float, int)):
-            if isinstance(settings["fmax"], (str)):
-                logger.error(f"'fmax' value should be either an int or a flot. Got {settings['fmax']} with type {type(settings['fmax'])}.")
-            return False
-        if "steps" in settings.keys() and not (isinstance(settings["steps"], int) or settings["steps"] is None):
-            return False
-        return True
-
     def set_files(self) -> None:
         """
         Set files to be uploaded and downloaded. Writes the files if needed.
@@ -279,51 +263,40 @@ class PYSCFAdapter(JobAdapter):
         """
         self._log_job_execution()
 
-        if self.level is not None and self.level.args is not None and any(key in self.level.args for key in ["model", "device", "fmax", "engine", "steps"]):
-                    for key in self.level.args:  
-                        tani_default_options_dict.update({key : self.level.args[key]})
-        if self.args is not None and self.args["keyword"] is not None \
-            and any(key in self.args["keyword"] for key in ["model", "device", "fmax", "engine", "steps"]):
-                for key in self.args["keyword"]:
-                    tani_default_options_dict.update({key : self.args["keyword"][key]})
-
-        if not self.check_settings(tani_default_options_dict):
-            logger.error(f'given wrong settings in input: {self.level.args} or '
-                         f'in settings: {tani_default_options_dict}'
-                         f'Fix input file or settings and try again.')
-            return
-
-        self.write_input_file(tani_default_options_dict)
+        self.write_input_file()
         commands = ['source ~/.bashrc',
-                   f'{TANI_PYTHON} {TANI_SCRIPT_PATH} '
-                   f'--yml_path {self.local_path}']
+                   f'{PYSCF_PYTHON} {PYSCF_SCRIPT_PATH} '
+                   f'"{self.local_path}' + '/input.yml"']
         command = '; '.join(commands)
         output = subprocess.run(command, shell=True, executable='/bin/bash')
         if output.returncode:
-            logger.warning(f'Torch ANI subprocess ran and did not '
+            logger.warning(f'PySCF subprocess ran and did not '
                            f'give a successful return code for {self.job_name}.\n'
                            f'Got return code: {output.returncode}\n'
                            f'stdout: {output.stdout}\n'
                            f'stderr: {output.stderr}')
-        if os.path.isfile(os.path.join(self.local_path, "output.yml")):
-            output = read_yaml_file(path=os.path.join(self.local_path, "output.yml"))
-        else:
-            output = dict()
-            logger.error("Could not find output file")
-        self.sp, self.force, self.opt_xyz, self.freqs = output["sp"] if "sp" in output.keys() else None,\
-                                                        output["force"] if "force" in output.keys() else None, \
-                                                        output["opt_xyz"] if "opt_xyz" in output.keys() else None, \
-                                                        output["freqs"] if "freqs" in output.keys() else None
-        if self.freqs is not None:
-            self.freqs = self.freqs[6 if \
-                is_linear(np.array(self.xyz["coords"] or self.opt_xyz["coords"]))\
-                    else 5:]
+
+        if (self.job_type == 'opt' or self.job_type == 'conformers') and self.is_ts is False:
+            if os.path.isfile(os.path.join(self.local_path, "output_opt_optim.xyz")):
+                self.opt_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_optim.xyz"))
+            else:
+                logger.error("Could not find output_opt_optim.xyz")
+        elif (self.job_type == 'opt' or self.job_type == 'conformers')  and self.is_ts is True:
+            if os.path.isfile(os.path.join(self.local_path, "output_opt_ts_optim.xyz")):
+                self.opt_ts_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_ts_optim.xyz"))
+            else:
+                logger.error("Could not find output_opt_ts_optim.xyz")
+        elif self.job_type == 'freq':
+            if os.path.isfile(os.path.join(self.local_path, "output_freq.yml")):
+                self.freq_output = read_yaml_file(path=os.path.join(self.local_path, "output_freq.yml"))
+            else:
+                logger.error("Could not find output_freq.yml")
 
     def execute_queue(self):
         """
         Execute a job to the server's queue.
         """
-        logger.warning('Queue execution is not yet supported for TorchANI in ARC, executing incore instead.')
+        logger.warning('Queue execution is not yet supported for PySCF in ARC, executing incore instead.')
         self.execute_incore()
     def get_spin_for_pyscf(self, multiplicity):
         """

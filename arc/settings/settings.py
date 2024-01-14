@@ -157,6 +157,7 @@ input_filenames = {'cfour': 'ZMAT',
                    'qchem': 'input.in',
                    'terachem': 'input.in',
                    'xtb': 'input.sh',
+                   'pyscf': 'input.yml',
                    }
 
 output_filenames = {'cfour': 'output.out',
@@ -170,6 +171,7 @@ output_filenames = {'cfour': 'output.out',
                     'torchani': 'output.yml',
                     'xtb': 'output.out',
                     'openbabel':'output.yml',
+                    'pyscf': 'output.log',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
@@ -283,74 +285,36 @@ default_job_settings = {
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
-# default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON = None, None, None, None, None, None
-home = os.getenv("HOME") or os.path.expanduser("~")
+def fine_executable_path(env_name, executable):
+    """Determine the path to an executable in a conda environment.
 
-tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'tani_env', 'bin', 'python')
-tani_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_5 = os.path.join(home, '.conda', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
-for tani_pypath in [tani_pypath_1, tani_pypath_2, tani_pypath_3, tani_pypath_4, tani_pypath_5, tani_pypath_6]:
-    if os.path.isfile(tani_pypath):
-        TANI_PYTHON = tani_pypath
+    Args:
+        env_name (string): The name of the conda environment.
+        executable (string): The name of the executable.
 
-ob_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'ob_env', 'bin', 'python')
-ob_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_5 = os.path.join(home, '.conda', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
-for ob_pypath in [ob_pypath_1, ob_pypath_2, ob_pypath_3, ob_pypath_4, ob_pypath_5, ob_pypath_6]:
-    if os.path.isfile(ob_pypath):
-        OB_PYTHON = ob_pypath
-        break
+    Returns:
+        string: The path to the executable.
+    """
+    home = os.getenv("HOME") or os.path.expanduser("~")
+    default_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))), env_name, 'bin', executable)
+    
+    alternative_paths = [
+        os.path.join(home, 'mambaforge', 'envs', env_name, 'bin', executable),
+        os.path.join(home, 'anaconda3', 'envs', env_name, 'bin', executable),
+        os.path.join(home, 'miniconda3', 'envs', env_name, 'bin', executable),
+        os.path.join(home, '.conda', 'envs', env_name, 'bin', executable),
+        os.path.join('/Local/ce_dana', 'anaconda3', 'envs', env_name, 'bin', executable)
+    ]
+    
+    for path in [default_path] + alternative_paths:
+        if os.path.isfile(path):
+            return path
+    return None
 
-gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'ts_gcn', 'bin', 'python')
-gcn_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_4 = os.path.join(home, '.conda', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
-for gcn_pypath in [gcn_pypath_1, gcn_pypath_2, gcn_pypath_3, gcn_pypath_4, gcn_pypath_5]:
-    if os.path.isfile(gcn_pypath):
-        TS_GCN_PYTHON = gcn_pypath
-        break
-
-autotst_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                                'tst_env', 'bin', 'python')
-autotst_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_4 = os.path.join(home, '.conda', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
-for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4, autotst_pypath_5]:
-    if os.path.isfile(autotst_pypath):
-        AUTOTST_PYTHON = autotst_pypath
-        break
-
-paths = list()
-paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-for xtb_path in paths:
-    if os.path.isfile(xtb_path):
-        XTB = xtb_path
-        break
-
-arc_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'arc_env', 'bin', 'python')
-arc_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_4 = os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
-for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_pypath_5]:
-    if os.path.isfile(arc_pypath):
-        ARC_PYTHON = arc_pypath
-        break
+TANI_PYTHON = fine_executable_path('tani_env', 'python')
+OB_PYTHON = fine_executable_path('ob_env', 'python')
+TS_GCN_PYTHON = fine_executable_path('ts_gcn', 'python')
+AUTOTST_PYTHON = fine_executable_path('tst_env', 'python')
+XTB = fine_executable_path('xtb_env', 'xtb')
+ARC_PYTHON = fine_executable_path('arc_env', 'python')
+PYSCF_PYTHON = fine_executable_path('pyscf_env', 'python')

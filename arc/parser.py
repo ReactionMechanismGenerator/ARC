@@ -140,6 +140,17 @@ def parse_frequencies(path: str,
                         freq = float(splits[-4]) if is_str_float(splits[-4]) else 0
                         if freq:
                             freqs = np.append(freqs, freq)
+        elif software == 'pyscf':
+            for line in lines:
+                if 'modes:\n' not in line:
+                    try:
+                        value = float(line.split()[1])
+                        # Append to np array
+                        freqs = np.append(freqs, value)
+                    except (IndexError, ValueError):
+                        pass
+                elif 'modes:\n' in line:
+                    break
     else:
         raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
                           f'files, got {software}')

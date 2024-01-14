@@ -851,7 +851,7 @@ class ARCSpecies(object):
         if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
             self.mol_from_xyz(get_cheap=False)
         if self.mol is not None:
-            if 'bond_corrections' not in species_dict and not self.is_ts:
+            if 'bond_corrections' not in species_dict and not self.is_ts and self.compute_thermo:
                 self.bond_corrections = enumerate_bonds(self.mol)
                 if self.bond_corrections:
                     self.long_thermo_description += f'Bond corrections: {self.bond_corrections}\n'

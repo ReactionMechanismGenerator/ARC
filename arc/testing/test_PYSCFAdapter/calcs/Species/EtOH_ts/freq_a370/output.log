@@ -1,3 +1,4 @@
+#INFO: **** input file is /home/calvin/Code/ARC/arc/job/adapters/scripts/pyscf_script.py ****
 # https://github.com/nmardirossian/PySCF_Tutorial/blob/master/user_guide.ipynb
 import logging
 from pyscf import gto, scf, dft
@@ -532,7 +533,7 @@ class PYSCFScript_VB:
         # Running the Kernel
         
                 # TODO: Check if TS
-        if self.is_ts and (self.job_type == 'opt' or self.job_type == 'conformers'):
+        if self.is_ts and self.job_type == 'opt':
             from pyscf.qsdopt.qsd_optimizer import QSD
             #optimizer = QSD(mf, stationary_point='TS')
 
@@ -561,7 +562,7 @@ class PYSCFScript_VB:
                 'transition': True, 'trust': 0.02, 'tmax': 0.06}
             self.mol_eq = mf.Gradients().optimizer(solver='geomeTRIC').kernel(geometric_options)
         
-        if (self.job_type == 'opt' or self.job_type == 'conformers') and not self.is_ts:
+        if self.job_type == 'opt' and not self.is_ts:
             from pyscf.geomopt.geometric_solver import optimize
             prefix = os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_opt')
             conv_params = { # These are the default settings
@@ -639,3 +640,124 @@ if __name__ == '__main__':
 
 # script = PYSCFScript_VB(input_file, output_file)
 # script.run()
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='calvin-System-Product-Name', release='6.2.0-39-generic', version='#40~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Nov 16 10:53:04 UTC 2', machine='x86_64')  Threads 20
+Python 3.10.13 | packaged by conda-forge | (main, Oct 26 2023, 18:07:37) [GCC 12.3.0]
+numpy 1.26.0  scipy 1.11.3
+Date: Wed Jan 10 15:00:59 2024
+PySCF version 2.4.0
+PySCF path  /home/calvin/mambaforge/envs/pyscf_env/lib/python3.10/site-packages/pyscf
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 9
+[INPUT] num. electrons = 26
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = ANG
+[INPUT] Symbol           X                Y                Z      unit          X                Y                Z       unit  Magmom
+[INPUT]  1 C     -0.937906740000   0.280664430000   0.105729420000 AA   -1.772386868984   0.530378905607   0.199799647109 Bohr   0.0
+[INPUT]  2 C      0.356599060000  -0.449549970000   0.050201740000 AA    0.673874559677  -0.849526322606   0.094867539577 Bohr   0.0
+[INPUT]  3 O      0.366265300000  -1.593979790000  -0.380126320000 AA    0.692141105932  -3.012185251192  -0.718334637539 Bohr   0.0
+[INPUT]  4 H     -1.689239150000  -0.333321950000   0.613291510000 AA   -3.192199352393  -0.629887196806   1.158952988421 Bohr   0.0
+[INPUT]  5 H     -0.855320210000   1.239099970000   0.625780270000 AA   -1.616320945705   2.341559584257   1.182553324456 Bohr   0.0
+[INPUT]  6 H     -1.307048890000   0.460011510000  -0.909488780000 AA   -2.469964433517   0.869295768048  -1.718684707565 Bohr   0.0
+[INPUT]  7 H      0.762810070000  -0.500365900000   1.064830090000 AA    1.441502117360  -0.945554513072   2.012237239296 Bohr   0.0
+[INPUT]  8 H      1.042870510000   0.121375610000  -0.582360960000 AA    1.970739647285   0.229366661102  -1.100502720039 Bohr   0.0
+[INPUT]  9 H      1.278200180000  -1.930310320000  -0.352034730000 AA    2.415448272570  -3.647757840222  -0.665249226035 Bohr   0.0
+
+nuclear repulsion = 85.9867832345622
+number of shells = 57
+number of NR pGTOs = 186
+number of NR cGTOs = 129
+basis = def2-tzvp
+ecp = {}
+CPU time:         3.04
+
+
+******** <class 'pyscf.dft.uks.UKS'> ********
+method = UKS
+initial guess = minao
+damping factor = 0
+level_shift factor = 0.0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-12
+SCF conv_tol_grad = 1e-08
+SCF max_cycles = 100
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp9uw4dy4r
+max_memory 8000 MB (current use 111 MB)
+number electrons alpha = 13  beta = 13
+XC library pyscf.dft.libxc version 6.1.0
+    S. Lehtola, C. Steigemann, M. J.T. Oliveira, and M. A.L. Marques.,  SoftwareX 7, 1–5 (2018)
+XC functionals = b3lyp
+    P. J. Stephens, F. J. Devlin, C. F. Chabalowski, and M. J. Frisch.,  J. Phys. Chem. 98, 11623 (1994)
+radial grids: 
+    Treutler-Ahlrichs [JCP 102, 346 (1995); DOI:10.1063/1.469408] (M4) radial grids
+    
+becke partition: Becke, JCP 88, 2547 (1988); DOI:10.1063/1.454033
+pruning grids: None
+grids dens level: 3
+symmetrized grids: False
+atomic radii adjust function: <function treutler_atomic_radii_adjust at 0x7fa4bb788e50>
+small_rho_cutoff = 1e-07
+tot grids = 158552
+init E= -155.621757583246
+  alpha nocc = 13  HOMO = -0.296435406966567  LUMO = 0.00657079251573576
+  beta  nocc = 13  HOMO = -0.29649964222543  LUMO = 0.00566873732000174
+cycle= 1 E= -154.972188473723  delta_E= 0.65  |g|= 0.506  |ddm|= 1.41
+  alpha nocc = 13  HOMO = -0.135141639735795  LUMO = 0.0330876603896323
+  beta  nocc = 13  HOMO = -0.135133987268191  LUMO = 0.0330723256712755
+cycle= 2 E= -154.863067478395  delta_E= 0.109  |g|= 0.747  |ddm|= 1.43
+  alpha nocc = 13  HOMO = -0.262178612468899  LUMO = 0.0109280158646733
+  beta  nocc = 13  HOMO = -0.262124552737821  LUMO = 0.010923770205709
+cycle= 3 E= -155.063904953593  delta_E= -0.201  |g|= 0.052  |ddm|= 1.09
+  alpha nocc = 13  HOMO = -0.254204373899491  LUMO = 0.0159703328331479
+  beta  nocc = 13  HOMO = -0.254187778609311  LUMO = 0.0159708488374433
+cycle= 4 E= -155.064707556113  delta_E= -0.000803  |g|= 0.0247  |ddm|= 0.0513
+  alpha nocc = 13  HOMO = -0.255683550699874  LUMO = 0.015668788166252
+  beta  nocc = 13  HOMO = -0.255679305848878  LUMO = 0.0156700482215243
+cycle= 5 E= -155.064978289774  delta_E= -0.000271  |g|= 0.00366  |ddm|= 0.0172
+  alpha nocc = 13  HOMO = -0.255866179741072  LUMO = 0.0154638169445591
+  beta  nocc = 13  HOMO = -0.255866433717387  LUMO = 0.0154647024163419
+cycle= 6 E= -155.064983810089  delta_E= -5.52e-06  |g|= 0.000738  |ddm|= 0.00264
+  alpha nocc = 13  HOMO = -0.255782560042139  LUMO = 0.0154996143383453
+  beta  nocc = 13  HOMO = -0.255783147006314  LUMO = 0.0155001453261127
+cycle= 7 E= -155.064984018592  delta_E= -2.09e-07  |g|= 0.000273  |ddm|= 0.000602
+  alpha nocc = 13  HOMO = -0.255814371357043  LUMO = 0.015494241751467
+  beta  nocc = 13  HOMO = -0.255814938532053  LUMO = 0.0154945011649216
+cycle= 8 E= -155.064984052949  delta_E= -3.44e-08  |g|= 3.59e-05  |ddm|= 0.00022
+  alpha nocc = 13  HOMO = -0.255817114144179  LUMO = 0.0154920932957112
+  beta  nocc = 13  HOMO = -0.255817433627881  LUMO = 0.0154921914463145
+cycle= 9 E= -155.064984054051  delta_E= -1.1e-09  |g|= 1.15e-05  |ddm|= 4.66e-05
+  alpha nocc = 13  HOMO = -0.255816175990217  LUMO = 0.015492660478117
+  beta  nocc = 13  HOMO = -0.255816242769611  LUMO = 0.015492662796043
+cycle= 10 E= -155.064984054243  delta_E= -1.92e-10  |g|= 2.97e-06  |ddm|= 2.35e-05
+  alpha nocc = 13  HOMO = -0.255815988704489  LUMO = 0.0154927448465868
+  beta  nocc = 13  HOMO = -0.255815989732675  LUMO = 0.0154927367794344
+cycle= 11 E= -155.064984054253  delta_E= -9.69e-12  |g|= 8.3e-07  |ddm|= 5.25e-06
+  alpha nocc = 13  HOMO = -0.255816288454069  LUMO = 0.0154926160784614
+  beta  nocc = 13  HOMO = -0.255816285549786  LUMO = 0.0154926108170642
+cycle= 12 E= -155.064984054252  delta_E= 7.11e-13  |g|= 4.35e-07  |ddm|= 1.13e-06
+  alpha nocc = 13  HOMO = -0.255816208520755  LUMO = 0.0154926443491985
+  beta  nocc = 13  HOMO = -0.255816204766593  LUMO = 0.0154926416137904
+cycle= 13 E= -155.064984054252  delta_E= -1.42e-13  |g|= 4.11e-08  |ddm|= 4.72e-07
+  alpha nocc = 13  HOMO = -0.25581620004513  LUMO = 0.0154926478376572
+  beta  nocc = 13  HOMO = -0.255816198391113  LUMO = 0.0154926467880422
+cycle= 14 E= -155.064984054252  delta_E= -2.84e-14  |g|= 2.14e-08  |ddm|= 7.82e-08
+  alpha nocc = 13  HOMO = -0.25581620067557  LUMO = 0.0154926471021503
+  beta  nocc = 13  HOMO = -0.255816199656567  LUMO = 0.015492646472838
+cycle= 15 E= -155.064984054252  delta_E= 2.27e-13  |g|= 9.07e-09  |ddm|= 1.92e-08
+converged SCF energy = -155.064984054252  <S^2> = 1.2434498e-14  2S+1 = 1
+Freq [-554.33444169 -368.12613854 -144.60615369  -30.69913445  -24.86141007
+   17.24709219  279.78064726  351.12356265  573.05661637  806.62771013
+  963.45938839 1102.49852373 1218.60018957 1390.8008662  1426.90439665
+ 1474.31856047 1481.73680835 1492.69644266 1514.19685688 1593.1349782
+ 1908.96649782 2956.10110815 2958.19974301 3006.82501877 3058.89313352
+ 3085.37455699 3654.63143891]

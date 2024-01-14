@@ -624,7 +624,7 @@ class JobAdapter(ABC):
             initial_time = get_last_modified_time(file_path_1=os.path.join(self.local_path, 'initial_time'))
             final_time = get_last_modified_time(
                 file_path_1=os.path.join(self.local_path, 'final_time'),
-                file_path_2=os.path.join(self.local_path, output_filenames[self.job_adapter]),
+                        file_path_2=os.path.join(self.local_path, output_filenames[self.job_adapter]),
             )
         self.initial_time = initial_time or self.initial_time
         self.final_time = final_time or datetime.datetime.now()

@@ -881,6 +881,9 @@ class Scheduler(object):
             elif 'terachem' in available_ess:
                 logger.error('Setting it to TeraChem')
                 level.software = 'terachem'
+            elif 'pyscf' in available_ess:
+                logger.error('Setting it to PySCF')
+                level.software = 'pyscf'
             job_adapter = level.software
         return job_adapter.lower()
 
