@@ -15,17 +15,15 @@ from arkane.statmech import is_linear
 from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
+from arc.job.local import execute_command_async, check_async_job_status
 
 from arc.job.factory import register_job_adapter
 from arc.level import Level
-from arc.settings.settings import tani_default_options_dict
 from arc.species.converter import xyz_to_str
 
 
 from arc.job.adapters.common import (_initialize_adapter,
                                      is_restricted,
-                                     update_input_dict_with_args,
-                                     which,
                                      )
 
 if TYPE_CHECKING:
@@ -131,7 +129,7 @@ class PYSCFAdapter(JobAdapter):
 
         self.incore_capacity = 100 #TODO: Check what this is
         self.job_adapter = 'pyscf'
-        self.execution_type = execution_type or 'incore'
+        self.execution_type = 'incore'
         self.command = None
         self.url = 'https://github.com/pyscf/pyscf'
 
@@ -249,7 +247,15 @@ class PYSCFAdapter(JobAdapter):
         Set additional file paths specific for the adapter.
         Called from set_file_paths() and extends it.
         """
-        self.local_path_to_output_file = os.path.join(self.local_path, 'output.yml')
+        # if the job type is opt
+        if (self.job_type == 'opt' or self.job_type == 'conformers') and not self.is_ts:
+            self.local_path_to_output_file = os.path.join(self.local_path, 'output.log')
+        # if the job type is freq
+        elif self.job_type == 'freq':
+            self.local_path_to_output_file = os.path.join(self.local_path, 'output_freq.yml')
+        # if conformers
+        elif (self.job_type == 'conformers' or self.job_type == 'opt') and self.is_ts:
+            self.local_path_to_output_file = os.path.join(self.local_path, 'output.log')
 
     def set_input_file_memory(self) -> None:
         """
@@ -264,33 +270,40 @@ class PYSCFAdapter(JobAdapter):
         self._log_job_execution()
 
         self.write_input_file()
-        commands = ['source ~/.bashrc',
-                   f'{PYSCF_PYTHON} {PYSCF_SCRIPT_PATH} '
-                   f'"{self.local_path}' + '/input.yml"']
+        commands = [
+            'source ~/.bashrc',
+            f'cd "{self.local_path}"',
+            'touch initial_time',
+            f'{PYSCF_PYTHON} {PYSCF_SCRIPT_PATH} "{self.local_path}/input.yml" > "{self.local_path}/output.log" 2>&1',
+            'touch final_time',
+        ]
         command = '; '.join(commands)
-        output = subprocess.run(command, shell=True, executable='/bin/bash')
-        if output.returncode:
-            logger.warning(f'PySCF subprocess ran and did not '
-                           f'give a successful return code for {self.job_name}.\n'
-                           f'Got return code: {output.returncode}\n'
-                           f'stdout: {output.stdout}\n'
-                           f'stderr: {output.stderr}')
+        
+        self.process, self.pid = execute_command_async(command=command, executable='/bin/bash')
+        
+        # output = subprocess.run(command, shell=True, executable='/bin/bash')
+        # if output.returncode:
+        #     logger.warning(f'PySCF subprocess ran and did not '
+        #                    f'give a successful return code for {self.job_name}.\n'
+        #                    f'Got return code: {output.returncode}\n'
+        #                    f'stdout: {output.stdout}\n'
+        #                    f'stderr: {output.stderr}')
 
-        if (self.job_type == 'opt' or self.job_type == 'conformers') and self.is_ts is False:
-            if os.path.isfile(os.path.join(self.local_path, "output_opt_optim.xyz")):
-                self.opt_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_optim.xyz"))
-            else:
-                logger.error("Could not find output_opt_optim.xyz")
-        elif (self.job_type == 'opt' or self.job_type == 'conformers')  and self.is_ts is True:
-            if os.path.isfile(os.path.join(self.local_path, "output_opt_ts_optim.xyz")):
-                self.opt_ts_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_ts_optim.xyz"))
-            else:
-                logger.error("Could not find output_opt_ts_optim.xyz")
-        elif self.job_type == 'freq':
-            if os.path.isfile(os.path.join(self.local_path, "output_freq.yml")):
-                self.freq_output = read_yaml_file(path=os.path.join(self.local_path, "output_freq.yml"))
-            else:
-                logger.error("Could not find output_freq.yml")
+        # if (self.job_type == 'opt' or self.job_type == 'conformers') and self.is_ts is False:
+        #     if os.path.isfile(os.path.join(self.local_path, "output_opt_optim.xyz")):
+        #         self.opt_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_optim.xyz"))
+        #     else:
+        #         logger.error("Could not find output_opt_optim.xyz")
+        # elif (self.job_type == 'opt' or self.job_type == 'conformers')  and self.is_ts is True:
+        #     if os.path.isfile(os.path.join(self.local_path, "output_opt_ts_optim.xyz")):
+        #         self.opt_ts_output = read_yaml_file(path=os.path.join(self.local_path, "output_opt_ts_optim.xyz"))
+        #     else:
+        #         logger.error("Could not find output_opt_ts_optim.xyz")
+        # elif self.job_type == 'freq':
+        #     if os.path.isfile(os.path.join(self.local_path, "output_freq.yml")):
+        #         self.freq_output = read_yaml_file(path=os.path.join(self.local_path, "output_freq.yml"))
+        #     else:
+        #         logger.error("Could not find output_freq.yml")
 
     def execute_queue(self):
         """

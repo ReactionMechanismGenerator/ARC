@@ -432,6 +432,18 @@ def determine_ess_status(output_path: str,
             error = error if error else 'TeraChem job terminated for an unknown reason.'
             keywords = keywords if keywords else ['Unknown']
             return 'errored', keywords, error, line
+        
+        elif software == 'pyscf':
+            for line in lines[::-1]:
+                if 'termination' in line.lower() and 'normal' in line.lower():
+                    return 'done', list(), '', ''
+                elif 'error' in line.lower():
+                    keywords = ['Unknown']
+                    error = line.split()[1]
+                    break
+            error = error if error else 'PySCF job terminated for an unknown reason.'
+            keywords = keywords if keywords else ['Unknown']
+            return 'errored', keywords, error, line
 
     return '', list(), '', ''
 

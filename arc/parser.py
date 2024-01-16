@@ -372,6 +372,12 @@ def identify_ess(path: str) -> Optional[str]:
             if 'x T B' in line:
                 software = 'xtb'
                 break
+        # Do reverse line search to find the last line with a software name
+        line_reversed = f.readlines()[::-1]
+        for line in line_reversed:
+            if 'PySCF' in line:
+                software = 'pyscf'
+                break
     return software
 
 

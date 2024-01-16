@@ -32,6 +32,7 @@ from arc.job.local import (change_mode,
                            get_last_modified_time,
                            rename_output,
                            submit_job,
+                           check_async_job_status
                            )
 from arc.job.trsh import trsh_job_on_server
 from arc.job.ssh import SSHClient
@@ -316,10 +317,10 @@ class JobAdapter(ABC):
             self.initial_time = datetime.datetime.now()
             self.job_status[0] = 'running'
             self.execute_incore()
-            self.job_status[0] = 'done'
-            self.job_status[1]['status'] = 'done'
-            self.final_time = datetime.datetime.now()
-            self.determine_run_time()
+            #self.job_status[0] = 'done'
+            #self.job_status[1]['status'] = 'done'
+            #self.final_time = datetime.datetime.now()
+            #self.determine_run_time()
         elif execution_type == JobExecutionTypeEnum.queue:
             self.execute_queue()
         elif execution_type == JobExecutionTypeEnum.pipe:
@@ -871,7 +872,12 @@ class JobAdapter(ABC):
         """
         if self.job_status[0] == 'errored':
             return
-        self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
+        if self.execution_type != 'incore':
+            self.job_status[0] = self._check_job_server_status()
+        elif self.execution_type == 'incore':
+            self.job_status[0] = self._check_job_incore_status()
+        else:
+            self.job_status[0] = 'done'
         if self.job_status[0] == 'done':
             try:
                 self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
@@ -905,7 +911,8 @@ class JobAdapter(ABC):
         Submission script in submit.py should contain the -o and -e flags.
         """
         content = ''
-        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        # Get the cluster software if possible else None
+        cluster_soft = servers[self.server]['cluster_soft'].lower() if self.server is not None else None
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
@@ -936,6 +943,8 @@ class JobAdapter(ABC):
                         lines = f.readlines()
                     content += ''.join([line for line in lines])
                     content += '\n'
+        elif cluster_soft is None:
+            content =''
         else:
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
         if content:
@@ -950,7 +959,15 @@ class JobAdapter(ABC):
                 return ssh.check_job_status(self.job_id)
         else:
             return check_job_status(self.job_id)
-
+    
+    def _check_job_incore_status(self) -> str:
+        """
+        Possible status: 'running', 'done'
+        """
+        status = check_async_job_status(self.process)
+        
+        return status
+        
     def _check_job_ess_status(self):
         """
         Check the status of the job ran by the electronic structure software (ESS).

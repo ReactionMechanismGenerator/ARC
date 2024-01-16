@@ -6,6 +6,7 @@ When transitioning to Python 3, use
 
 import datetime
 import os
+import psutil
 import re
 import shutil
 import subprocess
@@ -81,6 +82,76 @@ def execute_command(command: Union[str, List[str]],
                         f'\nTips: use "which" command to locate cluster software commands on server.'
                         f'\nExample: type "which sbatch" on a server running Slurm to find the correct '
                         f'sbatch path required in the submit_command dictionary.')
+
+def execute_command_async(command: Union[str, List[str]],
+                          executable: Optional[str] = None,
+                          recursion: bool = False ) -> Tuple[subprocess.Popen, int]:
+    """
+    Execute a command asynchronously.
+
+    Args:
+        command (Union[str, List[str]]): A string or list of string commands to execute.
+
+    Returns:
+        Tuple[subprocess.Popen, int]: The subprocess object and its PID.
+    """
+    if not isinstance(command, list):
+        command = [command]
+    command = ' && '.join(command)
+    
+    if can_spawn_job():
+        process = subprocess.Popen(command, shell=True, executable=executable)
+        pid = process.pid
+        
+        stdout = process.stdout
+        stderr = process.stderr
+        if stderr is not None:
+            stderr = stderr.read()
+            raise RuntimeError(f'Error in executing command {command}.\n{stderr}')
+        return process, pid
+    elif not recursion:
+        logger.warning(f'Max number of submitted jobs was reached, sleeping...')
+        time.sleep(5 * 60)
+        execute_command_async(command=command,
+                              executable=executable,
+                              recursion=True,
+                            )
+    elif recursion:
+        return None, None
+
+def get_process_memory_usage(pid):
+    """Get memory usage of a process by PID."""
+    try:
+        process = psutil.Process(pid)
+        return process.memory_info().rss
+    except psutil.NoSuchProcess:
+        return 0
+
+def can_spawn_job():
+    """ Check if new process can be spawned within memory limits """
+    total_memory = sum(get_process_memory_usage(p.pid) for p in subprocess.active_children())
+    # Get available memory but then only use 30% of it - TODO: make this a setting
+    available_memory = psutil.virtual_memory().available * 0.3
+    # servers[server].get('memory', None)
+    
+    current_memory_available = available_memory - total_memory
+    return current_memory_available >= available_memory / len(subprocess.active_children())
+    
+def check_async_job_status(process) -> str:
+    """
+    Check the status of an asynchronous job.
+
+    Args:
+        job_id (int): The job ID.
+
+    Returns:
+        str: The job status.
+    """
+    if process.poll() is None:
+        return 'running'
+    else:
+        return 'done'
+
 
 
 def _output_command_error_message(command: List[str],

@@ -1,7 +1,6 @@
 # https://github.com/nmardirossian/PySCF_Tutorial/blob/master/user_guide.ipynb
 import logging
 from pyscf import gto, scf, dft
-import sys
 import pandas
 import yaml
 import os
@@ -19,9 +18,8 @@ def parse_command_line_arguments():
 
 class PYSCFScript_VB:
     
-    def __init__(self, input_file, output_file) -> None:
+    def __init__(self, input_file) -> None:
         self.input_file = input_file
-        self.output_file = output_file
         self.input_dict = self.read_yaml_file()
 
         # Method
@@ -290,7 +288,7 @@ class PYSCFScript_VB:
     
     def get_verbose(self):
         # Get verbose in input dict if exists
-        verbose = self.input_dict.get('verbose', 4)
+        verbose = self.input_dict.get('verbose', 0)
         return verbose
     
     def get_job_type(self):
@@ -383,7 +381,6 @@ class PYSCFScript_VB:
         mol.spin = self.spin
         mol.unit = self.unit
         mol.verbose = self.verbose
-        mol.output = self.output_file
         mol.build()
         
         # Check method for density functional
@@ -413,7 +410,7 @@ class PYSCFScript_VB:
             mf = scf.UHF(mol)
             self.scf_type = 'U'
         elif self.method in ['RKS', 'ROKS', 'RDFT', 'RODFT'] or (self.method in ['KS', 'DFT'] and self.scf_type in ['R', 'RO']):
-            mf = dft.RKS(mol)
+            mf = dft.RKS(mol).density_fit()
             self.scf_type = 'R'
             DFT = True
         elif self.method in ['UKS', 'UDFT'] or (self.method in ['KS', 'DFT'] and self.scf_type == 'U'):
@@ -560,6 +557,16 @@ class PYSCFScript_VB:
                 'prefix': prefix,
                 'transition': True, 'trust': 0.02, 'tmax': 0.06}
             self.mol_eq = mf.Gradients().optimizer(solver='geomeTRIC').kernel(geometric_options)
+            logging.info('\n Optimized geometry:')
+            logging.info('\n')
+            if self.unit == 'Bohr':
+                logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='Bohr')))
+            else:
+                logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='ANG')))
+            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
+            logging.info('\n')
+            logging.info('PySCF optimization complete.')
+
         
         if (self.job_type == 'opt' or self.job_type == 'conformers') and not self.is_ts:
             from pyscf.geomopt.geometric_solver import optimize
@@ -573,13 +580,16 @@ class PYSCFScript_VB:
                                 'convergence_dmax': 1.8e-3,  # Angstrom
                             }
             self.mol_eq = optimize(mf, maxsteps=100, **conv_params) # TODO: Need to define maxsteps as a TRSH parameter
-            logging.info(self.mol_eq.kernel())
             #logging.info(self.mol_eq.atom)
+            logging.info('\n Optimized geometry:')
+            logging.info('\n')
             if self.unit == 'Bohr':
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='Bohr')))
             else:
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='ANG')))
             logging.info('\nSCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
+            logging.info('\n')
+            logging.info('PySCF optimization complete.')
 
         if self.job_type == 'freq':
             #logging.basicConfig(filename=os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_freq.yml'), level=logging.INFO, format='%(message)s')
@@ -607,6 +617,10 @@ class PYSCFScript_VB:
             # logging.info('Freuqency calculation complete.')
             
             self.output_to_yaml(w, modes)
+            try:
+                open(os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_freq.yml'), 'a').close()
+            except:
+                pass
         
         # if self.job_type == 'scan':
         #     #https://github.com/pyscf/pyscf/blob/14d88828cd1f18f1e5358da1445355bde55322a1/examples/scf/30-scan_pes.py#L16
@@ -624,8 +638,8 @@ if __name__ == '__main__':
     args = parse_command_line_arguments()
     input_file = args.yml_path  # Directly use the provided path
     input_dir = os.path.dirname(os.path.abspath(input_file))
-    output_file = os.path.join(input_dir, 'output.log')
-    script = PYSCFScript_VB(input_file, output_file)  # Initialize the script with the YAML file path
+
+    script = PYSCFScript_VB(input_file)  # Initialize the script with the YAML file path
     script.run()
 
 # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/input.yml'
