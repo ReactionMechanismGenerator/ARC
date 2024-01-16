@@ -353,6 +353,9 @@
 <span class="sd">                                   The present species object instance represents a geometry optimization job of the IRC</span>
 <span class="sd">                                   result in one direction.</span>
 <span class="sd">        project_directory (str, optional): The path to the project directory.</span>
+<span class="sd">        multi_species: (str, optional): The multi-species set this species belongs to. Used for running a set of species</span>
+<span class="sd">                                       simultaneously in a single ESS input file. A species marked as multi_species</span>
+<span class="sd">                                       will only have one conformer considered (n_confs set to 1).</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        label (str): The species&#39; label.</span>
@@ -453,6 +456,8 @@
 <span class="sd">                         result in one direction. If a species is a transition state, then this attribute contains the</span>
 <span class="sd">                         labels of the two corresponding &quot;IRC species&quot;, separated by a blank space.</span>
 <span class="sd">        project_directory (str): The path to the project directory.</span>
+<span class="sd">        multi_species: (str): The multi-species set this species belongs to. Used for running a set of species</span>
+<span class="sd">                             simultaneously in a single ESS input file.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
@@ -475,6 +480,7 @@
                  <span class="n">label</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">multi_species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">number_of_radicals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">occ</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">optical_isomers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -511,6 +517,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">mol_list</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">adjlist</span> <span class="o">=</span> <span class="n">adjlist</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="n">multiplicity</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">multi_species</span> <span class="o">=</span> <span class="n">multi_species</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="o">=</span> <span class="n">number_of_radicals</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">external_symmetry</span> <span class="o">=</span> <span class="n">external_symmetry</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">irc_label</span> <span class="o">=</span> <span class="n">irc_label</span>
@@ -799,6 +806,8 @@
         <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">label</span>
         <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;long_thermo_description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">long_thermo_description</span>
         <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;multiplicity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_species</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;multi_species&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">multi_species</span>
         <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;charge&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">charge</span>
         <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;compute_thermo&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">include_in_thermo_lib</span><span class="p">:</span>
@@ -970,6 +979,7 @@
         <span class="k">if</span> <span class="s1">&#39;xyz&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_xyz</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">final_xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">process_xyz</span><span class="p">(</span><span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">multiplicity</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;multiplicity&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;multiplicity&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">multi_species</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;multi_species&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;multi_species&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;charge&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;charge&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="mi">0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;compute_thermo&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;compute_thermo&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_ts</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">include_in_thermo_lib</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;include_in_thermo_lib&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;include_in_thermo_lib&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">True</span>
@@ -2879,7 +2889,7 @@
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2023, Alon Grinberg Dana
+        &copy; Copyright 2018-2024, Alon Grinberg Dana
 
     </p>
   </div>

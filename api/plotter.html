@@ -258,6 +258,21 @@ extremely high energies by mistake.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.delete_multi_species_output_file">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">delete_multi_species_output_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multi_species_path_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#delete_multi_species_output_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.delete_multi_species_output_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete all the individual multi species output file sliced fromthe the big cluster output file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_list</strong> – The species list to be processed.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The multi_species label.</p></li>
+<li><p><strong>multi_species_path</strong> – The dict of all the paths to the relevant species.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.plotter.draw_3d">
 <span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_3d"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_3d" title="Permalink to this definition">¶</a></dt>
 <dd><p>Draws the molecule in a “3D-balls” style.
@@ -390,6 +405,28 @@ In the second level dict, keys are pivot tuples, values are energies in kJ/mol.<
 <li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
 <li><p><strong>path</strong> (<em>str</em>) – The path to the folder containing the relevant Arkane output file.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.make_multi_species_output_file">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">make_multi_species_output_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">software</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gaussian'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#make_multi_species_output_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.make_multi_species_output_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Slice the big cluster output file down to individual multi species output file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>species_list</strong> – The species list to be processed.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The multi_species label.</p></li>
+<li><p><strong>path</strong> – The path to the job object.</p></li>
+<li><p><strong>software</strong> – The software used for the calculation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>path to each of the individual species.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
 </dd>
 </dl>
 </dd></dl>
@@ -763,7 +800,7 @@ Source: <a class="reference external" href="https://stackoverflow.com/questions/
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2023, Alon Grinberg Dana
+        &copy; Copyright 2018-2024, Alon Grinberg Dana
 
     </p>
   </div>

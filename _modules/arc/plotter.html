@@ -1711,6 +1711,77 @@
         <span class="c1"># filter high values</span>
         <span class="n">results_</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">val</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">results_</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">val</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">max_val</span><span class="p">}</span>
     <span class="k">return</span> <span class="n">results_</span></div>
+
+
+<div class="viewcode-block" id="make_multi_species_output_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.make_multi_species_output_file">[docs]</a><span class="k">def</span> <span class="nf">make_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+                                   <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                   <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                   <span class="n">software</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;gaussian&#39;</span>
+                                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Slice the big cluster output file down to individual multi species output file.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            species_list: The species list to be processed.</span>
+<span class="sd">            label (str): The multi_species label.</span>
+<span class="sd">            path: The path to the job object.</span>
+<span class="sd">            software: The software used for the calculation.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: path to each of the individual species.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isfile</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not find file </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="n">output_folder</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">end_keywords</span> <span class="o">=</span> <span class="s2">&quot;Normal termination of Gaussian &quot;</span>
+        <span class="n">species_label_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_list</span> <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">multi_species</span> <span class="o">==</span> <span class="n">label</span><span class="p">]</span>
+        <span class="n">output_file_path_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">spc_label</span> <span class="ow">in</span> <span class="n">species_label_list</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">input_file</span><span class="p">:</span>
+                <span class="c1"># Split the content based on lines containing start and end keywords</span>
+                <span class="n">sections</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">current_section</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">in_section</span> <span class="o">=</span> <span class="kc">False</span>
+                <span class="n">line</span> <span class="o">=</span> <span class="n">input_file</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+                <span class="k">while</span> <span class="n">line</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">spc_label</span> <span class="o">==</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">():</span>
+                        <span class="n">in_section</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">current_section</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">in_section</span> <span class="ow">and</span> <span class="n">end_keywords</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                        <span class="n">current_section</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                        <span class="n">sections</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current_section</span><span class="p">)</span>
+                        <span class="n">current_section</span> <span class="o">=</span> <span class="p">[]</span>
+                        <span class="n">in_section</span> <span class="o">=</span> <span class="kc">False</span>
+                    <span class="k">elif</span> <span class="n">in_section</span><span class="p">:</span>
+                        <span class="n">current_section</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+                    <span class="n">line</span> <span class="o">=</span> <span class="n">input_file</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+                <span class="c1"># Write sections to separate files</span>
+                <span class="n">output_file_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_folder</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">spc_label</span><span class="si">}</span><span class="s2">.log&quot;</span>
+                <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">output_file</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">inner_list</span> <span class="ow">in</span> <span class="n">sections</span><span class="p">:</span>
+                        <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39; &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">inner_list</span><span class="p">))</span>
+                        <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">software</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span> <span class="o">+</span> <span class="n">line</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="n">output_file_path_dict</span><span class="p">[</span><span class="n">spc_label</span><span class="p">]</span> <span class="o">=</span> <span class="n">output_file_path</span>   
+        <span class="k">return</span> <span class="n">output_file_path_dict</span></div>
+
+
+<div class="viewcode-block" id="delete_multi_species_output_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.delete_multi_species_output_file">[docs]</a><span class="k">def</span> <span class="nf">delete_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+                                     <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                     <span class="n">multi_species_path_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                                     <span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Delete all the individual multi species output file sliced fromthe the big cluster output file.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        species_list: The species list to be processed.</span>
+<span class="sd">        label (str): The multi_species label.</span>
+<span class="sd">        multi_species_path: The dict of all the paths to the relevant species.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">species_label_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_list</span> <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">multi_species</span> <span class="o">==</span> <span class="n">label</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">spc_label</span> <span class="ow">in</span> <span class="n">species_label_list</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">multi_species_path_dict</span><span class="p">[</span><span class="n">spc_label</span><span class="p">])</span></div>
 </pre></div>
 
            </div>
@@ -1723,7 +1794,7 @@
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2023, Alon Grinberg Dana
+        &copy; Copyright 2018-2024, Alon Grinberg Dana
 
     </p>
   </div>
