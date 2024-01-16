@@ -140,6 +140,38 @@ class TestGaussianAdapter(unittest.TestCase):
                             testing=True,
                             args={'trsh': {'trsh': ['int=(Acc2E=14)']}},
                             )
+        cls.job_opt_uff = GaussianAdapter(execution_type='incore',
+                            job_type='opt',
+                            level=Level(method='uff'),
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                            testing=True,
+                            )
+        cls.job_multi = GaussianAdapter(execution_type='incore',
+                            job_type='opt',
+                            level=Level(method='wb97xd',
+                                        basis='def2-TZVP',
+                                        solvation_method='SMD',
+                                        solvent='Water'),
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'],multi_species='mltspc1'),
+                                    ARCSpecies(label='spc2', xyz=['O 0 0 2'],multi_species='mltspc1'),
+                                    ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
+                                                    C	0.0000000	0.5518050	0.0000000
+                                                    O	-1.1894600	-0.2141940	0.0000000
+                                                    H	-1.9412580	0.3751850	0.0000000
+                                                    H	2.1054020	0.1451160	0.0000000
+                                                    H	1.1306240	-1.0387850	0.8830320
+                                                    H	1.1306240	-1.0387850	-0.8830320
+                                                    H	0.0476820	1.1930570	0.8835910
+                                                    H	0.0476820	1.1930570	-0.8835910"""],
+                                                directed_rotors={'brute_force_sp': [[1, 2], [2, 3]]},multi_species='mltspc1'),
+                                    ],
+                            run_multi_species = True,
+                            testing=True,
+                            )
 
         # Setting up for ESS troubleshooting input file writing
 
@@ -309,6 +341,63 @@ class TestGaussianAdapter(unittest.TestCase):
         expected_memory = math.ceil(14 * 1024)
         self.assertEqual(self.job_1.input_file_memory, expected_memory)
         self.assertEqual(self.job_2.input_file_memory, 14336)
+    
+    def test_write_input_file_multi(self):
+        """Test writing Gaussian input files"""
+        self.job_multi.write_input_file()
+        with open(os.path.join(self.job_multi.local_path, input_filenames[self.job_multi.job_adapter]), 'r') as f:
+            content_multi = f.read()
+        job_multi_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
+
+spc1
+
+0 3
+O       0.00000000    0.00000000    1.00000000
+
+
+
+--link1--
+%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc) SCRF=(smd, Solvent=water) uwb97xd/def2tzvp   IOp(2/9=2000)   
+
+spc2
+
+0 3
+O       0.00000000    0.00000000    2.00000000
+
+
+
+--link1--
+%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc) SCRF=(smd, Solvent=water) wb97xd/def2tzvp   IOp(2/9=2000)   
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+        self.assertEqual(content_multi, job_multi_expected_input_file)
+
 
     def test_write_input_file(self):
         """Test writing Gaussian input files"""
@@ -434,6 +523,24 @@ O       0.00000000    0.00000000    1.00000000
 
 """
         self.assertEqual(content_7, job_7_expected_input_file)
+
+        self.job_opt_uff.write_input_file()
+        with open(os.path.join(self.job_opt_uff.local_path, input_filenames[self.job_opt_uff.job_adapter]), 'r') as f:
+            content_opt_uff = f.read()
+        job_opt_uff_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt uff   IOp(2/9=2000)   
+
+spc1
+
+0 3
+O       0.00000000    0.00000000    1.00000000
+
+
+"""
+        self.assertEqual(content_opt_uff, job_opt_uff_expected_input_file)
 
     def test_set_files(self):
         """Test setting files"""

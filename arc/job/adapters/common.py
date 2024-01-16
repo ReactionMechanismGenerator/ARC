@@ -105,6 +105,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         job_status: Optional[List[Union[dict, str]]] = None,
                         level: Optional[Level] = None,
                         max_job_time: Optional[float] = None,
+                        run_multi_species: bool = False,
                         reactions: Optional[List['ARCReaction']] = None,
                         rotor_index: Optional[int] = None,
                         server: Optional[str] = None,
@@ -114,7 +115,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         times_rerun: int = 0,
                         torsions: Optional[List[List[int]]] = None,
                         tsg: Optional[int] = None,
-                        xyz: Optional[dict] = None,
+                        xyz: Optional[Union[dict,List[dict]]] = None,
                         ):
     """
     A common Job adapter initializer function.
@@ -164,6 +165,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
     obj.level = Level(repr=level) if not isinstance(level, Level) and level is not None else level
     obj.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
+    obj.run_multi_species = run_multi_species
     obj.number_of_processes = 0
     obj.reactions = [reactions] if reactions is not None and not isinstance(reactions, list) else reactions
     obj.remote_path = None
@@ -180,18 +182,34 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.pivots = [[tor[1] + 1, tor[2] + 1] for tor in obj.torsions] if obj.torsions is not None else None
     obj.tsg = tsg
     obj.workers = None
-    obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    if not obj.run_multi_species:
+        obj.xyz = obj.species[0].get_xyz() if obj.species is not None and xyz is None else xyz
+    else:
+        obj.xyz = list()
+        if obj.species is not None:
+            for spc in obj.species:
+                obj.xyz.append(spc.get_xyz() if xyz is None else xyz)
 
     if obj.job_num is None or obj.job_name is None or obj.job_server_name:
         obj._set_job_number()
 
     if obj.species is not None:
-        obj.charge = obj.species[0].charge
-        obj.multiplicity = obj.species[0].multiplicity
-        obj.is_ts = obj.species[0].is_ts
-        obj.species_label = obj.species[0].label
-        if len(obj.species) > 1:
-            obj.species_label += f'_and_{len(obj.species) - 1}_others'
+        if not obj.run_multi_species:
+            obj.charge = obj.species[0].charge
+            obj.multiplicity = obj.species[0].multiplicity
+            obj.is_ts = obj.species[0].is_ts
+            obj.species_label = obj.species[0].label
+            if len(obj.species) > 1:
+                obj.species_label += f'_and_{len(obj.species) - 1}_others'
+        else:
+            obj.charge = list()
+            obj.multiplicity = list()
+            obj.is_ts = obj.species[0].is_ts
+            obj.species_label = list()
+            for spc in obj.species:
+                obj.charge.append(spc.charge) 
+                obj.multiplicity.append(spc.multiplicity)
+                obj.species_label.append(spc.label)
     elif obj.reactions is not None:
         obj.charge = obj.reactions[0].charge
         obj.multiplicity = obj.reactions[0].multiplicity
@@ -233,25 +251,51 @@ def _initialize_adapter(obj: 'JobAdapter',
     check_argument_consistency(obj)
 
 
-def is_restricted(obj) -> bool:
+def is_restricted(obj: 'JobAdapter') -> Union[bool, List[bool]]:
     """
     Check whether a Job Adapter should be executed as restricted or unrestricted.
+    If the job adapter contains a list of species, return True or False per species.
 
     Args:
         obj: The job adapter object.
 
     Returns:
+        Union[bool, List[bool]]: Whether to run as restricted (``True``) or not (``False``).
+    """
+    if not obj.run_multi_species:
+        return is_species_restricted(obj)
+    else:
+        return [is_species_restricted(obj, species) for species in obj.species]
+
+
+def is_species_restricted(obj: 'JobAdapter',
+                          species: Optional['ARCSpecies'] = None,
+                          ) -> bool:
+    """
+    Check whether a species should be executed as restricted or unrestricted.
+
+    Args:
+        obj: The job adapter object.
+        species (ARCSpecies, optional): The species to check.
+
+    Returns:
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
-    if (obj.multiplicity > 1 and obj.level.method_type != 'composite') \
-            or (obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1):
+
+    if obj.level.method_type in ['force_field','composite','semiempirical']:
+        return True
+    
+    multiplicity = obj.multiplicity if species is None else species.multiplicity
+    number_of_radicals = obj.species[0].number_of_radicals if species is None else species.number_of_radicals
+    species_label = obj.species[0].label if species is None else species.label
+    if multiplicity > 1 or (number_of_radicals is not None and number_of_radicals > 1):
         # run an unrestricted electronic structure calculation if the spin multiplicity is greater than one,
         # or if it is one but the number of radicals is greater than one (e.g., bi-rad singlet)
         # don't run unrestricted for composite methods such as CBS-QB3, it'll be done automatically if the
         # multiplicity is greater than one, but do specify uCBS-QB3 for example for bi-rad singlets.
-        if obj.species[0].number_of_radicals is not None and obj.species[0].number_of_radicals > 1:
-            logger.info(f'Using an unrestricted method for species {obj.species_label} which has '
-                        f'{obj.species[0].number_of_radicals} radicals and multiplicity {obj.multiplicity}.')
+        if number_of_radicals is not None and number_of_radicals > 1:
+            logger.info(f'Using an unrestricted method for species {species_label} which has '
+                        f'{number_of_radicals} radicals and multiplicity {multiplicity}.')
         return False
     return True
 

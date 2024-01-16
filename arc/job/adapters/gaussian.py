@@ -96,6 +96,7 @@ class GaussianAdapter(JobAdapter):
         job_status (list, optional): The job's server and ESS statuses.
         level (Level, optional): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
+        run_multi_species (bool, optional): Whether to run a job for multiple species in the same input file.
         reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
         server (str): The server to run on.
@@ -106,7 +107,7 @@ class GaussianAdapter(JobAdapter):
         times_rerun (int, optional): Number of times this job was re-run with the same arguments (no trsh methods).
         torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
         tsg (int, optional): TSGuess number if optimizing TS guesses.
-        xyz (dict, optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
+        xyz (Union[dict,List[dict]], optional): The 3D coordinates to use. If not give, species.get_xyz() will be used.
     """
 
     def __init__(self,
@@ -136,6 +137,7 @@ class GaussianAdapter(JobAdapter):
                  job_status: Optional[List[Union[dict, str]]] = None,
                  level: Optional[Level] = None,
                  max_job_time: Optional[float] = None,
+                 run_multi_species: bool = False,
                  reactions: Optional[List['ARCReaction']] = None,
                  rotor_index: Optional[int] = None,
                  server: Optional[str] = None,
@@ -145,7 +147,7 @@ class GaussianAdapter(JobAdapter):
                  times_rerun: int = 0,
                  torsions: Optional[List[List[int]]] = None,
                  tsg: Optional[int] = None,
-                 xyz: Optional[dict] = None,
+                 xyz: Optional[Union[dict,List[dict]]] = None,
                  ):
 
         self.incore_capacity = 1
@@ -184,6 +186,7 @@ class GaussianAdapter(JobAdapter):
                             job_status=job_status,
                             level=level,
                             max_job_time=max_job_time,
+                            run_multi_species=run_multi_species,
                             reactions=reactions,
                             rotor_index=rotor_index,
                             server=server,
@@ -232,10 +235,10 @@ class GaussianAdapter(JobAdapter):
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['xyz'] = xyz_to_str(self.xyz)
         input_dict['scan_trsh'] = self.args['keyword']['scan_trsh'] if 'scan_trsh' in self.args['keyword'] else ''
         integral_algorithm = 'Acc2E=14' if 'Acc2E=14' in input_dict['trsh'] else 'Acc2E=12'
         input_dict['trsh'] = input_dict['trsh'].replace('int=(Acc2E=14)', '') if 'Acc2E=14' in input_dict['trsh'] else input_dict['trsh']
+        input_dict['xyz'] = [xyz_to_str(xyz) for xyz in self.xyz] if self.run_multi_species else xyz_to_str(self.xyz)
 
         if self.level.basis is not None:
             input_dict['slash_1'] = '/'
@@ -244,9 +247,6 @@ class GaussianAdapter(JobAdapter):
 
         if self.level.method_type in ['semiempirical', 'force_field']:
             self.checkfile = None
-
-        if not is_restricted(self):
-            input_dict['restricted'] = 'u'
 
         if self.level.dispersion is not None:
             input_dict['dispersion'] = self.level.dispersion
@@ -263,8 +263,9 @@ class GaussianAdapter(JobAdapter):
             self.level.method = 'cbs-qb3'
 
         # Job type specific options
+        max_c = self.args['trsh'].split()[1] if 'max_cycles' in self.args['trsh'] else 100
         if self.job_type in ['opt', 'conformers', 'optfreq', 'composite']:
-            keywords = ['ts', 'calcfc', 'noeigentest', 'maxcycles=100'] if self.is_ts else ['calcfc']
+            keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycles={max_c}'] if self.is_ts else ['calcfc']
             if self.level.method in ['rocbs-qb3']:
                 # There are no analytical 2nd derivatives (FC) for this method.
                 keywords = ['ts', 'noeigentest', 'maxcycles=100'] if self.is_ts else []
@@ -291,7 +292,8 @@ class GaussianAdapter(JobAdapter):
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
                     keywords.extend(['tight', 'maxstep=5'])
-            input_dict['job_type_1'] = f"opt=({', '.join(key for key in keywords)})"
+            input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
+                else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
             input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
@@ -391,9 +393,29 @@ class GaussianAdapter(JobAdapter):
 
         # Remove double spaces
         input_dict['job_type_1'] = input_dict['job_type_1'].replace('  ', ' ')
+        
+        input_file = ''
+        input_dict_origin = input_dict.copy()
+
+        restricted_list_bool = is_restricted(self)
+        restricted_list = ["" if flag else 'u' for flag in ([restricted_list_bool]
+                           if isinstance(restricted_list_bool, bool) else restricted_list_bool)]
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
-            f.write(Template(input_template).render(**input_dict))
+            if not self.run_multi_species:
+                input_dict['restricted'] = restricted_list[0]
+                f.write(Template(input_template).render(**input_dict))
+            else:
+                for index, spc in enumerate(self.species):
+                    input_dict['charge'] = input_dict_origin['charge'][index]
+                    input_dict['label'] = input_dict_origin['label'][index]
+                    input_dict['multiplicity'] = input_dict_origin['multiplicity'][index]
+                    input_dict['xyz'] = input_dict_origin['xyz'][index]
+                    input_dict['restricted'] = restricted_list[index]
+                    input_file += Template(input_template).render(**input_dict)
+                    if index < len(self.species) - 1:
+                        input_file += '\n--link1--\n'
+                f.write(input_file)
 
     def set_files(self) -> None:
         """

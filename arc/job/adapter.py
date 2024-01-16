@@ -375,7 +375,7 @@ class JobAdapter(ABC):
         ARC will allocate, e.g., 8 workers, to simultaneously get processes (one by one) from the HDF5 bank
         and execute them. On average, each worker in this example executes 125 jobs.
         """
-        if self.execution_type == 'incore':
+        if self.execution_type == 'incore' or self.run_multi_species:
             return None
         if len(self.job_types) > 1:
             self.iterate_by.append('job_types')
@@ -533,7 +533,10 @@ class JobAdapter(ABC):
         Set local and remote job file paths.
         """
         folder_name = 'TS_guesses' if self.reactions is not None else 'TSs' if self.species[0].is_ts else 'Species'
-        self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species_label, self.job_name)
+        if self.run_multi_species == False:
+            self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species_label, self.job_name)
+        else:
+            self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species[0].multi_species, self.job_name)
         self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
@@ -545,7 +548,8 @@ class JobAdapter(ABC):
 
         if self.server is not None:
             # Parentheses don't play well in folder names:
-            species_name_remote = self.species_label.replace('(', '_').replace(')', '_')
+            species_name_remote = self.species_label if isinstance(self.species_label, str) else self.species[0].multi_species
+            species_name_remote = species_name_remote.replace('(', '_').replace(')', '_')
             path = servers[self.server].get('path', '').lower()
             path = os.path.join(path, servers[self.server]['un']) if path else ''
             self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,

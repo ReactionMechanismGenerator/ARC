@@ -174,13 +174,50 @@ H      -1.16115119    0.31478894   -0.81506145
         filtered_results_2 = plotter.clean_scan_results(results_2)
         self.assertEqual(filtered_results_2, correct_results)
 
+    def test_make_multi_species_output_file(self):
+        """Test the make_multi_species_output_file function"""
+        # The xyzs used in the ARCSpecies are dummy xyzs, they are not the actual xyzs used in the output file
+        plotter.make_multi_species_output_file(species_list=[ARCSpecies(label='water', xyz=['X 0 0 1'],multi_species='mltspc1'),
+                                                             ARCSpecies(label='acetylene', xyz=['X 0 0 2'],multi_species='mltspc1'),
+                                                             ARCSpecies(label='N-Valeric_Acid', xyz=['X 0 0 3'],multi_species='mltspc1'),],
+                                               label='mltspc1',
+                                               path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
+                                               )
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+
+    def test_delete_multi_species_output_file(self):
+        """Test the delete_multi_species_output_file function"""
+        # The xyzs used in the ARCSpecies are dummy xyzs, they are not the actual xyzs used in the output file
+        species_list = [ARCSpecies(label='water', xyz=['X 0 0 1'],multi_species='mltspc1'),
+                        ARCSpecies(label='acetylene', xyz=['X 0 0 2'],multi_species='mltspc1'),
+                        ARCSpecies(label='N-Valeric_Acid', xyz=['X 0 0 3'],multi_species='mltspc1'),]
+        multi_species_path_dict = plotter.make_multi_species_output_file(species_list=species_list,
+                                                                         label='mltspc1',
+                                                                         path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
+                                                                         )
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+        plotter.delete_multi_species_output_file(species_list=species_list,
+                                                 label='mltspc1',
+                                                 multi_species_path_dict=multi_species_path_dict,
+                                                 )
+        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
+        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
+        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         shutil.rmtree(project_directory, ignore_errors=True)
-        files_to_remove = [os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt')]
+        files_to_remove = [os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt'),
+                           os.path.join(ARC_PATH, 'arc', 'testing', 'water.log'),
+                           os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log'),
+                           os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log'),]
         for file_path in files_to_remove:
             if os.path.isfile(file_path):
                 os.remove(file_path)
