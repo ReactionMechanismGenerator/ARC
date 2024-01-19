@@ -1059,6 +1059,8 @@ class ARCSpecies(object):
                             n_confs: int = 10,
                             e_confs: float = 5,
                             plot_path: str = None,
+                            conf_generation_level: dict = None,
+                            conf_path: str = None,
                             ) -> None:
         """
         Generate conformers.
@@ -1070,6 +1072,8 @@ class ARCSpecies(object):
                                        (unique) generated conformers will be stored in the .conformers attribute.
             plot_path (str, optional): A folder path in which the plot will be saved.
                                        If None, the plot will not be shown (nor saved).
+            conf_generation_level (dict, optional): The level of theory to use for conformer generation.
+            conf_path (str, optional): A folder path in which the conformers will be saved.
         """
         if self.is_ts:
             return
@@ -1095,6 +1099,8 @@ class ARCSpecies(object):
                                                       return_all_conformers=False,
                                                       plot_path=plot_path,
                                                       diastereomers=diastereomers,
+                                                      conf_generation_level=conf_generation_level,
+                                                      conf_path=conf_path,
                                                       )
         if len(lowest_confs):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
