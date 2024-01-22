@@ -175,6 +175,9 @@ output_filenames = {'cfour': 'output.out',
                     }
 
 default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
+                            'conf_generation': {'method': 'UFF',
+                                                'solvation_method': 'SMD',
+                                                'solvent': 'water'}, # good default for Gaussian
                             'ts_guesses': 'wb97xd/def2svp',
                             'opt': 'wb97xd/def2tzvp',  # good default for Gaussian
                             # 'opt': 'wb97m-v/def2tzvp',  # good default for QChem
