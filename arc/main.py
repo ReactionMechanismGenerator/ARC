@@ -81,6 +81,7 @@ class ARC(object):
                                          instead (e.g., ``opt_level``).
         composite_method (str, dict, Level, optional): Composite method.
         conformer_level (str, dict, Level, optional): Level of theory for conformer searches.
+        conf_generation_level (str, dict, Level, optional): Level of theory for conformer generation.
         opt_level (str, dict, Level, optional): Level of theory for geometry optimization.
         freq_level (str, dict, Level, optional): Level of theory for frequency calculations.
         sp_level (str, dict, Level, optional): Level of theory for single point calculations.
@@ -169,6 +170,7 @@ class ARC(object):
         level_of_theory (str): A shortcut representing either sp//geometry levels or a composite method.
         composite_method (Level): Composite method.
         conformer_level (Level): Level of theory for conformer searches.
+        conf_generation_level (Level): Level of theory for conformer generation.
         opt_level (Level): Level of theory for geometry optimization.
         freq_level (Level): Level of theory for frequency calculations.
         sp_level (Level): Level of theory for single point calculations.
@@ -246,6 +248,7 @@ class ARC(object):
                  compute_thermo: bool = True,
                  compute_transport: bool = False,
                  conformer_level: Optional[Union[str, dict, Level]] = None,
+                 conf_generation_level: Optional[Union[str, dict, Level]] = None,
                  dont_gen_confs: List[str] = None,
                  e_confs: float = 5.0,
                  ess_settings: Dict[str, Union[str, List[str]]] = None,
@@ -348,6 +351,7 @@ class ARC(object):
         self.level_of_theory = level_of_theory
         self.composite_method = composite_method or None
         self.conformer_level = conformer_level or None
+        self.conf_generation_level = conf_generation_level or None
         self.opt_level = opt_level or None
         self.freq_level = freq_level or None
         self.sp_level = sp_level or None
@@ -491,6 +495,8 @@ class ARC(object):
             restart_dict['compute_transport'] = self.compute_transport
         if self.conformer_level is not None:
             restart_dict['conformer_level'] = self.conformer_level.as_dict()
+        if self.conf_generation_level is not None:
+            restart_dict['conf_generation_level'] = self.conf_generation_level.as_dict()
         if self.dont_gen_confs:
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
         if self.ts_adapters:
@@ -594,6 +600,7 @@ class ARC(object):
                                    rxn_list=self.reactions,
                                    composite_method=self.composite_method,
                                    conformer_level=self.conformer_level,
+                                   conf_generation_level=self.conf_generation_level,
                                    opt_level=self.opt_level,
                                    freq_level=self.freq_level,
                                    sp_level=self.sp_level,
