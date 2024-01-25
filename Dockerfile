@@ -94,17 +94,19 @@ RUN CONDA_JL_CONDA_EXE=/bin/micromamba julia -e 'ENV["CONDA_JL_CONDA_EXE"]="/opt
 # Add alias to bashrc - rmge to activate the environment
 # These commands are not necessary for the Docker image to run, but they are useful for the user
 RUN echo "alias rmge='micromamba activate rmg_env'" >> ~/.bashrc \
-    && echo "alias rmg='python-jl /home/rmguser/Code/RMG/rmg.py input.py'" >> ~/.bashrc \
+    && echo "alias arce='micromamba activate arc_env'" >> ~/.bashrc \
+    && echo "alias rmg='python-jl /home/rmguser/Code/RMG-Py/rmg.py input.py'" >> ~/.bashrc \
     && echo "alias deact='micromamba deactivate'" >> ~/.bashrc \
     && echo "export rmgpy_path='/home/rmguser/Code/RMG-Py/'" >> ~/.bashrc \
     && echo "export rmgdb_path='/home/rmguser/Code/RMG-database/'" >> ~/.bashrc \
     && echo "alias rmgcode='cd \$rmgpy_path'" >> ~/.bashrc \
     && echo "alias rmgdb='cd \$rmgdb_path'" >> ~/.bashrc \
+    && echo "alias arcode='cd /home/rmguser/Code/ARC'" >> ~/.bashrc \
     && echo "alias conda='micromamba'" >> ~/.bashrc \
     && echo "alias mamba='micromamba'" >> ~/.bashrc 
 
-# Set the entrypoint to bash
-ENTRYPOINT ["/bin/bash", "--login"]
+# # Set the entrypoint to bash
+# ENTRYPOINT ["/bin/bash", "--login"]
 
 FROM rmg-stage AS arc-stage
 
@@ -140,6 +142,8 @@ RUN micromamba create -y -f environment.yml && \
     find /opt/conda/envs/arc_env/lib/python3.7/site-packages -name '*.pyx' -delete && \
     rm -rf /opt/conda/envs/arc_env/lib/python3.7/site-packages/uvloop/loop.c &&\
     make clean
+
+WORKDIR /home/rmguser/
 
 # Activate the ARC environment
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
