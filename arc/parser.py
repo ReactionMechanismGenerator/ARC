@@ -268,6 +268,27 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
                 final_structure = True
         return str_to_xyz(xyz_str)
 
+    elif software == 'pyscf':
+        lines = _get_lines_from_file(path)
+        # Look for the line that says 'Optimized geometry:'
+        # after that read the next lines that are not blank
+        # and stop when reaching a blank line
+        process_xyz = False
+        xyz_str = ''
+        for line in lines:
+            if 'Optimized geometry:' in line:
+                process_xyz = True
+                continue
+            if process_xyz and 'PySCF optimization complete.' in line:
+                break
+            if process_xyz:
+                    if line.strip():
+                        splits = line.split()
+                        if len(splits) == 4:
+                            xyz_str += f'{qcel.periodictable.to_E((splits[0]))}  {splits[1]}  {splits[2]}  {splits[3]}\n'
+        return str_to_xyz(xyz_str)
+
+
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         coords, number, _ = log.load_geometry()
@@ -345,6 +366,15 @@ def parse_e_elect(path: str,
         for line in lines:
             if 'TOTAL ENERGY' in line:
                 e_elect = hartree_to_si(float(line.split()[3]))
+        return e_elect
+    elif software is not None and software.lower() == 'pyscf':
+        with open(path, 'r') as f:
+            lines = f.readlines()
+        for line in lines:
+            if 'energy of' in line:
+                match = re.search(r"[-+]?\d*\.\d+|\d+", line)
+                if match:
+                    e_elect = hartree_to_si(float(match.group()))
         return e_elect
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:

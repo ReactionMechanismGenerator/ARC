@@ -435,8 +435,18 @@ def determine_ess_status(output_path: str,
         
         elif software == 'pyscf':
             for line in lines[::-1]:
-                if 'termination' in line.lower() and 'normal' in line.lower():
+                if 'Converged! =D' in line:
                     return 'done', list(), '', ''
+                elif 'Geometry optimization is not converged' in line:
+                    # Check if iterations are in the line
+                    if 'iterations' in line:
+                        # Check how many iterations were done
+                        # ex: Geometry optimization is not converged in 100 iterations
+                        iterations = re.findall(r'\d+', line)
+                        if iterations:
+                            keywords = ['MaxOptCycles']
+                            error = f'Maximum optimization cycles reached. Number of iterations: {iterations[0]}'
+                            break
                 elif 'error' in line.lower():
                     keywords = ['Unknown']
                     error = line.split()[1]
@@ -1050,6 +1060,14 @@ def trsh_ess_job(label: str,
         """
         couldnt_trsh = True
 
+    elif 'pyscf' in software:
+        if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using max_cycles - 250')
+            ess_trsh_methods.append('max_cycles')
+            trsh_keyword = 'maxsteps'  # default is 100 -> will be changed to 250 in pyscf
+
+        else:
+            couldnt_trsh = True
     else:
         logger.error(f'Troubleshooting methods are not implemented for {software}')
         couldnt_trsh = True

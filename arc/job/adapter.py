@@ -295,7 +295,7 @@ class JobAdapter(ABC):
         """
         pass
 
-    def execute(self):
+    def execute(self, current_total_memory: Optional[float] = 0):
         """
         Execute a job.
         The execution type could be 'incore', 'queue', or 'pipe'.
@@ -314,9 +314,9 @@ class JobAdapter(ABC):
         self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
         if execution_type == JobExecutionTypeEnum.incore:
-            self.initial_time = datetime.datetime.now()
-            self.job_status[0] = 'running'
-            self.execute_incore()
+            # self.initial_time = datetime.datetime.now()
+            # self.job_status[0] = 'running'
+            self.execute_incore(current_total_memory)
             #self.job_status[0] = 'done'
             #self.job_status[1]['status'] = 'done'
             #self.final_time = datetime.datetime.now()

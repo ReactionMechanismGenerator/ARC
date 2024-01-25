@@ -92,6 +92,8 @@ class PYSCFScript_VB:
         self.job_type = self.get_job_type()
         # is ts
         self.is_ts = self.get_ts_status()
+        # maxsteps
+        self.maxsteps = self.get_maxsteps()
 
         self.mol_eq = None
     def read_yaml_file(self):
@@ -105,7 +107,7 @@ class PYSCFScript_VB:
             elif isinstance(self.input_file, dict):
                 input_dict = self.input_file
         except FileNotFoundError:
-            raise FileNotFoundError('Could not find input file.')
+            raise FileNotFoundError('Could not find input file.') from FileNotFoundError
 
         # Check if input_dict was successfully populated
         if input_dict is None:
@@ -116,7 +118,7 @@ class PYSCFScript_VB:
     def get_method(self):
         # Get method in input dict if exists
         method = self.input_dict.get('xc_func', None)
-        return method
+        return method.upper()
     
     def get_molecule(self):
         # Get molecule in input dict if exists
@@ -225,7 +227,7 @@ class PYSCFScript_VB:
         # Get prune in input dict if exists
         # scheme to reduce number of grids, can be one of
         # | gen_grid.nwchem_prune (default) | gen_grid.sg1_prune | gen_grid.treutler_prune | None : to switch off grid pruning
-        prune = self.input_dict.get('prune', 'None')
+        prune = self.input_dict.get('prune', 'NWCHEM')
         if isinstance(prune, str):
             prune = prune.upper()
         return prune
@@ -288,7 +290,7 @@ class PYSCFScript_VB:
     
     def get_verbose(self):
         # Get verbose in input dict if exists
-        verbose = self.input_dict.get('verbose', 0)
+        verbose = self.input_dict.get('verbose', 4)
         return verbose
     
     def get_job_type(self):
@@ -306,6 +308,10 @@ class PYSCFScript_VB:
                 raise ValueError('Invalid is_ts.')
         return is_ts
     
+    def get_maxsteps(self):
+        maxsteps = self.input_dict.get('maxsteps', 100)
+        return maxsteps
+
     def read_molecule(self, path):
 
         charge = spin = 0
@@ -366,22 +372,9 @@ class PYSCFScript_VB:
     
     def run(self):
         
-        mol = gto.Mole()
-        
         # Set mol attributes
-        try:
-            gto.Mole(atom=self.molecule, charge=self.charge, spin =self.spin).build()
-        except KeyError:
-            # Probable not relevant
-             (mol.atom, charge, spin) = self.read_molecule(self.datapath + self.molecule)
-        else:
-            mol.atom = self.molecule
-        mol.basis = self.basis
-        mol.charge = self.charge
-        mol.spin = self.spin
-        mol.unit = self.unit
-        mol.verbose = self.verbose
-        mol.build()
+        mol = gto.Mole(atom=self.molecule, basis=self.basis, charge=self.charge, spin=self.spin, unit=self.unit).build()
+        
         
         # Check method for density functional
         DFT = False
@@ -390,17 +383,18 @@ class PYSCFScript_VB:
                 # https://pyscf.org/_modules/pyscf/dft/libxc.html
                 dft.libxc.parse_xc(self.method)
             except (ValueError, KeyError):
-                pass
+                raise ValueError(f"Method '{self.method}' is not recognized as HF or a valid DFT method.")
             else:
                 # Kohn-Sham (KS)
+                DFT = True
                 self.xc = self.method
                 self.method = 'KS'
                 
-        # Check if restricted
-        if not self.restricted and self.method in ['HF', 'KS', 'DFT'] and self.scf_type is None:
-            self.scf_type = 'R'
-        else:
-            self.scf_type = 'U'
+        if self.method in ['HF', 'KS', 'DFT'] and self.scf_type is None:
+            if self.spin == 0:
+                self.scf_type = 'R'
+            else:
+                self.scf_type = 'U'
             
         # Create HF/KS/DFT object
         if self.method in ['RHF', 'ROHF'] or (self.method == 'HF' and self.scf_type in ['R', 'RO']):
@@ -414,14 +408,15 @@ class PYSCFScript_VB:
             self.scf_type = 'R'
             DFT = True
         elif self.method in ['UKS', 'UDFT'] or (self.method in ['KS', 'DFT'] and self.scf_type == 'U'):
-            mf = dft.UKS(mol)
+            mf = dft.UKS(mol).density_fit()
             self.scf_type = 'U'
             DFT = True
         else:
             raise ValueError('Invalid method.')
         
         # Set HF attributes
-        mf.conv_check = False
+
+        mf.conv_check = True
         mf.conv_tol = self.conv_tol
         mf.conv_tol_grad = self.conv_tol_grad
         mf.direct_scf_tol = self.direct_scf_tol
@@ -429,14 +424,14 @@ class PYSCFScript_VB:
         mf.level_shift = self.level_shift
         mf.max_cycle = self.max_cycle
         mf.max_memory = self.max_memory
-        mf.verbose = self.verbose
+        # mf.verbose = self.verbose
         
         # Set KS attributes
         if DFT:
             mf.xc = self.xc
             if mf.xc is None:
                 raise ValueError('No XC functional specified.')
-            mf.nlc = self.nlc
+            #mf.nlc = self.nlc
             
             if isinstance(self.xc_grid, int):
                 mf.grids.level = self.xc_grid
@@ -524,9 +519,9 @@ class PYSCFScript_VB:
         elif self.algorithm == 'NEWTON':
             mf = mf.newton()
         else:
-            raise ValueError('Invalid algorithm.')
-        
-        # Running the Kernel
+            raise ValueError('Invalid algorithm.')       
+
+        # # Running the Kernel
         
                 # TODO: Check if TS
         if self.is_ts and (self.job_type == 'opt' or self.job_type == 'conformers'):
@@ -563,13 +558,14 @@ class PYSCFScript_VB:
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='Bohr')))
             else:
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='ANG')))
-            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
+            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, self.mol_eq.scf()))
             logging.info('\n')
             logging.info('PySCF optimization complete.')
 
         
         if (self.job_type == 'opt' or self.job_type == 'conformers') and not self.is_ts:
             from pyscf.geomopt.geometric_solver import optimize
+            #from pyscf.geomopt.berny_solver import optimize
             prefix = os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_opt')
             conv_params = { # These are the default settings
                                 'prefix': prefix,
@@ -579,20 +575,22 @@ class PYSCFScript_VB:
                                 'convergence_drms': 1.2e-3,  # Angstrom
                                 'convergence_dmax': 1.8e-3,  # Angstrom
                             }
-            self.mol_eq = optimize(mf, maxsteps=100, **conv_params) # TODO: Need to define maxsteps as a TRSH parameter
+
+            #g_scan = mf.Gradients().as_scanner()
+            #self.mol_eq = g_scan.optimizer(solver='geomeTRIC').run()
+            #self.mol_q.converged
+            self.mol_eq = optimize(mf,maxsteps=self.maxsteps, **conv_params)
             #logging.info(self.mol_eq.atom)
             logging.info('\n Optimized geometry:')
-            logging.info('\n')
             if self.unit == 'Bohr':
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='Bohr')))
             else:
                 logging.info(self.convert_to_custom_xyz(self.mol_eq.atom_coords(unit='ANG')))
-            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, mf.e_tot))
+            logging.info('\nSCF energy of {0} is {1}.'.format(self.method, self.mol_eq.scf()))
             logging.info('\n')
             logging.info('PySCF optimization complete.')
 
         if self.job_type == 'freq':
-            #logging.basicConfig(filename=os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_freq.yml'), level=logging.INFO, format='%(message)s')
             #pip install git+https://github.com/pyscf/properties
             from pyscf.prop.freq import rks, uks
             self.mol_eq = mf.run()
@@ -629,27 +627,29 @@ class PYSCFScript_VB:
         #     for value in np.arange(self.start, self.end, self.step_size):
         #         upd
         if self.job_type == 'sp':
-            mf.kernel()
+            energy = mf.kernel()
             logging.info('The single-point DFT energy is:', energy)
             
 
-# # Run the script
-if __name__ == '__main__':
-    args = parse_command_line_arguments()
-    input_file = args.yml_path  # Directly use the provided path
-    input_dir = os.path.dirname(os.path.abspath(input_file))
+# # # Run the script
+# if __name__ == '__main__':
+#     args = parse_command_line_arguments()
+#     input_file = args.yml_path  # Directly use the provided path
+#     input_dir = os.path.dirname(os.path.abspath(input_file))
 
-    script = PYSCFScript_VB(input_file)  # Initialize the script with the YAML file path
-    script.run()
+#     script = PYSCFScript_VB(input_file)  # Initialize the script with the YAML file path
+#     script.run()
 
-# input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/input.yml'
+#input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/input.yml'
 # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/output.log'
 
-# # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/input.yml'
-# # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/output.log'
+# # # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/input.yml'
+# # # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/TSs/EtOH_ts/opt_a370/output.log'
 
-# # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/input.yml'
-# # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/output.log'
+# # # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/input.yml'
+# # # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/output.log'
 
-# script = PYSCFScript_VB(input_file, output_file)
-# script.run()
+input_file = '/home/calvin/Code/PhD/Topic_One/rxns/rxn_0/calcs/Species/rxn_0_[CH2]CCCO/conformer6/input.yml'
+
+script = PYSCFScript_VB(input_file)
+script.run()

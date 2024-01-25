@@ -24,6 +24,7 @@ from arc.species.converter import xyz_to_str
 
 from arc.job.adapters.common import (_initialize_adapter,
                                      is_restricted,
+                                     update_input_dict_with_args
                                      )
 
 if TYPE_CHECKING:
@@ -137,6 +138,7 @@ class PYSCFAdapter(JobAdapter):
         self.opt_xyz = None
         self.freqs = None
         self.force = None
+        self.pid = None
 
         if species is None:
             raise ValueError('Cannot execute PySCF without an ARCSpecies object.')
@@ -195,15 +197,34 @@ class PYSCFAdapter(JobAdapter):
         
         """
         input_dict = dict()
+        for key in [
+            "job_type",
+            "xyz",
+            "charge",
+            "spin",
+            "basis",
+            "xc_func",
+            "xc_grid",
+            "restricted",
+            "is_ts",
+            "maxsteps",
+            "trsh"
+                    ]:
+            input_dict[key] = ''
+        update_input_dict_with_args(args=self.args, input_dict=input_dict)
         input_dict["job_type"] = self.job_type
         input_dict["xyz"] = xyz_to_str(self.xyz) if isinstance(self.xyz, dict) else self.xyz
         input_dict["charge"] = self.charge
         input_dict["spin"] = self.get_spin_for_pyscf(self.multiplicity)
         input_dict["basis"] = self.level.basis
         input_dict["xc_func"] = self.level.method
+        input_dict["xc_grid"] = 3 if not self.fine else 5
         input_dict["restricted"] = 'True' if not is_restricted(self) else 'False'
         input_dict["is_ts"] = 'True' if self.is_ts else 'False'
-        
+        input_dict["maxsteps"] = 100 if 'maxsteps' not in input_dict['trsh'] else 250
+
+        # Remove 'trsh' from input_dict
+        input_dict.pop('trsh')
         # TODO: Add more options
         
 
@@ -263,7 +284,7 @@ class PYSCFAdapter(JobAdapter):
         """
         pass
 
-    def execute_incore(self):
+    def execute_incore(self, current_total_memory: Optional[float] = None):
         """
         Execute a job incore.
         """
@@ -279,7 +300,7 @@ class PYSCFAdapter(JobAdapter):
         ]
         command = '; '.join(commands)
         
-        self.process, self.pid = execute_command_async(command=command, executable='/bin/bash')
+        self.job_status[0], self.job_id, self.process, self.pid = execute_command_async(command=command, executable='/bin/bash', current_total_memory=current_total_memory)
         
         # output = subprocess.run(command, shell=True, executable='/bin/bash')
         # if output.returncode:

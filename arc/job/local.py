@@ -85,7 +85,8 @@ def execute_command(command: Union[str, List[str]],
 
 def execute_command_async(command: Union[str, List[str]],
                           executable: Optional[str] = None,
-                          recursion: bool = False ) -> Tuple[subprocess.Popen, int]:
+                          recursion: bool = False,
+                          current_total_memory: Optional[float]= 0) -> Tuple[subprocess.Popen, int]:
     """
     Execute a command asynchronously.
 
@@ -95,11 +96,12 @@ def execute_command_async(command: Union[str, List[str]],
     Returns:
         Tuple[subprocess.Popen, int]: The subprocess object and its PID.
     """
+    job_status, job_id = '', ''
     if not isinstance(command, list):
         command = [command]
     command = ' && '.join(command)
     
-    if can_spawn_job():
+    if can_spawn_job(current_total_memory):
         process = subprocess.Popen(command, shell=True, executable=executable)
         pid = process.pid
         
@@ -108,16 +110,21 @@ def execute_command_async(command: Union[str, List[str]],
         if stderr is not None:
             stderr = stderr.read()
             raise RuntimeError(f'Error in executing command {command}.\n{stderr}')
-        return process, pid
-    elif not recursion:
-        logger.warning(f'Max number of submitted jobs was reached, sleeping...')
-        time.sleep(5 * 60)
-        execute_command_async(command=command,
-                              executable=executable,
-                              recursion=True,
-                            )
-    elif recursion:
-        return None, None
+        job_id = str(pid)
+        job_status = 'running' if job_id else job_status
+        return job_status, job_id, process, pid
+    # elif not recursion:
+    #     logger.warning(f'Max number of submitted jobs was reached, sleeping...')
+    #     time.sleep(5 * 60)
+    #     return execute_command_async(command=command,
+    #                           executable=executable,
+    #                           recursion=True,
+    #                           current_total_memory=current_total_memory
+    #                         )
+    # elif recursion:
+    else:
+        logger.warning(f'Max number of submitted jobs was reached, will execute later...')
+        return None, None, None, None
 
 def get_process_memory_usage(pid):
     """Get memory usage of a process by PID."""
@@ -127,15 +134,27 @@ def get_process_memory_usage(pid):
     except psutil.NoSuchProcess:
         return 0
 
-def can_spawn_job():
+def get_total_memory_usage(job_dict):
+    total_memory_usage = 0
+
+    for _, value in job_dict.items():
+        for _, nested_value in value.items():
+            for _, inner_value in nested_value.items():
+                # Check if the inner_value has the 'pid' attribute and it's not None
+                if hasattr(inner_value, 'pid') and inner_value.pid is not None:
+                    total_memory_usage += get_process_memory_usage(inner_value.pid)
+
+    return total_memory_usage
+
+def can_spawn_job(current_total_memory):
     """ Check if new process can be spawned within memory limits """
-    total_memory = sum(get_process_memory_usage(p.pid) for p in subprocess.active_children())
+    total_memory = current_total_memory
     # Get available memory but then only use 30% of it - TODO: make this a setting
-    available_memory = psutil.virtual_memory().available * 0.3
+    available_memory = psutil.virtual_memory().available * 0.001
     # servers[server].get('memory', None)
     
     current_memory_available = available_memory - total_memory
-    return current_memory_available >= available_memory / len(subprocess.active_children())
+    return current_memory_available >= 0
     
 def check_async_job_status(process) -> str:
     """
@@ -147,7 +166,9 @@ def check_async_job_status(process) -> str:
     Returns:
         str: The job status.
     """
-    if process.poll() is None:
+    if process is None:
+        return IOError('No process found')
+    elif process.poll() is None:
         return 'running'
     else:
         return 'done'
