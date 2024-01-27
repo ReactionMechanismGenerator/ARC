@@ -130,6 +130,7 @@ class Scheduler(object):
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
         conformer_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
+        conf_generation_level (Union[str, dict], optional): The level of theory to use for conformer generation.
         opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
         freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
         sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
@@ -201,6 +202,7 @@ class Scheduler(object):
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
         conformer_level (dict): The level of theory to use for conformer comparisons.
+        conf_generation_level (dict): The level of theory to use for conformer generation.
         opt_level (dict): The level of theory to use for geometry optimizations.
         freq_level (dict): The level of theory to use for frequency calculations.
         sp_level (dict): The level of theory to use for single point energy calculations.
@@ -229,6 +231,7 @@ class Scheduler(object):
                  project_directory: str,
                  composite_method: Optional[Level] = None,
                  conformer_level: Optional[Level] = None,
+                 conf_generation_level: Optional[Level] = None,
                  opt_level: Optional[Level] = None,
                  freq_level: Optional[Level] = None,
                  sp_level: Optional[Level] = None,
@@ -308,6 +311,7 @@ class Scheduler(object):
         self.servers = list()
         self.composite_method = composite_method
         self.conformer_level = conformer_level
+        self.conf_generation_level = conf_generation_level
         self.ts_guess_level = ts_guess_level
         self.opt_level = opt_level
         self.freq_level = freq_level
@@ -1098,7 +1102,10 @@ class Scheduler(object):
                         n_confs=n_confs,
                         e_confs=self.e_confs,
                         plot_path=os.path.join(self.project_directory, 'output', 'Species',
-                                               label, 'geometry', 'conformers'))
+                                               label, 'geometry', 'conformers'),
+                        conf_generation_level=self.conf_generation_level if self.conf_generation_level is not None else None,
+                        conf_path=os.path.join(self.project_directory, 'calcs', 'Species', f'{label}_multi'),
+                        )
                 self.process_conformers(label)
             # TSs:
             elif self.species_dict[label].is_ts \
