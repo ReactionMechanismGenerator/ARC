@@ -717,22 +717,19 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(scan_res, 4.0)
 
     @patch(
-        "arc.common.get_logger"
-    )
-    @patch(
-        "arc.job.local.execute_command"
-    )
-    @patch(
         "arc.job.trsh.servers",
         {
             "test_server": {
                 "cluster_soft": "PBS",
                 "un": "test_user",
-                "queue": {"short_queue": "24:00:0", "long_queue": "3600:00:00"},
+                "queues": {"short_queue": "24:00:0","middle_queue": "48:00:00", "long_queue": "3600:00:00"},
             }
         },
+    )  
+    @patch(
+        "arc.job.trsh.execute_command"
     )
-    def test_user_queue_setting_trsh(self, mock_logger, mock_execute_command):
+    def test_user_queue_setting_trsh(self, mock_execute_command):
         """ Test the trsh_job_queue function with user specified queue """
         # Mocking the groups and qstat command outputs
         mock_execute_command.side_effect = [

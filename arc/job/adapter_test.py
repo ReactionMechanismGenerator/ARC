@@ -11,6 +11,7 @@ import os
 import time
 import shutil
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -203,7 +204,22 @@ class TestJobAdapter(unittest.TestCase):
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    server='test_server',
                                     testing=True,
+                                    )
+        cls.job_6 = GaussianAdapter(execution_type='queue',
+                                    job_name='spc1',
+                                    job_type='opt',
+                                    job_id='123456',
+                                    job_num=101,
+                                    job_server_name = 'server1',
+                                    level=Level(method='cbs-qb3'),
+                                    project='test',
+                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    testing=True,
+                                    queue='short_queue',
+                                    attempted_queues=['short_queue']
                                     )
 
     def test_determine_job_array_parameters(self):
@@ -422,6 +438,26 @@ class TestJobAdapter(unittest.TestCase):
         self.assertEqual(self.job_5.job_status[0], 'done')
         self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
         self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
+
+    @patch(
+        "arc.job.trsh.servers",
+        {
+            "local": {
+                "cluster_soft": "PBS",
+                "un": "test_user",
+                "queues": {"short_queue": "24:00:0","middle_queue": "48:00:00", "long_queue": "3600:00:00"},
+            }
+        },
+    ) 
+    def test_troubleshoot_queue(self):
+        """Test troubleshooting a queue job"""
+        self.job_6.troubleshoot_queue()
+        self.assertEqual(self.job_6.queue, 'middle_queue')
+        # Assert that 'middle_queue' and 'short_queue' were attempted
+        # We do not do assert equal because a user may have different queues from the settings.py originally during cls
+        self.assertIn('short_queue', self.job_6.attempted_queues)
+        self.assertIn('middle_queue', self.job_6.attempted_queues)
+
 
 
     @classmethod
