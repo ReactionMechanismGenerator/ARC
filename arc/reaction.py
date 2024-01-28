@@ -82,9 +82,9 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
-        atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
-                              I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
-                              reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
+        atom_maps (List[List[int]]): Entries are atom maps, mapping the reactant atoms to the product atoms.
+                                     I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
+                                     reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
         done_opt_r_n_p (bool): Whether the optimization of all reactants and products is complete.
     """
     def __init__(self,
@@ -117,7 +117,7 @@ class ARCReaction(object):
         self.rmg_reactions = None
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
-        self._atom_map = None
+        self._atom_maps = None
         self._charge = charge
         self._multiplicity = multiplicity
         if reaction_dict is not None:
@@ -150,24 +150,24 @@ class ARCReaction(object):
         self.check_atom_balance()
 
     @property
-    def atom_map(self):
-        """The reactants to products atom map"""
-        if self._atom_map is None \
+    def atom_maps(self):
+        """The reactants to products atom maps"""
+        if self._atom_maps is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
             for backend in ["ARC", "QCElemental"]:
-                _atom_map = map_reaction(rxn=self, backend=backend)
-                if _atom_map is not None:
-                    self._atom_map = _atom_map
+                _atom_maps = map_reaction(rxn=self, backend=backend)
+                if _atom_maps is not None:
+                    self._atom_maps = _atom_maps
                     break
                 logger.error(f"The requested ARC reaction {self}, and it's reverse, could not be atom mapped using {backend}.")
-        if self._atom_map is None:
+        if self._atom_maps is None:
             logger.error(f"The requested ARC reaction {self} could not be atom mapped.")
-        return self._atom_map
+        return self._atom_maps
 
-    @atom_map.setter
-    def atom_map(self, value):
+    @atom_maps.setter
+    def atom_maps(self, value):
         """Allow setting the atom map"""
-        self._atom_map = value
+        self._atom_maps = value
 
     @property
     def charge(self):
@@ -239,8 +239,8 @@ class ARCReaction(object):
         reaction_dict['p_species'] = [spc.as_dict(reset_atom_ids=reset_atom_ids) for spc in self.p_species]
         if self.ts_species is not None:
             reaction_dict['ts_species'] = self.ts_species.as_dict()
-        if self._atom_map is not None:
-            reaction_dict['atom_map'] = self._atom_map
+        if self._atom_maps is not None:
+            reaction_dict['atom_maps'] = self._atom_maps
         if self.done_opt_r_n_p is not None:
             reaction_dict['done_opt_r_n_p'] = self.done_opt_r_n_p
         if self.preserve_param_in_scan is not None:
@@ -321,7 +321,7 @@ class ARCReaction(object):
             else reaction_dict['xyz'] if 'xyz' in reaction_dict else list()
         self.preserve_param_in_scan = reaction_dict['preserve_param_in_scan'] \
             if 'preserve_param_in_scan' in reaction_dict else None
-        self.atom_map = reaction_dict['atom_map'] if 'atom_map' in reaction_dict else None
+        self.atom_maps = reaction_dict['atom_maps'] if 'atom_maps' in reaction_dict else None
         self.done_opt_r_n_p = reaction_dict['done_opt_r_n_p'] if 'done_opt_r_n_p' in reaction_dict else None
 
     def copy(self):
@@ -342,7 +342,7 @@ class ARCReaction(object):
             ARCReaction: A copy of this object instance with flipped reactants and products.
         """
         reaction_dict = self.as_dict(reset_atom_ids=True)
-        reset_keys = ['label', 'index', 'atom_map', 'rmg_reaction',
+        reset_keys = ['label', 'index', 'atom_maps', 'rmg_reaction',
                       'family', 'family_own_reverse', 'long_kinetic_description']
         if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
             reaction_dict['r_species'], reaction_dict['p_species'] = reaction_dict['p_species'], reaction_dict['r_species']
@@ -369,7 +369,18 @@ class ARCReaction(object):
         Returns:
             bool: Whether this is an isomerization reaction.
         """
-        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 and len(products) == 1
+
+    def is_unimolecular(self):
+        """
+        Determine whether this is a unimolecular reaction.
+
+        Returns:
+            bool: Whether this is a unimolecular reaction.
+        """
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 or len(products) == 1
 
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
@@ -452,7 +463,7 @@ class ARCReaction(object):
         """
         if self.rmg_reaction is None and len(self.r_species) and len(self.p_species) and \
                 all([arc_spc.mol is not None for arc_spc in self.r_species + self.p_species]):
-            reactants, products = self.get_reactants_and_products(arc=False)  # Returns RMG Species.
+            reactants, products = self.get_reactants_and_products(arc=False)
             self.rmg_reaction = Reaction(reactants=reactants, products=products)
 
     def arc_species_from_rmg_reaction(self):
@@ -795,7 +806,7 @@ class ARCReaction(object):
             else:
                 for i in range(self.get_species_count(species=p_spc, well=1)):
                     products.append(Species(label=p_spc.label, molecule=[p_spc.mol.copy(deep=True) if return_copies
-                                                                          else p_spc.mol]))
+                                                                         else p_spc.mol]))
         return reactants, products
 
     def get_expected_changing_bonds(self,
@@ -841,7 +852,9 @@ class ARCReaction(object):
         labels = set(labels)
         return len(labels)
 
-    def get_single_mapped_product_xyz(self) -> Optional[ARCSpecies]:
+    def get_single_mapped_product_xyz(self,
+                                      am_index: int = 0,
+                                      ) -> Optional[ARCSpecies]:
         """
         Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.
 
@@ -852,7 +865,7 @@ class ARCReaction(object):
             logger.error(f'Can only return a mapped product for reactions with a single product, '
                          f'got {len(self.p_species)}.')
             return None
-        mapped_xyz = sort_xyz_using_indices(xyz_dict=self.p_species[0].get_xyz(), indices=self.atom_map)
+        mapped_xyz = sort_xyz_using_indices(xyz_dict=self.p_species[0].get_xyz(), indices=self.atom_maps[am_index])
         mapped_product = ARCSpecies(label=self.p_species[0].label,
                                     mol=self.p_species[0].mol.copy(deep=True),
                                     multiplicity=self.p_species[0].multiplicity,
@@ -921,7 +934,7 @@ class ARCReaction(object):
                 xyz_dict['isotopes'] += xyz['isotopes']
                 xyz_dict['coords'] += xyz['coords']
         xyz_dict = translate_to_center_of_mass(check_xyz_dict(xyz_dict))
-        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_map)
+        xyz_dict = sort_xyz_using_indices(xyz_dict=xyz_dict, indices=self.atom_maps[0])
         if return_format == 'str':
             xyz_dict = xyz_to_str(xyz_dict)
         return xyz_dict

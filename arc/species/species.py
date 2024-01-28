@@ -91,8 +91,8 @@ class ARCSpecies(object):
                               'directed_scan_type': ``str``,
                               'directed_scan': ``dict``,  # keys: tuples of dihedrals as strings,
                                                           # values: dicts of energy, xyz, is_isomorphic, trsh
-                             }
-                          1: {}, ...
+                             },
+                          1: {...},
                          }
 
     Args:
@@ -1545,6 +1545,7 @@ class ARCSpecies(object):
     def mol_from_xyz(self,
                      xyz: Optional[dict] = None,
                      get_cheap: bool = False,
+                     multiplicity: Optional[int] = None,
                      ) -> None:
         """
         Make sure atom order in self.mol corresponds to xyz.
@@ -1556,6 +1557,8 @@ class ARCSpecies(object):
         Args:
             xyz (dict, optional): Alternative coordinates to use.
             get_cheap (bool, optional): Whether to generate conformers if the species has no xyz data.
+            multiplicity (int, optional): The multiplicity to use for the generated molecule.
+                                          If not given, self.multiplicity will be used.
         """
         if xyz is None:
             xyz = self.get_xyz(generate=get_cheap, return_format='dict')
@@ -1596,11 +1599,17 @@ class ARCSpecies(object):
         else:
             mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
+                mol_b.multiplicity = multiplicity if multiplicity is not None else mol_b.multiplicity
                 self.mol = mol_b
             elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
+                mol_s.multiplicity = multiplicity if multiplicity is not None else mol_s.multiplicity
                 self.mol = mol_s
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
+        if self.mol is not None:
+            self.mol = fix_mol_electronic_configuration(mol=self.mol,
+                                                        multiplicity=multiplicity or self.multiplicity)
+            self.mol.update_atomtypes(log_species=False, raise_exception=False)
 
     def process_xyz(self, xyz_list: Union[list, str, dict]):
         """
@@ -1944,11 +1953,7 @@ class ARCSpecies(object):
         added_radical = list()
         for mol, label in zip([mol1, mol2], [label1, label2]):
             for atom in mol.atoms:
-                theoretical_charge = elements.PeriodicSystem.valence_electrons[atom.symbol] \
-                                     - atom.get_total_bond_order() \
-                                     - atom.radical_electrons - \
-                                     2 * atom.lone_pairs
-                if theoretical_charge == atom.charge + 1:
+                if get_atom_theoretical_charge(atom) == atom.charge + 1:
                     # we're missing a radical electron on this atom
                     if label not in added_radical or label == 'H':
                         atom.radical_electrons += 1
@@ -2713,3 +2718,76 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
         fragments.append(frag_indices)
     return molecules, fragments
+
+
+def fix_mol_electronic_configuration(mol: Optional[Molecule] = None,
+                                     multiplicity: Optional[int] = None,
+                                     ) -> Optional[Molecule]:
+    """
+    Fix the electronic configuration (number of radicals, lone pairs, and formal charges) of a Molecule object
+    that was perceived from xyz. Assumes the multiplicity attribute of the given molecule is correct.
+
+    Args:
+        mol (Molecule, optional): The molecule to fix.
+        multiplicity (int, optional): The multiplicity of the molecule.
+                                      If not given, the multiplicity attribute of mol will be used.
+
+    Returns:
+        Molecule: The fixed molecule.
+    """
+    if mol is None:
+        return None
+    add_missing_radicals(mol)
+    multiplicity = multiplicity or mol.multiplicity
+    n_radicals = mol.get_radical_count()
+    if n_radicals + 1 > multiplicity:
+        # Find adjacent atoms with opposite-spin radicals, and pair the radicals up into a bond.
+        mols = mol.generate_resonance_structures(keep_isomorphic=False, filter_structures=True, save_order=True)
+        for structure in mols + [mol]:
+            structure.multiplicity = multiplicity
+        visited = list()
+        updated = False
+        for mol_1 in mols:
+            for atom_1 in mol_1.atoms:
+                if atom_1 not in visited and atom_1.radical_electrons >= 1:
+                    for atom_2, bond in atom_1.edges.items():
+                        if atom_2.radical_electrons >= 1:
+                            atom_1.radical_electrons -= 1
+                            atom_2.radical_electrons -= 1
+                            bond.order += 1
+                            visited.append(atom_2)
+                            updated = True
+                            break
+                visited.append(atom_1)
+            if updated:
+                return mol_1
+        return mols[0]
+    return mol
+
+
+def get_atom_theoretical_charge(atom: Atom) -> float:
+    """
+    Get the theoretical charge of an atom based on its electronic properties.
+
+    Args:
+        atom (Atom): The atom to check.
+
+    Returns:
+        float: The theoretical charge of the atom.
+    """
+    return elements.PeriodicSystem.valence_electrons[atom.symbol] \
+        - atom.get_total_bond_order() \
+        - atom.radical_electrons - \
+        2 * atom.lone_pairs
+
+
+def add_missing_radicals(mol: Molecule) -> None:
+    """
+    Add missing radical electrons to a molecule based on the electronic configuration.
+
+    Args:
+        mol (Molecule): The molecule to update.
+    """
+    for atom in mol.atoms:
+        if get_atom_theoretical_charge(atom) == atom.charge + 1:
+            atom.radical_electrons += 1

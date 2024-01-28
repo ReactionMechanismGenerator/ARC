@@ -267,7 +267,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
             return {0: 0}
         return [0]
 
-    # A shortcut for homonuclear diatomic species.
+    # A shortcut for homo-nuclear diatomic species.
     if spc_1.number_of_atoms == spc_2.number_of_atoms == 2 \
             and len(set([atom.element.symbol for atom in spc_1.mol.atoms])) == 1:
         if map_type == 'dict':
@@ -288,65 +288,105 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
 
     if backend.lower() not in ['qcelemental', 'arc']:
         raise ValueError(f'The backend method could be either "QCElemental" or "ARC", got {backend}.')
-    atom_map = None
 
+    atom_map = None
     if backend.lower() == 'arc':
+        atom_map = map_two_species_via_arc(spc_1=spc_1,
+                                           spc_2=spc_2,
+                                           map_type=map_type,
+                                           consider_chirality=consider_chirality,
+                                           )
+    if atom_map is None and allow_backend_shift:
+        backend = 'QCElemental'
+    if backend.lower() == 'qcelemental':
+        atom_map = map_two_species_via_qcel(spc_1=spc_1, spc_2=spc_2, map_type=map_type)
+
+    if inc_vals is not None:
+        atom_map = [value + inc_vals for value in atom_map]
+    return atom_map
+
+
+def map_two_species_via_arc(spc_1: Union[ARCSpecies, Species, Molecule],
+                            spc_2: Union[ARCSpecies, Species, Molecule],
+                            map_type: str = 'list',
+                            consider_chirality: bool = True,
+                            ) -> Optional[Union[List[int], Dict[int, int]]]:
+    """
+    Map the atoms in spc_1 to the atoms in spc_2 using the ARC 3DAM method.
+
+    Args:
+        spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
+        spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
+        map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
+        consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
+
+    Returns:
+        Optional[Union[List[int], Dict[int, int]]]:
+            The atom maps. By default, a list of atom maps is returned.
+    """
+    fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
+    fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
+    candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
+    if candidates is None or len(candidates) == 0:
+        consider_chirality = not consider_chirality
         fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
         fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
         candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
         if candidates is None or len(candidates) == 0:
-            consider_chirality = not consider_chirality
-            fingerprint_1 = fingerprint(spc_1, consider_chirality=consider_chirality)
-            fingerprint_2 = fingerprint(spc_2, consider_chirality=consider_chirality)
-            candidates = identify_superimposable_candidates(fingerprint_1, fingerprint_2)
-            if candidates is None or len(candidates) == 0:
-                logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
-                return None
-        if not len(candidates):
-            if allow_backend_shift:
-                backend = 'QCElemental'
-            else:
-                return None
-        else:
-            rmsds, fixed_spcs = list(), list()
-            for candidate in candidates:
-                fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
-                fixed_spcs.append((fixed_spc_1, fixed_spc_2))
-                backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
-                xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
-                xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
-                                     isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
-                xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
-                                     isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
-                no_gap_candidate = remove_gaps_from_values(candidate)
-                xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(),
-                                                                                  key=lambda item: item[0])])
-                rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
-            chosen_candidate_index = rmsds.index(min(rmsds))
-            fixed_spc_1, fixed_spc_2 = fixed_spcs[chosen_candidate_index]
-            atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
-            if map_type == 'list':
-                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
-        if atom_map is None and allow_backend_shift:
-            backend = 'QCElemental'
-
-    if backend.lower() == 'qcelemental':
-        qcmol_1 = create_qc_mol(species=spc_1.copy())
-        qcmol_2 = create_qc_mol(species=spc_2.copy())
-        if qcmol_1 is None or qcmol_2 is None:
+            logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
             return None
-        if len(qcmol_1.symbols) != len(qcmol_2.symbols):
-            raise ValueError(f'The number of atoms in spc1 ({spc_1.number_of_atoms}) must be equal '
-                             f'to the number of atoms in spc1 ({spc_2.number_of_atoms}).')
-        data = qcmol_2.align(ref_mol=qcmol_1, verbose=0, uno_cutoff=0.01)
-        atom_map = data[1]['mill'].atommap.tolist()
-        if map_type == 'dict':
-            atom_map = {key: val for key, val in enumerate(atom_map)}
+    if not len(candidates):
+        return None
+    rmsds, fixed_spcs = list(), list()
+    for candidate in candidates:
+        fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
+        fixed_spcs.append((fixed_spc_1, fixed_spc_2))
+        backbone_1, backbone_2 = set(list(candidate.keys())), set(list(candidate.values()))
+        xyz1, xyz2 = fixed_spc_1.get_xyz(), fixed_spc_2.get_xyz()
+        xyz1 = xyz_from_data(coords=[xyz1['coords'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                             symbols=[xyz1['symbols'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1],
+                             isotopes=[xyz1['isotopes'][i] for i in range(fixed_spc_1.number_of_atoms) if i in backbone_1])
+        xyz2 = xyz_from_data(coords=[xyz2['coords'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                             symbols=[xyz2['symbols'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2],
+                             isotopes=[xyz2['isotopes'][i] for i in range(fixed_spc_2.number_of_atoms) if i in backbone_2])
+        no_gap_candidate = remove_gaps_from_values(candidate)
+        xyz2 = sort_xyz_using_indices(xyz2, indices=[v for k, v in sorted(no_gap_candidate.items(), key=lambda item: item[0])])
+        rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
+    chosen_candidate_index = rmsds.index(min(rmsds))
+    fixed_spc_1, fixed_spc_2 = fixed_spcs[chosen_candidate_index]
+    atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
+    if map_type == 'list':
+        atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+    return atom_map
 
-    if inc_vals is not None:
-        atom_map = [value + inc_vals for value in atom_map]
+
+def map_two_species_via_qcel(spc_1: Union[ARCSpecies, Species, Molecule],
+                             spc_2: Union[ARCSpecies, Species, Molecule],
+                             map_type: str = 'list',
+                             ) -> Optional[Union[List[int], Dict[int, int]]]:
+    """
+    Map the atoms in spc_1 to the atoms in spc_2 using the QCElemental method.
+
+    Args:
+        spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
+        spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
+        map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
+
+    Returns:
+        Optional[Union[List[int], Dict[int, int]]]:
+            The atom maps. By default, a list of atom maps is returned.
+    """
+    qcmol_1 = create_qc_mol(species=spc_1.copy())
+    qcmol_2 = create_qc_mol(species=spc_2.copy())
+    if qcmol_1 is None or qcmol_2 is None:
+        return None
+    if len(qcmol_1.symbols) != len(qcmol_2.symbols):
+        raise ValueError(f'The number of atoms in spc1 ({spc_1.number_of_atoms}) must be equal '
+                         f'to the number of atoms in spc1 ({spc_2.number_of_atoms}).')
+    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0, uno_cutoff=0.01)
+    atom_map = data[1]['mill'].atommap.tolist()
+    if map_type == 'dict':
+        atom_map = {key: val for key, val in enumerate(atom_map)}
     return atom_map
 
 
@@ -936,19 +976,20 @@ def check_atom_map(rxn) -> bool:
     Returns: bool
         Whether the atom mapping makes sense.
     """
-    if len(rxn.atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
-        return False
-    r_elements, p_elements = list(), list()
-    for r_species in rxn.r_species:
-        r_elements.extend(list(r_species.get_xyz()['symbols']))
-    for p_species in rxn.p_species:
-        p_elements.extend(list(p_species.get_xyz()['symbols']))
-    for i, map_i in enumerate(rxn.atom_map):
-        if r_elements[i] != p_elements[map_i]:
-            break
-    for i in range(len(unique(rxn.atom_map))):
-        if unique(rxn.atom_map)[i] != i:
+    for atom_map in rxn.atom_maps:
+        if len(atom_map) != sum([spc.number_of_atoms for spc in rxn.r_species]):
             return False
+        r_elements, p_elements = list(), list()
+        for r_species in rxn.r_species:
+            r_elements.extend(list(r_species.get_xyz()['symbols']))
+        for p_species in rxn.p_species:
+            p_elements.extend(list(p_species.get_xyz()['symbols']))
+        for i, map_i in enumerate(atom_map):
+            if r_elements[i] != p_elements[map_i]:
+                break
+        for i in range(len(unique(atom_map))):
+            if unique(atom_map)[i] != i:
+                return False
     return True
 
 
@@ -1000,26 +1041,6 @@ def add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc_1: ARCSpe
     return atom_map
 
 
-def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
-    """
-    Flip an atom map so that the products map to the reactants.
-
-    Args:
-        atom_map (List[int]): The atom map in a list format.
-
-    Returns:
-        Optional[List[int]]: The flipped atom map.
-    """
-    if atom_map is None:
-        return None
-    flipped_map = [-1] * len(atom_map)
-    for index, entry in enumerate(atom_map):
-        flipped_map[entry] = index
-    if any(entry < 0 for entry in flipped_map):
-        raise ValueError(f'Cannot flip the atom map {atom_map}')
-    return flipped_map
-
-
 def make_bond_changes(rxn: 'ARCReaction',
                       r_cuts: List[ARCSpecies],
                       r_label_dict: Dict):
@@ -1067,23 +1088,18 @@ def make_bond_changes(rxn: 'ARCReaction',
 def assign_labels_to_products(rxn: 'ARCReaction',
                               p_label_dict: dict):
     """
-    Add the indices to the reactants and products.
+    Add labels to the atoms of the reactants and products.
 
     Args:
         rxn: ARCReaction object to be mapped
         p_label_dict: the labels of the products
-        Consider changing in rmgpy.
-
-    Returns:
-        Adding labels to the atoms of the reactants and products, to be identified later.
     """
-
     atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
+    for product_ in rxn.p_species:
+        for atom in product_.mol.atoms:
             if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
                 atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
+            atom_index += 1
 
 
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -1148,7 +1164,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
 
 def map_pairs(pairs):
     """
-    A function that maps the mached species together
+    A function that maps the matched species together.
 
     Args:
         pairs: A list of the pairs of reactants and species
@@ -1160,7 +1176,6 @@ def map_pairs(pairs):
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
-
     return maps
 
 
@@ -1175,20 +1190,23 @@ def label_species_atoms(spcs):
     for spc in spcs:
         for atom in spc.mol.atoms:
             atom.label = str(index)
-            index+=1
+            index += 1
 
 
-def glue_maps(maps, pairs_of_reactant_and_products):
+def glue_maps(maps: List[List[int]],
+              pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]]
+              ) -> List[int]:
     """
     a function that joins together the maps from the parts of the reaction.
 
     Args:
-        rxn: ARCReaction that requires atom mapping
-        maps: The list of all maps of the isomorphic cuts.
+        maps (List[List[int]]): The list of all maps of the isomorphic cuts.
+        pairs_of_reactant_and_products (List[Tuple[ARCSpecies, ARCSpecies]]): The list of all pairs of reactants and products.
 
     Returns:
-        an Atom Map of the compleate reaction.
+        List[int]: An Atom Map of the complete reaction.
     """
+    # print(f'maps: {maps}, pairs_of_reactant_and_products: {pairs_of_reactant_and_products}')
     am_dict = dict()
     for _map, pair in zip(maps, pairs_of_reactant_and_products):
         r_atoms = pair[0].mol.atoms
@@ -1200,16 +1218,16 @@ def glue_maps(maps, pairs_of_reactant_and_products):
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
     """
-    A function for determining whether or not the species in question containt the bond specified by the bond dissociation indices.
+    A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
     
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
         bde (Tuple[int, int]): The bde in question.
-        add_bdes (bool): Whether or not to add the bde to the species.
+        add_bdes (bool): Whether to add the bde to the species.
     
     Returns:
-        bool: Whether or not the bde is based on the atom labels.
+        bool: Whether the bde is based on the atom labels.
     """
     bde = convert_list_index_0_to_1(bde, direction=-1)
     index1, index2 = bde[0], bde[1]

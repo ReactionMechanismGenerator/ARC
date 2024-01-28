@@ -698,7 +698,7 @@ class TestMappingEngine(unittest.TestCase):
         rxn_1_test.determine_family(self.db)
         rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn_1_test, backend="ARC")
         r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn_1_test,
-                                                                                      rmg_reaction=rmg_reactions[0])
+                                                                                          rmg_reaction=rmg_reactions[0])
         assign_labels_to_products(rxn_1_test, p_label_dict)
         reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
         label_species_atoms(reactants), label_species_atoms(products)
@@ -709,7 +709,7 @@ class TestMappingEngine(unittest.TestCase):
         p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = map_pairs(pairs_of_reactant_and_products)
-        atom_map = glue_maps(maps,pairs_of_reactant_and_products)
+        atom_map = glue_maps(maps, pairs_of_reactant_and_products)
         self.assertEqual(len(atom_map), self.r_1.mol.get_num_atoms() + self.r_2.mol.get_num_atoms())
         atoms_r = [atom for atom in self.r_1.mol.copy(deep=True).atoms] + [atom for atom in self.r_2.mol.copy(deep=True).atoms]
         atoms_p = [atom for atom in self.p_1.mol.copy(deep=True).atoms] + [atom for atom in self.p_2.mol.copy(deep=True).atoms]
@@ -1349,36 +1349,6 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = map_hydrogens(self.spc1, self.spc2, backbone_map)
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
-
-    def test_flip_map(self):
-        """Test the flip_map function."""
-        atom_map = [0]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [0])
-
-        atom_map = [0, 1]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [0, 1])
-
-        atom_map = [1, 0]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [1, 0])
-
-        atom_map = [0, 1, 2, 3, 5, 4, 6]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [0, 1, 2, 3, 5, 4, 6])
-
-        atom_map = [0, 1, 2, 8, 7, 4, 5, 3, 6, 9]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [0, 1, 2, 7, 5, 6, 8, 4, 3, 9])
-
-        atom_map = [5, 8, 0, 6, 10, 1, 9, 3, 4, 2, 7]
-        flipped_map = flip_map(atom_map)
-        self.assertEqual(flipped_map, [2, 5, 9, 7, 8, 0, 3, 10, 1, 6, 4])
-
-        with self.assertRaises(ValueError):
-            atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
-            flip_map(atom_map)
 
     def test_make_bond_changes(self):
         """Test the make_bond_changes function"""
