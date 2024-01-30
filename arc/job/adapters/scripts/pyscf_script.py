@@ -365,7 +365,8 @@ class PYSCFScript_VB:
         freq = w.tolist()
         mode_list = [modes.tolist() for mode in modes]
         
-        output_dict = {'freq': freq, 'modes': mode_list}
+        # Add "PySCF Frequencies and Modes" to the YAML file
+        output_dict = {'Software': 'PySCF Freqs & Modes', 'freq': freq, 'modes': mode_list}
         
         with open(os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_freq.yml'), 'w') as f:
             yaml.dump(output_dict, f)

@@ -140,19 +140,19 @@ def parse_frequencies(path: str,
                         freq = float(splits[-4]) if is_str_float(splits[-4]) else 0
                         if freq:
                             freqs = np.append(freqs, freq)
-        elif software == 'pyscf':
-            for line in lines:
-                if 'modes:\n' not in line:
-                    try:
-                        value = float(line.split()[1])
-                        # Append to np array
-                        freqs = np.append(freqs, value)
-                    except (IndexError, ValueError):
-                        pass
-                elif 'modes:\n' in line:
-                    break
+    elif software == 'pyscf':
+        for line in lines:
+            if 'modes:\n' not in line:
+                try:
+                    value = float(line.split()[1])
+                    # Append to np array
+                    freqs = np.append(freqs, value)
+                except (IndexError, ValueError):
+                    pass
+            elif 'modes:\n' in line:
+                break
     else:
-        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem and xTB '
+        raise ParserError(f'parse_frequencies() can currently only parse Gaussian, Molpro, Orca, QChem, TeraChem, xTB and PySCF'
                           f'files, got {software}')
     logger.debug(f'Using parser.parse_frequencies(). Determined frequencies are: {freqs}')
     return freqs
@@ -402,9 +402,8 @@ def identify_ess(path: str) -> Optional[str]:
             if 'x T B' in line:
                 software = 'xtb'
                 break
-        # Do reverse line search to find the last line with a software name
-        line_reversed = f.readlines()[::-1]
-        for line in line_reversed:
+        f.seek(0)
+        for line in f:
             if 'PySCF' in line:
                 software = 'pyscf'
                 break
