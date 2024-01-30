@@ -314,13 +314,17 @@ class JobAdapter(ABC):
         self.upload_files()
         execution_type = JobExecutionTypeEnum(self.execution_type)
         if execution_type == JobExecutionTypeEnum.incore:
-            # self.initial_time = datetime.datetime.now()
-            # self.job_status[0] = 'running'
-            self.execute_incore(current_total_memory)
-            #self.job_status[0] = 'done'
-            #self.job_status[1]['status'] = 'done'
-            #self.final_time = datetime.datetime.now()
-            #self.determine_run_time()
+            if self.job_type != 'tsg':
+                # TODO: Implement better
+                self.execute_incore(current_total_memory)
+            else:
+                self.initial_time = datetime.datetime.now()
+                self.job_status[0] = 'running'
+                self.execute_incore()
+                self.job_status[0] = 'done'
+                self.job_status[1]['status'] = 'done'
+            self.final_time = datetime.datetime.now()
+            self.determine_run_time()
         elif execution_type == JobExecutionTypeEnum.queue:
             self.execute_queue()
         elif execution_type == JobExecutionTypeEnum.pipe:
@@ -874,7 +878,7 @@ class JobAdapter(ABC):
             return
         if self.execution_type != 'incore':
             self.job_status[0] = self._check_job_server_status()
-        elif self.execution_type == 'incore':
+        elif self.execution_type == 'incore' and hasattr(self, 'process'):
             self.job_status[0] = self._check_job_incore_status()
         else:
             self.job_status[0] = 'done'

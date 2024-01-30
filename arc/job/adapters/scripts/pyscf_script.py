@@ -631,14 +631,14 @@ class PYSCFScript_VB:
             logging.info('The single-point DFT energy is:', energy)
             
 
-# # # Run the script
-# if __name__ == '__main__':
-#     args = parse_command_line_arguments()
-#     input_file = args.yml_path  # Directly use the provided path
-#     input_dir = os.path.dirname(os.path.abspath(input_file))
+# # Run the script
+if __name__ == '__main__':
+    args = parse_command_line_arguments()
+    input_file = args.yml_path  # Directly use the provided path
+    input_dir = os.path.dirname(os.path.abspath(input_file))
 
-#     script = PYSCFScript_VB(input_file)  # Initialize the script with the YAML file path
-#     script.run()
+    script = PYSCFScript_VB(input_file)  # Initialize the script with the YAML file path
+    script.run()
 
 #input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/input.yml'
 # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH/opt_a370/output.log'
@@ -649,7 +649,7 @@ class PYSCFScript_VB:
 # # # # input_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/input.yml'
 # # # # output_file = '/home/calvin/Code/ARC/arc/testing/test_PYSCFAdapter/calcs/Species/EtOH_ts/freq_a370/output.log'
 
-input_file = '/home/calvin/Code/PhD/Topic_One/rxns/rxn_0/calcs/Species/rxn_0_[CH2]CCCO/conformer6/input.yml'
+# input_file = '/home/calvin/Code/PhD/Topic_One/rxns/rxn_0/calcs/Species/rxn_0_[CH2]CCCO/conformer6/input.yml'
 
-script = PYSCFScript_VB(input_file)
-script.run()
+# script = PYSCFScript_VB(input_file)
+# script.run()

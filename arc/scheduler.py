@@ -848,13 +848,15 @@ class Scheduler(object):
         if job.server is not None and job.server not in self.servers:
             self.servers.append(job.server)
         print('************',job.job_id)
-        if not hasattr(job, 'pid') or hasattr(job, 'pid') and job.pid is None:
+        if hasattr(job, 'pid') and job.pid is None:
             while job.pid is None:
                 current_total_memory = get_total_memory_usage(self.job_dict)
                 job.execute(current_total_memory)
                 print('**Loop**',job.job_id)
                 if job.pid is None:
                     time.sleep(600)
+        else:
+            job.execute()
         self.save_restart_dict()
 
     def deduce_job_adapter(self, level: Level, job_type: str) -> str:
@@ -3285,7 +3287,8 @@ class Scheduler(object):
 
         if 'Unknown' in job.job_status[1]['keywords'] and 'change_node' not in job.ess_trsh_methods:
             job.ess_trsh_methods.append('change_node')
-            job.troubleshoot_server()
+            if job.execution_type != 'incore':
+                job.troubleshoot_server()
             if job.job_name not in self.running_jobs[label]:
                 self.running_jobs[label].append(job.job_name)  # mark as a running job
         if job.job_adapter == 'gaussian':
