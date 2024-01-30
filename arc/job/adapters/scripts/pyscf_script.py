@@ -615,6 +615,16 @@ class PYSCFScript_VB:
             
             # logging.info('Freuqency calculation complete.')
             
+            logging.info('*********************************************')
+            logging.info('Frequencies (cm-1):')
+            logging.info('*********************************************')
+            logging.info(w)
+            logging.info('*********************************************')
+            logging.info('Modes:')
+            logging.info('*********************************************')
+            logging.info(modes)
+            logging.info('*********************************************')
+            
             self.output_to_yaml(w, modes)
             try:
                 open(os.path.join(os.path.dirname(os.path.abspath(self.input_file)),'output_freq.yml'), 'a').close()

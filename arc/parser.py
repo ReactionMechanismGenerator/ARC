@@ -221,6 +221,12 @@ def parse_normal_mode_displacement(path: str,
                 parse_normal_mode_disp = True
             elif parse and not line or '-------------------' in line:
                 parse = False
+    elif software == 'pyscf':
+        # File is yml format
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'freq' in content.keys() and 'modes' in content.keys():
+            freqs = content['freq']
+            normal_mode_disp = content['modes']
     elif raise_error:
         raise NotImplementedError(f'parse_normal_mode_displacement() is currently not implemented for {software}.')
     freqs = np.array(freqs, np.float64)
