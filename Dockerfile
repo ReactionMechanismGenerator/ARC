@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y \
     libgomp1\
     libxrender1 \
     sudo \
+    nano \
     && apt-get clean \
     && apt-get autoclean \
     && apt-get autoremove -y \
@@ -88,23 +89,27 @@ RUN make \
 # Final command is to compile the RMS during Docker build - This will reduce the time it takes to run RMS for the first time
 RUN touch /opt/conda/envs/rmg_env/condarc-julia.yml
 RUN CONDA_JL_CONDA_EXE=/bin/micromamba julia -e 'ENV["CONDA_JL_CONDA_EXE"]="/opt/conda/envs/rmg_env/bin/conda";using Pkg;Pkg.add(PackageSpec(name="PyCall", rev="master")); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="main"))' \
-    && python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()" \
-    && python-jl -c "from pyrms import rms"
+    && python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
+
+RUN python-jl /home/rmguser/Code/RMG-Py/rmg.py /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py \
+    # delete the results, preserve input.pyז
+    && mv /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py /home/rmguser/Code/RMG-Py/examples/input.py \
+    && rm -rf /home/rmguser/Code/RMG-Py/examples/rmg/minimal/* \
+    && mv /home/rmguser/Code/RMG-Py/examples/input.py /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py
 
 # Add alias to bashrc - rmge to activate the environment
 # These commands are not necessary for the Docker image to run, but they are useful for the user
 RUN echo "alias rmge='micromamba activate rmg_env'" >> ~/.bashrc \
-    && echo "alias rmg='python-jl /home/rmguser/Code/RMG/rmg.py input.py'" >> ~/.bashrc \
+    && echo "alias arce='micromamba activate arc_env'" >> ~/.bashrc \
+    && echo "alias rmg='python-jl /home/rmguser/Code/RMG-Py/rmg.py input.py'" >> ~/.bashrc \
     && echo "alias deact='micromamba deactivate'" >> ~/.bashrc \
     && echo "export rmgpy_path='/home/rmguser/Code/RMG-Py/'" >> ~/.bashrc \
     && echo "export rmgdb_path='/home/rmguser/Code/RMG-database/'" >> ~/.bashrc \
     && echo "alias rmgcode='cd \$rmgpy_path'" >> ~/.bashrc \
     && echo "alias rmgdb='cd \$rmgdb_path'" >> ~/.bashrc \
+    && echo "alias arcode='cd /home/rmguser/Code/ARC'" >> ~/.bashrc \
     && echo "alias conda='micromamba'" >> ~/.bashrc \
-    && echo "alias mamba='micromamba'" >> ~/.bashrc 
-
-# Set the entrypoint to bash
-ENTRYPOINT ["/bin/bash", "--login"]
+    && echo "alias mamba='micromamba'" >> ~/.bashrc
 
 FROM rmg-stage AS arc-stage
 
@@ -140,6 +145,23 @@ RUN micromamba create -y -f environment.yml && \
     find /opt/conda/envs/arc_env/lib/python3.7/site-packages -name '*.pyx' -delete && \
     rm -rf /opt/conda/envs/arc_env/lib/python3.7/site-packages/uvloop/loop.c &&\
     make clean
+
+WORKDIR /home/rmguser/
+
+RUN mkdir -p /home/rmguser/.arc && \
+    cp /home/rmguser/Code/ARC/arc/settings/settings.py /home/rmguser/.arc/settings.py && \
+    cp /home/rmguser/Code/ARC/arc/settings/submit.py /home/rmguser/.arc/submit.py
+
+# Copy alias_print.sh and entrywrapper.sh to the container
+COPY --chown=rmguser:rmguser ./dockerfiles/alias_print.sh /home/rmguser/alias_print.sh
+COPY --chown=rmguser:rmguser ./dockerfiles/entrywrapper.sh /home/rmguser/entrywrapper.sh
+
+# Make the scripts executable
+RUN chmod +x /home/rmguser/alias_print.sh \
+    && chmod +x /home/rmguser/entrywrapper.sh
+
+# Set the wrapper script as the entrypoint
+ENTRYPOINT ["/home/rmguser/entrywrapper.sh"]
 
 # Activate the ARC environment
 ARG MAMBA_DOCKERFILE_ACTIVATE=1
