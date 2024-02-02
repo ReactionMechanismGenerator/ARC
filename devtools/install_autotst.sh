@@ -18,16 +18,16 @@ else
 fi
 
 # Set up Conda/Micromamba environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate base
     BASE=$MAMBA_ROOT_PREFIX
     # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/micromamba.sh"
+    . "$BASE/etc/profile.d/micromamba.sh"
 else
     BASE=$(conda info --base)
     # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/conda.sh"
+   . "$BASE/etc/profile.d/conda.sh"
 fi
 
 # temporarily change directory to install software, and move one directory up in the tree
@@ -62,7 +62,7 @@ else
     conda activate tst_env
 fi
 
-$COMMAND_PKG install -c anaconda yaml -y
+$COMMAND_PKG install -c conda-forge pyyaml
 
 # Restore the original directory
 cd ../ARC || exit

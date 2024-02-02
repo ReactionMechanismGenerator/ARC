@@ -178,7 +178,8 @@ jobs:
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
         mamba env create -f environment.yml
-        mamba install -n tst_env -c anaconda yaml -y
+        # install pyaml
+        mamba install -n tst_env -c conda-forge -y pyyaml
         cd ..
     
     - name: Install TS-GCN
