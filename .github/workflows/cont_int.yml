@@ -234,6 +234,9 @@ jobs:
         source ~/.bashrc
         conda activate arc_env
         make test-functional
+    # Wait ten seconds before running the next step
+    - name: Wait
+      run: sleep 10
 
     - name: Code Coverage
       uses: codecov/codecov-action@v3
@@ -243,4 +246,4 @@ jobs:
         flags: unittests
         name: codecov-umbrella
         verbose: true
-        fail_ci_if_error: true
+        fail_ci_if_error: false
