@@ -13,7 +13,7 @@ check_and_adjust_permissions() {
         # Check if it's a directory
         if [ -d "$dir" ]; then
             # Adjust permissions for the directory
-            chown -R rmguser:rmguser "$dir"
+            chmod -R 777 "$dir"
         fi
     done
 }
