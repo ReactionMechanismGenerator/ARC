@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  rmg_container:
+    image: laxzal/arc:latest
+    platform: linux/amd64
+    container_name: rmg_container
+    volumes:
+    # Mount a local directory to the container. Replace <local_path_to_mount> with your actual local directory path.
+    # Ensure to use absolute paths. Examples of directory formats for different operating systems:
+    # Windows: C:/Users/YourUsername/Documents/MyFolder
+    # macOS: /Users/YourUsername/Documents/MyFolder
+    # Linux: /home/YourUsername/Documents/MyFolder
+      - <path-to-local-folder>:/home/rmguser/KMClass
+    environment:
+    # Set the mode of the container. Replace with either "interactive" or "non-interactive".
+      - CONTAINER_MODE=interactive
