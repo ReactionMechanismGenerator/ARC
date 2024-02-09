@@ -5,13 +5,12 @@ initialize_micromamba() {
     eval "$(micromamba shell hook --shell bash)"
 }
 
-
 # Function to check and adjust permissions for mounted directories
+# Excludes directories within /opt
 check_and_adjust_permissions() {
-    # Loop through all mounted directories
     for dir in /home/rmguser/*; do
-        # Check if it's a directory
-        if [ -d "$dir" ]; then
+        # Check if it's a directory and ensure it's not within /opt
+        if [ -d "$dir" ] && [[ $dir != /opt/* ]]; then
             # Adjust permissions for the directory
             chmod -R 777 "$dir"
         fi
@@ -54,8 +53,8 @@ run_non_interactive() {
     esac
 }
 
-# Check if the container is run in interactive mode
-if [ -t 0 ] && [ -t 1 ]; then
+# Determine the run mode based on CONTAINER_MODE environment variable or terminal attachment
+if [ "$CONTAINER_MODE" = "interactive" ] || ([ -z "$CONTAINER_MODE" ] && [ -t 0 ] && [ -t 1 ]); then
     run_interactive
 else
     run_non_interactive "$@"
