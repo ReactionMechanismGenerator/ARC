@@ -1,5 +1,5 @@
 # Stage 1: RMG setup
-# RMG Dockerfile 
+# RMG Dockerfile
 # The parent image is the base image that the Dockerfile builds upon.
 # The RMG installation instructions suggest Anaconda for installation by source, however, we use micromamba for the Docker image due to its smaller size and less overhead.
 # https://hub.docker.com/layers/mambaorg/micromamba/1.4.3-jammy/images/sha256-0c7c97be938c5522dcb9e1737bfa4499c53f6cf9e32e53897607a57ba8b148d5?context=explore
@@ -58,14 +58,16 @@ RUN mkdir -p /home/rmguser/Code
 WORKDIR /home/rmguser/Code
 
 # Clone the RMG base and database repositories. The pulled branches are only the main branches.
-RUN git clone -b main https://github.com/ReactionMechanismGenerator/RMG-Py.git \ 
+RUN git clone -b main https://github.com/ReactionMechanismGenerator/RMG-Py.git \
     && git clone -b main https://github.com/ReactionMechanismGenerator/RMG-database.git
 
 # cd into RMG-Py
 WORKDIR /home/rmguser/Code/RMG-Py
 
 # Install RMG-Py and then clean up the micromamba cache
-RUN micromamba create -y -f environment.yml && \
+# Patch: RMG-Py currently unrestricts the Julia version, which causes the build to fail. We need to restrict the version to <1.10.0
+RUN sed -i 's/conda-forge::julia>=1.8.5,!=1.9.0/conda-forge::julia>=1.8.5,!=1.9.0, <1.10.0/g' environment.yml && \
+    micromamba create -y -f environment.yml && \
     micromamba install -n rmg_env -c conda-forge conda && \
     micromamba clean --all -f -y
 
@@ -84,15 +86,22 @@ RUN make \
     && echo "export PYTHONPATH=/home/rmguser/Code/RMG-Py" >> ~/.bashrc \
     && echo "export PATH=/home/rmguser/Code/RMG-Py:$PATH" >> ~/.bashrc
 
+ENV JULIA_DEPOT_PATH="/home/rmguser/julia-ver/packages"
+ENV JULIA_HISTORY /home/rmguser/repl_history.jl
+# Since 1.9.0 Julia, the CPU target is set to "native" by default. This is not ideal for a Docker image, so we set it to a list of common CPU targets
+# This avoids the need to compile the Julia packages for the specific CPU architecture of the host machine
+ENV JULIA_CPU_TARGET="x86-64,haswell,skylake,broadwell,znver1,znver2,znver3,cascadelake,icelake-client,cooperlake,generic,native"
+
 # Install RMS
 # The extra arguments are required to install PyCall and RMS in this Dockerfile. Will not work without them.
 # Final command is to compile the RMS during Docker build - This will reduce the time it takes to run RMS for the first time
 RUN touch /opt/conda/envs/rmg_env/condarc-julia.yml
-RUN CONDA_JL_CONDA_EXE=/bin/micromamba julia -e 'ENV["CONDA_JL_CONDA_EXE"]="/opt/conda/envs/rmg_env/bin/conda";using Pkg;Pkg.add(PackageSpec(name="PyCall", rev="master")); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="main"))' \
-    && python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
+RUN CONDA_JL_CONDA_EXE=/bin/micromamba julia -e 'ENV["CONDA_JL_CONDA_EXE"]="/opt/conda/envs/rmg_env/bin/conda";using Pkg;Pkg.add(PackageSpec(name="PyCall", rev="master")); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="main")), using ReactionMechanismSimulator' \
+    && python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()" \
+    && python-jl -c "from pyrms import rms"
 
 RUN python-jl /home/rmguser/Code/RMG-Py/rmg.py /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py \
-    # delete the results, preserve input.pyז
+    # delete the results, preserve input.py
     && mv /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py /home/rmguser/Code/RMG-Py/examples/input.py \
     && rm -rf /home/rmguser/Code/RMG-Py/examples/rmg/minimal/* \
     && mv /home/rmguser/Code/RMG-Py/examples/input.py /home/rmguser/Code/RMG-Py/examples/rmg/minimal/input.py
@@ -110,11 +119,6 @@ RUN echo "alias rmge='micromamba activate rmg_env'" >> ~/.bashrc \
     && echo "alias arcode='cd /home/rmguser/Code/ARC'" >> ~/.bashrc \
     && echo "alias conda='micromamba'" >> ~/.bashrc \
     && echo "alias mamba='micromamba'" >> ~/.bashrc
-
-FROM rmg-stage AS arc-stage
-
-# Log in as rmguser
-USER rmguser
 
 # Installing ARC
 # Change directory to Code
@@ -143,7 +147,7 @@ RUN micromamba create -y -f environment.yml && \
     find /opt/conda/envs/arc_env/lib/python3.7/site-packages/numpy -name 'tests' -type d -exec rm -rf '{}' '+' && \
     find /opt/conda/envs/arc_env/lib/python3.7/site-packages/pandas -name 'tests' -type d -exec rm -rf '{}' '+' && \
     find /opt/conda/envs/arc_env/lib/python3.7/site-packages -name '*.pyx' -delete && \
-    rm -rf /opt/conda/envs/arc_env/lib/python3.7/site-packages/uvloop/loop.c &&\
+    rm -rf /opt/conda/envs/arc_env/lib/python3.7/site-packages/uvloop/loop.c && \
     make clean
 
 WORKDIR /home/rmguser/
