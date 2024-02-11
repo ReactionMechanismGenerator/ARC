@@ -738,6 +738,23 @@ Default: <code class="docutils literal notranslate"><span class="pre">'str'</spa
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_rxn_smiles">
+<span class="sig-name descname"><span class="pre">get_rxn_smiles</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_rxn_smiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_rxn_smiles" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>returns the reaction smiles of the reaction.</p>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If any of the species (reactants or products) has no SMILES (or could not be generated for some reason).</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: string</dt><dd><p>The reaction SMILES</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.reaction.ARCReaction.get_single_mapped_product_xyz">
 <span class="sig-name descname"><span class="pre">get_single_mapped_product_xyz</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/reaction.html#ARCReaction.get_single_mapped_product_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.reaction.ARCReaction.get_single_mapped_product_xyz" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get a copy of the product species with mapped cartesian coordinates of a reaction with a single product.</p>
