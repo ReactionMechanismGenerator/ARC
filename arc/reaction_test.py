@@ -2020,6 +2020,20 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses), 2)
         self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
 
+    def test_get_rxn_smiles(self):
+        """Tests the get_rxn_smiles method"""
+        self.assertEqual(self.rxn1.get_rxn_smiles(), "C.[OH]>>[CH3].O")
+        self.assertEqual(self.rxn2.get_rxn_smiles(), "C[CH2].[OH]>>C=C.O")
+        self.assertEqual(self.rxn3.get_rxn_smiles(), "CC[NH]>>[CH2]CN")
+        self.assertEqual(self.rxn4.get_rxn_smiles(), "[NH2].[NH]N>>N.[N]N")
+        self.assertEqual(self.rxn5.get_rxn_smiles(), "[NH2].[NH2]>>[NH].N")
+        self.assertEqual(self.rxn6.get_rxn_smiles(), "[NH2].[NH]N>>N.[N-]=[NH2+]")
+        self.assertEqual(self.rxn7.get_rxn_smiles(), "[NH2].[NH]N>>N.[N]N")
+        self.assertEqual(self.rxn8.get_rxn_smiles(), "C.[OH]>>[CH3].O")
+        self.assertEqual(self.rxn9.get_rxn_smiles(), "NCO[O]>>C=N.[O]O")
+        self.assertEqual(self.rxn10.get_rxn_smiles(), "N=O.[O-][N+]=O>>[O-][NH+]=O.[N]=O")
+        self.assertEqual(self.rxn11.get_rxn_smiles(), "C[CH]C>>[CH2]CC")
+
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
