@@ -975,6 +975,25 @@ class ARCReaction(object):
                     if spc.label == other_spc.label:
                         spc.e0 = spc.e0 or other_spc.e0
 
+    def get_rxn_smiles(self) -> Optional[str]:
+        """
+        returns the reaction smiles of the reaction.
+
+    Raises:
+        ValueError: If any of the species (reactants or products) has no SMILES (or could not be generated for some reason).
+
+    Returns: string
+        The reaction SMILES
+        """
+        reactants, products = self.get_reactants_and_products(arc=True, return_copies=True)
+        smiles_r = [reactant.mol.copy(deep=True).to_smiles() for reactant in reactants]
+        smiles_p = [product.mol.copy(deep=True).to_smiles() for product in products]
+        if not any(smiles_r) or not any(smiles_p):
+            raise ValueError(f"""Could not find smiles for one or more species
+                                 got: reactants: {smiles_r}
+                                      products: {smiles_p}""")
+        return ".".join(smiles_r)+">>"+".".join(smiles_p)
+
 
 def remove_dup_species(species_list: List[ARCSpecies]) -> List[ARCSpecies]:
     """
