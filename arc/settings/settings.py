@@ -58,6 +58,8 @@ servers = {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
         'cpus': 48,
+        'queues': {'':''}, #{'queue_name':'HH:MM:SS'}
+        'excluded_queues': ['queue_name1', 'queue_name2'],
     },
 }
 
