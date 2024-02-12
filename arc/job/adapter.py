@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -33,7 +33,7 @@ from arc.job.local import (change_mode,
                            rename_output,
                            submit_job,
                            )
-from arc.job.trsh import trsh_job_on_server
+from arc.job.trsh import trsh_job_on_server, trsh_job_queue
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
 from arc.species.converter import xyz_to_str
@@ -493,21 +493,36 @@ class JobAdapter(ABC):
             # If your server has different node architectures, implement something similar here.
             architecture = '\n#$ -l harpertown' if self.cpu_cores <= 8 else '\n#$ -l magnycours'
 
+        # Extract the 'queue' dictionary from servers[self.server], defaulting to an empty dictionary if 'queue' is not a key
+        default_queue, _ = next(iter(servers[self.server].get('queues', {}).items()), (None, None))
+        if default_queue and default_queue not in self.attempted_queues:
+            self.attempted_queues.append(default_queue)
+
         submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
             else pipe_submit[self.server]
+
+        queue = self.queue if self.queue is not None else default_queue
+
+        format_params = {
+            "name": self.job_server_name,
+            "un": servers[self.server]['un'],
+            "queue": queue,
+            "t_max": self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
+            "memory": int(self.submit_script_memory) if isinstance(self.submit_script_memory, (int, float)) else self.submit_script_memory,
+            "cpus": self.cpu_cores,
+            "architecture": architecture,
+            "max_task_num": self.workers,
+            "arc_path": ARC_PATH,
+            "hdf5_path": os.path.join(self.remote_path, 'data.hdf5'),
+            "pwd": self.remote_path if self.server.lower() != 'local' else self.local_path,
+        }
+
+        if queue is None:
+            logger.warning(f'Queue not defined for server {self.server}. Assuming the queue name is defined in your submit.py script.')
+            del format_params['queue']
+
         try:
-            submit_script = submit_script.format(
-                name=self.job_server_name,
-                un=servers[self.server]['un'],
-                t_max=self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
-                memory=int(self.submit_script_memory) if (isinstance(self.submit_script_memory, int) or isinstance(self.submit_script_memory, float)) else self.submit_script_memory,
-                cpus=self.cpu_cores,
-                architecture=architecture,
-                max_task_num=self.workers,
-                arc_path=ARC_PATH,
-                hdf5_path=os.path.join(self.remote_path, 'data.hdf5'),
-                pwd=self.remote_path if self.server.lower() != 'local' else self.local_path,
-            )
+            submit_script = submit_script.format(**format_params)
         except KeyError:
             if self.workers is None:
                 submit_scripts_for_printing = {server: [software for software in values.keys()]
@@ -872,6 +887,7 @@ class JobAdapter(ABC):
         """
         Determine the Job's status. Updates self.job_status.
         """
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
         if self.job_status[0] == 'errored':
             return
         self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
@@ -898,6 +914,20 @@ class JobAdapter(ABC):
                                                       'time limit.'
                         self.job_status[1]['line'] = line
                         break
+                    elif 'job killed' in line and 'exceeded limit' in line and cluster_soft == 'pbs':
+                        # =>> PBS: job killed: walltime 10837 exceeded limit 10800
+                        logger.warning(f'Looks like the job was killed on {self.server} due to time limit. '
+                                       f'Got: {line}')
+                        time_limit = int(line.split('limit')[1].split()[0])/3600
+                        new_max_job_time = self.max_job_time - time_limit if self.max_job_time > time_limit else 1
+                        logger.warning(f'Setting max job time to {new_max_job_time} (was {time_limit})')
+                        self.max_job_time = new_max_job_time
+                        self.job_status[1]['status'] = 'errored'
+                        self.job_status[1]['keywords'] = ['ServerTimeLimit']
+                        self.job_status[1]['error'] = 'Job killed by the server since it reached the maximal ' \
+                                                      'time limit.'
+                        self.job_status[1]['line'] = line
+                        break
         elif self.job_status[0] == 'running':
             self.job_status[1]['status'] = 'running'
 
@@ -913,7 +943,7 @@ class JobAdapter(ABC):
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
             local_file_path_3 = os.path.join(self.local_path, 'job.log')
-            if self.server != 'local' and self.remote_path is not None:
+            if self.server != 'local' and self.remote_path is not None and not self.testing:
                 remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
                 remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
                 remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
@@ -948,7 +978,7 @@ class JobAdapter(ABC):
         """
         Possible statuses: ``initializing``, ``running``, ``errored on node xx``, ``done``.
         """
-        if self.server != 'local':
+        if self.server != 'local' and not self.testing:
             with SSHClient(self.server) as ssh:
                 return ssh.check_job_status(self.job_id)
         else:
@@ -1316,6 +1346,29 @@ class JobAdapter(ABC):
         if run_job:
             # resubmit job
             self.execute()
+
+    def troubleshoot_queue(self) -> bool:
+        """Troubleshoot queue errors.
+
+        Returns:
+            Boolean: Whether to run the job again.
+        """
+        queues, run_job = trsh_job_queue(job_name=self.job_name,
+                                         server=self.server,
+                                         max_time=24,
+                                         attempted_queues = self.attempted_queues,
+                                        )
+        
+        if queues is not None:
+            # We use self.max_job_time to determine which queues to troubleshoot.
+            #filtered_queues = {queue_name: walltime for queue_name, walltime in queues.items() if convert_to_hours(walltime) >= self.max_job_time}
+            
+            sorted_queues = sorted(queues.items(), key=lambda x: convert_to_hours(x[1]), reverse=False)
+
+            self.queue = sorted_queues[0][0]
+            if self.queue not in self.attempted_queues:
+                self.attempted_queues.append(self.queue)
+        return run_job
 
     def save_output_file(self,
                          key: Optional[str] = None,
