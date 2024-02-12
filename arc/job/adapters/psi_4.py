@@ -186,6 +186,8 @@ class Psi4Adapter(JobAdapter):
                  rotor_index: Optional[int] = None,
                  server: Optional[str] = None,
                  server_nodes: Optional[list] = None,
+                 queue: Optional[str] = None,
+                 attempted_queues: Optional[List[str]] = None,
                  species: Optional[List['ARCSpecies']] = None,
                  testing: bool = False,
                  times_rerun: int = 0,
@@ -242,6 +244,8 @@ class Psi4Adapter(JobAdapter):
         self.rotor_index = rotor_index
         self.server = server
         self.server_nodes = server_nodes or list()
+        self.queue = queue
+        self.attempted_queues = attempted_queues or list()
         self.species = [species] if species is not None and not isinstance(species, list) else species
         self.testing = testing
         self.torsions = [torsions] if torsions is not None and not isinstance(torsions[0], list) else torsions
