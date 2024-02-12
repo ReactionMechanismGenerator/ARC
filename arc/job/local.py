@@ -256,7 +256,7 @@ def submit_job(path: str,
                        submit_filename=submit_filename,
                        recursion=True,
                        )
-        if cluster_soft.lower() == 'pbs' and  any('qsub: would exceed' in err_line for err_line in stderr):
+        if cluster_soft.lower() == 'pbs' and  (any('qsub: would exceed' in err_line for err_line in stderr ) or any('qsub: Maximum number of jobs' in err_line for err_line in stderr)):
             logger.warning(f'Max number of submitted jobs was reached, sleeping...')
             time.sleep(5 * 60)
             submit_job(path=path,
