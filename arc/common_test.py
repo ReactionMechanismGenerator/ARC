@@ -1369,6 +1369,16 @@ class TestCommon(unittest.TestCase):
             'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
         self.assertFalse(common.is_xyz_mol_match(mol1, xyz2))
         self.assertTrue(common.is_xyz_mol_match(mol2, xyz2))
+        
+    def test_convert_to_hours(self):
+        """Test the convert_to_hours() function"""
+        time_str = '0:00:00'
+        self.assertEqual(common.convert_to_hours(time_str), 0.0)
+        time_str = '3600:00:00'
+        self.assertEqual(common.convert_to_hours(time_str), 3600.0)
+        time_str = '190:40:10'
+        self.assertAlmostEqual(common.convert_to_hours(time_str), 190.66944444444442)
+        
 
     @classmethod
     def tearDownClass(cls):
