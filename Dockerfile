@@ -65,9 +65,7 @@ RUN git clone -b main https://github.com/ReactionMechanismGenerator/RMG-Py.git \
 WORKDIR /home/rmguser/Code/RMG-Py
 
 # Install RMG-Py and then clean up the micromamba cache
-# Patch: RMG-Py currently unrestricts the Julia version, which causes the build to fail. We need to restrict the version to <1.10.0
-RUN sed -i 's/conda-forge::julia>=1.8.5,!=1.9.0/conda-forge::julia>=1.8.5,!=1.9.0, <1.10.0/g' environment.yml && \
-    micromamba create -y -f environment.yml && \
+RUN micromamba create -y -f environment.yml && \
     micromamba install -n rmg_env -c conda-forge conda && \
     micromamba clean --all -f -y
 
@@ -118,7 +116,9 @@ RUN echo "alias rmge='micromamba activate rmg_env'" >> ~/.bashrc \
     && echo "alias rmgdb='cd \$rmgdb_path'" >> ~/.bashrc \
     && echo "alias arcode='cd /home/rmguser/Code/ARC'" >> ~/.bashrc \
     && echo "alias conda='micromamba'" >> ~/.bashrc \
-    && echo "alias mamba='micromamba'" >> ~/.bashrc
+    && echo "alias mamba='micromamba'" >> ~/.bashrc \
+    && echo "export PYTHONPATH=$PYTHONPATH:/home/rmguser/Code/ARC" >> ~/.bashrc \
+    && echo "export PATH=$PATH:/home/rmguser/Code/ARC" >> ~/.bashrc
 
 # Installing ARC
 # Change directory to Code
