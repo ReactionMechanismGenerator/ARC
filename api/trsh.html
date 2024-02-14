@@ -385,6 +385,31 @@ as generated using the <cite>determine_ess_status</cite> function.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_job_queue">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_job_queue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_time</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">24</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attempted_queues</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_job_queue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_job_queue" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.</dt><dd><p>If not, it will attempt to determine if there are any other queues available on the server that provide more time than the walltime failed queue.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server</strong> (<em>str</em>) – Name of the server</p></li>
+<li><p><strong>job_name</strong> (<em>str</em>) – Name of the job</p></li>
+<li><p><strong>max_time</strong> (<em>int</em><em>, </em><em>optional</em>) – The max time that the current queue that the job failed on provied. Defaults to 24, measured in hours.</p></li>
+<li><p><strong>attempted_queues</strong> (<em>list</em><em>, </em><em>optional</em>) – Any queues that have already been attempted to run the job on. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary of the available queues and a boolean indicating if the function was successful.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[dict, bool]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_cartesian">
 <span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_cartesian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_cartesian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_cartesian" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check if the job requires change of cartesian coordinate</p>

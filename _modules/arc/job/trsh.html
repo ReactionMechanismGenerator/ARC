@@ -175,13 +175,14 @@
 <span class="kn">import</span> <span class="nn">re</span>
 
 <span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">check_torsion_change</span><span class="p">,</span>
+                        <span class="n">convert_to_hours</span><span class="p">,</span>
                         <span class="n">determine_ess</span><span class="p">,</span>
                         <span class="n">estimate_orca_mem_cpu_requirement</span><span class="p">,</span>
                         <span class="n">get_logger</span><span class="p">,</span>
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
                         <span class="n">is_same_pivot</span><span class="p">,</span>
                         <span class="n">is_same_sequence_sublist</span><span class="p">,</span>
-                        <span class="n">is_str_float</span><span class="p">,</span>
+                        <span class="n">is_str_float</span>
                         <span class="p">)</span>
 <span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SpeciesError</span><span class="p">,</span> <span class="n">TrshError</span>
 <span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
@@ -1278,6 +1279,156 @@
         <span class="k">break</span>
     <span class="k">return</span> <span class="n">level_of_theory</span></div>
 
+<div class="viewcode-block" id="trsh_job_queue"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_queue">[docs]</a><span class="k">def</span> <span class="nf">trsh_job_queue</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                    <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                    <span class="n">max_time</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span><span class="p">,</span>
+                    <span class="n">attempted_queues</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot; A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.</span>
+<span class="sd">        If not, it will attempt to determine if there are any other queues available on the server that provide more time than the walltime failed queue.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        server (str): Name of the server</span>
+<span class="sd">        job_name (str): Name of the job</span>
+<span class="sd">        max_time (int, optional): The max time that the current queue that the job failed on provied. Defaults to 24, measured in hours.</span>
+<span class="sd">        attempted_queues (list, optional): Any queues that have already been attempted to run the job on. Defaults to None.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple[dict, bool]: A dictionary of the available queues and a boolean indicating if the function was successful.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">server_queues</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;queues&#39;</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span>
+    <span class="n">cluster_soft</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">,</span><span class="s1">&#39;Undefined&#39;</span><span class="p">)</span>
+    <span class="n">excluded_queues</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;excluded_queues&#39;</span><span class="p">,</span> <span class="nb">list</span><span class="p">())</span>
+
+    <span class="c1"># Check if there are any available queues in server_queues that hasn&#39;t been tried yet</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">server_queues</span><span class="p">)</span> <span class="o">&gt;</span>  <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Make sure that the queue is not already in the attempted_queues list</span>
+        <span class="n">server_queues</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">queue</span><span class="p">:</span> <span class="n">walltime</span> <span class="k">for</span> <span class="n">queue</span><span class="p">,</span> <span class="n">walltime</span> <span class="ow">in</span> <span class="n">server_queues</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">attempted_queues</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">queue</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">attempted_queues</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">convert_to_hours</span><span class="p">(</span><span class="n">walltime</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">max_time</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">server_queues</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39; Could not troubleshoot </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1"> as all available queues have been tried. Will attempt to query the server for additional queues.&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">server_queues</span><span class="p">,</span> <span class="kc">True</span>
+    <span class="c1"># If the server is PBS, query which queues are available</span>
+    <span class="k">if</span> <span class="n">cluster_soft</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;pbs&#39;</span><span class="p">:</span>
+        <span class="c1"># First determine which group the current user belongs to</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="s1">&#39;groups&#39;</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;Error&#39;</span> <span class="ow">in</span> <span class="n">output</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1"> as the groups command failed.&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># ([&#39;users zeus-users vkm-users gaussian grinberg-dana_prj docker&#39;], [])</span>
+            <span class="n">user_groups</span> <span class="o">=</span> <span class="n">output</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">user_groups</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1"> as the groups command did not return any groups.&#39;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+            <span class="c1"># check if the term &#39;-users&#39; is in the group name, if so, remove it</span>
+            <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="s1">&#39;-users&#39;</span> <span class="ow">in</span> <span class="n">group</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">user_groups</span><span class="p">):</span>
+                <span class="n">user_groups</span> <span class="o">=</span> <span class="p">[</span><span class="n">group</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;-users&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">user_groups</span><span class="p">]</span>
+        <span class="c1"># Now query the queues</span>
+        <span class="n">cmd</span> <span class="o">=</span> <span class="s1">&#39;qstat -q&#39;</span>
+        <span class="n">output_queues</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;Error&#39;</span> <span class="ow">in</span> <span class="n">output_queues</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1"> as the qstat command failed.&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Need to parse output</span>
+            <span class="c1"># Example:</span>
+            <span class="c1">#             Queue            Memory CPU Time Walltime Node   Run   Que   Lm  State</span>
+            <span class="c1"># ---------------- ------ -------- -------- ---- ----- ----- ----  -----</span>
+            <span class="c1"># workq              --      --       --     --      0     0   --   D S</span>
+            <span class="c1"># maytal_q           --      --       --     --      7     0   --   E R</span>
+            <span class="c1"># vkm_all_q          --      --       --     --      0     0   --   D R</span>
+            <span class="c1"># zeus_temp          --      --    24:00:00  --      0     0   --   D S</span>
+            <span class="c1"># dagan_q            --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># frankel_q          --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># vkm_gm_q           --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># zeus_all_scalar    --      --    24:00:00  --      0     0   --   D S</span>
+            <span class="c1"># yuval_q            --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># dan_q              --      --       --     --      7     0   --   E R</span>
+            <span class="c1"># zeus_all_q         --      --    24:00:00  --      4     0   --   E R</span>
+            <span class="c1"># zeus_long_q        --      --    168:00:0  --      0     0   --   E R</span>
+            <span class="c1"># zeus_short_q       --      --    03:00:00  --      0     0   --   E R</span>
+            <span class="c1"># gpu_v100_q         --      --    480:00:0  --      0     0   --   E R</span>
+            <span class="c1"># brandon_q          --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># karp_q             --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># mafat_gm_q         --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># training_q         --      --    24:00:00  --      0     0   --   E R</span>
+            <span class="c1"># mafat4_q           --      --       --     --      0     0   --   D R</span>
+            <span class="c1"># zeus_new_q         --      --    72:00:00  --      0     0   --   E R</span>
+            <span class="c1"># zeus_combined_q    --      --    24:00:00  --     17     0   --   E R</span>
+            <span class="c1"># zeus_comb_short    --      --    03:00:00  --      0     0   --   E R</span>
+            <span class="c1"># mafat_new_q        --      --       --     --     46     0   --   E R</span>
+            <span class="c1"># dagan_comb_q       --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># dan_comb_q         --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># karp_comb_q        --      --       --     --      0     0   --   D R</span>
+            <span class="c1"># brandon_comb_q     --      --       --     --      0     0   --   E R</span>
+            <span class="c1"># train_gpu_q        --      --    24:00:00  --      0     0   --   E R</span>
+            <span class="c1">#                                                ----- -----</span>
+            <span class="c1">#                                                   81     0</span>
+            <span class="c1"># 1. Get the queue names in the first column, and check if the state is &#39;E&#39; (enabled) or &#39;D&#39; (disabled) - Select only enabled queues</span>
+            <span class="c1"># 2. Once we have a list of queues, we need to make sure we can submit to them. We can do this by check qstat -Qf &lt;queue_name&gt; and see output of acl_groups</span>
+            <span class="c1"># 3. We also need to get the wall time for each queue</span>
+            <span class="n">queues</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output_queues</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;Queue&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;----&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">line</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;server&#39;</span><span class="p">):</span>
+                    <span class="n">parts</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">9</span> <span class="ow">and</span> <span class="n">parts</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;E&#39;</span><span class="p">:</span>
+                        <span class="n">queue_name</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">acl_groups</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;qstat -Qf </span><span class="si">{</span><span class="n">queue_name</span><span class="si">}</span><span class="s1">&#39;</span>
+                        <span class="n">output_specific_queue</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">shell</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                        <span class="c1"># Parse Example:</span>
+                        <span class="c1">#</span>
+                        <span class="c1"># Queue: mafat_new_q</span>
+                        <span class="c1"># queue_type = Execution</span>
+                        <span class="c1"># total_jobs = 44</span>
+                        <span class="c1"># state_count = Transit:0 Queued:0 Held:0 Waiting:0 Running:44 Exiting:0 Begu</span>
+                        <span class="c1"># n:0</span>
+                        <span class="c1"># resources_default.walltime = 3600:00:00</span>
+                        <span class="c1"># acl_group_enable = True</span>
+                        <span class="c1"># acl_groups = grinberg-dana_prj,halupovich_prj,yuvallevy_prj</span>
+                        <span class="c1"># default_chunk.qlist = mafat_new_q</span>
+                        <span class="c1"># resources_assigned.mem = 376625977kb</span>
+                        <span class="c1"># resources_assigned.mpiprocs = 132</span>
+                        <span class="c1"># resources_assigned.ncpus = 3254</span>
+                        <span class="c1"># resources_assigned.nodect = 47</span>
+                        <span class="c1"># max_run_res.ncpus = [o:PBS_ALL=3584]</span>
+                        <span class="c1"># enabled = True</span>
+                        <span class="c1"># started = True</span>
+                        <span class="k">for</span> <span class="n">line_queue</span> <span class="ow">in</span> <span class="n">output_specific_queue</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                            <span class="c1"># Check walltime</span>
+                            <span class="k">if</span> <span class="n">line_queue</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;resources_default.walltime&#39;</span><span class="p">):</span>
+                                <span class="n">walltime</span> <span class="o">=</span> <span class="n">line_queue</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;=&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                                <span class="n">queues</span><span class="p">[</span><span class="n">queue_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">walltime</span>
+                            <span class="k">if</span> <span class="n">line_queue</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;acl_groups&#39;</span><span class="p">):</span>
+                                <span class="n">acl_groups</span> <span class="o">=</span> <span class="kc">True</span>
+                                <span class="n">groups</span> <span class="o">=</span> <span class="n">line_queue</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;=&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">group</span> <span class="ow">in</span> <span class="n">user_groups</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">):</span>
+                                    <span class="k">break</span>  <span class="c1"># User is in one of the acl_groups, keep the queue</span>
+                                <span class="k">else</span><span class="p">:</span>
+                                    <span class="n">queues</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">queue_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># User is not in acl_groups, remove the queue</span>
+                                    <span class="k">break</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">group</span> <span class="ow">in</span> <span class="n">queue_name</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">user_groups</span><span class="p">)</span> <span class="ow">and</span> <span class="n">acl_groups</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="n">queues</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">queue_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># Queue name does not contain any of the user&#39;s groups, remove the queue</span>
+            <span class="c1"># Check if any of the found queues are part of the excluded queues list</span>
+            <span class="k">if</span> <span class="n">excluded_queues</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">queue</span> <span class="ow">in</span> <span class="n">excluded_queues</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">queue</span> <span class="ow">in</span> <span class="n">queues</span><span class="p">:</span>
+                        <span class="n">queues</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">queue</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">queues</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="n">server</span><span class="si">}</span><span class="s1"> as no queues were found.&#39;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">queues</span><span class="p">,</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot queue for </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> since the server is </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1"> and not PBS.&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span></div>
 
 <div class="viewcode-block" id="trsh_job_on_server"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_on_server">[docs]</a><span class="k">def</span> <span class="nf">trsh_job_on_server</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
