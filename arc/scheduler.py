@@ -751,6 +751,8 @@ class Scheduler(object):
                 max_job_time: Optional[int] = None,
                 rotor_index: Optional[int] = None,
                 reactions: Optional[List['ARCReaction']] = None,
+                queue: Optional[str] = None,
+                attempted_queues: Optional[list] = None,
                 scan_trsh: Optional[str] = '',
                 shift: Optional[str] = '',
                 trsh: Optional[Union[str, dict, list]] = None,
@@ -848,6 +850,8 @@ class Scheduler(object):
                           reactions=[reactions] if reactions is not None and not isinstance(reactions, list) else reactions,
                           rotor_index=rotor_index,
                           server_nodes=None,
+                          queue = queue if queue is not None else None,
+                          attempted_queues=attempted_queues if attempted_queues is not None else list(),
                           species=[species] if species is not None and not isinstance(species, list) else species,
                           times_rerun=times_rerun,
                           torsions=torsions,
@@ -963,6 +967,16 @@ class Scheduler(object):
                                f'Was {original_mem} GB, rerunning job with {job.job_memory_gb} GB.')
                 job.job_memory_gb = used_mem * 4.5 if used_mem is not None else job.job_memory_gb * 0.5
                 self._run_a_job(job=job, label=label)
+        if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['ServerTimeLimit']:
+                logger.warning(f'Job {job.job_name} errored because of a server time limit. '
+                               f'Rerunning job with {job.max_job_time * 2} hours.')
+                job.max_job_time *= 2
+                run_again = job.troubleshoot_queue()
+                if run_again:
+                    self._run_a_job(job=job, label=label)
+                    if job_name in self.running_jobs[label]:
+                        self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+                    return False
 
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
@@ -1037,6 +1051,8 @@ class Scheduler(object):
                      max_job_time=job.max_job_time,
                      rotor_index=job.rotor_index,
                      reactions=job.reactions,
+                     queue=job.queue if job.queue is not None else None,
+                     attempted_queues=job.attempted_queues if job.attempted_queues is not None else list(),
                      trsh=job.args['trsh'] if 'trsh' in job.args else {},
                      torsions=job.torsions,
                      times_rerun=job.times_rerun + int(rerun),
