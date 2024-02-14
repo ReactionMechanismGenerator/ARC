@@ -1,61 +1,61 @@
 name: arc_env
 channels:
+  - anaconda
+  - cantera
+  - conda-forge
   - defaults
   - rmg
-  - conda-forge
-  - cantera
-  - anaconda
 dependencies:
+  - anaconda::sphinx
+  - anaconda::sphinx_rtd_theme
+  - anaconda::sphinxcontrib-jsmath
   - cairo
   - cairocffi
   - cantera::cantera=2.6
+  - conda-forge::ase >=3.15.0
   - conda-forge::cclib >=1.7.0
-  - rmg::chemprop
+  - conda-forge::ipython
+  - conda-forge::mopac
+  - conda-forge::openbabel >= 3
+  - conda-forge::paramiko >=2.6.0
+  - conda-forge::py3dmol >= 0.8.0
+  - conda-forge::qcelemental
+  - conda-forge::pytest
+  - conda-forge::pytest-cov
   - coolprop
   - coverage
   - cython >=0.25.2
   - ffmpeg
-  - rmg::gprof2dot
   - graphviz
   - h5py
   - jinja2
   - jupyter
-  - rmg::lpsolve55
+  - mako
   - markupsafe
   - matplotlib >=1.5
-  - conda-forge::mopac
   - mpmath
-  - rmg::muq2
   - networkx
-  - rmg::numdifftools
   - numpy==1.20.1
-  - conda-forge::openbabel >= 3
   - pandas
   - psutil
-  - rmg::pydas >=1.0.2
   - pydot
-  - rmg::pydqed >=1.0.1
-  - pymongo
   - pyparsing
-  - rmg::pyrdl
+  - pymongo
+  - pytables
   - python >=3.7
   - pyyaml
+  - rmg::chemprop
+  - rmg::gprof2dot
+  - rmg::lpsolve55
+  - rmg::muq2
+  - rmg::numdifftools
+  - rmg::pydas >=1.0.2
+  - rmg::pydqed >=1.0.1
+  - rmg::pyrdl
   - rmg::quantities
   - rmg::rdkit >=2020.03.3.0
+  - rmg::symmetry
   - scikit-learn
   - scipy
-  - rmg::symmetry
   - xlrd
   - xlwt
-  - anaconda::sphinx_rtd_theme
-  - anaconda::paramiko >=2.6.0
-  - conda-forge::py3dmol >= 0.8.0
-  - conda-forge::ase >=3.15.0
-  - anaconda::ipython
-  - anaconda::sphinx
-  - anaconda::sphinxcontrib-jsmath
-  - conda-forge::qcelemental
-  - mako
-  - pytables
-  - anaconda::pytest
-  - conda-forge::pytest-cov
