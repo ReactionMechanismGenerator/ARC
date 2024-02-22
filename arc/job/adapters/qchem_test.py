@@ -14,6 +14,7 @@ from arc.job.adapters.qchem import QChemAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames, servers, submit_filenames
 from arc.species import ARCSpecies
+import arc.job.trsh as trsh
 
 
 class TestQChemAdapter(unittest.TestCase):
@@ -128,6 +129,59 @@ class TestQChemAdapter(unittest.TestCase):
                             project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
                             species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
                             testing=True,
+                            )
+        # Setting up for ESS troubleshooting input file writing
+
+        label = 'anion'
+        level_of_theory = {'method': 'wb97xd'}
+        server = 'server1'
+        job_type = 'optfreq'
+        software = 'qchem'
+        fine = True
+        memory_gb = 16
+        num_heavy_atoms = 2
+        ess_trsh_methods = []
+        cpu_cores = 8
+        
+        job_status = {'keywords': ['MaxOptCycles']}
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_10 = QChemAdapter(execution_type='local',
+                            job_type='optfreq',
+                            level=Level(method='wb97x-d',
+                                        basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
+                            species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
+                            testing=True,
+                            ess_trsh_methods=ess_trsh_methods,
+                            args=args,
+                            )
+    
+        job_status = {'keywords': ['SCF']}
+
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                       job_type, software, fine, memory_gb,
+                                                                       num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_11 = QChemAdapter(execution_type='local',
+                            job_type='optfreq',
+                            level=Level(method='wb97x-d',
+                                        basis='def2-TZVP'),
+                            project='test',
+                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_QChemAdapter'),
+                            species=[ARCSpecies(label='anion', xyz=['O 0 0 1'], charge=-1, is_ts=False)],
+                            testing=True,
+                            ess_trsh_methods=ess_trsh_methods,
+                            args=args,
                             )
 
     def test_set_cpu_and_mem(self):
@@ -345,6 +399,58 @@ $end
     def test_QChemAdapter_def2tzvp(self):
         """Test a QChem job using def2-tzvp"""
         self.assertEqual(self.job_9.level.basis, 'def2-tzvp')
+    
+    def test_trsh_write_input_file(self):
+        """
+        QChem troubleshooting input file writing. Currently there are only few situations where we attempt troubleshooting. This is still under development.
+        1. When the job status contains 'MaxOptCycles' in the output file
+        2. When the job status contains 'SCF' in the output file
+        """
+        
+        self.job_10.write_input_file()
+        with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
+            content_10 = f.read()
+        job_10_expected_input_file = """$molecule
+-1 2
+O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       opt
+   METHOD        wb97x-d
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP 
+   SYM_IGNORE    TRUE
+   GEOM_OPT_MAX_CYCLES 250
+   IQMOL_FCHK    FALSE
+$end
+
+
+
+"""
+        self.assertEqual(content_10, job_10_expected_input_file)
+        
+        self.job_11.write_input_file()
+        with open(os.path.join(self.job_11.local_path, input_filenames[self.job_11.job_adapter]), 'r') as f:
+            content_11 = f.read()
+        job_11_expected_input_file = """$molecule
+-1 2
+O       0.00000000    0.00000000    1.00000000
+$end
+$rem
+   JOBTYPE       opt
+   METHOD        wb97x-d
+   UNRESTRICTED  TRUE
+   BASIS         def2-TZVP
+   SCF_ALGORITHM DIIS_GDM 
+   MAX_SCF_CYCLES 1000
+   GEOM_OPT_MAX_CYCLES 100
+   IQMOL_FCHK    FALSE
+$end
+
+
+
+"""
+        self.assertEqual(content_11, job_11_expected_input_file)
 
     @classmethod
     def tearDownClass(cls):

@@ -2095,56 +2095,18 @@ def ics_to_scan_constraints(ics: list,
 
 
     elif software == 'qchem':
-        # scan_trsh += 'CONSTRAINT\n'
-        # interatomic distances
-            # Values in Ångstroms; value >0
-
-            # :
-            # stre   atom1   atom2   value
-
-            # angles
-            # Values in degrees, 0≤value≤180
-
-            # ; atom2 is the middle atom of the bend:
-            # bend   atom1   atom2   atom3   value
-
-            # out-of-plane-bends
-            # Values in degrees, −180≤value≤180
-
-            # atom2; angle between atom4 and the atom1–atom2–atom3 plane:
-            # outp   atom1   atom2   atom3   atom4   value
-
-            # dihedral angles
-            # Values in degrees, −180≤value≤180
-            # ; angle the plane atom1–atom2–atom3 makes with the plane atom2–atom3–atom4:
-            # tors   atom1   atom2   atom3   atom4   value 
-
-            # CONSTRAINT
-            # stre  atom1  atom2  value
-            # ...
-            # bend  atom1  atom2  atom3  value
-            # ...
-            # outp  atom1  atom2  atom3  atom4  value
-            # ...
-            # tors  atom1  atom2  atom3  atom4  value
-            # ...
-            # linc  atom1  atom2  atom3  atom4  value
-            # ...
-            # linp  atom1  atom2  atom3  atom4  value
-            # ...
-            # ENDCONSTRAINT
+        scan_trsh += 'CONSTRAINT\n'
         for ic in ics:
-            # First line CONSTRAINT
-            if len(ic) == 2:
+            if len(ic) == 2:  # Bond length
                 scan_trsh += 'stre '
-            elif len(ic) == 3:
+            elif len(ic) == 3:  # Angle
                 scan_trsh += 'bend '
-            elif len(ic) == 4:
+            elif len(ic) == 4:  # Dihedral
                 scan_trsh += 'tors '
-            #CONSTRAINT
-            #scan_trsh
-            #ENDCONSTRAINT
-            scan_trsh += ''.join([str(num) + ' ' for num in ic]) + '\n' #+ 'ENDCONSTRAINT\n'
+            scan_trsh += ''.join([str(num) + ' ' for num in ic[:-1]])
+            # Add value placeholder or calculation here if needed
+            scan_trsh += str(ic[-1]) + '\n'
+        scan_trsh += 'ENDCONSTRAINT\n'
 
     else:
         raise NotImplementedError(f'Given software {software} is not implemented '

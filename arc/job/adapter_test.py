@@ -217,21 +217,7 @@ class TestJobAdapter(unittest.TestCase):
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
-                                    server='test_server',
-                                    testing=True,
-                                    queue='short_queue',
-                                    attempted_queues=['short_queue']
-                                    )
-        cls.job_6 = GaussianAdapter(execution_type='queue',
-                                    job_name='spc1',
-                                    job_type='opt',
-                                    job_id='123456',
-                                    job_num=101,
-                                    job_server_name = 'server1',
-                                    level=Level(method='cbs-qb3'),
-                                    project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    server='server1',
                                     testing=True,
                                     queue='short_queue',
                                     attempted_queues=['short_queue']

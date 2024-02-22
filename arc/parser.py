@@ -1390,7 +1390,7 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
     scan_ic_info = parse_ic_info(file_path)
     if isinstance(log, GaussianLog):
         software = 'gaussian'
-        ic_blks = parse_str_blocks(file_path, 'Optimized Parameters', '-----------', regex=False,
+        ic_blks = parse_str_blocks(file_path, '+', '-----------', regex=False,
                                    tail_count=3, block_count=(scan_args['step'] + 1))
     else:
         raise NotImplementedError(f'parse_scan_conformers() can currently only parse Gaussian output '

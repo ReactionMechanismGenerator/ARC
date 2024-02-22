@@ -966,78 +966,44 @@ def trsh_ess_job(label: str,
             logger.info(f'{logger_phrase} {", ".join(logger_info)}')
 
     elif software == 'qchem':
-        if 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods:
-            # this is a common error, increase max cycles and continue running from last geometry
-            log_message = f'Troubleshooting {job_type} job in {software} for {label} using max cycles'
-            ess_trsh_methods.append('max_cycles')
-            trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'  # default is 50
-            if 'DIIS_GDM' in ess_trsh_methods:
-                log_message += ' and DIIS_GDM and max SCF cycles'
-                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
-            if 'SYM_IGNORE' in ess_trsh_methods:
-                log_message += ' and SYM_IGNORE'
-                trsh_keyword += '\n   SYM_IGNORE     True'
-            logger.info(log_message)
-        elif 'SCF' in job_status['keywords'] and 'DIIS_GDM' not in ess_trsh_methods:
-            # change the SCF algorithm and increase max SCF cycles
-            log_message = f'Troubleshooting {job_type} job in {software} for {label} using DIIS_GDM and max SCF cycles'
-            ess_trsh_methods.append('DIIS_GDM')
-            trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'  # default is 50
-            if 'SYM_IGNORE' in ess_trsh_methods:
-                log_message += ' and SYM_IGNORE'
-                trsh_keyword += '\n   SYM_IGNORE     True'
-            if 'max_cycles' in ess_trsh_methods:
-                log_message += ' and max_cycles'
-                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
-            logger.info(log_message)
-        elif 'MaxIter' in job_status['keywords'] and 'maxiter' not in ess_trsh_methods:
-            log_message = f'Troubleshooting {job_type} job in {software} for {label} using maxiter'
-            ess_trsh_methods.append('maxiter')
-            trsh_keyword = '\n   MAX_SCF_CYCLES 1000'
-            if 'max_cycles' in ess_trsh_methods:
-                log_message += ' and max_cycles'
-                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
-            if 'DIIS_GDM' in ess_trsh_methods:
-                log_message += ' and DIIS_GDM'
-                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM'
-            if 'SYM_IGNORE' in ess_trsh_methods:
-                log_message += ' and SYM_IGNORE'
-                trsh_keyword += '\n   SYM_IGNORE     True'
-            logger.info(log_message)
-        elif 'Minimization' in job_status['keywords']:
-            # Uncertain what this error is, but assuming it's just an error that means we need to re-run the job under the same conditions
-            # However, if this error persists, we will determine that the job is not converging and so we will
-            # determine it cannot be run and will not try again
-            if 'Minimization' in job_status['error']:
-                logger.warning(f'Could not troubleshoot {job_type} job in {software} for {label} with same conditions - Minimization error persists')
-                couldnt_trsh = True
-            else:
-                log_message = f'Troubleshooting {job_type} job in {software} for {label} with same conditions'
-                if 'maxiter' in ess_trsh_methods:
-                    log_message += ' and maxiter'
-                    trsh_keyword = '\n   MAX_SCF_CYCLES 1000'
-                if 'max_cycles' in ess_trsh_methods:
-                    log_message += ' and max_cycles'
-                    trsh_keyword = '\n   GEOM_OPT_MAX_CYCLES 250'
-                if 'DIIS_GDM' in ess_trsh_methods:
-                    log_message += ' and DIIS_GDM'
-                    trsh_keyword = '\n   SCF_ALGORITHM DIIS_GDM'
-                if 'SYM_IGNORE' in ess_trsh_methods:
-                    log_message += ' and SYM_IGNORE'
-                    trsh_keyword = '\n   SYM_IGNORE     True'                
-        elif 'SYM_IGNORE' not in ess_trsh_methods:  # symmetry - look in manual, no symm if fails
-            # change the SCF algorithm and increase max SCF cycles
-            log_message = f'Troubleshooting {job_type} job in {software} for {label} using SYM_IGNORE'
-            ess_trsh_methods.append('SYM_IGNORE')
-            trsh_keyword = '\n   SYM_IGNORE     True'
-            if 'max_cycles' in ess_trsh_methods:
-                log_message += ' and max_cycles'
-                trsh_keyword += '\n   GEOM_OPT_MAX_CYCLES 250'
-            if 'DIIS_GDM' in ess_trsh_methods:
-                log_message += ' and DIIS_GDM and increased max SCF cycles'
-                trsh_keyword += '\n   SCF_ALGORITHM DIIS_GDM\n   MAX_SCF_CYCLES 1000'
-            logger.info(log_message)
-        else:
+        trsh_keyword = []
+        log_message_base = f'Troubleshooting {job_type} job in {software} for {label}'
+        couldnt_trsh = False
+
+        troubleshooting_actions = {
+            'MaxOptCycles': {
+                'condition': lambda: 'MaxOptCycles' in job_status['keywords'] and 'max_cycles' not in ess_trsh_methods,
+                'action': lambda: ('max_cycles', ['opt_cycle_250'], ' using max cycles'),
+            },
+            'SCF': {
+                'condition': lambda: 'SCF' in job_status['keywords'] and 'DIIS_GDM' not in ess_trsh_methods,
+                'action': lambda: ('DIIS_GDM', ['\n   SCF_ALGORITHM DIIS_GDM', '\n   MAX_SCF_CYCLES 1000'], ' using DIIS_GDM and max SCF cycles'),
+            },
+            'MaxIter': {
+                'condition': lambda: 'MaxIter' in job_status['keywords'] and 'maxiter' not in ess_trsh_methods and 'DIIS_GDM' not in ess_trsh_methods,
+                'action': lambda: ('maxiter', ['\n   MAX_SCF_CYCLES 1000'], ' using maxiter'),
+            },
+            'Minimization': {
+                'condition': lambda: 'Minimization' in job_status['keywords'],
+                'action': lambda: (None, [], ' with same conditions' if 'Minimization' not in job_status['error'] else None),
+            },
+            'SYM_IGNORE': {
+                'condition': lambda: 'SYM_IGNORE' not in ess_trsh_methods,
+                'action': lambda: ('SYM_IGNORE', ['\n   SYM_IGNORE    TRUE'], ' using SYM_IGNORE'),
+            }
+        }
+        for error_type, troubleshooting_info in troubleshooting_actions.items():
+            if troubleshooting_info['condition']():
+                method, keywords, log_message_extension = troubleshooting_info['action']()
+                if method:
+                    ess_trsh_methods.append(method)
+                trsh_keyword.extend(keywords)
+                log_message = f"{log_message_base}{log_message_extension}" if log_message_extension else log_message_base
+                logger.info(log_message)
+
+        # Handle the case where no troubleshooting action was identified
+        if not trsh_keyword:
+            logger.warning(f'Could not identify troubleshooting action for {job_type} job in {software} for {label}')
             couldnt_trsh = True
 
     elif 'orca' in software:

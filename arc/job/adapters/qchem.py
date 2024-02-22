@@ -215,7 +215,10 @@ class QChemAdapter(JobAdapter):
                     'block',
                     'scan',
                     'constraint',
-                    'irc'
+                    'irc',
+                    'opt_cycles',
+                    'trsh',
+                    'scan_trsh',
                     ]:
             input_dict[key] = ''
         input_dict['basis'] = self.software_input_matching(basis = self.level.basis) if self.level.basis else ''
@@ -230,9 +233,13 @@ class QChemAdapter(JobAdapter):
             # TODO: Add support for other D3 options. Check if the user has specified a D3 option in the level of theory
             input_dict['keywords'] = "\n   DFT_D D3"
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['scan_trsh'] = self.args['trsh']['scan_trsh'] if 'scan_trsh' in self.args['trsh'].keys() else ''
-        input_dict['trsh'] = self.args['trsh']['trsh'] if 'trsh' in self.args['trsh'].keys() else ''
         input_dict['xyz'] = xyz_to_str(self.xyz)
+        input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
+        # Check if opt_cycles is specified in the input['trsh']. If not, then set it to 100. If it is, then set it to 250 and remove it from the input['trsh']
+        input_dict['opt_cycles'] = 100 if 'opt_cycle_250' not in input_dict['trsh'] else 250
+        if 'opt_cycle_250' in input_dict['trsh']:
+            # Remove string of opt_cycle_250 from the list
+            input_dict['trsh'] = input_dict['trsh'].replace('opt_cycle_250', '')
 
         # In QChem the attribute is called "unrestricted", so the logic is in reverse than in other adapters
         input_dict['unrestricted'] = 'TRUE' if not is_restricted(self) else 'FALSE'
@@ -381,10 +388,11 @@ class QChemAdapter(JobAdapter):
             SCF_CONVERGENCE = 8
             input_dict['keywords'] += f"\n   SCF_CONVERGENCE {SCF_CONVERGENCE}"
 
-        input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
+
 
         with open(os.path.join(self.local_path, input_filenames[self.job_adapter]), 'w') as f:
             f.write(Template(input_template).render(**input_dict))
+
     def generate_qchem_scan_angles(self,start_angle: int, step: int) -> (int, int, int, int):
         """Generates angles for a Q-Chem dihedral scan, split into two segments.
 
