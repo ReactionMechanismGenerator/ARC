@@ -730,8 +730,8 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
         irc_r_path (str): The reverse IRC computation.
         out_path (str): The path to the output file.
     """
-    traj1 = parse_trajectory(irc_f_path)
-    traj2 = parse_trajectory(irc_r_path)
+    traj1 = parse_trajectory(irc_f_path, direction='forward')
+    traj2 = parse_trajectory(irc_r_path, direction='backward')
 
     if traj1 is not None and traj2 is not None:
         traj = traj1[:1:-1] + traj2[1:-1] + traj2[:1:-1] + traj1[1:-1]

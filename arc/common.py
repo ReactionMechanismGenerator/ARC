@@ -34,6 +34,7 @@ from rmgpy.molecule.element import get_element
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
+from rmgpy.species import Species
 
 from arc.exceptions import InputError, SettingsError
 from arc.imports import home, settings
@@ -1524,6 +1525,20 @@ def generate_resonance_structures(object_: Union['Species', Molecule],
                                                        filter_structures=filter_structures,
                                                        save_order=save_order,
                                                        )
+        # # Check if the molecule is a Molecule object instance
+        # if isinstance(object_, Species):
+        #     # Check if object_.molecule is a list and then iterate over it
+        #     for i in range(len(object_.molecule)):
+        #         if isinstance(object_.molecule[i], Molecule):
+        #             # Analyse the molecule to determine whether it is an aryl radical and aromatic
+        #             features_molecule = analyze_molecule(mol=object_.molecule[i])
+        #             # If the molecule is an aryl radical and aromatic, remove the aryl radical flag
+        #             if features_molecule['is_aryl_radical'] and features_molecule['is_aromatic']:
+        #                 features_molecule['is_aryl_radical'] = False
+        #                 # Generate optimal aromatic resonance structures using the adjusted features
+        #                 mol_list = generate_optimal_aromatic_resonance_structures(mol=object_.molecule[i],    features = features_molecule, save_order=True)
+        #                 # If the list of resonance structures is not empty, update the object
+        #                 object_.molecule[i]= mol_list[0]
     except (AtomTypeError, ILPSolutionError, ResonanceError, TypeError, ValueError):
         pass
     return result
@@ -1717,3 +1732,10 @@ def convert_to_hours(time_str:str) -> float:
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600
+
+def normalize_method_name(method_name):
+    """
+    Normalizes method names by standardizing hyphen placement or removing them.
+    This is a basic example that removes hyphens; adjust logic as needed.
+    """
+    return method_name.replace('-', '')

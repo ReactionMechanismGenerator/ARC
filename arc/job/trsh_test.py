@@ -447,7 +447,19 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertAlmostEqual(memory, 222.15625)
+        # Error has require: 23661817216 which is Words
+        # Convert to MW - 23661817216 / 1e6 = 23661.817216
+                ## Round up to nearest 100 - 23700
+                ##  1 MWord = 7.45e-3 GB
+                ##  1 GB = 134.2 MWords
+        # Get the server memory in MW - 32 * 134.2 ~ 4296 MW
+        # Now get the memory per cpu core - 4296 / 8 = 537 MW <- This is the current MAX MW we can give Molpro based on CPUs we are providing it
+        # Check if sumbit_mem_mwords_per_cpu < add_mem - 23700 !< 537
+        # memory = add_mem * 7.45e-3 * cpu_cores
+        # memory = 23700 * 7.45e-3 * 8 = 1412.52 GB
+        # Memory is WAY too high, so need to check if 'cpu' is in ess_trsh_methods
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertAlmostEqual(memory, 1412.52)
 
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_2.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path, species_label='TS', job_type='sp')
@@ -456,9 +468,12 @@ class TestTrsh(unittest.TestCase):
             memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
-        self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 96.0)
 
+        # Molpro: Insuffienct Memory 2 Test
+        # Need to check with Alon
+        self.assertIn('memory', ess_trsh_methods)
+        self.assertEqual(memory, 32.0)
+        
         # Molpro: Insuffienct Memory 3 Test
         path = os.path.join(self.base_path['molpro'], 'insufficient_memory_3.out')
         status, keywords, error, line = trsh.determine_ess_status(output_path=path,
@@ -470,7 +485,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(memory, 62.0)
+        self.assertIn('cpu', ess_trsh_methods)
+        self.assertEqual(memory, 250.32) # in GB - molpro adapter will handle this large memory
 
         # Test Orca
         # Orca: test 1

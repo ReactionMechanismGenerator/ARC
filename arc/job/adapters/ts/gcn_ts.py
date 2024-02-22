@@ -23,11 +23,11 @@ from arc.plotter import save_geo
 from arc.species.converter import rdkit_conf_from_mol, str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
-HAS_GCN = True
-try:
-    from inference import inference
-except (ImportError, ModuleNotFoundError):
-    HAS_GCN = False
+# HAS_GCN = True
+# try:
+#     from inference import inference
+# except (ImportError, ModuleNotFoundError):
+#     HAS_GCN = False
 
 if TYPE_CHECKING:
     from arc.level import Level

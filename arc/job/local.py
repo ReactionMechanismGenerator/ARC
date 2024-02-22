@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import time
 from typing import List, Optional, Tuple, Union
+import socket
 
 from arc.common import get_logger
 from arc.exceptions import SettingsError
@@ -274,6 +275,30 @@ def submit_job(path: str,
         job_status = 'errored'
     else:
         job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
+    # Check if job was ACTUALLY submitted
+    temp = check_running_jobs_ids()
+    # while job_id and job_id not in check_running_jobs_ids():
+    #     # Check if output.out file exists
+    #     if not os.path.exists(os.path.join(path, 'intial_time')):
+    #         logger.warning(f'Job id {job_id} was not actually submitted, trying again...')
+    #         stdout, stderr = execute_command(cmd)
+    #         job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
+
+    # One more time to make sure
+    # make sure socket hostname is zeus
+    if not os.path.exists(os.path.join(path, 'intial_time')) and 'zeus' in socket.gethostname():
+        qstat_id_cmd = f'/opt/pbs/bin/qstat {job_id} -x'
+        stdout_status, stderr_status= execute_command(qstat_id_cmd)
+        # Parse the std
+        # 'Job id            Name             User              Time Use S Queue'
+        # '----------------  ---------------- ----------------  -------- - -----'
+        # '468124.zeus-mast* a38995           calvin.p          00:00:00 F zeus_all_q      '
+        last_line = stdout_status[-1].split()
+        if 'F' in last_line and '00:00:00' in last_line:
+            logger.warning(f'Job id {job_id} was not actually submitted, trying again...')
+            stdout, stderr = execute_command(cmd)
+            job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
+
     job_status = 'running' if job_id else job_status
     return job_status, job_id
 

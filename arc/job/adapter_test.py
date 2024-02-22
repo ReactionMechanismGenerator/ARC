@@ -217,6 +217,7 @@ class TestJobAdapter(unittest.TestCase):
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    server='server1',
                                     testing=True,
                                     queue='short_queue',
                                     attempted_queues=['short_queue']
@@ -354,7 +355,7 @@ class TestJobAdapter(unittest.TestCase):
         self.job_4.cpu_cores = None
         self.job_4.set_cpu_and_mem()
         self.assertEqual(self.job_4.cpu_cores, 8)
-        expected_memory = math.ceil((14 * 1024 * 1.1) / self.job_4.cpu_cores)
+        expected_memory = math.ceil((14 * 1024 * 1.1)/self.job_4.cpu_cores)
         self.assertEqual(self.job_4.submit_script_memory, expected_memory)
         self.job_4.server = 'local'
 
@@ -431,6 +432,13 @@ class TestJobAdapter(unittest.TestCase):
                                        'remote': os.path.join(self.job_1.remote_path, 'm.x'),
                                        'source': 'input_files',
                                        'make_x': True})
+    
+    def test_determine_job_status(self):
+        """Test determining the job status"""
+        self.job_5.determine_job_status()
+        self.assertEqual(self.job_5.job_status[0], 'done')
+        self.assertEqual(self.job_5.job_status[1]['status'], 'errored')
+        self.assertEqual(self.job_5.job_status[1]['keywords'], ['ServerTimeLimit'])
 
     def test_determine_job_status(self):
         """Test determining the job status"""

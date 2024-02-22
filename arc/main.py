@@ -266,6 +266,7 @@ class ARC(object):
                  sp_level: Optional[Union[str, dict, Level]] = None,
                  species: Optional[List[Union[ARCSpecies, Species]]] = None,
                  specific_job_type: str = '',
+                 output_multi_spc = dict(),
                  T_min: Optional[Tuple[float, str]] = None,
                  T_max: Optional[Tuple[float, str]] = None,
                  T_count: int = 50,
