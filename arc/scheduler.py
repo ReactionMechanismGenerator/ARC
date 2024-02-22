@@ -2741,6 +2741,12 @@ class Scheduler(object):
                                             irc_r_path=self.output[label]['paths']['irc'][1],
                                             out_path=os.path.join(self.project_directory, 'output',
                                                                   'rxns', label, 'irc_traj.gjf'))
+        elif job.job_adapter == 'qchem':
+            self.output[label]['job_types']['irc'] = True
+            plotter.save_irc_traj_animation(irc_f_path=self.output[label]['paths']['irc'][0],
+                                            irc_r_path=self.output[label]['paths']['irc'][0],
+                                            out_path=os.path.join(self.project_directory, 'output',
+                                                                  'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
                              xyz=parser.parse_xyz_from_file(job.local_path_to_output_file),

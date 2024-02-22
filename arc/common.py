@@ -34,7 +34,6 @@ from rmgpy.molecule.element import get_element
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.qm.qmdata import QMData
 from rmgpy.qm.symmetry import PointGroupCalculator
-from rmgpy.molecule.resonance import generate_optimal_aromatic_resonance_structures, analyze_molecule
 from rmgpy.species import Species
 
 from arc.exceptions import InputError, SettingsError
@@ -1733,3 +1732,10 @@ def convert_to_hours(time_str:str) -> float:
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600
+
+def normalize_method_name(method_name):
+    """
+    Normalizes method names by standardizing hyphen placement or removing them.
+    This is a basic example that removes hyphens; adjust logic as needed.
+    """
+    return method_name.replace('-', '')

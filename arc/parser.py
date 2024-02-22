@@ -828,12 +828,13 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     return xyz
 
 
-def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
+def parse_trajectory(path: str, direction: Optional[str]=None) -> Optional[List[Dict[str, tuple]]]:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
     Args:
         path (str): The file path.
+        direction (str, optional): The direction of the IRC scan, either 'forward' or 'backward'.
 
     Raises:
         ParserError: If the trajectory could not be read.
@@ -899,7 +900,39 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
                         if not skip_traj:
                             traj.append(str_to_xyz(xyz_str))
                     else:
-                        i += 1 
+                        i += 1
+                
+                if not len(traj) and direction is not None:
+                    # We assume then its IRC
+                    done = False
+                    i = 0
+                    opposite = {'forward': 'backward', 'backward': 'forward'}
+                    parse = False
+                    while not done:
+                        if i >= len(lines):
+                            done = True
+                        elif direction.upper() in lines[i]:
+                            parse = True
+                            i += 4
+                            xyz_str, skip_traj = '', False
+                            while parse == True:
+                                while len(lines[i])> 5 and 'IRC step' not in lines[i] and " ============================================" not in lines[i]:
+                                    splits = lines[i].split()
+                                    xyz_str += f'{splits[0]}  {splits[1]}  {splits[2]}  {splits[3]}\n'
+                                    i += 1
+                                if len(xyz_str) > 0:
+                                    traj.append(str_to_xyz(xyz_str))
+                                    xyz_str = ''
+                                i += 1                       
+                                if opposite[direction].upper() in lines[i]:
+                                    done = True
+                                    parse = False
+                                elif "============================================" in lines[i] or "Total" in lines[i]:
+                                    done = True
+                                    parse = False
+                        
+                        i += 1
+                    
 
             elif type(log) not in [GaussianLog, QChemLog]:
                 raise NotImplementedError(f'Currently parse_trajectory only supports Gaussian files, got {type(log)}')
@@ -940,6 +973,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         logger.error(f'Could not parse trajectory from {path}')
         return None
     return traj
+
 
 
 def parse_dipole_moment(path: str) -> Optional[float]:

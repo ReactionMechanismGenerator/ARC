@@ -25,7 +25,7 @@ from arc.level import Level
 from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
 
-from rapidfuzz import process, utils
+from rapidfuzz import process, utils, fuzz
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -224,7 +224,6 @@ class QChemAdapter(JobAdapter):
         # If method ends with D3, then we need to remove it and add the D3 as a keyword. Need to account for -D3
         if input_dict['method'].endswith('d3') or input_dict['method'].endswith('-d3'):
             input_dict['method'] = input_dict['method'][:-2]
-            # Remove the - if it exists
             if input_dict['method'].endswith('-'):
                 input_dict['method'] = input_dict['method'][:-1]
             # DFT_D - FALSE, EMPIRICAL_GRIMME, EMPIRICAL_CHG, D3_ZERO, D3_BJ, D3_CSO, D3_ZEROM, D3_BJM, D3_OP,D3 [Default: None]
@@ -613,7 +612,7 @@ class QChemAdapter(JobAdapter):
         Returns:
             str/None: Matched basis set or None if no match is found.
         """
-        basis_match = process.extract(basis, software_methods['basis_set'].values, processor=utils.default_process, score_cutoff=99)
+        basis_match = process.extract(basis, software_methods['basis_set'].str.lower().values, processor=utils.default_process,scorer=fuzz.QRatio, score_cutoff=90)
         if len(basis_match) > 1:
             raise ValueError(f"Too many matches for basis set: {basis}. Please refine your search.")
 

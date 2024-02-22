@@ -415,6 +415,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(len(trajectory), 9)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
+        
+        # Testing QChem IRC (Does both forward and backwards)
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'qchem_irc.out')
+        trajectory = parser.parse_trajectory(path, direction="forward")
+        self.assertEqual(len(trajectory), 12)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 18)
+        trajectory = parser.parse_trajectory(path, direction="backward")
+        self.assertEqual(len(trajectory), 16)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 18)
+        
 
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
