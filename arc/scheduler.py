@@ -568,9 +568,9 @@ class Scheduler(object):
                                     self.determine_most_stable_conformer(label)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
-                                    if not self.composite_method:
+                                    if not self.composite_method and (self.job_types['opt'] or self.job_types['fine']):
                                         self.run_opt_job(label, fine=self.fine_only)
-                                    else:
+                                    elif self.composite_method and self.job_types['composite']:
                                         self.run_composite_job(label)
                             self.timer = False
                             break
