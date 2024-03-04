@@ -970,6 +970,11 @@ class ARC(object):
         self.conformer_level = Level(repr=self.conformer_level)
         logger.info(f'Conformers:{default_flag} {self.conformer_level}')
 
+        if self.conf_generation_level is not None:
+            default_flag = ''
+            self.conf_generation_level = Level(repr=self.conf_generation_level)
+            logger.info(f'Conformers_generation:{default_flag} {self.conf_generation_level}')
+
         if self.reactions or any([spc.is_ts for spc in self.species]):
             if not self.ts_guess_level:
                 self.ts_guess_level = default_levels_of_theory['ts_guesses']
