@@ -428,8 +428,9 @@ class Scheduler(object):
                 if not self.job_types['conformers'] and len(species.conformers) == 1:
                     # conformers weren't asked for, assign initial_xyz
                     species.initial_xyz = species.conformers[0]
-                if species.label not in self.running_jobs:
-                    self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
+                label = species.label if not species.multi_species else species.multi_species
+                if label not in self.running_jobs.keys():
+                    self.running_jobs[label] = list()
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
