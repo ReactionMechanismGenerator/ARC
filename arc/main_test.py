@@ -137,6 +137,7 @@ class TestARC(unittest.TestCase):
                                        'method_type': 'dft',
                                        'software': 'gaussian'},
                          'output': {},
+                         'output_multi_spc': {},
                          'project': 'arc_test',
                          'reactions': [],
                          'running_jobs': {},

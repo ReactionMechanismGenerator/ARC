@@ -130,6 +130,7 @@ class Scheduler(object):
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
         conformer_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
+        conf_generation_level (Union[str, dict], optional): The level of theory to use for conformer generation.
         opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
         freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
         sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
@@ -201,6 +202,7 @@ class Scheduler(object):
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
         conformer_level (dict): The level of theory to use for conformer comparisons.
+        conf_generation_level (dict): The level of theory to use for conformer generation.
         opt_level (dict): The level of theory to use for geometry optimizations.
         freq_level (dict): The level of theory to use for frequency calculations.
         sp_level (dict): The level of theory to use for single point energy calculations.
@@ -229,6 +231,7 @@ class Scheduler(object):
                  project_directory: str,
                  composite_method: Optional[Level] = None,
                  conformer_level: Optional[Level] = None,
+                 conf_generation_level: Optional[Level] = None,
                  opt_level: Optional[Level] = None,
                  freq_level: Optional[Level] = None,
                  sp_level: Optional[Level] = None,
@@ -298,7 +301,9 @@ class Scheduler(object):
             self.rxn_dict[rxn.index] = rxn
         if self.restart_dict is not None:
             self.output = self.restart_dict['output']
+            print('Lin304, restart_dict is not None:',  self.restart_dict, '\n')
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
+            print('Lin304, output_multi_spc is not None:',  self.output_multi_spc, '\n')
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
@@ -308,6 +313,7 @@ class Scheduler(object):
         self.servers = list()
         self.composite_method = composite_method
         self.conformer_level = conformer_level
+        self.conf_generation_level = conf_generation_level
         self.ts_guess_level = ts_guess_level
         self.opt_level = opt_level
         self.freq_level = freq_level
@@ -424,8 +430,9 @@ class Scheduler(object):
                 if not self.job_types['conformers'] and len(species.conformers) == 1:
                     # conformers weren't asked for, assign initial_xyz
                     species.initial_xyz = species.conformers[0]
-                if species.label not in self.running_jobs:
-                    self.running_jobs[species.label if not species.multi_species else species.multi_species] = list()
+                label = species.label if not species.multi_species else species.multi_species
+                if label not in self.running_jobs.keys():
+                    self.running_jobs[label] = list()
                 if self.output[species.label]['convergence']:
                     continue
                 if species.is_monoatomic():
@@ -480,6 +487,8 @@ class Scheduler(object):
                             # opt/fine isn't running
                             if not self.output[species.label]['paths']['geo'] and self.job_types['opt']:
                                 # opt/fine hasn't finished (and isn't running), so run it
+                                print('Line 489: species is:', species, '\n')
+                                print('Line 490: species label is:', species.label, '\n')
                                 self.run_opt_job(species.label, fine=self.fine_only)
                         if self.output[species.label]['paths']['geo'] and 'sp' not in self.job_dict[species.label].keys() \
                                 and not self.output[species.label]['paths']['sp'] and self.job_types['sp']:
@@ -563,9 +572,9 @@ class Scheduler(object):
                                     self.determine_most_stable_conformer(label)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
-                                    if not self.composite_method:
+                                    if not self.composite_method and (self.job_types['opt'] or self.job_types['fine']):
                                         self.run_opt_job(label, fine=self.fine_only)
-                                    else:
+                                    elif self.composite_method and self.job_types['composite']:
                                         self.run_composite_job(label)
                             self.timer = False
                             break
@@ -1098,7 +1107,10 @@ class Scheduler(object):
                         n_confs=n_confs,
                         e_confs=self.e_confs,
                         plot_path=os.path.join(self.project_directory, 'output', 'Species',
-                                               label, 'geometry', 'conformers'))
+                                               label, 'geometry', 'conformers'),
+                        conf_generation_level=self.conf_generation_level if self.conf_generation_level is not None else None,
+                        conf_path=os.path.join(self.project_directory, 'calcs', 'Species', f'{label}_multi'),
+                        )
                 self.process_conformers(label)
             # TSs:
             elif self.species_dict[label].is_ts \
@@ -1185,9 +1197,12 @@ class Scheduler(object):
             raise SpeciesError(f'Cannot execute opt job for {label} without xyz (got None for Species.initial_xyz)')
         if self.species_dict[label].multi_species:
             key = 'fine' if fine else 'opt'
+            print('Line 1199, label is:', label, '\n')
+            print('Line 1200, output_multi_spc is:', self.output_multi_spc, '\n')
             if self.output_multi_spc[self.species_dict[label].multi_species].get(key, False):
                 return
-            self.output_multi_spc[self.species_dict[label].multi_species][key] = True
+            # self.output_multi_spc[self.species_dict[label].multi_species][key] = True
+            label_single_spc = label
             label = [species.label for species in self.species_list
                      if species.multi_species == self.species_dict[label].multi_species]
         self.run_job(label=label, 
@@ -1195,6 +1210,8 @@ class Scheduler(object):
                      level_of_theory=self.opt_level,
                      job_type='opt', 
                      fine=fine)
+        if isinstance(label, list):
+            self.output_multi_spc[self.species_dict[label_single_spc].multi_species][key] = True
 
     def run_composite_job(self, label: str):
         """

@@ -81,6 +81,7 @@ class ARC(object):
                                          instead (e.g., ``opt_level``).
         composite_method (str, dict, Level, optional): Composite method.
         conformer_level (str, dict, Level, optional): Level of theory for conformer searches.
+        conf_generation_level (str, dict, Level, optional): Level of theory for conformer generation.
         opt_level (str, dict, Level, optional): Level of theory for geometry optimization.
         freq_level (str, dict, Level, optional): Level of theory for frequency calculations.
         sp_level (str, dict, Level, optional): Level of theory for single point calculations.
@@ -154,6 +155,8 @@ class ARC(object):
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
                                  Only used for restarting.
+        output_multi_spc (dict, optional): Output dictionary with status and final QM file paths for the multi species. 
+                                           Only used for restarting.
         running_jobs (dict, optional): A dictionary of jobs submitted in a precious ARC instance, used for restarting.
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
@@ -167,6 +170,7 @@ class ARC(object):
         level_of_theory (str): A shortcut representing either sp//geometry levels or a composite method.
         composite_method (Level): Composite method.
         conformer_level (Level): Level of theory for conformer searches.
+        conf_generation_level (Level): Level of theory for conformer generation.
         opt_level (Level): Level of theory for geometry optimization.
         freq_level (Level): Level of theory for frequency calculations.
         sp_level (Level): Level of theory for single point calculations.
@@ -180,6 +184,8 @@ class ARC(object):
             Job types not defined in adaptive levels will have non-adaptive (regular) levels.
         output (dict): Output dictionary with status and final QM file paths for all species. Only used for restarting,
                        the actual object used is in the Scheduler class.
+        output_multi_spc (dict): Output dictionary with status and final QM file paths for the multi species. 
+                                 Only used for restarting, the actual object used is in the Scheduler class.
         bac_type (str): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                         ``None`` to not use BAC.
         arkane_level_of_theory (Level): The Arkane level of theory to use for AEC and BAC.
@@ -242,6 +248,7 @@ class ARC(object):
                  compute_thermo: bool = True,
                  compute_transport: bool = False,
                  conformer_level: Optional[Union[str, dict, Level]] = None,
+                 conf_generation_level: Optional[Union[str, dict, Level]] = None,
                  dont_gen_confs: List[str] = None,
                  e_confs: float = 5.0,
                  ess_settings: Dict[str, Union[str, List[str]]] = None,
@@ -258,6 +265,7 @@ class ARC(object):
                  opt_level: Optional[Union[str, dict, Level]] = None,
                  orbitals_level: Optional[Union[str, dict, Level]] = None,
                  output: Optional[dict] = None,
+                 output_multi_spc: Optional[dict] = None,
                  project: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  reactions: Optional[List[Union[ARCReaction, Reaction]]] = None,
@@ -291,6 +299,7 @@ class ARC(object):
         if not os.path.exists(self.project_directory):
             os.makedirs(self.project_directory)
         self.output = output
+        self.output_multi_spc = output_multi_spc
         self.standardize_output_paths()  # depends on self.project_directory
         self.running_jobs = running_jobs or dict()
         for jobs in self.running_jobs.values():
@@ -342,6 +351,7 @@ class ARC(object):
         self.level_of_theory = level_of_theory
         self.composite_method = composite_method or None
         self.conformer_level = conformer_level or None
+        self.conf_generation_level = conf_generation_level or None
         self.opt_level = opt_level or None
         self.freq_level = freq_level or None
         self.sp_level = sp_level or None
@@ -485,6 +495,8 @@ class ARC(object):
             restart_dict['compute_transport'] = self.compute_transport
         if self.conformer_level is not None:
             restart_dict['conformer_level'] = self.conformer_level.as_dict()
+        if self.conf_generation_level is not None:
+            restart_dict['conf_generation_level'] = self.conf_generation_level.as_dict()
         if self.dont_gen_confs:
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
         if self.ts_adapters:
@@ -515,6 +527,7 @@ class ARC(object):
             restart_dict['orbitals_level'] = self.orbitals_level.as_dict() \
                 if not isinstance(self.orbitals_level, (dict, str)) else self.orbitals_level
         restart_dict['output'] = self.output
+        restart_dict['output_multi_spc'] = self.output_multi_spc if self.output_multi_spc else dict()
         restart_dict['project'] = self.project
         restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         restart_dict['running_jobs'] = self.running_jobs
@@ -587,6 +600,7 @@ class ARC(object):
                                    rxn_list=self.reactions,
                                    composite_method=self.composite_method,
                                    conformer_level=self.conformer_level,
+                                   conf_generation_level=self.conf_generation_level,
                                    opt_level=self.opt_level,
                                    freq_level=self.freq_level,
                                    sp_level=self.sp_level,
@@ -962,6 +976,11 @@ class ARC(object):
             default_flag = ''
         self.conformer_level = Level(repr=self.conformer_level)
         logger.info(f'Conformers:{default_flag} {self.conformer_level}')
+
+        if self.conf_generation_level is not None:
+            default_flag = ''
+            self.conf_generation_level = Level(repr=self.conf_generation_level)
+            logger.info(f'Conformers_generation:{default_flag} {self.conf_generation_level}')
 
         if self.reactions or any([spc.is_ts for spc in self.species]):
             if not self.ts_guess_level:
