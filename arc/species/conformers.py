@@ -38,6 +38,7 @@ Module workflow::
 
 import copy
 import logging
+import os
 import sys
 import time
 from itertools import product
@@ -53,16 +54,21 @@ from rmgpy.molecule.converter import to_ob_mol
 from rmgpy.molecule.molecule import Atom, Bond, Molecule
 from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
 
-from arc.common import (convert_list_index_0_to_1,
+from arc.common import (ARC_PATH,
+                        convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_single_bond_length,
                         generate_resonance_structures,
                         logger,
+                        save_yaml_file,
+                        read_yaml_file,
                         )
 from arc.exceptions import ConformerError, InputError
+from arc.job.local import execute_command
 import arc.plotter
+from arc.level import Level
 from arc.species import converter, vectors
-
+from arc.parser import parse_xyz_from_file
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -164,6 +170,8 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                         return_all_conformers=False,
                         plot_path=None,
                         print_logs=True,
+                        conf_generation_level=None,
+                        conf_path=None,
                         ) -> Optional[Union[list, Tuple[list, list]]]:
     """
     Generate conformers for (non-TS) species starting from a list of RMG Molecules.
@@ -195,6 +203,8 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
                                    If None, the plot will not be shown (nor saved).
         print_logs (bool, optional): Whether define a logger so logs are also printed to stdout.
                                      Useful when run outside of ARC. True to print.
+        conf_generation_level (str, optional): The level of conformer generation to perform.
+        conf_path (str, optional): A folder path in which the conformers will be saved.
 
     Raises:
         ConformerError: If something goes wrong.
@@ -267,7 +277,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         torsions, tops = determine_rotors(mol_list)
     conformers = generate_force_field_conformers(
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
-        num_confs=num_confs_to_generate, force_field=force_field)
+        num_confs=num_confs_to_generate, force_field=force_field, conf_generation_level=conf_generation_level, conf_path=conf_path)
 
     lowest_confs = list()
     if len(conformers):
@@ -630,6 +640,8 @@ def generate_force_field_conformers(label,
                                     xyzs=None,
                                     num_confs=None,
                                     force_field='MMFF94s',
+                                    conf_generation_level=None,
+                                    conf_path=None,
                                     ) -> List[dict]:
     """
     Generate conformers using RDKit and OpenBabel and optimize them using a force field
@@ -644,6 +656,8 @@ def generate_force_field_conformers(label,
         multiplicity (int): The species spin multiplicity.
         num_confs (int, optional): The number of conformers to generate.
         force_field (str, optional): The type of force field to use.
+        conf_generation_level (str, optional): The level of conformer generation to perform.
+        conf_path (str, optional): A folder path in which the conformers will be saved.
 
     Raises:
         ConformerError: If xyzs is given and it is not a list, or its entries are not strings.
@@ -673,6 +687,12 @@ def generate_force_field_conformers(label,
         except ValueError as e:
             logger.warning(f'Could not generate conformers for {label}, failed with: {e}')
         if ff_xyzs:
+            if conf_generation_level is not None and conf_generation_level.solvent is not None:
+                ff_xyzs, ff_energies = get_force_field_energies_solvation(label,
+                                                                          ff_xyzs,
+                                                                          conf_generation_level=conf_generation_level,
+                                                                          conf_path=conf_path,
+                                                                          )
             for xyz, energy in zip(ff_xyzs, ff_energies):
                 conformers.append({'xyz': xyz,
                                    'index': len(conformers),
@@ -1150,6 +1170,70 @@ def get_force_field_energies(label: str,
         if force_field.lower() not in ['mmff94', 'mmff94s', 'uff', 'gaff', 'ghemical']:
             raise ConformerError(f'Unrecognized force field for {label}. Should be either MMFF94, MMFF94s, UFF, '
                                  f'Ghemical, or GAFF. Got: {force_field}.')
+    return xyzs, energies
+
+
+def get_force_field_energies_solvation(label: str,
+                                       ff_xyzs: list,
+                                       conf_generation_level: Level,
+                                       conf_path: str,
+                                       ) -> Tuple[list, list]:
+    """
+    Determine force field energies with solvation effect using Gaussian.
+
+    Args:
+        label (str): The species' label.
+        ff_xyzs (list): Entries are xyz coordinates in dict format.
+        conf_generation_level (dict): The level of solvation to use.
+        conf_path (str): A folder path in which the conformers will be saved.
+
+    Returns:
+        Tuple[list, list]:
+            - Entries are xyz coordinates, each in a dict format.
+            - Entries are the FF energies (in kJ/mol).
+    """
+    ARC_child_path = conf_path
+    content = dict()
+    content['project'] = f'conf_gen_multi_{label}'
+    content['opt_level'] = {'method': conf_generation_level.method,
+                            'solvation_method': conf_generation_level.solvation_method or 'SMD',
+                            'solvent': conf_generation_level.solvent,
+                            }
+    content['report_e_elect'] = True
+    content['job_types'] = {'opt': True,
+                            'sp': False,
+                            'fine': False,
+                            'freq': False,
+                            'rotors': False,
+                            'conformers': False,
+                            }
+    content['n_confs'] = 1
+    content['compute_thermo'] = False
+    content['species'] = list()
+    for i, xyz in enumerate(ff_xyzs):
+        spc_dict = dict()
+        spc_dict['label'] = f'{label}_multi_{i}'
+        spc_dict['xyz'] = xyz
+        spc_dict['multi_species'] = f'{label}_multi'
+        content['species'].append(spc_dict)
+    save_yaml_file(path=os.path.join(ARC_child_path, 'input.yml'), content=content)
+    commands = ['source ~/.bashrc', 'conda activate arc_env', f'python {ARC_PATH}/ARC.py {ARC_child_path}/input.yml']
+    command = '; '.join(commands)
+    stdout, stderr = execute_command(command=command, shell=True, executable='/bin/bash')
+    with open(os.path.join(ARC_child_path, 'stdout.txt'), 'w') as f:
+        stdout_str = '\n'.join(str(x) for x in stdout)
+        f.write(stdout_str)
+    with open(os.path.join(ARC_child_path, 'stderr.txt'), 'w') as f:
+        stderr_str = '\n'.join(str(x) for x in stderr)
+        f.write(stderr_str)
+    if len(stderr) > 0 or len(stdout) == 0:
+        logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')
+    xyzs = list()
+    energies = list()
+    energy_dict = read_yaml_file(os.path.join(ARC_child_path, 'output', 'e_elect_summary.yml'))
+    for i in range(len(ff_xyzs)):
+        xyzs.append(parse_xyz_from_file(os.path.join(ARC_child_path, 'output', 'Species', f'{label}_multi_{i}', 'geometry', f'{label}_multi_{i}.xyz')))
+        energies.append(energy_dict[f'{label}_multi_{i}'])
     return xyzs, energies
 
 
