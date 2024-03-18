@@ -30,6 +30,7 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
+                            JobError,
                             SanitizationError,
                             SchedulerError,
                             SpeciesError,
@@ -924,6 +925,7 @@ class Scheduler(object):
                 logger.error('Setting it to TeraChem')
                 level.software = 'terachem'
             job_adapter = level.software
+
         return job_adapter.lower()
 
     def end_job(self, job: 'JobAdapter',
@@ -944,7 +946,7 @@ class Scheduler(object):
         if job.job_status[0] != 'done' or job.job_status[1]['status'] != 'done':
             try:
                 job.determine_job_status()  # Also downloads the output file.
-            except IOError:
+            except (IOError, JobError) as e:
                 if job.job_type not in ['orbitals']:
                     logger.warning(f'Tried to determine status of job {job.job_name}, '
                                    f'but it seems like the job never ran. Re-running job.')
@@ -986,11 +988,11 @@ class Scheduler(object):
                 job.job_status[1]['status'] = 'errored'
                 logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
                                f'file path {job.local_path_to_output_file}.')
-            elif job.job_type not in ['orbitals']:
-                job.ess_trsh_methods.append('restart_due_to_file_not_found')
-                logger.warning(f'Did not find the output file of job {job.job_name} with path '
-                               f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
-                self._run_a_job(job=job, label=label)
+                if job.job_type not in ['orbitals']:
+                    job.ess_trsh_methods.append('restart_due_to_file_not_found')
+                    logger.warning(f'Did not find the output file of job {job.job_name} with path '
+                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
+                    self._run_a_job(job=job, label=label)
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
             return False
@@ -1020,6 +1022,7 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+            job.remove_remote_files()
             self.save_restart_dict()
             return True
 
@@ -1264,7 +1267,10 @@ class Scheduler(object):
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
             if 'opt' in self.job_dict[label].keys():
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
-                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+                    if (
+                        int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1])
+                        and opt_job.job_status[1]['status'] == 'done' #This needs to be checked, but this current function does not consider if the opt job is done or not. Maybe it shouldn't need to but rather is a result of Zeus creating submission issues
+                    ):
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
                 if recent_opt_job is not None:
                     recent_opt_job.rename_output_file()
@@ -2487,6 +2493,8 @@ class Scheduler(object):
             if not freq_ok:
                 self.output[label]['warnings'] += wrong_freq_message
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
+            # TODO: What if QChem finished without error and converged but we say it's not an okay freq - How do we expect troubleshooting to rework this?
+            # TODO: Example: r_9_[CH]=O - freq2768 from NN_ARC scans 1-10
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
                 and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
@@ -3337,19 +3345,23 @@ class Scheduler(object):
             else:
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
-                if previous_job_num >= 0 and job.fine:
-                    previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
-                    if not previous_job.fine and previous_job.job_status[0] == 'done' \
-                            and previous_job.job_status[1]['status'] == 'done':
-                        # The present job with a fine grid failed in the ESS calculation.
-                        # A *previous* job without a fine grid terminated successfully on the server and ESS.
-                        # So use the xyz determined w/o the fine grid, and output an error message to alert users.
-                        logger.error(f'Optimization job for {label} with a fine grid terminated successfully '
-                                     f'on the server, but crashed during calculation. NOT running with fine '
-                                     f'grid again.')
-                        self.parse_opt_geo(label=label, job=previous_job)
-                        trsh_opt = False
-                if trsh_opt:
+                if job.times_rerun > 0 and job.fine and job.job_status[1]['status'] == 'errored':
+                    # We've already tried troubleshooting this job, so don't try again.
+                    trsh_opt = False
+                    if previous_job_num >= 0 and job.fine:
+                        previous_job = self.job_dict[label]['opt']['opt_a' + str(previous_job_num)]
+                        if not previous_job.fine and previous_job.job_status[0] == 'done' \
+                                and previous_job.job_status[1]['status'] == 'done':
+                            # The present job with a fine grid failed in the ESS calculation.
+                            # A *previous* job without a fine grid terminated successfully on the server and ESS.
+                            # So use the xyz determined w/o the fine grid, and output an error message to alert users.
+                            logger.error(f'Optimization job for {label} with a fine grid terminated successfully '
+                                        f'on the server, but crashed during calculation. NOT running with fine '
+                                        f'grid again.')
+                            self.parse_opt_geo(label=label, job=previous_job)
+                            trsh_opt = False
+                elif trsh_opt:
+                    job.times_rerun += 1
                     self.troubleshoot_ess(label=label,
                                           job=job,
                                           level_of_theory=self.opt_level)
