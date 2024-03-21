@@ -258,6 +258,7 @@ class ARC(object):
                  opt_level: Optional[Union[str, dict, Level]] = None,
                  orbitals_level: Optional[Union[str, dict, Level]] = None,
                  output: Optional[dict] = None,
+                 output_multi_spc: Optional[dict] = None,
                  project: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  reactions: Optional[List[Union[ARCReaction, Reaction]]] = None,

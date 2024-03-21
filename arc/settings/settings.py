@@ -162,11 +162,11 @@ input_filenames = {'cfour': 'ZMAT',
                    }
 
 output_filenames = {'cfour': 'output.out',
-                    'gaussian': 'input.log',
+                    'gaussian': 'output.out',
                     'gcn': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
-                    'orca': 'input.log',
+                    'orca': 'output.out',
                     'qchem': 'output.out',
                     'terachem': 'output.out',
                     'torchani': 'output.yml',

@@ -977,22 +977,24 @@ class Scheduler(object):
                     if job_name in self.running_jobs[label]:
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
-
-        if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
-            job.rename_output_file()
-        if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
-            if 'restart_due_to_file_not_found' in job.ess_trsh_methods:
-                job.job_status[0] = 'errored'
-                job.job_status[1]['status'] = 'errored'
-                logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
-                               f'file path {job.local_path_to_output_file}.')
-            elif job.job_type not in ['orbitals']:
-                job.ess_trsh_methods.append('restart_due_to_file_not_found')
-                logger.warning(f'Did not find the output file of job {job.job_name} with path '
-                               f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
-                self._run_a_job(job=job, label=label)
-            if job_name in self.running_jobs[label]:
-                self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+        if job.job_status[0] != 'running':
+            if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
+                job.rename_output_file()
+            if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
+                if 'restart_due_to_file_not_found' in job.ess_trsh_methods:
+                    job.job_status[0] = 'errored'
+                    job.job_status[1]['status'] = 'errored'
+                    logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '
+                                f'file path {job.local_path_to_output_file}.')
+                elif job.job_type not in ['orbitals']:
+                    job.ess_trsh_methods.append('restart_due_to_file_not_found')
+                    logger.warning(f'Did not find the output file of job {job.job_name} with path '
+                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
+                    self._run_a_job(job=job, label=label)
+                if job_name in self.running_jobs[label]:
+                    self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+                return False
+        elif job.job_status[0] == 'running' and job.job_status[1] == 'running':
             return False
 
         if job.job_status[0] != 'running' and job.job_status[1]['status'] != 'running':
@@ -1020,6 +1022,7 @@ class Scheduler(object):
                 for rotors_dict in self.species_dict[label].rotors_dict.values():
                     if rotors_dict['pivots'] in [job.pivots, job.pivots[0]]:
                         rotors_dict['scan_path'] = job.local_path_to_output_file
+            job.remove_remote_files()
             self.save_restart_dict()
             return True
 
@@ -1264,7 +1267,7 @@ class Scheduler(object):
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
             if 'opt' in self.job_dict[label].keys():
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
-                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]) and opt_job.job_status[1]['status'] == 'done':
                         recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
                 if recent_opt_job is not None:
                     recent_opt_job.rename_output_file()

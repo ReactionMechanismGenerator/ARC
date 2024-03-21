@@ -71,12 +71,13 @@ class SSHClient(object):
     def __init__(self, server: str = '') -> None:
         if server == '':
             raise ValueError('A server name must be specified')
-        if server not in servers.keys():
+        if server not in servers.keys() and server is not None:
             raise ValueError(f'Server name "{server}" is invalid. Currently defined servers are: {list(servers.keys())}')
         self.server = server
         self.address = servers[server]['address']
         self.un = servers[server]['un']
-        self.key = servers[server]['key']
+        self.key = servers[server].get('key','')
+        self.password = servers[server].get('password','')
         self._sftp = None
         self._ssh = None
         logging.getLogger("paramiko").setLevel(logging.WARNING)
@@ -279,7 +280,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         for i, status_line in enumerate(stdout):
             if i > i_dict[cluster_soft]:
-                job_id = status_line.split(split_by_dict[cluster_soft])[0]
+                job_id = status_line.lstrip().split(split_by_dict[cluster_soft])[0]
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
                 running_job_ids.append(job_id)
         return running_job_ids
@@ -308,22 +309,25 @@ class SSHClient(object):
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
             for line in stderr:
+                if 'Memory specification can not be satisfied' in line:
+                    logger.warning('User may be requesting more memory than is available. Please check server '
+                                   'settings, such as cpus and memory, in either ARC/arc/settings/settings.py or ~/.arc/settings.py')
                 if 'Requested node configuration is not available' in line:
                     logger.warning('User may be requesting more resources than are available. Please check server '
-                                   'settings, such as cpus and memory, in ARC/arc/settings/settings.py')
+                                   'settings, such as cpus and memory, in either ARC/arc/settings/settings.py or ~/.arc/settings.py')
                 if cluster_soft.lower() == 'slurm' and 'AssocMaxSubmitJobLimit' in line:
                     logger.warning(f'Max number of submitted jobs was reached, sleeping...')
                     time.sleep(5 * 60)
                     self.submit_job(remote_path=remote_path, recursion=True)
         if recursion:
             return None, None
-        elif cluster_soft.lower() in ['oge', 'sge'] and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() in ['oge', 'sge'] and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[2]
-        elif cluster_soft.lower() == 'slurm' and 'submitted' in stdout[0].lower():
+        elif cluster_soft.lower() == 'slurm' and stdout and 'submitted' in stdout[0].lower():
             job_id = stdout[0].split()[3]
         elif cluster_soft.lower() == 'pbs':
             job_id = stdout[0].split('.')[0]
-        elif cluster_soft.lower() == 'htcondor' and 'submitting' in stdout[0].lower():
+        elif cluster_soft.lower() == 'htcondor' and stdout and 'submitting' in stdout[0].lower():
             # Submitting job(s).
             # 1 job(s) submitted to cluster 443069.
             if len(stdout) and len(stdout[1].split()) and len(stdout[1].split()[-1].split('.')):
@@ -362,7 +366,7 @@ class SSHClient(object):
 
     def _connect(self) -> Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]:
         """
-        Connect via paramiko, and open an SSH session as well as a SFTP session.
+        Connect via Paramiko, and open an SSH session as well as a SFTP session, supporting both key and password authentication.
 
         Returns: Tuple[paramiko.sftp_client.SFTPClient, paramiko.SSHClient]
             - An SFTP client used to perform remote file operations.
@@ -370,16 +374,26 @@ class SSHClient(object):
         """
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.load_system_host_keys(filename=self.key)
+        ssh.load_system_host_keys()
         try:
-            # If the server accepts the connection but the SSH daemon doesn't respond in
-            # 15 seconds (default in paramiko) due to network congestion, faulty switches,
-            # etc..., common solution is enlarging the timeout variable.
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
-        except:
-            # This sometimes gives "SSHException: Error reading SSH protocol banner[Error 104] Connection reset by peer"
-            # Try again:
-            ssh.connect(hostname=self.address, username=self.un, banner_timeout=200)
+            if len(self.key) != 0:
+                ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
+            elif len(self.password) != 0:  # Assuming 'password' authentication
+                ssh.connect(hostname=self.address, username=self.un, password=self.password, banner_timeout=200)
+        except Exception as e:
+            print(f"Initial connection attempt failed: {e}")
+            # In practice, consider handling specific exceptions and implementing a more robust retry mechanism.
+            # This catch-all exception and retry is for demonstration purposes only.
+            try:
+                print("Attempting to reconnect...")
+                if len(self.key) != 0:
+                    ssh.connect(hostname=self.address, username=self.un, banner_timeout=200, key_filename=self.key)
+                elif len(self.password) != 0:  # Assuming 'password' authentication
+                    ssh.connect(hostname=self.address, username=self.un, password=self.password, banner_timeout=200)
+            except Exception as e:
+                print(f"Reconnection attempt failed: {e}")
+                raise  # Re-raise the exception to be handled or reported by the caller.
+
         sftp = ssh.open_sftp()
         return sftp, ssh
 
@@ -395,7 +409,7 @@ class SSHClient(object):
     @check_connections
     def get_last_modified_time(self,
                                remote_file_path_1: str,
-                               remote_file_path_2: Optional[str],
+                               remote_file_path_2: Optional[str] = None,
                                ) -> Optional[datetime.datetime]:
         """
         Returns the last modified time of ``remote_file_path_1`` if the file exists,
@@ -453,17 +467,17 @@ class SSHClient(object):
         cmd = list_available_nodes_command[cluster_soft]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
-        if cluster_soft.lower() in ['oge', 'sge']:
+        if cluster_soft in ['oge', 'sge']:
             # Stdout line example:
             # long1@node01.cluster           BIP   0/0/8          -NA-     lx24-amd64    aAdu
             nodes = [line.split()[0].split('@')[1]
                      for line in stdout if '0/0/8' in line]
-        elif cluster_soft.lower() == 'slurm':
+        elif cluster_soft == 'slurm':
             # Stdout line example:
             # node01 alloc 1.00 none
             nodes = [line.split()[0] for line in stdout
                      if line.split()[1] in ['mix', 'alloc', 'idle']]
-        elif cluster_soft.lower() in ['pbs', 'htcondor']:
+        elif cluster_soft in ['pbs', 'htcondor']:
             logger.warning(f'Listing available nodes is not yet implemented for {cluster_soft}.')
         return nodes
 
@@ -488,6 +502,18 @@ class SSHClient(object):
         recursive = ' -R' if recursive else ''
         command = f'chmod{recursive} {mode} {file_name}'
         self._send_command_to_server(command, remote_path)
+
+    def remove_dir(self, remote_path: str) -> None:
+        """
+        Remove a directory on the server.
+        Args:
+            remote_path (str): The path to the directory to be removed on the remote server.
+        """
+        command = f'rm -r "{remote_path}"'
+        _, stderr = self._send_command_to_server(command)
+        if stderr:
+            raise ServerError(
+                f'Cannot remove dir for the given path ({remote_path}).\nGot: {stderr}')
 
     def _check_file_exists(self,
                            remote_file_path: str,
@@ -556,32 +582,51 @@ def check_job_status_in_stdout(job_id: int,
         stdout = stdout.splitlines()
     for status_line in stdout:
         if str(job_id) in status_line:
-            break
-    else:
-        return 'done'
-    if servers[server]['cluster_soft'].lower() == 'slurm':
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't', 'cg', 'pd']:
-            return 'running'
-        elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'pbs':
-        status = status_line.split()[-2]
-        if status.lower() in ['r', 'q', 'c', 'e', 'w']:
-            return 'running'
-        elif status.lower() in ['h', 's']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't']:
-            return 'running'
-        elif status.lower() in ['e']:
-            return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'htcondor':
-        return 'running'
-    else:
-        raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
-
+            if servers[server]['cluster_soft'].lower() == 'slurm':
+                status = status_line.split()[4]
+                status_time = status_line.split()[5]
+                # Time can be in the following format
+                # 1-00:00:00
+                # 00:00:00
+                # 00:00
+                # We need to handle all these cases
+                days = status_time.split('-')[0] if len(status_time.split('-')) == 2 else 0
+                # Remove the days from the status_time
+                status_time = status_time.split('-')[1] if len(status_time.split('-')) == 2 else status_time
+                if len(status_time.split(':')) == 3:
+                    hours, minutes, seconds = map(int, status_time.split(':'))
+                else:
+                    minutes, seconds = map(int, status_time.split(':'))  
+                node_id = status_line.split()[7]
+                # Sometimes the node has stopped responding during configuration
+                # Usually a node takes approx 10 mins to configure. We shall wait for 15 mins
+                if status.lower() == 'cf' and minutes >= 15:
+                    # Run a command to check if the node is still responding
+                    with SSHClient(server) as ssh:
+                        stdout, _ = ssh._send_command_to_server(f'scontrol show node {node_id}', remote_path='')
+                        if 'NOT_RESPONDING' in stdout:
+                            return 'errored'
+                if status.lower() in ['r', 'qw', 't', 'cg', 'pd','cf']:
+                    return 'running'
+                elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
+                    return 'errored'
+            elif servers[server]['cluster_soft'].lower() == 'pbs':
+                status = status_line.split()[-2]
+                if status.lower() in ['r', 'q', 'c', 'e', 'w']:
+                    return 'running'
+                elif status.lower() in ['h', 's']:
+                    return 'errored'
+            elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
+                status = status_line.split()[4]
+                if status.lower() in ['r', 'qw', 't']:
+                    return 'running'
+                elif status.lower() in ['e']:
+                    return 'errored'
+            elif servers[server]['cluster_soft'].lower() == 'htcondor':
+                return 'running'
+            else:
+                raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+    return 'done'
 
 def delete_all_arc_jobs(server_list: list,
                         jobs: Optional[List[str]] = None,
