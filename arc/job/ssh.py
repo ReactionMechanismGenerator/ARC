@@ -464,7 +464,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft'].lower()
         if cluster_soft == 'htcondor':
             return list()
-        cmd = list_available_nodes_command[cluster_soft]
+        cmd = list_available_nodes_command[cluster_soft.upper()]
         stdout = self._send_command_to_server(command=cmd)[0]
         nodes = list()
         if cluster_soft in ['oge', 'sge']:
