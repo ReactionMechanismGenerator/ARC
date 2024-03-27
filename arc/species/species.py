@@ -192,8 +192,9 @@ class ARCSpecies(object):
                                    result in one direction.
         project_directory (str, optional): The path to the project directory.
         multi_species: (str, optional): The multi-species set this species belongs to. Used for running a set of species
-                                        simultaneously in a single ESS input file. A species marked as multi_species
-                                        will only have one conformer considered (n_confs set to 1).
+                                       simultaneously in a single ESS input file. A species marked as multi_species
+                                       will only have one conformer considered (n_confs set to 1).
+        gen_res_structures (bool, optional): Whether to generate resonance structures for the species.
 
     Attributes:
         label (str): The species' label.
@@ -296,6 +297,7 @@ class ARCSpecies(object):
         project_directory (str): The path to the project directory.
         multi_species: (str): The multi-species set this species belongs to. Used for running a set of species
                               simultaneously in a single ESS input file.
+        gen_res_structures (bool): Whether to generate resonance structures for the species.
         symmetry_number (int): The external symmetry number of the species, calculated from mol_list.
         index (int): An optional index for the species.
     """
@@ -315,6 +317,7 @@ class ARCSpecies(object):
                  external_symmetry: Optional[int] = None,
                  fragments: Optional[List[List[int]]] = None,
                  force_field: str = 'MMFF94s',
+                 gen_res_structures: bool = True,
                  inchi: str = '',
                  is_ts: bool = False,
                  irc_label: Optional[str] = None,
@@ -376,6 +379,7 @@ class ARCSpecies(object):
         self.ts_checks = dict()
         self.project_directory = project_directory
         self.label = label
+        self.gen_res_structures = gen_res_structures
         self.symmetry_number = None
         self.index = None
 
@@ -532,7 +536,8 @@ class ARCSpecies(object):
                     raise SpeciesError(f'Something is wrong with the .bdes attribute of {label}. '
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
-        self.set_mol_list()
+        if self.mol is not None and self.mol_list is None and self.gen_res_structures:
+            self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
 
@@ -749,6 +754,8 @@ class ARCSpecies(object):
             species_dict['e0_only'] = self.e0_only
         if self.tsg_spawned is not False:
             species_dict['tsg_spawned'] = self.tsg_spawned
+        if self.gen_res_structures is False:
+            species_dict['gen_res_structures'] = self.gen_res_structures
         if self.yml_path is not None:
             species_dict['yml_path'] = self.yml_path
         if self.run_time is not None:
@@ -834,6 +841,7 @@ class ARCSpecies(object):
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
+        self.gen_res_structures = species_dict['gen_res_structures'] if 'gen_res_structures' in species_dict else True
         self.active = species_dict['active'] if 'active' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
