@@ -173,7 +173,7 @@ def calculate_truhlar_scaling_factors(zpe_dict: dict,
                     'HF': 5.864 * 4184,
                     'N2O': 6.770 * 4184,
                     'N2': 3.3618 * 4184,
-                    'NH3': 21.200 * 4184,
+#                    'NH3': 21.200 * 4184,
                     'OH': 5.2915 * 4184,
                     'Cl2': 0.7983 * 4184}
 
@@ -290,9 +290,9 @@ def get_species_list() -> list:
     n2o_xyz = {'symbols': ('N', 'N', 'O'), 'isotopes': (14, 14, 16),
                'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.12056262), (0.0, 0.0, 2.30761092))}
     n2_xyz = {'symbols': ('N', 'N'), 'isotopes': (14, 14), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.09710935))}
-    nh3_xyz = {'symbols': ('N', 'H', 'H', 'H'), 'isotopes': (14, 1, 1, 1),
-               'coords': ((0.0, 0.0, 0.11289), (0.0, 0.938024, -0.263409),
-                          (0.812353, -0.469012, -0.263409), (-0.812353, -0.469012, -0.263409))}
+    # nh3_xyz = {'symbols': ('N', 'H', 'H', 'H'), 'isotopes': (14, 1, 1, 1),
+    #            'coords': ((0.0, 0.0, 0.11289), (0.0, 0.938024, -0.263409),
+    #                       (0.812353, -0.469012, -0.263409), (-0.812353, -0.469012, -0.263409))}
     oh_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.967))}
     cl2_xyz = {'symbols': ('Cl', 'Cl'), 'isotopes': (35, 35), 'coords': ((0.0, 0.0, 0.995), (0.0, 0.0, -0.995))}
 
@@ -332,8 +332,8 @@ def get_species_list() -> list:
     n2 = ARCSpecies(label='N2', smiles='N#N', multiplicity=1, charge=0)
     n2.initial_xyz = n2_xyz
 
-    nh3 = ARCSpecies(label='NH3', smiles='N', multiplicity=1, charge=0)
-    nh3.initial_xyz = nh3_xyz
+    # nh3 = ARCSpecies(label='NH3', smiles='N', multiplicity=1, charge=0)
+    # nh3.initial_xyz = nh3_xyz
 
     oh = ARCSpecies(label='OH', smiles='[OH]', multiplicity=2, charge=0)
     oh.initial_xyz = oh_xyz
@@ -341,7 +341,7 @@ def get_species_list() -> list:
     cl2 = ARCSpecies(label='Cl2', smiles='[Cl][Cl]', multiplicity=1, charge=0)
     cl2.initial_xyz = cl2_xyz
 
-    species_list = [c2h2, ch4, co2, co, f2, ch2o, h2o, h2, hcn, hf, n2o, n2, nh3, oh, cl2]
+    species_list = [c2h2, ch4, co2, co, f2, ch2o, h2o, h2, hcn, hf, n2o, n2, oh, cl2]  # removed nh3
 
     return species_list
 
