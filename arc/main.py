@@ -582,15 +582,21 @@ class ARC(object):
             Status dictionary indicating which species converged successfully.
         """
         logger.info('\n')
+        considered_list = list()
         for species in self.species:
             if not isinstance(species, ARCSpecies):
                 raise ValueError(f'All species must be ARCSpecies objects. Got {type(species)}')
             if species.is_ts:
                 logger.info(f'Considering transition state: {species.label}')
             else:
-                logger.info(f'Considering species: {species.label}')
-                if species.mol is not None:
-                    display(species.mol.copy(deep=True))
+                if not species.multi_species:
+                    logger.info(f'Considering species: {species.label}')
+                    if species.mol is not None:
+                        display(species.mol.copy(deep=True))
+                elif species.multi_species not in considered_list:
+                    logger.info(f'Considering species: {species.multi_species}')
+                    considered_list.append(species.multi_species)
+
         logger.info('\n')
         for rxn in self.reactions:
             if not isinstance(rxn, ARCReaction):
