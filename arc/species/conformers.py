@@ -1210,11 +1210,12 @@ def get_force_field_energies_solvation(label: str,
     content['n_confs'] = 1
     content['compute_thermo'] = False
     content['species'] = list()
+    species_per_job = 500
     for i, xyz in enumerate(ff_xyzs):
         spc_dict = dict()
         spc_dict['label'] = f'{label}_multi_{i}'
         spc_dict['xyz'] = xyz
-        spc_dict['multi_species'] = f'{label}_multi'
+        spc_dict['multi_species'] = f'{label}_multi_cluster_{i//species_per_job}'
         content['species'].append(spc_dict)
     save_yaml_file(path=os.path.join(ARC_child_path, 'input.yml'), content=content)
     commands = ['source ~/.bashrc', 'conda activate arc_env', f'python {ARC_PATH}/ARC.py {ARC_child_path}/input.yml']
