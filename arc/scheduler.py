@@ -34,6 +34,7 @@ from arc.exceptions import (InputError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
+                            ParserError,
                             )
 from arc.imports import settings
 from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
@@ -2425,7 +2426,7 @@ class Scheduler(object):
                                                project_directory=self.project_directory,
                                                method='draw_3d')
         elif self.trsh_ess_jobs:
-            self.troubleshoot_opt_jobs(label=label)
+            self.troubleshoot_opt_jobs(label, job)
         return success
 
     def post_opt_geo_work(self, 
@@ -3315,7 +3316,10 @@ class Scheduler(object):
                                      )
         return trsh_success, actual_actions
 
-    def troubleshoot_opt_jobs(self, label):
+    def troubleshoot_opt_jobs(self, 
+                              label: str,
+                              job: 'JobAdapter',
+                              ):
         """
         We're troubleshooting for opt jobs.
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
@@ -3355,6 +3359,17 @@ class Scheduler(object):
                                  fine=True,
                                  )
             else:
+                multi_species = any(spc.multi_species == label for spc in self.species_list)
+                if multi_species:
+                    problematic_label, problematic_index = self.parse_multi_geo_trsh(label, job)
+                    original_species_list = [spc.multi_species == label for spc in self.species_list]
+                    self.species_list = original_species_list[problematic_index + 1:]
+                    self.run_job(label=label, 
+                                 xyz=self.species_dict[label].initial_xyz if isinstance(label, str) else None,
+                                 level_of_theory=self.opt_level,
+                                 job_type='opt', 
+                                )                    
+                    return None
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
                 if previous_job_num >= 0 and job.fine:
@@ -3809,6 +3824,21 @@ class Scheduler(object):
             content = read_yaml_file(path)
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
+
+    def parse_multi_geo_trsh(self, 
+                             label: str,
+                             job: 'JobAdapter'
+                            ):
+        multi_species_opt_xyzs = dict()
+        for index, spc in enumerate(self.species_list):
+            if spc.multi_species == label:
+                if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
+                    multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
+                    self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
+                    self.post_opt_geo_work(spc.label, job)
+                else:
+                    logger.error(f"Skip parsing XYZ for species '{spc.label}' at index {index} in self.species_list.")
+                    return spc.label, index
 
 
 def species_has_freq(species_output_dict: dict,
