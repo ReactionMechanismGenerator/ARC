@@ -2397,7 +2397,7 @@ class Scheduler(object):
                 success = True
                 if multi_species:
                     for spc in self.species_list:
-                        if spc.multi_species == label:
+                        if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
                             self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                             self.post_opt_geo_work(spc.label, job)
                 else:
