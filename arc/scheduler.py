@@ -3362,13 +3362,13 @@ class Scheduler(object):
                 multi_species = any(spc.multi_species == label for spc in self.species_list)
                 if multi_species:
                     problematic_label, problematic_index = self.parse_multi_geo_trsh(label, job)
-                    original_species_list = [spc.multi_species == label for spc in self.species_list]
-                    self.species_list = original_species_list[problematic_index + 1:]
-                    self.run_job(label=label, 
-                                 xyz=self.species_dict[label].initial_xyz if isinstance(label, str) else None,
+                    original_labels = [species.label for species in self.species_list if species.multi_species == label]
+                    updated_labels = original_labels[problematic_index + 1:]
+                    self.run_job(label=updated_labels, 
+                                 xyz=None,
                                  level_of_theory=self.opt_level,
                                  job_type='opt', 
-                                )                    
+                                )            
                     return None
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
