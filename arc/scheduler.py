@@ -607,8 +607,6 @@ class Scheduler(object):
                                                                                                           path=job.local_path_to_xyz or job.local_path_to_output_file)
                                 success = self.parse_opt_geo(label=label, job=job)
                                 if success:
-                                    if not self.job_types['sp']:
-                                        self.save_energy_geo(label=label, job=job)
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
                                 if multi_species:
                                     plotter.delete_multi_species_output_file(species_list=self.species_list,
@@ -2425,6 +2423,8 @@ class Scheduler(object):
                         plotter.draw_structure(species=self.species_dict[label],
                                                project_directory=self.project_directory,
                                                method='draw_3d')
+                if not self.job_types['sp']:
+                    self.save_energy_geo_yaml(label=label, job=job)
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label, job)
         return success
