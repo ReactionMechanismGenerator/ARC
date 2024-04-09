@@ -1232,10 +1232,17 @@ def get_force_field_energies_solvation(label: str,
         logger.warning(f'Got the following error when trying to submit job:\n{stderr}.')
     xyzs = list()
     energies = list()
-    energy_dict = read_yaml_file(os.path.join(ARC_child_path, 'output', 'e_elect_summary.yml'))
+    content = dict()
     for i in range(len(ff_xyzs)):
-        xyzs.append(parse_xyz_from_file(os.path.join(ARC_child_path, 'output', 'Species', f'{label}_multi_{i}', 'geometry', f'{label}_multi_{i}.xyz')))
-        energies.append(energy_dict[f'{label}_multi_{i}'])
+        energy_geo_dict = read_yaml_file(os.path.join(ARC_child_path, 'output', f'{label}_multi_cluster_{i//species_per_job}_energy_geo_summary.yml'))
+        try:
+            xyzs.append(energy_geo_dict[f'{label}_multi_{i}']['xyz'])
+            energies.append(energy_geo_dict[f'{label}_multi_{i}']['energy'])
+            content[f'{label}_multi_{i}'] = {'xyz': xyzs[-1], 'energy': energies[-1]}
+        except KeyError:
+            continue
+    save_yaml_file(path=os.path.join(ARC_child_path, 'output', 'energy_geometry_summary.yml'), content=content)
+    logger.info(f'{label} conformer with solvation effect are spawned from a subprocess.')
     return xyzs, energies
 
 
