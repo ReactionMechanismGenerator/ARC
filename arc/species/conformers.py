@@ -1235,9 +1235,12 @@ def get_force_field_energies_solvation(label: str,
     content = dict()
     for i in range(len(ff_xyzs)):
         energy_geo_dict = read_yaml_file(os.path.join(ARC_child_path, 'output', f'{label}_multi_cluster_{i//species_per_job}_energy_geo_summary.yml'))
-        xyzs.append(energy_geo_dict[f'{label}_multi_{i}']['xyz'])
-        energies.append(energy_geo_dict[f'{label}_multi_{i}']['energy'])
-        content[f'{label}_multi_{i}'] = {'xyz': xyzs[-1], 'energy': energies[-1]}
+        try:
+            xyzs.append(energy_geo_dict[f'{label}_multi_{i}']['xyz'])
+            energies.append(energy_geo_dict[f'{label}_multi_{i}']['energy'])
+            content[f'{label}_multi_{i}'] = {'xyz': xyzs[-1], 'energy': energies[-1]}
+        except KeyError:
+            continue
     save_yaml_file(path=os.path.join(ARC_child_path, 'output', 'energy_geometry_summary.yml'), content=content)
     logger.info(f'{label} conformer with solvation effect are spawned from a subprocess.')
     return xyzs, energies
