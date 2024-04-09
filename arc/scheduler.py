@@ -2310,9 +2310,9 @@ class Scheduler(object):
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
     def save_energy_geo(self,
-                          label: str,
-                          job: 'JobAdapter',
-                          ) -> bool:
+                        label: str,
+                        job: 'JobAdapter',
+                        ) -> bool:
         """
         Parse electronic energy for 'opt' or 'optfreq' job if it converged successfully.
 
