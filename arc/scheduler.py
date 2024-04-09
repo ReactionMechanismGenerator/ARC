@@ -2330,7 +2330,6 @@ class Scheduler(object):
                 if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
                     self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
                     energies.append(self.species_dict[spc.label].e_elect)
-                    geo_path = os.path.join(self.project_directory, 'output', 'Species', spc.label, 'geometry', f'{spc.label}.xyz')
                     xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
                     content[spc.label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
         else:
@@ -3844,12 +3843,11 @@ class Scheduler(object):
 
                 self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
                 energies.append(self.species_dict[spc.label].e_elect)
-                geo_path = os.path.join(self.project_directory, 'output', 'Species', spc.label, 'geometry', f'{spc.label}.xyz')
                 xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
                 content[spc.label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
             else:
                 save_yaml_file(path=path, content=content)
-                logger.error(f"Skip parsing XYZ for species '{spc.label}' at index {index} in self.species_list.")
+                logger.info(f"Skip parsing XYZ for species '{spc.label}' at index {index} in self.species_list.")
                 return spc.label, index
 
 
