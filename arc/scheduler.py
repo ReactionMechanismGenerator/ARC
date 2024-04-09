@@ -34,6 +34,7 @@ from arc.exceptions import (InputError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
+                            ParserError,
                             )
 from arc.imports import settings
 from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
@@ -606,8 +607,6 @@ class Scheduler(object):
                                                                                                           path=job.local_path_to_xyz or job.local_path_to_output_file)
                                 success = self.parse_opt_geo(label=label, job=job)
                                 if success:
-                                    if not self.job_types['sp']:
-                                        self.parse_opt_e_elect(label=label, job=job)
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
                                 if multi_species:
                                     plotter.delete_multi_species_output_file(species_list=self.species_list,
@@ -2312,10 +2311,10 @@ class Scheduler(object):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
-    def parse_opt_e_elect(self,
-                          label: str,
-                          job: 'JobAdapter',
-                          ) -> bool:
+    def save_energy_geo_yaml(self,
+                             label: str,
+                             job: 'JobAdapter',
+                             ) -> bool:
         """
         Parse electronic energy for 'opt' or 'optfreq' job if it converged successfully.
 
@@ -2324,17 +2323,28 @@ class Scheduler(object):
             job (JobAdapter): The optimization job object.
         """
         multi_species = any(spc.multi_species == label for spc in self.species_list)
-
+        xyzs = list()
+        energies = list()
+        content = dict()
+        path = os.path.join(self.project_directory, 'output', f'{label}_energy_geo_summary.yml')
+        if os.path.isfile(path):
+            content = read_yaml_file(path)
         if multi_species:
             for spc in self.species_list:
-                if spc.multi_species == label:
+                if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                     self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
-                    self.save_e_elect(spc.label)
+                    energies.append(self.species_dict[spc.label].e_elect)
+                    xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
+                    content[spc.label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
         else:
             e_elect_value = parser.parse_e_elect(path=job.local_path_to_xyz or job.local_path_to_output_file) \
                 if label in self.species_dict.keys() else dict()
             self.species_dict[label].e_elect = e_elect_value
-            self.save_e_elect(label)
+            energies.append(self.species_dict[label].e_elect)
+            geo_path = os.path.join(self.project_directory, 'output', 'Species', label, 'geometry', f'{label}.xyz')
+            xyzs.append(parser.parse_xyz_from_file(geo_path))
+            content[label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
+        save_yaml_file(path=path, content=content)
 
     def parse_opt_geo(self,
                       label: str,
@@ -2364,7 +2374,7 @@ class Scheduler(object):
                 if label in self.species_dict.keys() else dict()
             if multi_species:
                 for spc in self.species_list:
-                    if spc.multi_species == label:
+                    if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                         multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
 
             if not job.fine and self.job_types['fine'] \
@@ -2388,7 +2398,7 @@ class Scheduler(object):
                 success = True
                 if multi_species:
                     for spc in self.species_list:
-                        if spc.multi_species == label:
+                        if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                             self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                             self.post_opt_geo_work(spc.label, job)
                 else:
@@ -2416,8 +2426,10 @@ class Scheduler(object):
                         plotter.draw_structure(species=self.species_dict[label],
                                                project_directory=self.project_directory,
                                                method='draw_3d')
+                if not self.job_types['sp']:
+                    self.save_energy_geo_yaml(label=label, job=job)
         elif self.trsh_ess_jobs:
-            self.troubleshoot_opt_jobs(label=label)
+            self.troubleshoot_opt_jobs(label, job)
         return success
 
     def post_opt_geo_work(self, 
@@ -3307,7 +3319,10 @@ class Scheduler(object):
                                      )
         return trsh_success, actual_actions
 
-    def troubleshoot_opt_jobs(self, label):
+    def troubleshoot_opt_jobs(self, 
+                              label: str,
+                              job: 'JobAdapter',
+                              ):
         """
         We're troubleshooting for opt jobs.
         First check for server status and troubleshoot if needed. Then check for ESS status and troubleshoot
@@ -3347,6 +3362,17 @@ class Scheduler(object):
                                  fine=True,
                                  )
             else:
+                multi_species = any(spc.multi_species == label for spc in self.species_list)
+                if multi_species:
+                    problematic_label, problematic_index = self.parse_multi_geo_trsh(label, job)
+                    original_labels = [species.label for species in self.species_list if species.multi_species == label]
+                    updated_labels = original_labels[problematic_index + 1:]
+                    self.run_job(label=updated_labels, 
+                                 xyz=None,
+                                 level_of_theory=self.opt_level,
+                                 job_type='opt', 
+                                )            
+                    return None
                 trsh_opt = True
                 # job passed on the server, but failed in ESS calculation
                 if previous_job_num >= 0 and job.fine:
@@ -3801,6 +3827,32 @@ class Scheduler(object):
             content = read_yaml_file(path)
         content[label] = self.species_dict[label].e_elect
         save_yaml_file(path=path, content=content)
+
+    def parse_multi_geo_trsh(self, 
+                             label: str,
+                             job: 'JobAdapter'
+                            ):
+        xyzs = list()
+        energies = list()
+        content = dict()
+        path = os.path.join(self.project_directory, 'output', f'{label}_energy_geo_summary.yml')
+        if os.path.isfile(path):
+            content = read_yaml_file(path)
+        multi_species_opt_xyzs = dict()
+        for index, spc in enumerate(self.species_list):
+            if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
+                multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
+                self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
+                self.post_opt_geo_work(spc.label, job)
+
+                self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
+                energies.append(self.species_dict[spc.label].e_elect)
+                xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
+                content[spc.label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
+            else:
+                save_yaml_file(path=path, content=content)
+                logger.info(f"Skip parsing XYZ for species '{spc.label}' at index {index} in self.species_list.")
+                return spc.label, index
 
 
 def species_has_freq(species_output_dict: dict,
