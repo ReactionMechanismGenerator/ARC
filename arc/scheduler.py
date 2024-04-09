@@ -2327,7 +2327,7 @@ class Scheduler(object):
             content = read_yaml_file(path)
         if multi_species:
             for spc in self.species_list:
-                if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
+                if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                     self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
                     energies.append(self.species_dict[spc.label].e_elect)
                     xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
@@ -2370,7 +2370,7 @@ class Scheduler(object):
                 if label in self.species_dict.keys() else dict()
             if multi_species:
                 for spc in self.species_list:
-                    if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
+                    if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                         multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
 
             if not job.fine and self.job_types['fine'] \
@@ -2394,7 +2394,7 @@ class Scheduler(object):
                 success = True
                 if multi_species:
                     for spc in self.species_list:
-                        if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
+                        if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                             self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                             self.post_opt_geo_work(spc.label, job)
                 else:
@@ -3836,7 +3836,7 @@ class Scheduler(object):
             content = read_yaml_file(path)
         multi_species_opt_xyzs = dict()
         for index, spc in enumerate(self.species_list):
-            if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0 and spc.multi_species == label:
+            if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                 multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
                 self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                 self.post_opt_geo_work(spc.label, job)
