@@ -712,8 +712,11 @@ class JobAdapter(ABC):
             csv_path = os.path.join(local_arc_path_, 'initiated_jobs.csv')
             with open(csv_path, 'a') as f:
                 writer = csv.writer(f, dialect='excel')
-                row = [self.job_num, self.project, self.species_label, self.job_type, self.is_ts, self.charge,
-                       self.multiplicity, self.job_name, self.job_id, self.server, self.job_adapter,
+                species_label = self.species_label if not isinstance(self.species_label, list) or len(self.species_label) <= 5 else self.species_label[:5]+['etc.']
+                charge = self.charge if not isinstance(self.charge, list) or len(self.charge) <= 5 else self.charge[:5]+['etc.']
+                multiplicity = self.multiplicity if not isinstance(self.multiplicity, list) or len(self.multiplicity) <= 5 else self.multiplicity[:5]+['etc.']
+                row = [self.job_num, self.project, species_label, self.job_type, self.is_ts, charge,
+                       multiplicity, self.job_name, self.job_id, self.server, self.job_adapter,
                        self.job_memory_gb, str(self.level)]
                 writer.writerow(row)
 
@@ -748,8 +751,11 @@ class JobAdapter(ABC):
                 job_type = self.job_type
                 if self.fine:
                     job_type += ' (fine)'
-                row = [self.job_num, self.project, self.species_label, job_type, self.is_ts, self.charge,
-                       self.multiplicity, self.job_name, self.job_id, self.server, self.job_adapter,
+                species_label = self.species_label if not isinstance(self.species_label, list) or len(self.species_label) <= 5 else self.species_label[:5]+['etc.']
+                charge = self.charge if not isinstance(self.charge, list) or len(self.charge) <= 5 else self.charge[:5]+['etc.']
+                multiplicity = self.multiplicity if not isinstance(self.multiplicity, list) or len(self.multiplicity) <= 5 else self.multiplicity[:5]+['etc.']
+                row = [self.job_num, self.project, species_label, job_type, self.is_ts, charge,
+                       multiplicity, self.job_name, self.job_id, self.server, self.job_adapter,
                        self.job_memory_gb, str(self.level), self.initial_time, self.final_time,
                        self.run_time, self.job_status[0], self.job_status[1]['status'], self.ess_trsh_methods]
                 writer.writerow(row)
