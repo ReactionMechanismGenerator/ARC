@@ -602,6 +602,7 @@ class Scheduler(object):
                             if successful_server_termination:
                                 multi_species = any(spc.multi_species == label for spc in self.species_list)
                                 if multi_species:
+                                    logger.info(f'Making the multi_species outputfiles, the running_jobs are: {self.running_jobs}')
                                     self.multi_species_path_dict = plotter.make_multi_species_output_file(species_list=self.species_list,
                                                                                                           label=label, 
                                                                                                           path=job.local_path_to_xyz or job.local_path_to_output_file)
@@ -609,6 +610,7 @@ class Scheduler(object):
                                 if success:
                                     self.spawn_post_opt_jobs(label=label, job_name=job_name)
                                 if multi_species:
+                                    logger.info(f'Deleting the multi_species outputfiles, the running_jobs are: {self.running_jobs}')
                                     plotter.delete_multi_species_output_file(species_list=self.species_list,
                                                                              label=label, 
                                                                              multi_species_path_dict=self.multi_species_path_dict
