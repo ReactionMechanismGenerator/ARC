@@ -1183,11 +1183,13 @@ class Scheduler(object):
                                                or self.species_dict[label].get_xyz(generate=False)
         if self.species_dict[label].initial_xyz is None:
             raise SpeciesError(f'Cannot execute opt job for {label} without xyz (got None for Species.initial_xyz)')
+        label_single_spc = None
+        key = None
         if self.species_dict[label].multi_species:
             key = 'fine' if fine else 'opt'
             if self.output_multi_spc[self.species_dict[label].multi_species].get(key, False):
                 return
-            self.output_multi_spc[self.species_dict[label].multi_species][key] = True
+            label_single_spc = label
             label = [species.label for species in self.species_list
                      if species.multi_species == self.species_dict[label].multi_species]
         self.run_job(label=label, 
@@ -1195,6 +1197,8 @@ class Scheduler(object):
                      level_of_theory=self.opt_level,
                      job_type='opt', 
                      fine=fine)
+        if label_single_spc is not None and key is not None:
+            self.output_multi_spc[self.species_dict[label_single_spc].multi_species][key] = True
 
     def run_composite_job(self, label: str):
         """
