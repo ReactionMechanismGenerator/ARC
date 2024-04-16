@@ -3839,17 +3839,21 @@ class Scheduler(object):
         if os.path.isfile(path):
             content = read_yaml_file(path)
         multi_species_opt_xyzs = dict()
-        for index, spc in enumerate(self.species_list):
-            if spc.multi_species == label and os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
+        original_species = [species for species in self.species_list if species.multi_species == label]
+        for index, spc in enumerate(original_species):
+            if spc.label in content:
+                continue
+            if os.path.getsize(self.multi_species_path_dict[spc.label]) != 0:
                 multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
                 self.species_dict[spc.label].final_xyz = multi_species_opt_xyzs[spc.label]
                 self.post_opt_geo_work(spc.label, job)
-
+                #Fill info to the YAML file
                 self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
                 energies.append(self.species_dict[spc.label].e_elect)
                 xyzs.append(parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label]))
                 content[spc.label] = {'xyz': xyzs[-1], 'energy': energies[-1]}
             else:
+                content[spc.label] = {'xyz': 'skip', 'energy': 'skip'}
                 save_yaml_file(path=path, content=content)
                 logger.info(f"Skip parsing XYZ for species '{spc.label}' at index {index} in self.species_list.")
                 return spc.label, index
