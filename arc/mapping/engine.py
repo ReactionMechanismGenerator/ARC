@@ -1117,8 +1117,12 @@ def r_cut_p_cut_isomorphic(reactant, product):
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
     res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
-    for res in res1:
-        if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
+    if res1 is not None:
+        for res in res1:
+            if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
+                return True
+    else:
+        if reactant.mol.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(reactant.mol.copy(deep=True), save_order=True):
             return True
     return False
 
