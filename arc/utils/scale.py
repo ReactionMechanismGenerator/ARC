@@ -294,7 +294,7 @@ def get_species_list() -> list:
                'coords': ((0.0, 0.0, 0.11289), (0.0, 0.938024, -0.263409),
                           (0.812353, -0.469012, -0.263409), (-0.812353, -0.469012, -0.263409))}
     oh_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.967))}
-    cl2_xyz = {'symbols': ('Cl', 'Cl'), 'isotopes': (35, 35), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 1.1))}
+    cl2_xyz = {'symbols': ('Cl', 'Cl'), 'isotopes': (35, 35), 'coords': ((0.0, 0.0, 0.995), (0.0, 0.0, -0.995))}
 
     c2h2 = ARCSpecies(label='C2H2', smiles='C#C', multiplicity=1, charge=0)
     c2h2.initial_xyz = c2h2_xyz
