@@ -900,6 +900,7 @@ def save_conformers_file(project_directory: str,
                          ts_methods: Optional[List[str]] = None,
                          im_freqs: Optional[List[List[float]]] = None,
                          log_content: bool = False,
+                         before_optimization: bool = True,
                          ):
     """
     Save the conformers before or after optimization.
@@ -918,6 +919,7 @@ def save_conformers_file(project_directory: str,
         ts_methods (list, optional): Entries are method names used to generate the TS guess.
         im_freqs (list, optional): Entries lists of imaginary frequencies.
         log_content (bool): Whether to log the content of the conformers file. ``True`` to log, default is ``False``.
+        before_optimization (bool): Whether the conformers are before DFT optimization. ``True`` for before, default is ``True``.
     """
     spc_dir = 'rxns' if is_ts else 'Species'
     geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry', 'conformers')
