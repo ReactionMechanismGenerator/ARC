@@ -756,9 +756,7 @@ def extremum_list(lst: list,
     Returns: Optional[Union[int, None]]
         The entry with the minimal/maximal value.
     """
-    if len(lst) == 0:
-        return None
-    elif all([entry is None for entry in lst]):
+    if lst is None or len(lst) == 0 or all([entry is None for entry in lst]):
         return None
     elif len(lst) == 1:
         return lst[0]
