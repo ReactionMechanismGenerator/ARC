@@ -184,16 +184,18 @@ H      -1.82570782    0.42754384   -0.56130718"""
                              xyzs=self.sched1.species_dict['C2H6'].conformers,
                              level_of_theory=Level(method='CBS-QB3'),
                              multiplicity=1,
-                             charge=0)
+                             charge=0,
+                             before_optimization=True,)
         c2h6_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'C2H6', 'geometry',
                                       'conformers', 'conformers_before_optimization.txt')
         self.assertTrue(os.path.isfile(c2h6_conf_path))
         with open(c2h6_conf_path, 'r') as f:
             lines = f.readlines()
-        self.assertEqual(lines[0], 'conformer 0:\n')
-        self.assertEqual(lines[1][0], 'C')
-        self.assertEqual(lines[9], '\n')
-        self.assertEqual(lines[10], 'SMILES: CC\n')
+        self.assertEqual(lines[0], 'Conformers for C2H6, computed using a force field:\n')
+        self.assertEqual(lines[2], 'conformer 0:\n')
+        self.assertEqual(lines[3][0], 'C')
+        self.assertEqual(lines[11], '\n')
+        self.assertEqual(lines[12], 'SMILES: CC\n')
 
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""

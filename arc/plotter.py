@@ -900,6 +900,7 @@ def save_conformers_file(project_directory: str,
                          ts_methods: Optional[List[str]] = None,
                          im_freqs: Optional[List[List[float]]] = None,
                          log_content: bool = False,
+                         before_optimization: bool = True,
                          ):
     """
     Save the conformers before or after optimization.
@@ -918,21 +919,22 @@ def save_conformers_file(project_directory: str,
         ts_methods (list, optional): Entries are method names used to generate the TS guess.
         im_freqs (list, optional): Entries lists of imaginary frequencies.
         log_content (bool): Whether to log the content of the conformers file. ``True`` to log, default is ``False``.
+        before_optimization (bool): Whether the conformers are before DFT optimization. ``True`` for before, default is ``True``.
     """
     spc_dir = 'rxns' if is_ts else 'Species'
     geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry', 'conformers')
     if not os.path.exists(geo_dir):
         os.makedirs(geo_dir)
-    if energies is not None and any(e is not None for e in energies):
-        optimized = True
-        min_e = extremum_list(energies, return_min=True)
-        conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
-    else:
-        optimized = False
+    if before_optimization:
         conf_path = os.path.join(geo_dir, 'conformers_before_optimization.txt')
+    else:
+        conf_path = os.path.join(geo_dir, 'conformers_after_optimization.txt')
+    min_e = extremum_list(energies, return_min=True)
     with open(conf_path, 'w') as f:
         content = ''
-        if optimized:
+        if before_optimization:
+            content += f'Conformers for {label}, computed using a force field:\n\n'
+        else:
             level_of_theory = level_of_theory.simple() if isinstance(level_of_theory, Level) else level_of_theory
             content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
         for i, xyz in enumerate(xyzs):
@@ -950,7 +952,7 @@ def save_conformers_file(project_directory: str,
                     content += f'TS guess method: {ts_methods[i]}\n'
                 if im_freqs is not None and im_freqs[i] is not None:
                     content += f'Imaginary frequencies: {im_freqs[i]}\n'
-                if optimized:
+                if min_e is not None:
                     if energies[i] == min_e:
                         content += 'Relative Energy: 0 kJ/mol (lowest)'
                     elif energies[i] is not None:
