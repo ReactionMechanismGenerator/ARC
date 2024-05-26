@@ -1338,7 +1338,7 @@ def order_fragments_by_constraints(fragments: List[List[int]],
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         constraints_dict (dict, optional):
             A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
-            are after the atoms they are constraint to.
+            are after the atoms they are constrained to.
 
     Returns:
         List[List[int]]: The ordered fragments list.
@@ -1378,7 +1378,7 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         constraints_dict (dict, optional):
             A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
-            are after the atoms they are constraint to.
+            are after the atoms they are constrained to.
 
     Returns:
         List[int]: The atom order, 0-indexed.
@@ -2356,3 +2356,30 @@ def check_ordered_zmats(zmat_1: dict,
         bool: Whether the ZMats are ordered.
     """
     return zmat_1['symbols'] == zmat_2['symbols'] and zmat_1['vars'].keys() == zmat_2['vars'].keys()
+
+
+def update_zmat_by_xyz(zmat: dict,
+                       xyz: Dict[str, tuple],
+                       ) -> dict:
+    """
+    Update a zmat vars by xyz.
+
+    Args:
+        zmat (dict): The zmat to update.
+        xyz (dict): The xyz to update the zmat with.
+
+    Returns:
+        dict: The updated zmat.
+    """
+    zmat = {'symbols': zmat['symbols'],
+            'coords': zmat['coords'],
+            'vars': zmat['vars'],
+            'map': zmat['map'],
+            }
+    new_vars = dict()
+    for key, val in zmat['vars'].items():
+        indices = get_atom_indices_from_zmat_parameter(key)[0]
+        indices = [zmat['map'][index] for index in indices]
+        new_vars[key] = calculate_param(coords=xyz, atoms=indices)
+    zmat['vars'] = new_vars
+    return zmat
