@@ -1846,6 +1846,7 @@ class Scheduler(object):
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge,
                                      is_ts=False,
+                                     energies=self.species_dict[label].conformer_energies,
                                      before_optimization=True,
                                      )  # before optimization
         self.species_dict[label].conformers_before_opt = tuple(self.species_dict[label].conformers)
