@@ -2469,3 +2469,22 @@ def kabsch(xyz1: dict, xyz2: dict) -> float:
     coords1, coords2 = np.array(xyz1['coords']), np.array(xyz2['coords'])
     _, score = Rotation.align_vectors(coords1, coords2)
     return score
+
+
+def order_xyz_by_atom_map(xyz: dict,
+                          atom_map: list,
+                          ) -> dict:
+    """
+    Order xyz coordinates according to the atom map.
+
+    Args:
+        xyz (dict): The xyz coordinates.
+        atom_map (list): The atom map.
+
+    Returns:
+        dict: The ordered xyz coordinates.
+    """
+    symbols = [xyz['symbols'][i] for i in atom_map]
+    isotopes = [xyz['isotopes'][i] for i in atom_map] if 'isotopes' in xyz else None
+    coords = [xyz['coords'][i] for i in atom_map]
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
