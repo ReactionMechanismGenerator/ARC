@@ -1105,6 +1105,8 @@ class ARCSpecies(object):
         if len(lowest_confs):
             self.conformers.extend([conf['xyz'] for conf in lowest_confs])
             self.conformer_energies.extend([conf['FF energy'] for conf in lowest_confs])
+            logger.info(f'conformer xyz:\n {self.conformers} \n')
+            logger.info(f'conformer energy:\n {self.conformer_energies} \n')
         else:
             xyz = self.get_xyz(generate=False)
             if xyz is None or not xyz:
