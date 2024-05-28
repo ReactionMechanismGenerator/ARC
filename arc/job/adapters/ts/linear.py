@@ -4,16 +4,19 @@ An adapter for executing TS guess jobs based on linear interpolation of internal
 
 import copy
 import datetime
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from arc.common import almost_equal_coords, get_logger
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
+from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
+                                get_rmg_reactions_from_arc_reaction,
+                                )
 from arc.plotter import save_geo
-from arc.species.converter import zmat_to_xyz
+from arc.species.converter import order_xyz_by_atom_map, zmat_to_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
-from arc.species.zmat import check_ordered_zmats, xyz_to_zmat
+from arc.species.zmat import check_ordered_zmats, get_atom_order, update_zmat_by_xyz, xyz_to_zmat
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -295,7 +298,7 @@ def interpolate(rxn: 'ARCReaction',
 
 def interpolate_isomerization(rxn: 'ARCReaction',
                               use_weights: bool = False,
-                              ) -> Optional[dict]:
+                              ) -> Optional[List[dict]]:
     """
     Search for a TS of an isomerization reaction by interpolating internal coords.
 
@@ -304,23 +307,63 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         use_weights (bool, optional): Whether to use the well energies to determine relative interpolation weights.
 
     Returns:
-        Optional[dict]: The XYZ coordinates guess.
+        Optional[List[dict]]: The XYZ coordinates guesses.
     """
-    rxn.r_species[0].get_xyz()
-    rxn.p_species[0].get_xyz()
-    r_zmat = xyz_to_zmat(xyz=rxn.r_species[0].get_xyz(),
-                         consolidate=False,
-                         atom_order=list(range(sum(r.number_of_atoms for r in rxn.r_species))))
-    p_zmat = xyz_to_zmat(xyz=rxn.p_species[0].get_xyz(),
-                         consolidate=False,
-                         atom_order=rxn.atom_map)
     weight = get_rxn_weight(rxn) if use_weights else 0.5
     if weight is None:
         return None
-    ts_zmat = average_zmat_params(zmat_1=r_zmat, zmat_2=p_zmat, weight=weight)
-    if ts_zmat is None:
-        return None
-    return zmat_to_xyz(ts_zmat)
+    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn) or list()
+    ts_xyzs = list()
+    for rmg_reaction in rmg_reactions:
+        r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
+                                                                            rmg_reaction=rmg_reaction)[0]
+        if r_label_dict is None:
+            continue
+        expected_breaking_bonds, expected_forming_bonds = rxn.get_expected_changing_bonds(r_label_dict=r_label_dict)
+        if expected_breaking_bonds is None or expected_forming_bonds is None:
+            continue
+        r_zmat = xyz_to_zmat(xyz=rxn.r_species[0].get_xyz(),
+                             mol=rxn.r_species[0].mol,
+                             consolidate=False,
+                             constraints=get_r_constraints(expected_breaking_bonds=expected_breaking_bonds,
+                                                           expected_forming_bonds=expected_forming_bonds),
+                             )
+        ordered_p_xyz = order_xyz_by_atom_map(xyz=rxn.p_species[0].get_xyz(), atom_map=rxn.atom_map)
+        p_zmat = update_zmat_by_xyz(zmat=r_zmat, xyz=ordered_p_xyz)
+        ts_zmat = average_zmat_params(zmat_1=r_zmat, zmat_2=p_zmat, weight=weight)
+
+        if ts_zmat is not None:
+            ts_xyzs.append(zmat_to_xyz(ts_zmat))
+    return ts_xyzs
+
+
+def get_r_constraints(expected_breaking_bonds: List[Tuple[int, int]],
+                      expected_forming_bonds: List[Tuple[int, int]],
+                      ) -> Dict[str, list]:
+    """
+    Get the "R_atom" constraints for the reactant ZMat.
+
+    Args:
+        expected_breaking_bonds (List[Tuple[int, int]]): Expected breaking bonds.
+        expected_forming_bonds (List[Tuple[int, int]]): Expected forming bonds.
+
+    Returns:
+        Dict[str, list]: The constraints.
+    """
+    constraints = list()
+    atom_occurrences = dict()
+    for bond in expected_breaking_bonds + expected_forming_bonds:
+        for atom in bond:
+            if atom not in atom_occurrences:
+                atom_occurrences[atom] = 0
+            atom_occurrences[atom] += 1
+    atoms_sorted_by_frequency = [k for k, _ in sorted(atom_occurrences.items(), key=lambda item: item[1], reverse=True)]
+    for i, atom in enumerate(atoms_sorted_by_frequency):
+        for bond in expected_breaking_bonds + expected_forming_bonds:
+            if atom in bond and all(a not in atoms_sorted_by_frequency[:i] for a in bond):
+                constraints.append(bond if atom == bond[0] else (bond[1], bond[0]))
+                break
+    return {'R_atom': constraints}
 
 
 def average_zmat_params(zmat_1: dict,
