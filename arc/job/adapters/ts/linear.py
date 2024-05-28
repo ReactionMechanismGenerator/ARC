@@ -224,42 +224,45 @@ class LinearAdapter(JobAdapter):
                                                           )
 
             t0_0 = datetime.datetime.now()
-            xyz_0 = interpolate(rxn=rxn, use_weights=False)
+            xyzs_0 = interpolate(rxn=rxn, use_weights=False)
             t_ex_0 = datetime.datetime.now() - t0_0
 
             t0_1 = datetime.datetime.now()
-            xyz_1 = interpolate(rxn=rxn, use_weights=True)
+            xyzs_1 = interpolate(rxn=rxn, use_weights=True)
             t_ex_1 = datetime.datetime.now() - t0_1
 
-            for method_index, (xyz, t0, t_ex) in enumerate(zip([xyz_0, xyz_1], [t0_0, t0_1], [t_ex_0, t_ex_1])):
-                if xyz is None:
+            index = 0
+            for xyzs, t0, t_ex in zip([xyzs_0, xyzs_1], [t0_0, t0_1], [t_ex_0, t_ex_1]):
+                if xyzs is None or not len(xyzs):
                     continue
-                if colliding_atoms(xyz):
-                    continue
-                unique = True
-                for other_tsg in rxn.ts_species.ts_guesses:
-                    if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                        if 'linear' not in other_tsg.method.lower():
-                            other_tsg.method += f' and Linear {method_index}'
-                        unique = False
-                        break
-                if unique:
-                    ts_guess = TSGuess(method=f'linear {method_index}',
-                                       index=len(rxn.ts_species.ts_guesses),
-                                       method_index=method_index,
-                                       t0=t0,
-                                       execution_time=t_ex,
-                                       success=True,
-                                       family=family_label,
-                                       xyz=xyz,
-                                       )
-                    rxn.ts_species.ts_guesses.append(ts_guess)
-                    save_geo(xyz=xyz,
-                             path=self.local_path,
-                             filename=f'Linear {method_index}',
-                             format_='xyz',
-                             comment=f'Linear {method_index}, family: {family_label}',
-                             )
+                for xyz in xyzs:
+                    if colliding_atoms(xyz):
+                        continue
+                    unique = True
+                    for other_tsg in rxn.ts_species.ts_guesses:
+                        if almost_equal_coords(xyz, other_tsg.initial_xyz):
+                            if 'linear' not in other_tsg.method.lower():
+                                other_tsg.method += f' and Linear {index}'
+                            unique = False
+                            break
+                    if unique:
+                        ts_guess = TSGuess(method=f'linear {index}',
+                                           index=len(rxn.ts_species.ts_guesses),
+                                           method_index=index,
+                                           t0=t0,
+                                           execution_time=t_ex,
+                                           success=True,
+                                           family=family_label,
+                                           xyz=xyz,
+                                           )
+                        rxn.ts_species.ts_guesses.append(ts_guess)
+                        save_geo(xyz=xyz,
+                                 path=self.local_path,
+                                 filename=f'Linear {index}',
+                                 format_='xyz',
+                                 comment=f'Linear {index}, family: {family_label}',
+                                 )
+                    index += 1
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method])
