@@ -9,16 +9,19 @@ import os
 import shutil
 import unittest
 
+from rmgpy.data.kinetics import KineticsFamily
+
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.adapters.ts.linear import (LinearAdapter,
                                         average_zmat_params,
+                                        get_r_constraints,
                                         get_rxn_weight,
                                         get_weight,
                                         interpolate_isomerization,
                                         )
 from arc.reaction import ARCReaction
 from arc.rmgdb import make_rmg_database_object, load_families_only
-from arc.species.converter import str_to_xyz
+from arc.species.converter import str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies
 from arc.species.zmat import _compare_zmats
 
@@ -72,6 +75,30 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                              H      -0.42088759   -4.06846526   -2.17670487
                                                              H       1.36205133   -3.75009763   -2.57288841""")])
         cls.rxn_1.determine_family(rmg_database=cls.rmgdb)
+
+        cls.rxn_2 = ARCReaction(r_species=[ARCSpecies(label='CCONO', smiles='CCON=O',
+                                                      xyz="""C      -1.36894499    0.07118059   -0.24801399
+                                                             C      -0.01369535    0.17184136    0.42591278
+                                                             O      -0.03967083   -0.62462610    1.60609048
+                                                             N       1.23538512   -0.53558048    2.24863846
+                                                             O       1.25629155   -1.21389295    3.27993827
+                                                             H      -2.16063255    0.41812452    0.42429392
+                                                             H      -1.39509985    0.66980796   -1.16284741
+                                                             H      -1.59800183   -0.96960842   -0.49986392
+                                                             H       0.19191326    1.21800574    0.68271847
+                                                             H       0.76371340   -0.19234475   -0.25650067""")],
+                                p_species=[ARCSpecies(label='CCNO2', smiles='CC[N+](=O)[O-]',
+                                                      xyz="""C      -1.12362739   -0.04664655   -0.08575959
+                                                             C       0.24488022   -0.51587553    0.36119196
+                                                             N       0.57726975   -1.77875156   -0.37104243
+                                                             O       1.16476543   -1.66382529   -1.45384186
+                                                             O       0.24561669   -2.84385320    0.16410116
+                                                             H      -1.87655344   -0.80826847    0.13962125
+                                                             H      -1.14729169    0.14493421   -1.16405294
+                                                             H      -1.41423043    0.87863077    0.42354512
+                                                             H       1.02430791    0.21530309    0.12674144
+                                                             H       0.27058353   -0.73979548    1.43184405""")])
+        cls.rxn_2.determine_family(rmg_database=cls.rmgdb)
 
     def test_average_zmat_params(self):
         """Test the average_zmat_params() function."""
@@ -166,8 +193,8 @@ class TestHeuristicsAdapter(unittest.TestCase):
         rxn_1.ts_species.e0 = 391.6
         self.assertAlmostEquals(get_rxn_weight(rxn_1), 0.3417832)
 
-    def test_interpolate_isomerization(self):
-        """Test the interpolate_isomerization() function."""
+    def test_interpolate_isomerization_intra_h_migration(self):
+        """Test the interpolate_isomerization() function for intra H migration reactions."""
         nc3h7_xyz = """C                  0.00375165   -0.48895802   -1.20586379
                        C                  0.00375165   -0.48895802    0.28487510
                        C                  0.00375165    0.91997987    0.85403684
@@ -191,36 +218,76 @@ class TestHeuristicsAdapter(unittest.TestCase):
         nc3h7 = ARCSpecies(label='nC3H7', smiles='[CH2]CC', xyz=nc3h7_xyz)
         ic3h7 = ARCSpecies(label='iC3H7', smiles='C[CH]C', xyz=ic3h7_xyz)
         rxn = ARCReaction(r_species=[nc3h7], p_species=[ic3h7])
-        expected_ts_xyz = str_to_xyz("""C       0.01099731   -0.46789926   -1.15958911
-                                        C       0.01099731   -0.46789926    0.33114978
-                                        C       0.01099731    0.94103865    0.90031155
-                                        H       0.57795661   -1.24174248   -1.65467180
-                                        H      -0.39690222    0.34527841   -1.69240298
-                                        H      -1.19440431   -1.28933062   -0.47327539
-                                        H       0.89689057   -1.16420498    0.45967951
-                                        H       0.76979130    1.33747945    0.33815513
-                                        H      -0.04544494    0.70455273    1.77835334
-                                        H      -1.00071642    1.24557408    0.38839197""")
-        ts_xyz = interpolate_isomerization(rxn, use_weights=False)
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_ts_xyz))
+        expected_ts_xyz = str_to_xyz("""C       0.00598652   -0.48762088   -1.18600054
+                                        C       0.00598652   -0.48762088    0.30473835
+                                        C       0.00598652    0.92131703    0.87390011
+                                        H       0.57807817   -1.25594905   -1.69382911
+                                        H      -0.42698663    0.35443110   -1.71434916
+                                        H      -1.27461406   -1.27709743   -0.24121083
+                                        H       0.89172104   -1.02331658    0.66282944
+                                        H       0.88735917    1.48171935    0.54398704
+                                        H       0.01673891    0.88717852    1.96803717
+                                        H      -0.88613815    1.47510670    0.56219446""")
+        ts_xyzs = interpolate_isomerization(rxn, use_weights=False)
+        self.assertEqual(len(ts_xyzs), 2)
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
 
         nc3h7.e0 = 101.55
         ic3h7.e0 = 88.91
         ts = ARCSpecies(label='TS', is_ts=True, multiplicity=2, xyz=expected_ts_xyz)
         ts.e0 = 105
         rxn.ts_species = ts
-        expected_ts_xyz = str_to_xyz("""C       0.01224420   -0.47400672   -1.18787451
-                                        C       0.01224420   -0.47400672    0.30286438
-                                        C       0.01224420    0.93493122    0.87202615
-                                        H       0.47981756   -1.29923732   -1.70742021
-                                        H      -0.50470551    0.28201158   -1.73526026
-                                        H      -1.06475721   -1.18141451    0.26785378
-                                        H       0.86736552   -1.12118386    0.54383845
-                                        H       0.79813573    1.38347069    0.43772483
-                                        H      -0.03897336    0.76031233    1.86961141
-                                        H      -0.97425159    1.33180895    0.47825005""")
-        ts_xyz = interpolate_isomerization(rxn, use_weights=True)
-        self.assertTrue(almost_equal_coords(ts_xyz, expected_ts_xyz))
+        expected_ts_xyz = str_to_xyz("""C       0.00591772   -0.48764618   -1.20069282
+                                        C       0.00591772   -0.48764618    0.29004607
+                                        C       0.00591772    0.92129176    0.85920784
+                                        H       0.47693974   -1.30982443   -1.72763512
+                                        H      -0.52424330    0.28530048   -1.74580953
+                                        H      -1.07348606   -1.15308709    0.40763997
+                                        H       0.89165221   -1.02334186    0.64813718
+                                        H       0.88729039    1.48169408    0.52929476
+                                        H       0.01667012    0.88715326    1.95334482
+                                        H      -0.88620694    1.47508143    0.54750218""")
+        ts_xyzs = interpolate_isomerization(rxn, use_weights=True)
+        self.assertEqual(len(ts_xyzs), 2)
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
+
+        # r_xyz = """C      -1.05582103   -0.03329574   -0.10080257
+        #            C       0.41792695    0.17831205    0.21035514
+        #            O       1.19234020   -0.65389683   -0.61111443
+        #            O       2.44749684   -0.41401220   -0.28381363
+        #            H      -1.33614002   -1.09151783    0.08714882
+        #            H      -1.25953618    0.21489046   -1.16411897
+        #            H      -1.67410396    0.62341419    0.54699514
+        #            H       0.59566350   -0.06437686    1.28256640
+        #            H       0.67254676    1.24676329    0.02676370"""
+        # p_xyz = """C      -1.40886397    0.22567351   -0.37379668
+        #            C       0.06280787    0.04097694   -0.38515682
+        #            O       0.44130326   -0.57668419    0.84260864
+        #            O       1.89519755   -0.66754203    0.80966180
+        #            H      -1.87218376    0.90693511   -1.07582340
+        #            H      -2.03646287   -0.44342165    0.20255768
+        #            H       0.35571681   -0.60165457   -1.22096147
+        #            H       0.56095122    1.01161503   -0.47393734
+        #            H       2.05354047   -0.10415729    1.58865243"""
+        # r = ARCSpecies(label='R', smiles='CCO[O]', xyz=r_xyz)
+        # p = ARCSpecies(label='P', smiles='[CH2]COO', xyz=p_xyz)
+        # rxn = ARCReaction(r_species=[r], p_species=[p])
+        # expected_ts_xyz = str_to_xyz("""C       0.00598652   -0.48762088   -1.18600054
+        #                                 C       0.00598652   -0.48762088    0.30473835
+        #                                 C       0.00598652    0.92131703    0.87390011
+        #                                 H       0.57807817   -1.25594905   -1.69382911
+        #                                 H      -0.42698663    0.35443110   -1.71434916
+        #                                 H      -1.27461406   -1.27709743   -0.24121083
+        #                                 H       0.89172104   -1.02331658    0.66282944
+        #                                 H       0.88735917    1.48171935    0.54398704
+        #                                 H       0.01673891    0.88717852    1.96803717
+        #                                 H      -0.88613815    1.47510670    0.56219446""")
+        # ts_xyzs = interpolate_isomerization(rxn, use_weights=False)
+        # self.assertEqual(len(ts_xyzs), 3)
+        # for ts_xyz in ts_xyzs:
+        #     print(f'\nTS xyz:\n\n')
+        #     print(xyz_to_str(ts_xyz))
+        # self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))
 
     def test_linear_adapter(self):
         """Test the LinearAdapter class."""
@@ -229,13 +296,35 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                  reactions=[self.rxn_1],
                                  testing=True,
                                  project='test',
-                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear', 'tst1'),
+                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear', 'rxn_1'),
                                  )
         self.assertIsNone(self.rxn_1.ts_species)
         linear_1.execute()
         self.assertEqual(len(self.rxn_1.ts_species.ts_guesses), 1)
         self.assertEqual(self.rxn_1.ts_species.ts_guesses[0].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+    def test_linear_adapter_2(self):
+        self.rxn_2.family = KineticsFamily(label='intra_NO2_ONO_conversion')
+        self.rxn_2.atom_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
+        self.assertEqual(self.rxn_2.family.label, 'intra_NO2_ONO_conversion')
+        linear_2 = LinearAdapter(job_type='tsg',
+                                 reactions=[self.rxn_2],
+                                 testing=True,
+                                 project='test',
+                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_linear', 'rxn_2'),
+                                 )
+        self.assertIsNone(self.rxn_2.ts_species)
+        linear_2.execute()
+        self.assertEqual(len(self.rxn_2.ts_species.ts_guesses), 1)
+        print(xyz_to_str(self.rxn_2.ts_species.ts_guesses[0].initial_xyz))
+        self.assertEqual(self.rxn_2.ts_species.ts_guesses[0].initial_xyz['symbols'],
+                         ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+    def test_get_r_constraints(self):
+        """Test the get_r_constraints() function."""
+        self.assertEqual(get_r_constraints([(1, 5)], [(0, 5)]), {'R_atom': [(5, 1)]})
+        self.assertEqual(get_r_constraints([(1, 5), (7, 2), (8, 2)], [(0, 5), (7, 4), (8, 1)]), {'R_atom': [(1, 5), (5, 0), (7, 2), (2, 8)]})
 
     @classmethod
     def tearDownClass(cls):
