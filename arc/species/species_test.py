@@ -2624,6 +2624,21 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
 
+    def test_get_bonds(self):
+        """Test the get_bonds() function."""
+        bonds = self.spc1.get_bonds()
+        self.assertEqual(bonds, [(0, 1), (1, 2), (1, 5), (0, 4), (0, 3)])
+
+        bonds = self.spc2.get_bonds()
+        self.assertEqual(bonds, [(0, 1)])
+
+        bonds = self.spc12.get_bonds()
+        self.assertEqual(bonds, [(9, 26), (10, 11), (14, 30), (5, 6), (1, 17), (15, 31), (3, 21), (8, 9),
+                                 (10, 15), (0, 16), (0, 10), (1, 2), (2, 19), (4, 9), (6, 7), (12, 13), (7, 24),
+                                 (11, 27), (13, 29), (5, 22), (3, 4), (12, 28), (8, 25), (4, 5), (2, 20), (2, 3),
+                                 (6, 23), (14, 15), (11, 12), (0, 1), (13, 14), (1, 18), (7, 8)])
+
+
     @classmethod
     def tearDownClass(cls):
         """
