@@ -33,10 +33,10 @@ class TestARCReaction(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
-        cls.maxDiff = None
-        cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.rmgdb.kinetics.families = None
-        rmgdb.load_families_only(cls.rmgdb, "all")
+        # cls.maxDiff = None
+        # cls.rmgdb = rmgdb.make_rmg_database_object()
+        # cls.rmgdb.kinetics.families = None
+        # rmgdb.load_families_only(cls.rmgdb, "all")
         
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
@@ -104,6 +104,10 @@ class TestARCReaction(unittest.TestCase):
                                                                 Species(label='OH', smiles='[OH]')],
                                                      products=[Species(label='CH3', smiles='[CH3]'),
                                                                Species(label='H2O', smiles='O')]))
+        cls.rxn_1_w_xyz = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
+                                                 ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
+                                      p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
+                                                 ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
         cls.rxn2 = ARCReaction(reactants=['C2H5', 'OH'], products=['C2H4', 'H2O'],
                                rmg_reaction=Reaction(reactants=[Species(label='C2H5', smiles='C[CH2]'),
                                                                 Species(label='OH', smiles='[OH]')],
@@ -1932,9 +1936,15 @@ H       1.12853146   -0.86793870    0.06973060"""
 
     def test_get_bonds(self):
         """Test the get_bonds() method."""
-        r_bonds, p_bonds = self.rxn1.get_bonds()
+        r_bonds, p_bonds = self.rxn_1_w_xyz.get_bonds()
         self.assertEqual(r_bonds, [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)])  # CH4 + OH
-        self.assertEqual(p_bonds, [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)])  # CH3 + H2O
+        self.assertEqual(p_bonds, [(0, 2), (0, 3), (0, 4), (5, 6), (1, 5)])  # CH3 + H2O
+
+    def test_get_formed_and_broken_bonds(self):
+        """Test the get_formed_and_broken_bonds() function."""
+        formed_bonds, broken_bonds = self.rxn_1_w_xyz.get_formed_and_broken_bonds()
+        self.assertEqual(formed_bonds, [(1, 5)])
+        self.assertEqual(broken_bonds, [(0, 1)])
 
     def test_multi_reactants(self):
         """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
