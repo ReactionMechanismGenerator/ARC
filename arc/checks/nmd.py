@@ -2,9 +2,6 @@
 A module for checking the normal mode displacement of a TS.
 """
 
-import logging
-import os
-
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Union
 
@@ -12,24 +9,13 @@ import qcelemental as qcel
 
 import arc.rmgdb as rmgdb
 from arc import parser
-from arc.common import (ARC_PATH,
-                        convert_list_index_0_to_1,
-                        extremum_list,
-                        get_logger,
-                        get_bonds_from_dmat,
-                        read_yaml_file,
-                        sum_list_entries,
-                        )
+from arc.common import get_logger
 from arc.imports import settings
-from arc.species.converter import get_most_common_isotope_for_element, xyz_to_np_array
+from arc.species.converter import get_most_common_isotope_for_element, xyz_from_data, xyz_to_np_array
 from arc.species.vectors import calculate_distance, VectorsError
-from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
-                                )
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
-    from arc.species.species import ARCSpecies, TSGuess
     from arc.reaction import ARCReaction
 
 logger = get_logger()
@@ -70,27 +56,19 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
         logger.warning(f'Could not parse frequencies (and cannot compute NMD) for TS {reaction.ts_species.label}.')
         return
 
-    # from rxn:
-    formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
-
     amplitude = [amplitude] if isinstance(amplitude, float) else amplitude
     weights = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     for amp in amplitude:
         if not amp:
             continue
-        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp, weights=weights)
-        reacting_bonds_diffs = get_bond_length_changes_of_reacting_bonds(reaction=reaction, xyzs=xyzs)
-        baseline, std = get_bond_length_changes_baseline_and_std(reaction=reaction)
-
-        nmd_factor = (np.min(reacting_bonds_diffs) - baseline) / std
-
-        if nmd_factor > 3:
+        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights)
+        reacting_bonds_diffs = get_bond_length_changes_of_reacting_bonds(reaction=reaction, xyzs=xyzs)  # need weights??
+        baseline, std = get_bond_length_changes_baseline_and_std(reaction=reaction, xyzs=xyzs)
+        print(f'\n\n\nmin: {np.min(reacting_bonds_diffs)}\nbaseline: {baseline}\nstd: {std}\n\n\n')
+        sigma = (np.min(reacting_bonds_diffs) - baseline) / std
+        if sigma > 3:
             return True
     return False
-
-
-
-
 
 
 def get_weights_from_xyz(xyz: dict,
@@ -127,31 +105,36 @@ def get_displaced_xyzs(xyz: dict,
                        amplitude: float,
                        normal_mode_disp: np.array,
                        weights: np.array,
-                       ) -> Tuple[np.array, np.array]:
+                       ) -> Tuple[dict, dict]:
     """
     Get the Cartesian coordinates of the TS displaced along a normal mode.
 
     Args:
         xyz (dict): The Cartesian coordinates.
         amplitude (float): The amplitude of the displacement.
-        normal_mode_disp (np.array): The normal mode displacement matrix.
+        normal_mode_disp (np.array): The normal mode displacement matrix corresponding to the imaginary frequency.
         weights (np.array): The weights for the atoms.
 
     Returns:
-        Tuple[np.array, np.array]: The Cartesian coordinates of the molecule displaced along the normal mode.
+        Tuple[dict, dict]: The Cartesian coordinates of the TS displaced along the normal mode.
     """
     np_coords = xyz_to_np_array(xyz)
-    return (np_coords - amplitude * normal_mode_disp * weights,
-            np_coords + amplitude * normal_mode_disp * weights)
+    xyz_1 = xyz_from_data(coords=np_coords - amplitude * normal_mode_disp * weights,
+                          symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+    xyz_2 = xyz_from_data(coords=np_coords + amplitude * normal_mode_disp * weights,
+                          symbols=xyz['symbols'], isotopes=xyz['isotopes'])
+    return xyz_1, xyz_2
 
 
 def get_bond_length_changes_baseline_and_std(reaction: 'ARCReaction',
+                                             xyzs: Tuple[dict, dict],
                                              ) -> Tuple[float, float]:
     """
     Get the baseline for bond length change of all non-reacting bonds.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
+        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
 
     Returns:
         Tuple[float, float]:
@@ -160,78 +143,66 @@ def get_bond_length_changes_baseline_and_std(reaction: 'ARCReaction',
     """
     r_bonds, p_bonds = reaction.get_bonds()
     non_reactive_bonds = set(r_bonds) & set(p_bonds)
-    diffs = get_bond_length_changes(reaction=reaction, bonds=non_reactive_bonds)
+    diffs = get_bond_length_changes(bonds=non_reactive_bonds, xyzs=xyzs)
     baseline_max = np.max(diffs)
     std = np.std(diffs)
     return baseline_max, std
 
 
 def get_bond_length_changes_of_reacting_bonds(reaction: 'ARCReaction',
-                                              xyzs: Tuple[np.array, np.array],
+                                              xyzs: Tuple[dict, dict],
                                               ) -> np.array:
     """
     Get the bond length changes of all reacting bonds.
 
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
+        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
 
     Returns:
         np.array: The bond length changes of all reacting bonds.
     """
     formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
-    reactive_bonds = formed_bonds + broken_bonds
-    return get_bond_length_changes(reaction=reaction, bonds=reactive_bonds)
+    return get_bond_length_changes(bonds=formed_bonds + broken_bonds, xyzs=xyzs)
 
 
-def get_bond_length_changes(reaction: 'ARCReaction',
-                            bonds: Union[List[Tuple[int, int]], Set[Tuple[int, int]]],
+def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, int]]],
+                            xyzs: Tuple[dict, dict],
                             ) -> np.array:
     """
     Get the bond length changes of specific bonds.
 
     Args:
-        reaction (ARCReaction): The reaction for which the TS is checked.
         bonds (Union[list, tuple]): The bonds to check.
+        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
 
     Returns:
         np.array: The bond length changes of the specified bonds.
     """
     diffs = list()
-    reactants, products = reaction.get_reactants_and_products()
     for bond in bonds:
-        r_bond_length = get_bond_length_in_reaction(species=reactants, bond=bond)
-        p_bond_length = get_bond_length_in_reaction(species=products, bond=[reaction.atom_map[atom] for atom in bond])
+        r_bond_length = get_bond_length_in_reaction(bond=bond, xyz=xyzs[0])
+        p_bond_length = get_bond_length_in_reaction(bond=bond, xyz=xyzs[1])
         diffs.append(abs(r_bond_length - p_bond_length))
     diffs = np.array(diffs)
     return diffs
 
 
-def get_bond_length_in_reaction(species: List['ARCSpecies'],
-                                bond: Union[Tuple[int, int], List[int]],
+def get_bond_length_in_reaction(bond: Union[Tuple[int, int], List[int]],
+                                xyz: dict,
                                 ) -> Optional[float]:
     """
     Get the length of a bond in either the reactants or the products of a reaction.
 
     Args:
-        species (List[ARCSpecies]): The list of species to consider (either all reactants or all products).
         bond (Tuple[int, int]): The bond to check.
+        xyz (dict): The Cartesian coordinates.
 
     Returns:
         float: The bond length.
     """
-    sizes = [len(spc.mol.atoms) for spc in species]
-    sum_sizes = list()
-    for i, size in enumerate(sizes):
-        sum_sizes.append(sum_list_entries(sizes[:i]) + size)
-    for i in range(len(sizes)):
-        if bond[0] < sum_sizes[i] and bond[1] < sum_sizes[i]:
-            xyz = species[i].get_xyz()
-            indices = [bond[0] - sum_sizes[i - 1] if i > 0 else bond[0],
-                       bond[1] - sum_sizes[i - 1] if i > 0 else bond[1]]
-            try:
-                distance = calculate_distance(coords=xyz, atoms=indices, index=0)
-            except (VectorsError, TypeError):
-                # except (VectorsError, TypeError, IndexError):
-                return None
-            return distance
-    return None
+    try:
+        distance = calculate_distance(coords=xyz, atoms=bond, index=0)
+    except (VectorsError, TypeError, IndexError):
+        return None
+    return distance
