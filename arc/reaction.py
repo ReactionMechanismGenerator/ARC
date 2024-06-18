@@ -963,6 +963,18 @@ class ARCReaction(object):
                 len_atoms += spc.number_of_atoms
         return r_bonds, p_bonds
 
+    def get_formed_and_broken_bonds(self) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+        """
+        Get all bonds that were formed or broken in the reaction.
+
+        Returns:
+            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]: The formed and broken bonds.
+        """
+        r_bonds, p_bonds = self.get_bonds()
+        r_bonds, p_bonds = set(r_bonds), set(p_bonds)
+        formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
+        return list(formed_bonds), list(broken_bonds)
+
     def copy_e0_values(self, other_rxn: Optional['ARCReaction']):
         """
         Copy the E0 values from another reaction object instance for the TS
