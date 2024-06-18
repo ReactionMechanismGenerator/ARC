@@ -95,11 +95,33 @@ class TestARCReaction(unittest.TestCase):
                                H                 -0.36439762   -1.57761595   -0.41622918
                                H                 -1.43807526    1.62776079    0.73816131
                                H                 -1.28677889    1.04716138   -1.01532486"""
+        cls.ho2_xyz = """O       1.00509800   -0.18331500   -0.00000000
+                         O      -0.16548400    0.44416100    0.00000000
+                         H      -0.83961400   -0.26084600    0.00000000"""
+        cls.n2h4_xyz = """N      -0.66510800   -0.10671700   -0.25444200
+                          N       0.63033400    0.04211900    0.34557500
+                          H      -1.16070500    0.76768900   -0.12511600
+                          H      -1.21272700   -0.83945300    0.19196500
+                          H       1.26568700   -0.57247200   -0.14993500
+                          H       0.63393800   -0.23649100    1.32457000"""
+        cls.h2o2_xyz = """O       0.60045000   -0.40342400    0.24724100
+                          O      -0.59754500    0.41963800    0.22641300
+                          H       1.20401100    0.16350100   -0.25009400
+                          H      -1.20691600   -0.17971500   -0.22356000"""
+        cls.n2h3_xyz = """N       0.74263400   -0.29604200    0.40916100
+                          N      -0.39213800   -0.13735700   -0.31177100
+                          H       1.49348100    0.07315400   -0.18245700
+                          H      -1.18274100   -0.63578900    0.07132400
+                          H      -0.36438800   -0.12591900   -1.32684600"""
         cls.rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'],
                                r_species=[ARCSpecies(label='CH4', smiles='C'),
                                           ARCSpecies(label='OH', smiles='[OH]')],
                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
                                           ARCSpecies(label='H2O', smiles='O')])
+        cls.rxn_1_w_xyz = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
+                                                 ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
+                                      p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
+                                                 ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
         cls.rxn2 = ARCReaction(reactants=['C2H5', 'OH'], products=['C2H4', 'H2O'],
                                r_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
                                           ARCSpecies(label='OH', smiles='[OH]')],
@@ -148,6 +170,10 @@ class TestARCReaction(unittest.TestCase):
                                            ARCSpecies(label='NO', smiles='[N]=O')])
         cls.rxn11 = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.ch3chch3_xyz)],
                                 p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.ch3ch2ch2_xyz)])
+        cls.rxn_12_w_xyz = ARCReaction(r_species=[ARCSpecies(label='HO2', smiles='O[O]', xyz=cls.ho2_xyz),
+                                                  ARCSpecies(label='N2H4', smiles='NN', xyz=cls.n2h4_xyz)],
+                                       p_species=[ARCSpecies(label='H2O2', smiles='OO', xyz=cls.h2o2_xyz),
+                                                  ARCSpecies(label='N2H3', smiles='N[NH]', xyz=cls.n2h3_xyz)])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -1772,9 +1798,27 @@ H       1.12853146   -0.86793870    0.06973060"""
 
     def test_get_bonds(self):
         """Test the get_bonds() method."""
-        r_bonds, p_bonds = self.rxn1.get_bonds()
+        r_bonds, p_bonds = self.rxn_1_w_xyz.get_bonds()
         self.assertEqual(r_bonds, [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)])  # CH4 + OH
-        self.assertEqual(p_bonds, [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)])  # CH3 + H2O
+        self.assertEqual(p_bonds, [(0, 2), (0, 3), (0, 4), (5, 6), (1, 5)])  # CH3 + H2O
+
+        r_bonds, p_bonds = self.rxn_12_w_xyz.get_bonds()
+        self.assertEqual(r_bonds, [(0, 1), (1, 2), (3, 4), (3, 5), (3, 6), (4, 7), (4, 8)])  # HO2 + N2H4
+        self.assertEqual(p_bonds, [(0, 1), (1, 2), (0, 5), (3, 4), (3, 6), (4, 7), (4, 8)])  # H2O2 + N2H3
+
+        r_bonds, p_bonds = self.rxn_12_w_xyz.get_bonds(r_bonds_only=True)
+        self.assertEqual(r_bonds, [(0, 1), (1, 2), (3, 4), (3, 5), (3, 6), (4, 7), (4, 8)])
+        self.assertEqual(p_bonds, [])
+
+    def test_get_formed_and_broken_bonds(self):
+        """Test the get_formed_and_broken_bonds() function."""
+        formed_bonds, broken_bonds = self.rxn_1_w_xyz.get_formed_and_broken_bonds()
+        self.assertEqual(formed_bonds, [(1, 5)])
+        self.assertEqual(broken_bonds, [(0, 1)])
+
+        formed_bonds, broken_bonds = self.rxn_12_w_xyz.get_formed_and_broken_bonds()
+        self.assertEqual(formed_bonds, [(0, 5)])
+        self.assertEqual(broken_bonds, [(3, 5)])
 
     def test_multi_reactants(self):
         """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
