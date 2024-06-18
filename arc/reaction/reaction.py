@@ -886,25 +886,44 @@ class ARCReaction(object):
                 masses.append(get_element_mass(atom.element.symbol)[0])
         return masses
 
-    def get_bonds(self) -> Tuple[list, list]:
+    def get_bonds(self,
+                  r_bonds_only: bool = False,
+                  ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
         """
-        Get the connectivity of the reactants and products.
+        Get the connectivity of the reactants and products, all mapped to the atom indices of the reactants.
+
+        Args:
+            r_bonds_only (bool, optional): Whether to return only the reactant bonds.
 
         Returns:
-            Tuple[List[Tuple[int, int]]]:
+            Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]
                 A length-2 tuple is which entries represent reactants and product information, respectively.
                 Each entry is a list of tuples, each represents a bond and contains sorted atom indices.
         """
+        reactants, products = self.get_reactants_and_products()
         r_bonds, p_bonds = list(), list()
-        for bonds, spc_list in zip([r_bonds, p_bonds], [self.r_species, self.p_species]):
-            len_atoms = 0
-            for spc in spc_list:
-                for i, atom_1 in enumerate(spc.mol.atoms):
-                    for atom2, bond12 in atom_1.edges.items():
-                        bond = tuple(sorted([i + len_atoms, spc.mol.atoms.index(atom2) + len_atoms]))
-                        if bond not in bonds:
-                            bonds.append(bond)
-                len_atoms += spc.number_of_atoms
+        len_atoms = 0
+        for spc in reactants:
+            for i, atom_1 in enumerate(spc.mol.atoms):
+                for atom2, bond12 in atom_1.edges.items():
+                    bond = tuple(sorted([i + len_atoms, spc.mol.atoms.index(atom2) + len_atoms]))
+                    if bond not in r_bonds:
+                        r_bonds.append(bond)
+            len_atoms += spc.number_of_atoms
+        len_atoms = 0
+        if r_bonds_only:
+            return r_bonds, p_bonds
+        for spc in products:
+            for i, atom_1 in enumerate(spc.mol.atoms):
+                for atom2, bond12 in atom_1.edges.items():
+                    bond = [i + len_atoms, spc.mol.atoms.index(atom2) + len_atoms]
+                    bond = tuple(sorted([self.atom_map.index(bond[0]), self.atom_map.index(bond[1])]))
+                    if bond not in p_bonds:
+                        p_bonds.append(bond)
+            len_atoms += spc.number_of_atoms
+        mapped_p_bonds = list()
+        for p_bond in p_bonds:
+            mapped_p_bonds.append(tuple([self.atom_map.index(p_bond[0]), self.atom_map.index(p_bond[1])]))
         return r_bonds, p_bonds
 
     def get_formed_and_broken_bonds(self) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
