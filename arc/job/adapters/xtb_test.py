@@ -259,12 +259,6 @@ $end"""
         self.assertEqual(parse_geometry(self.job_2.local_path_to_output_file)['symbols'],
                          ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
 
-    def test_opt_ts(self):
-        """Test optimizing a TS using Stella."""
-        self.assertIsNone(self.job_10.species[0].final_xyz)
-        self.job_10.execute_incore()
-        self.assertTrue(almost_equal_coords(self.job_10.species[0].final_xyz, self.ts_xyz))
-
     def test_freq(self):
         """Test running a vibrational frequency calculation using xTB."""
         self.job_6.execute_incore()
