@@ -1519,7 +1519,7 @@ def rdkit_force_field(label: str,
     return xyzs, energies
 
 
-def get_wells(label, angles, blank=20):
+def get_wells(label, angles, blank=WELL_GAP):
     """
     Determine the distinct wells from a list of angles.
 
