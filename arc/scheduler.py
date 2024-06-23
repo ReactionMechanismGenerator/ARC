@@ -1262,7 +1262,6 @@ class Scheduler(object):
         """
         level = level or self.sp_level
 
-        # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
                 and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
                 and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
@@ -1297,40 +1296,6 @@ class Scheduler(object):
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
             raise SchedulerError(f'run_sp_job() was called for {label} which has a composite method level of theory')
-        if 'mrci' in level.method:
-            if self.job_dict[label]['sp']:
-                # Parse orbital information from the CCSD job, then run MRCI
-                job0 = None
-                job_name_0 = 0
-                for job_name, job in self.job_dict[label]['sp'].items():
-                    if int(job_name.split('_a')[-1]) > job_name_0:
-                        job_name_0 = int(job_name.split('_a')[-1])
-                        job0 = job
-                with open(job0.local_path_to_output_file, 'r') as f:
-                    lines = f.readlines()
-                    core = val = 0
-                    for line in lines:
-                        if 'NUMBER OF CORE ORBITALS' in line:
-                            core = int(line.split()[4])
-                        elif 'NUMBER OF VALENCE ORBITALS' in line:
-                            val = int(line.split()[4])
-                        if val * core:
-                            break
-                    else:
-                        raise SchedulerError(f'Could not determine number of core and valence orbitals from CCSD '
-                                             f'sp calculation for {label}')
-                self.species_dict[label].occ = val + core  # the occupied orbitals are the core and valence orbitals
-                self.run_job(label=label,
-                             xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz',
-                             job_type='sp')
-            else:
-                # MRCI was requested but no sp job ran for this species, run CCSD first
-                logger.info(f'running a CCSD job for {label} before MRCI')
-                self.run_job(label=label,
-                             xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz',
-                             job_type='sp')
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
