@@ -441,7 +441,8 @@ class Scheduler(object):
                             self.run_sp_job(label=species.label)
                         if self.job_types['onedmin']:
                             self.run_onedmin_job(species.label)
-                elif species.get_xyz(generate=False) and not self.job_types['conformers'] and not self.job_types['opt']:
+                elif species.get_xyz(generate=False) and not self.job_types['conformers'] and not self.job_types['opt'] \
+                        and species.irc_label is None:
                     if self.job_types['freq']:
                         self.run_freq_job(species.label)
                     if self.job_types['sp']:
@@ -483,11 +484,12 @@ class Scheduler(object):
                                 # opt/fine hasn't finished (and isn't running), so run it
                                 self.run_opt_job(species.label, fine=self.fine_only)
                         if self.output[species.label]['paths']['geo'] and 'sp' not in self.job_dict[species.label].keys() \
-                                and not self.output[species.label]['paths']['sp'] and self.job_types['sp']:
+                                and not self.output[species.label]['paths']['sp'] and self.job_types['sp'] \
+                                and species.irc_label is None:
                             self.run_sp_job(species.label)
                         if self.output[species.label]['paths']['geo'] and 'freq' not in self.job_dict[species.label].keys() \
-                                and not self.output[species.label]['paths']['freq'] and self.job_types['freq']\
-                                and (species.is_ts or species.number_of_atoms > 1):
+                                and not self.output[species.label]['paths']['freq'] and self.job_types['freq'] \
+                                and (species.is_ts or species.number_of_atoms > 1) and species.irc_label is None:
                             self.run_freq_job(species.label)
                         if self.output[species.label]['paths']['geo'] and self.job_types['rotors'] and \
                                 any(spc.rotors_dict is not None and
@@ -1503,7 +1505,8 @@ class Scheduler(object):
             self.run_irc_job(label=label, irc_direction='reverse')
 
         # Spawn freq (or check it if this is a composite job) for polyatomic molecules.
-        if label in self.output.keys() and self.species_dict[label].number_of_atoms > 1:
+        if label in self.output.keys() and self.species_dict[label].number_of_atoms > 1 \
+                and self.species_dict[label].irc_label is None:
             if 'freq' not in job_name and self.job_types['freq']:
                 # This is either an opt or a composite job (not an optfreq job), spawn freq.
                 self.run_freq_job(label)
@@ -1512,7 +1515,7 @@ class Scheduler(object):
                 self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
 
         # Spawn sp after an opt (non-composite) job.
-        if not composite and self.job_types['sp']:
+        if not composite and self.job_types['sp'] and self.species_dict[label].irc_label is None:
             self.run_sp_job(label)
 
         # Perceive the Molecule from xyz.
@@ -1521,7 +1524,7 @@ class Scheduler(object):
             self.species_dict[label].mol_from_xyz()
 
         # Spawn scan jobs.
-        if self.job_types['rotors']:
+        if self.job_types['rotors'] and self.species_dict[label].irc_label is None:
             if not self.species_dict[label].rotors_dict:
                 self.species_dict[label].determine_rotors()
             self.run_scan_jobs(label)
