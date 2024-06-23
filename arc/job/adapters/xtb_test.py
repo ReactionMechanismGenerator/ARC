@@ -260,7 +260,7 @@ $end"""
                          ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H'))
 
     def test_opt_ts(self):
-        """Test optimizing a TS using Stella."""
+        """Test optimizing a TS using Sella."""
         self.assertIsNone(self.job_10.species[0].final_xyz)
         self.job_10.execute_incore()
         self.assertTrue(almost_equal_coords(self.job_10.species[0].final_xyz, self.ts_xyz))
