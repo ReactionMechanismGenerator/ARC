@@ -39,6 +39,7 @@ servers = {
         'address': 'server1.host.edu',
         'un': '<username>',
         'key': 'path_to_rsa_key',
+        'max_simultaneous_jobs': 10,  # optional, "check_status_command" must be set to only return jobs for your user
     },
     'server2': {
         'cluster_soft': 'Slurm',
@@ -58,7 +59,7 @@ servers = {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
         'cpus': 48,
-        'queues': {'':''}, #{'queue_name':'HH:MM:SS'}
+        'queues': {'':''},  # {'queue_name':'HH:MM:SS'}
         'excluded_queues': ['queue_name1', 'queue_name2'],
     },
 }
