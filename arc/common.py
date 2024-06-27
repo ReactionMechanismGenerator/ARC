@@ -1703,8 +1703,9 @@ def is_xyz_mol_match(mol: 'Molecule',
 
     for element, count in element_dict_mol.items():
         if element not in element_dict_xyz or element_dict_xyz[element] != count:
-           return False
+            return False
     return True
+
 
 def convert_to_hours(time_str:str) -> float:
     """Convert walltime string in format HH:MM:SS to hours.
