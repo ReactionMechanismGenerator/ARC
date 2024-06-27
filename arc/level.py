@@ -395,12 +395,7 @@ class Level(object):
                 var_1 = None
 
             if variant == 'freq':
-                # if not found, the factor is set to exactly 1
-                if assign_frequency_scale_factor(level_of_theory=var_1) != 1:
-                    return var_1
-                if assign_frequency_scale_factor(level_of_theory=var_2) != 1:
-                    return var_2
-                return None
+                return var_2
 
             if variant == 'AEC':
                 try:
