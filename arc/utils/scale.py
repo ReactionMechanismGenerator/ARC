@@ -222,9 +222,8 @@ def summarize_results(lambda_zpes: list,
 
     with open(info_file_path, 'w') as f:
         f.write(HEADER)
-        database_text = '\n\n\nYou may copy-paste the following harmonic frequency scaling factor(s) to ' \
-                        'the RMG-database repository\n' \
-                        '(under the `freq_dict` in RMG-database/input/quantum_corrections/data.py):\n'
+        database_text = '\n\n\nYou may copy-paste the computed harmonic frequency scaling factor(s) to ARC ' \
+                        '(under the `freq_dict` in ARC/data/freq_scale_factors.yml):\n'
         database_formats = list()
         harmonic_freq_scaling_factors = list()
         for lambda_zpe, level, zpe_dict, execution_time\
@@ -233,13 +232,6 @@ def summarize_results(lambda_zpes: list,
             fundamental_freq_scaling_factor = lambda_zpe * 0.974
             harmonic_freq_scaling_factors.append(fundamental_freq_scaling_factor)
             unconverged = [key for key, val in zpe_dict.items() if val is None]
-            arkane_level = level.to_arkane_level_of_theory().simple()
-            arkane_level_str = f"LevelOfTheory(method='{level.method}'"
-            if arkane_level.basis is not None:
-                arkane_level_str += f",basis='{level.basis}'"
-            if arkane_level.software is not None:
-                arkane_level_str += f",software='{level.software}'"
-            arkane_level_str += f")"
 
             text = f'\n\nLevel of theory: {level}\n'
             if unconverged:
@@ -250,7 +242,7 @@ def summarize_results(lambda_zpes: list,
             text += f'(execution time: {execution_time})\n'
             logger.info(text)
             f.write(text)
-            database_formats.append(f"""             "{arkane_level_str}": {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
+            database_formats.append(f"""  '{level}': {harmonic_freq_scaling_factor:.3f},  # [4]\n""")
         logger.info(database_text)
         f.write(database_text)
         for database_format in database_formats:
