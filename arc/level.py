@@ -9,7 +9,6 @@ from typing import Dict, Iterable, List, Optional, Union
 
 import arkane.encorr.data as arkane_data
 from arkane.encorr.bac import BAC
-from arkane.encorr.corr import assign_frequency_scale_factor
 from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, standardize_name
 
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
@@ -59,7 +58,7 @@ class Level(object):
                  method_type: Optional[str] = None,
                  software: Optional[str] = None,
                  software_version: Optional[Union[int, float, str]] = None,
-                 compatible_ess: Optional[List[str, ...]] = None,
+                 compatible_ess: Optional[List[str]] = None,
                  solvation_method: Optional[str] = None,
                  solvent: Optional[str] = None,
                  solvation_scheme_level: Optional[Level] = None,
@@ -154,8 +153,6 @@ class Level(object):
                 for key, arg in self.args.items():
                     if key == 'keyword':
                         str_ += f' {arg}'
-        if self.method_type is not None:
-            str_ += f' ({self.method_type})'
         return str_
 
     def copy(self):
@@ -573,3 +570,24 @@ def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str
             splits = arkane_level.split(f"{key}='")
             level_dict[key] = splits[1].split("'")[0]
     return level_dict
+
+
+def assign_frequency_scale_factor(level: Union[str, Level]) -> Optional[int]:
+    """
+    Assign a frequency scaling factor to a level of theory.
+
+    Args:
+        level (Union[str, Level]): The level of theory.
+
+    Returns:
+        Optional[int]: The frequency scaling factor.
+    """
+    freq_scale_factors = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))['freq_scale_factors']
+    if isinstance(level, str):
+        if level in freq_scale_factors:
+            return freq_scale_factors[level]
+        level = Level(repr=level)
+    level_str = str(level)
+    if level_str in freq_scale_factors:
+        return freq_scale_factors[level_str]
+    return None
