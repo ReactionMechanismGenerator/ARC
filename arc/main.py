@@ -469,7 +469,8 @@ class ARC(object):
         if self.adaptive_levels is not None:
             restart_dict['adaptive_levels'] = {atom_range: {job_type: level.as_dict() for job_type, level in levels_dict}
                                                for atom_range, levels_dict in self.adaptive_levels.items()}
-        restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
+        if self.allow_nonisomorphic_2d:
+            restart_dict['allow_nonisomorphic_2d'] = self.allow_nonisomorphic_2d
         if self.arkane_level_of_theory is not None:
             restart_dict['arkane_level_of_theory'] = self.arkane_level_of_theory.as_dict() \
                 if isinstance(self.arkane_level_of_theory, Level) else self.arkane_level_of_theory
@@ -477,7 +478,7 @@ class ARC(object):
             restart_dict['bac_type'] = self.bac_type
         if self.bath_gas is not None:
             restart_dict['bath_gas'] = self.bath_gas
-        if self.calc_freq_factor:
+        if not self.calc_freq_factor:
             restart_dict['calc_freq_factor'] = self.calc_freq_factor
         if not self.compare_to_rmg:
             restart_dict['compare_to_rmg'] = self.compare_to_rmg
@@ -487,62 +488,73 @@ class ARC(object):
             restart_dict['compute_rates'] = self.compute_rates
         if not self.compute_thermo:
             restart_dict['compute_thermo'] = self.compute_thermo
-        if not self.compute_transport:
+        if self.compute_transport:
             restart_dict['compute_transport'] = self.compute_transport
-        if self.conformer_level is not None:
+        if self.conformer_level is not None and str(self.conformer_level).split()[0] != default_levels_of_theory['conformer']:
             restart_dict['conformer_level'] = self.conformer_level.as_dict()
         if self.dont_gen_confs:
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
-        if self.ts_adapters:
+        if self.ts_adapters is not None:
             restart_dict['ts_adapters'] = self.ts_adapters
-        restart_dict['e_confs'] = self.e_confs
+        if self.e_confs != 5.0:
+            restart_dict['e_confs'] = self.e_confs
         restart_dict['ess_settings'] = self.ess_settings
-        if self.freq_level is not None:
+        if self.freq_level is not None and str(self.freq_level).split()[0] != default_levels_of_theory['freq']:
             restart_dict['freq_level'] = self.freq_level.as_dict() \
                 if not isinstance(self.freq_level, (dict, str)) else self.freq_level
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
-        if self.irc_level is not None:
+        if self.irc_level is not None and str(self.irc_level).split()[0] != default_levels_of_theory['irc']:
             restart_dict['irc_level'] = self.irc_level.as_dict() \
                 if not isinstance(self.irc_level, (dict, str)) else self.irc_level
         if self.keep_checks:
             restart_dict['keep_checks'] = self.keep_checks
-        restart_dict['kinetics_adapter'] = self.kinetics_adapter
+        if self.kinetics_adapter != 'arkane':
+            restart_dict['kinetics_adapter'] = self.kinetics_adapter
         restart_dict['job_memory'] = self.memory
         restart_dict['job_types'] = self.job_types
         if self.level_of_theory:
             restart_dict['level_of_theory'] = self.level_of_theory
         restart_dict['max_job_time'] = self.max_job_time
-        restart_dict['n_confs'] = self.n_confs
-        if self.opt_level is not None:
+        if self.n_confs != 10:
+            restart_dict['n_confs'] = self.n_confs
+        if self.opt_level is not None and str(self.opt_level).split()[0] != default_levels_of_theory['opt']:
             restart_dict['opt_level'] = self.opt_level.as_dict() \
                 if not isinstance(self.opt_level, (dict, str)) else self.opt_level
-        if self.orbitals_level is not None:
+        if self.orbitals_level is not None and str(self.orbitals_level).split()[0] != default_levels_of_theory['orbitals']:
             restart_dict['orbitals_level'] = self.orbitals_level.as_dict() \
                 if not isinstance(self.orbitals_level, (dict, str)) else self.orbitals_level
-        restart_dict['output'] = self.output
-        restart_dict['output_multi_spc'] = self.output_multi_spc if self.output_multi_spc else dict()
+        if self.output:
+            restart_dict['output'] = self.output
+        if self.output_multi_spc:
+            restart_dict['output_multi_spc'] = self.output_multi_spc if self.output_multi_spc else dict()
         restart_dict['project'] = self.project
-        restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
-        restart_dict['running_jobs'] = self.running_jobs
-        if self.scan_level is not None:
+        if len(self.reactions):
+            restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
+        if self.running_jobs:
+            restart_dict['running_jobs'] = self.running_jobs
+        if self.scan_level is not None and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
                 if not isinstance(self.scan_level, (dict, str)) else self.scan_level
-        if self.sp_level is not None:
+        if self.sp_level is not None and str(self.sp_level).split()[0] != default_levels_of_theory['sp']:
             restart_dict['sp_level'] = self.sp_level.as_dict() \
                 if not isinstance(self.sp_level, (dict, str)) else self.sp_level
         restart_dict['species'] = [spc.as_dict() for spc in self.species]
         if self.specific_job_type:
             restart_dict['specific_job_type'] = self.specific_job_type
-        restart_dict['T_min'] = self.T_min
-        restart_dict['T_max'] = self.T_max
-        restart_dict['T_count'] = self.T_count
-        restart_dict['thermo_adapter'] = self.thermo_adapter
+        if self.T_min is not None:
+            restart_dict['T_min'] = self.T_min
+        if self.T_max is not None:
+            restart_dict['T_max'] = self.T_max
+        if self.T_count != 50:
+            restart_dict['T_count'] = self.T_count
+        if self.thermo_adapter != 'arkane':
+            restart_dict['thermo_adapter'] = self.thermo_adapter
         if not self.three_params:
             restart_dict['three_params'] = self.three_params
         if not self.trsh_ess_jobs:
             restart_dict['trsh_ess_jobs'] = self.trsh_ess_jobs
-        if self.ts_guess_level is not None:
+        if self.ts_guess_level is not None and str(self.ts_guess_level).split()[0] != default_levels_of_theory['ts_guesses']:
             restart_dict['ts_guess_level'] = self.ts_guess_level.as_dict() \
                 if not isinstance(self.ts_guess_level, (dict, str)) else self.ts_guess_level
         if self.verbose != logging.INFO:
