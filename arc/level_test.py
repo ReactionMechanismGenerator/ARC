@@ -29,7 +29,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_1.dispersion, 'gd3bj')
         self.assertEqual(level_1.software, 'gaussian')
         self.assertEqual(str(level_1),
-                         "b3lyp/def2tzvp, auxiliary_basis: aug-def2-svp, dispersion: gd3bj, software: gaussian (dft)")
+                         "b3lyp/def2tzvp, auxiliary_basis: aug-def2-svp, dispersion: gd3bj, software: gaussian")
         self.assertEqual(level_1.simple(), "b3lyp/def2tzvp")
 
     def test_deduce_software(self):
@@ -99,13 +99,13 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_1.method, 'wb97xd')
         self.assertEqual(level_1.basis, 'def2-tzvp')
         self.assertEqual(level_1.method_type, 'dft')
-        self.assertEqual(str(level_1), 'wb97xd/def2-tzvp, software: gaussian (dft)')
+        self.assertEqual(str(level_1), 'wb97xd/def2-tzvp, software: gaussian')
         level_2 = Level(repr='CBS-QB3')
         self.assertEqual(level_2.method, 'cbs-qb3')
         self.assertIsNone(level_2.basis)
         self.assertEqual(level_2.software, 'gaussian')
         self.assertEqual(level_2.method_type, 'composite')
-        self.assertEqual(str(level_2), 'cbs-qb3, software: gaussian (composite)')
+        self.assertEqual(str(level_2), 'cbs-qb3, software: gaussian')
         self.assertEqual(level_2.simple(), 'cbs-qb3')
         level_3 = Level(repr={'method': 'DLPNO-CCSD(T)',
                               'basis': 'def2-TZVp',
@@ -123,8 +123,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_3.solvation_scheme_level.basis, 'def2-tzvp')
         self.assertEqual(str(level_3),
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
-                         "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian (dft)', "
-                         "software: orca (wavefunction)")
+                         "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
     def test_to_arkane(self):
         """Test converting Level to LevelOfTheory"""
@@ -139,7 +138,7 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_2.to_arkane_level_of_theory(variant='AEC'),
                          LevelOfTheory(method='cbs-qb3', software='gaussian'))
         self.assertEqual(level_2.to_arkane_level_of_theory(variant='freq'),
-                         LevelOfTheory(method='cbs-qb3', software='gaussian'))
+                         LevelOfTheory(method='cbs-qb3'))
         self.assertEqual(level_2.to_arkane_level_of_theory(variant='BAC'),
                          LevelOfTheory(method='cbs-qb3', software='gaussian'))
         self.assertIsNone(level_2.to_arkane_level_of_theory(variant='BAC', bac_type='m'))  # might change in the future
