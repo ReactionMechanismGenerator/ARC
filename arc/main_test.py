@@ -221,23 +221,22 @@ class TestARC(unittest.TestCase):
     def test_determine_model_chemistry_and_freq_scale_factor(self):
         """Test determining the model chemistry and the frequency scaling factor"""
         arc0 = ARC(project='arc_model_chemistry_test', level_of_theory='CBS-QB3')
-        self.assertEqual(str(arc0.arkane_level_of_theory), "cbs-qb3, software: gaussian (composite)")
-        self.assertEqual(arc0.freq_scale_factor, 1.00386)  # 0.99 * 1.014 = 1.00386
+        self.assertEqual(str(arc0.arkane_level_of_theory), "cbs-qb3, software: gaussian")
+        self.assertEqual(arc0.freq_scale_factor, 1.004)
 
-        arc1 = ARC(project='arc_model_chemistry_test',
-                   level_of_theory='cbs-qb3-paraskevas')
-        self.assertEqual(str(arc1.arkane_level_of_theory), 'cbs-qb3-paraskevas, software: gaussian (composite)')
-        self.assertEqual(arc1.freq_scale_factor, 1.00386)  # 0.99 * 1.014 = 1.00386
+        arc1 = ARC(project='arc_model_chemistry_test', level_of_theory='cbs-qb3-paraskevas')
+        self.assertEqual(str(arc1.arkane_level_of_theory), 'cbs-qb3-paraskevas, software: gaussian')
+        self.assertEqual(arc1.freq_scale_factor, 1.004)
         self.assertEqual(arc1.bac_type, 'p')
 
         arc2 = ARC(project='arc_model_chemistry_test',
-                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m06-2x/cc-pvtz')
-        self.assertEqual(str(arc2.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro (wavefunction)')
+                   level_of_theory='ccsd(t)-f12/cc-pvtz-f12//m062x/cc-pvtz')
+        self.assertEqual(str(arc2.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc2.freq_scale_factor, 0.955)
 
         arc3 = ARC(project='arc_model_chemistry_test',
                    sp_level='ccsd(t)-f12/cc-pvtz-f12', opt_level='wb97xd/def2tzvp')
-        self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro (wavefunction)')
+        self.assertEqual(str(arc3.arkane_level_of_theory), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
         self.assertEqual(arc3.freq_scale_factor, 0.988)
 
     def test_determine_model_chemistry_for_job_types(self):
@@ -279,7 +278,7 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc2.composite_method.simple(), 'cbs-qb3')
 
         # Test deduce levels from level of theory specification
-        arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd')
+        arc3 = ARC(project='test', level_of_theory='ccsd(t)-f12/cc-pvtz-f12//wb97m-v/def2tzvpd', freq_scale_factor=1)
         self.assertEqual(arc3.opt_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.freq_level.simple(), 'wb97m-v/def2tzvpd')
         self.assertEqual(arc3.sp_level.simple(), 'ccsd(t)-f12/cc-pvtz-f12')
@@ -315,10 +314,10 @@ class TestARC(unittest.TestCase):
                    calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc9.opt_level.simple(), 'wb97xd/def2tzvp')
         self.assertEqual(str(arc9.freq_level), 'b3lyp/g/cc-pvdz(fi/sf/fw), auxiliary_basis: def2-svp/c, '
-                                               'dispersion: def2-tzvp/c, software: gaussian (dft)')
+                                               'dispersion: def2-tzvp/c, software: gaussian')
         self.assertEqual(str(arc9.sp_level),
                          'dlpno-ccsd(t)-f12/cc-pvtz-f12, auxiliary_basis: aug-cc-pvtz/c cc-pvtz-f12-cabs, '
-                         'software: orca (wavefunction)')
+                         'software: orca')
 
         # Test using default frequency and orbital level for composite job, also forbid rotors job
         arc10 = ARC(project='test', composite_method='cbs-qb3', calc_freq_factor=False,
