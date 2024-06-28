@@ -11,7 +11,7 @@ import unittest
 from arkane.modelchem import LevelOfTheory
 
 from arc.common import ARC_PATH, read_yaml_file
-from arc.level import Level, get_params_from_arkane_level_of_theory_as_str
+from arc.level import Level, assign_frequency_scale_factor, get_params_from_arkane_level_of_theory_as_str
 
 
 class TestLevel(unittest.TestCase):
@@ -209,6 +209,36 @@ class TestLevel(unittest.TestCase):
         self.assertIsNone(level_2.compatible_ess)
         level_2.determine_compatible_ess()
         self.assertEqual(sorted(level_2.compatible_ess), sorted(['gaussian', 'qchem', 'terachem']))
+
+    def test_str(self):
+        """Test the __str__() method."""
+        self.assertEqual(str(Level(method='HF', basis='6-31g')), 'hf/6-31g, software: gaussian')
+        self.assertEqual(str(Level(method='HF', basis='6-31+g(d,p)')), 'hf/6-31+g(d,p), software: gaussian')
+        self.assertEqual(str(Level(method='PM6')), 'pm6, software: gaussian')
+        self.assertEqual(str(Level(method='b3lyp', basis='6-311+g(d,p)')), 'b3lyp/6-311+g(d,p), software: gaussian')
+        self.assertEqual(str(Level(method='M062x', basis='Aug-cc-pvdz')), 'm062x/aug-cc-pvdz, software: gaussian')
+        self.assertEqual(str(Level(method='M062x', basis='Def2TZVP')), 'm062x/def2tzvp, software: gaussian')
+        self.assertEqual(str(Level(method='M06-2x', basis='Def2-TZVP')), 'm06-2x/def2-tzvp, software: qchem')
+        self.assertEqual(str(Level(method='wb97xd', basis='def2tzvp')), 'wb97xd/def2tzvp, software: gaussian')
+        self.assertEqual(str(Level(method='wb97m-v', basis='def2-tzvpd')), 'wb97m-v/def2-tzvpd, software: qchem')
+        self.assertEqual(str(Level(method='b2plypd3', basis='cc-pvtz')), 'b2plypd3/cc-pvtz, software: gaussian')
+        self.assertEqual(str(Level(method='apfd', basis='def2tzvp')), 'apfd/def2tzvp, software: gaussian')
+        self.assertEqual(str(Level(method='mp2', basis='cc-pvdz')), 'mp2/cc-pvdz, software: gaussian')
+        self.assertEqual(str(Level(method='CBS-QB3')), 'cbs-qb3, software: gaussian')
+        self.assertEqual(str(Level(method='CCSD(T)', basis='cc-pVTZ')), 'ccsd(t)/cc-pvtz, software: molpro')
+        self.assertEqual(str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')), 'ccsd(t)-f12/cc-pvtz-f12, software: molpro')
+        self.assertEqual(str(Level(method='wb97xd', basis='def2tzvp', solvation_method='smd', solvent='water')),
+                         'wb97xd/def2tzvp, solvation_method: smd, solvent: water, software: gaussian')
+        self.assertEqual(str(Level(basis='def2svp', compatible_ess=['gaussian', 'terachem'],method='wb97xd',
+                                   method_type='dft', software='gaussian')), 'wb97xd/def2svp, software: gaussian')
+
+    def test_assign_frequency_scale_factor(self):
+        """Test the assign_frequency_scale_factor() method."""
+        self.assertEqual(assign_frequency_scale_factor(Level(method='CCSD(T)', basis='cc-pvtz')), 0.975)
+        self.assertEqual(assign_frequency_scale_factor(Level(method='CCSD(T)-F12', basis='cc-pvtz-F12')), 0.998)
+        self.assertEqual(assign_frequency_scale_factor(Level(method='wb97xd', basis='Def2TZVP')), 0.988)
+        self.assertEqual(assign_frequency_scale_factor(Level(method='CBS-QB3')), 1.004)
+        self.assertEqual(assign_frequency_scale_factor(Level(method='PM6')), 1.093)
 
 
 if __name__ == '__main__':
