@@ -588,6 +588,19 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_int('125.84'))
         self.assertFalse(common.is_str_int('0.0'))
 
+    def test_clean_text(self):
+        """Test the clean_text() function"""
+        self.assertEqual(common.clean_text('R1'), 'R1')
+        self.assertEqual(common.clean_text('   D_3_5_7_4"\n'), 'D_3_5_7_4')
+        self.assertEqual(common.clean_text('"OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}",\n    '),
+                         'OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}')
+        self.assertEqual(common.clean_text('\n"""\n1 *1 Cd        u0 {2,D} {3,S} {4,S}\n2 *2 Cdd       u0 {1,D} {5,D}\n3    H         u0 {1,S}\n4    H         u0 {1,S}\n5    [O2d,S2d] u0 {2,D}\n""",\n    '),
+                         """1 *1 Cd        u0 {2,D} {3,S} {4,S}
+2 *2 Cdd       u0 {1,D} {5,D}
+3    H         u0 {1,S}
+4    H         u0 {1,S}
+5    [O2d,S2d] u0 {2,D}""")
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
