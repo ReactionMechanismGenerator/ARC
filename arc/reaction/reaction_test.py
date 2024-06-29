@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-This module contains unit tests of the arc.reaction module
+This module contains unit tests of the arc.reaction.reaction module
 """
 
 from itertools import permutations
@@ -17,7 +17,7 @@ import arc.rmgdb as rmgdb
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
-from arc.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map, label_species_atoms
