@@ -10,8 +10,8 @@ import arc.plotter
 import arc.processor
 import arc.scheduler
 import arc.utils
-
 import arc.job
+import arc.reaction
 import arc.settings
 import arc.species
 import arc.statmech
