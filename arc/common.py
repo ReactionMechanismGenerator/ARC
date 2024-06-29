@@ -1058,6 +1058,24 @@ def is_str_int(value: Optional[str]) -> bool:
         return False
 
 
+def clean_text(text: str) -> str:
+    """
+    Clean a text string from leading and trailing whitespaces, newline characters, and double quotes.
+
+    Args:
+        text (str): The text to clean.
+
+    Returns:
+        str: The cleaned text.
+    """
+    text = text.strip()
+    text = text.lstrip('\n').rstrip('\n')
+    text = text.replace('"', '')
+    text = text.rstrip(',')
+    text = text.lstrip('\n').rstrip('\n')
+    return text
+
+
 def time_lapse(t0) -> str:
     """
     A helper function returning the elapsed time since t0.
