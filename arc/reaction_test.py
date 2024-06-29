@@ -167,23 +167,15 @@ class TestARCReaction(unittest.TestCase):
         self.rxn1.determine_family(self.rmgdb)
         rxn_dict_1 = self.rxn1.as_dict()
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
-        expected_dict_1 = {'charge': 0,
-                           'family': 'H_Abstraction',
+        expected_dict_1 = {'family': 'H_Abstraction',
                            'family_own_reverse': True,
-                           'index': None,
                            'label': 'CH4 + OH <=> CH3 + H2O',
                            'multiplicity': 2,
-                           'p_species': [{'arkane_file': None,
-                                          'bond_corrections': {'C-H': 3},
-                                          'charge': 0,
+                           'p_species': [{'bond_corrections': {'C-H': 3},
                                           'cheap_conformer': 'C       0.00000000    0.00000001   -0.00000000\n'
                                                              'H       1.06690511   -0.17519582    0.05416493\n'
                                                              'H      -0.68531716   -0.83753536   -0.02808565\n'
                                                              'H      -0.38158795    1.01273118   -0.02607927',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'CH3',
                                           'long_thermo_description': "Bond corrections: {'C-H': 3}\n",
                                           'mol': {'atom_order': rxn_dict_1['p_species'][0]['mol']['atom_order'],
@@ -192,16 +184,10 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 2,
                                           'number_of_rotors': 0},
-                                         {'arkane_file': None,
-                                          'bond_corrections': {'H-O': 2},
-                                          'charge': 0,
+                                         {'bond_corrections': {'H-O': 2},
                                           'cheap_conformer': 'O      -0.00032832    0.39781490    0.00000000\n'
                                                              'H      -0.76330345   -0.19953755    0.00000000\n'
                                                              'H       0.76363177   -0.19827735    0.00000000',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'H2O',
                                           'long_thermo_description': "Bond corrections: {'H-O': 2}\n",
                                           'mol': {'atom_order': rxn_dict_1['p_species'][1]['mol']['atom_order'],
@@ -211,18 +197,12 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 1,
                                           'number_of_rotors': 0}],
                            'products': ['CH3', 'H2O'],
-                           'r_species': [{'arkane_file': None,
-                                          'bond_corrections': {'C-H': 4},
-                                          'charge': 0,
+                           'r_species': [{'bond_corrections': {'C-H': 4},
                                           'cheap_conformer': 'C      -0.00000000   -0.00000000    0.00000000\n'
                                                              'H      -0.63306457   -0.78034118   -0.42801448\n'
                                                              'H      -0.38919244    0.98049560   -0.28294367\n'
                                                              'H       0.00329661   -0.09013273    1.08846898\n'
                                                              'H       1.01896040   -0.11002169   -0.37751083',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'CH4',
                                           'long_thermo_description': "Bond corrections: {'C-H': 4}\n",
                                           'mol': {'atom_order': rxn_dict_1['r_species'][0]['mol']['atom_order'],
@@ -231,15 +211,9 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 1,
                                           'number_of_rotors': 0},
-                                         {'arkane_file': None,
-                                          'bond_corrections': {'H-O': 1},
-                                          'charge': 0,
+                                         {'bond_corrections': {'H-O': 1},
                                           'cheap_conformer': 'O       0.00000000    0.00000000    0.61310000\n'
                                                              'H       0.00000000    0.00000000   -0.61310000',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'OH',
                                           'long_thermo_description': "Bond corrections: {'H-O': 1}\n",
                                           'mol': {'atom_order': rxn_dict_1['r_species'][1]['mol']['atom_order'],
@@ -249,27 +223,18 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 2,
                                           'number_of_rotors': 0}],
                            'reactants': ['CH4', 'OH'],
-                           'ts_label': None,
                            }
         self.assertEqual(rxn_dict_1, expected_dict_1)
 
         rxn_dict_6 = self.rxn6.as_dict()
         # The ``long_thermo_description`` attribute isn't deterministic (order could change)
-        expected_dict_6 = {'charge': 0,
-                           'index': None,
-                           'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
+        expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
                            'multiplicity': 1,
-                           'p_species': [{'arkane_file': None,
-                                          'bond_corrections': {'H-N': 3},
-                                          'charge': 0,
+                           'p_species': [{'bond_corrections': {'H-N': 3},
                                           'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
                                                              'H      -0.41786606    0.84210396   -0.09477452\n'
                                                              'H      -0.52039228   -0.78225292   -0.10002797\n'
                                                              'H       0.93760911   -0.05885406   -0.10079043',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'NH3',
                                           'long_thermo_description': "Bond corrections: {'H-N': 3}\n",
                                           'mol': {'atom_order': rxn_dict_6['p_species'][0]['mol']['atom_order'],
@@ -278,22 +243,16 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 1,
                                           'number_of_rotors': 0},
-                                         {'arkane_file': None,
-                                          'adjlist': """multiplicity 1
+                                         {'adjlist': """multiplicity 1
 1 N u0 p0 c+1 {2,D} {3,S} {4,S}
 2 N u0 p2 c-1 {1,D}
 3 H u0 p0 c0 {1,S}
 4 H u0 p0 c0 {1,S}""",
                                           'bond_corrections': {'H-N': 2, 'N=N': 1},
-                                          'charge': 0,
                                           'cheap_conformer': 'N      -0.08201544    0.01567102    0.28740725\n'
                                                              'N       1.12656450   -0.21525765   -0.48621674\n'
                                                              'H      -0.50742562   -0.72901556    0.83982059\n'
                                                              'H      -0.53712345    0.92860218    0.29862267',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'H2NN[S]',
                                           'long_thermo_description': rxn_dict_6['p_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['p_species'][1]['mol']['atom_order'],
@@ -304,16 +263,10 @@ class TestARCReaction(unittest.TestCase):
                                           'number_of_rotors': 0,
                                           'original_label': 'H2NN(S)'}],
                            'products': ['H2NN[S]', 'NH3'],
-                           'r_species': [{'arkane_file': None,
-                                          'bond_corrections': {'H-N': 2},
-                                          'charge': 0,
+                           'r_species': [{'bond_corrections': {'H-N': 2},
                                           'cheap_conformer': 'N       0.00016375    0.40059499    0.00000000\n'
                                                              'H      -0.83170922   -0.19995756    0.00000000\n'
                                                              'H       0.83154548   -0.20063742    0.00000000',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'NH2',
                                           'long_thermo_description': "Bond corrections: {'H-N': 2}\n",
                                           'mol': {'atom_order': rxn_dict_6['r_species'][0]['mol']['atom_order'],
@@ -322,18 +275,12 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 2,
                                           'number_of_rotors': 0},
-                                         {'arkane_file': None,
-                                          'bond_corrections': {'H-N': 3, 'N-N': 1},
-                                          'charge': 0,
+                                         {'bond_corrections': {'H-N': 3, 'N-N': 1},
                                           'cheap_conformer': 'N      -0.46751749    0.03795671    0.31180026\n'
                                                              'N       0.79325823   -0.46038094   -0.24114357\n'
                                                              'H      -1.19307188   -0.63034971    0.05027053\n'
                                                              'H      -0.69753009    0.90231202   -0.17907452\n'
                                                              'H       1.56486123    0.15046192    0.05814730',
-                                          'compute_thermo': True,
-                                          'consider_all_diastereomers': True,
-                                          'force_field': 'MMFF94s',
-                                          'is_ts': False,
                                           'label': 'N2H3',
                                           'long_thermo_description': rxn_dict_6['r_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['r_species'][1]['mol']['atom_order'],
@@ -343,7 +290,6 @@ class TestARCReaction(unittest.TestCase):
                                           'multiplicity': 2,
                                           'number_of_rotors': 0}],
                            'reactants': ['N2H3', 'NH2'],
-                           'ts_label': None,
                            }
         self.assertEqual(rxn_dict_6, expected_dict_6)
 
