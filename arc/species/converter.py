@@ -7,7 +7,6 @@ import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 import qcelemental as qcel
-from ase import Atoms
 from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
@@ -39,7 +38,8 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               get_atom_indices_from_zmat_parameter,
                               get_parameter_from_atom_indices,
                               zmat_to_coords,
-                              xyz_to_zmat)
+                              xyz_to_zmat,
+                              )
 
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
@@ -495,19 +495,6 @@ def sort_xyz_using_indices(xyz_dict: dict,
         symbols.append(xyz_dict['symbols'][i])
         isotopes.append(xyz_dict['isotopes'][i])
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
-
-
-def xyz_to_ase(xyz_dict: dict) -> Atoms:
-    """
-    Convert an xyz dict to an ASE Atoms object.
-
-    Args:
-        xyz_dict (dict): The ARC xyz format.
-
-    Returns:
-        Type[Atoms]: The corresponding ASE Atom object.
-    """
-    return Atoms(xyz_dict['symbols'], xyz_dict['coords'])
 
 
 def translate_xyz(xyz_dict: dict,
