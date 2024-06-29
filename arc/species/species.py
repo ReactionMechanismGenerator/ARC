@@ -2218,7 +2218,7 @@ class TSGuess(object):
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
-        self.method_direction = ts_dict['method_direction'] if 'method_index' in ts_dict else None
+        self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
         self.conformer_index = ts_dict['conformer_index'] if 'conformer_index' in ts_dict else None
         self.successful_irc = ts_dict['successful_irc'] if 'successful_irc' in ts_dict else None
