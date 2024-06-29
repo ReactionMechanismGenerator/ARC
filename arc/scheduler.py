@@ -298,7 +298,7 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             self.rxn_dict[rxn.index] = rxn
         if self.restart_dict is not None:
-            self.output = self.restart_dict['output']
+            self.output = self.restart_dict['output'] if 'output' in self.restart_dict else dict()
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
