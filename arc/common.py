@@ -50,10 +50,6 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 
 # Absolute path to the ARC folder.
 ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-# Absolute path to RMG-Py folder.
-RMG_PATH = os.path.abspath(os.path.dirname(os.path.dirname(rmgpy.__file__)))
-# Absolute path to RMG-database folder.
-RMG_DATABASE_PATH = os.path.abspath(os.path.dirname(rmgpy.settings['database.directory']))
 
 VERSION = '1.1.0'
 
@@ -278,7 +274,7 @@ def log_header(project: str,
     logger.log(level, '###############################################################')
     logger.log(level, '')
 
-    paths_dict = {'ARC': ARC_PATH, 'RMG-Py': RMG_PATH, 'RMG-database': RMG_DATABASE_PATH}
+    paths_dict = {'ARC': ARC_PATH}
     for repo, path in paths_dict.items():
         # Extract HEAD git commit.
         head, date = get_git_commit(path)
