@@ -36,6 +36,7 @@ scratch/
 
 # csv database
 *.csv
+!basis_sets.csv
 
 # iPython files
 *.ipynb_*
