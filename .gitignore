@@ -36,6 +36,7 @@ scratch/
 
 # csv database
 *.csv
+!basis_sets.csv
 
 # iPython files
 *.ipynb_*
@@ -51,6 +52,10 @@ timer.dat
 
 # .vscode
 .vscode
+
+# files created via testing
+nul
+run.out
 
 # .trunk folder
 .trunk

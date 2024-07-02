@@ -144,7 +144,7 @@ jobs:
         key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ env.CACHE_NUMBER}}
       env:
         # Increase this value to reset cache if etc/example-environment.yml has not changed
-        CACHE_NUMBER: 0
+        CACHE_NUMBER: 1
       id: cache-arc-env
     - name: Update environment
       run: mamba env update -n arc_env -f environment.yml

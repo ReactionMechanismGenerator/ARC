@@ -9,6 +9,7 @@ import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import socket
+import re
 
 from mako.template import Template
 
@@ -156,6 +157,7 @@ class MolproAdapter(JobAdapter):
         self.execution_type = execution_type or 'queue'
         self.command = 'molpro'
         self.url = 'https://www.molpro.net/'
+        self.core_change = None
 
         if species is None:
             raise ValueError('Cannot execute Molpro without an ARCSpecies object.')
@@ -326,7 +328,7 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
         Set the input_file_memory attribute.
         """
         # Molpro's memory is per cpu core and in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
-        # The conversion from mW to GB was done using this (https://deviceanalytics.com/words-to-bytes-converter/)
+        # The conversion from mW to GB was done using this (c)
         # specifying a 64-bit architecture.
         #
         # See also:
@@ -335,8 +337,37 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
         # 800,000,000 bytes (800 mb).
         # Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords]
         # The division by 1E6 is for converting into MWords
-                # Due to Zeus's configuration, there is only 1 nproc so the memory should not be divided by cpu_cores. 
+                # Due to Zeus's configuration, there is only 1 nproc so the memory should not be divided by cpu_cores.
         self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
+        # We need to check if ess_trsh_methods=['cpu'] and ess_trsh_methods=['molpro_memory:] exists
+        # If it does, we need to reduce the cpu_cores
+        if self.ess_trsh_methods is not None:
+            if 'cpu' in self.ess_trsh_methods and  any('molpro_memory:' in method for method in self.ess_trsh_methods):
+                current_cpu_cores = self.cpu_cores
+                max_memory = self.job_memory_gb
+                memory_values = []
+                for item in self.ess_trsh_methods:
+                    if 'molpro_memory:' in item:
+                        memory_value = item.split('molpro_memory:')[1]
+                        memory_values.append(float(memory_value))
+
+                if memory_values:
+                    min_memory_value = min(memory_values)
+                    required_cores = math.floor(max_memory / (min_memory_value * 7.45e-3))
+                    if self.core_change is None:
+                        self.core_change = required_cores
+                    elif self.core_change == required_cores:
+                        # We have already done this
+                        # Reduce the cores by 1
+                        required_cores -= 1
+                    if required_cores < current_cpu_cores:
+                        self.cpu_cores = required_cores
+                        logger.info(f'Changing the number of cpu_cores from {current_cpu_cores} to {self.cpu_cores}')
+            self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
+
+
+
+
         
     def execute_incore(self):
         """

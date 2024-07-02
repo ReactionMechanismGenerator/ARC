@@ -5,6 +5,7 @@ A module for manipulating vectors
 import math
 import numpy as np
 from typing import List, Union
+import re
 
 from rmgpy.molecule.molecule import Molecule
 
@@ -205,6 +206,12 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
+    if isinstance(coords,str):
+        try:
+            lines = coords.split('\n')
+            coords = tuple(tuple(float(x) for x in re.findall(r'[+-]?\d+\.\d+', line)) for line in lines if re.search(r'[A-Za-z]', line))
+        except Exception as e:
+            raise TypeError(f'Could not read coords from string\n{coords}\nGot error:\n{e}')
     if not isinstance(coords, (list, tuple)):
         raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
