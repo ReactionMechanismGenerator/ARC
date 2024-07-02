@@ -373,7 +373,8 @@ for python_path in sys.path:
         rmg_db_path_2 = os.path.join(os.path.dirname(python_path), 'RMG-database')
         break
 rmg_db_path_3 = os.path.join(home, 'Code', 'RMG-database')
-for rmg_db_path in [rmg_db_path_1, rmg_db_path_2, rmg_db_path_3]:
-    if os.path.isdir(rmg_db_path):
+rmg_db_path_4 = os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
+for rmg_db_path in [rmg_db_path_1, rmg_db_path_2, rmg_db_path_3, rmg_db_path_4]:
+    if rmg_db_path is not None and os.path.isdir(rmg_db_path):
         RMG_DB_PATH = rmg_db_path
         break
