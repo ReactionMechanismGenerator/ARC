@@ -292,11 +292,12 @@ default_job_settings = {
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
 # default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON = None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_DB_PATH = \
+    None, None, None, None, None, None, None
 home = os.getenv("HOME") or os.path.expanduser("~")
 
 tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'tani_env', 'bin', 'python')
+                             'tani_env', 'bin', 'python')
 tani_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'tani_env', 'bin', 'python')
 tani_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
 tani_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'tani_env', 'bin', 'python')
@@ -307,7 +308,7 @@ for tani_pypath in [tani_pypath_1, tani_pypath_2, tani_pypath_3, tani_pypath_4, 
         TANI_PYTHON = tani_pypath
 
 ob_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'ob_env', 'bin', 'python')
+                           'ob_env', 'bin', 'python')
 ob_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'ob_env', 'bin', 'python')
 ob_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
 ob_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'ob_env', 'bin', 'python')
@@ -342,7 +343,7 @@ for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, aut
 
 paths = list()
 paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'xtb_env', 'bin', 'xtb'))
+                          'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
 paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
@@ -361,4 +362,21 @@ arc_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'b
 for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_pypath_5]:
     if os.path.isfile(arc_pypath):
         ARC_PYTHON = arc_pypath
+        break
+
+rmg_db_path_1 = None
+for python_path in sys.path:
+    if 'RMG-database' in python_path:
+        rmg_db_path_1 = python_path
+        break
+rmg_db_path_2 = None
+for python_path in sys.path:
+    if 'RMG-Py' in python_path:
+        rmg_db_path_2 = os.path.join(os.path.dirname(python_path), 'RMG-database')
+        break
+rmg_db_path_3 = os.path.join(home, 'Code', 'RMG-database')
+rmg_db_path_4 = os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
+for rmg_db_path in [rmg_db_path_1, rmg_db_path_2, rmg_db_path_3, rmg_db_path_4]:
+    if rmg_db_path is not None and os.path.isdir(rmg_db_path):
+        RMG_DB_PATH = rmg_db_path
         break
