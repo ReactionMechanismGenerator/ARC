@@ -635,17 +635,22 @@ class ARCSpecies(object):
             dict: The dictionary representation of the object instance.
         """
         species_dict = dict()
-        species_dict['force_field'] = self.force_field
-        species_dict['is_ts'] = self.is_ts
+        if self.force_field != 'MMFF94s':
+            species_dict['force_field'] = self.force_field
+        if self.is_ts:
+            species_dict['is_ts'] = self.is_ts
         if self.t1 is not None:
             species_dict['t1'] = self.t1
         species_dict['label'] = self.label
-        species_dict['long_thermo_description'] = self.long_thermo_description
+        if self.long_thermo_description:
+            species_dict['long_thermo_description'] = self.long_thermo_description
         species_dict['multiplicity'] = self.multiplicity
         if self.multi_species is not None:
             species_dict['multi_species'] = self.multi_species
-        species_dict['charge'] = self.charge
-        species_dict['compute_thermo'] = self.compute_thermo
+        if self.charge != 0:
+            species_dict['charge'] = self.charge
+        if not self.compute_thermo and not self.is_ts:
+            species_dict['compute_thermo'] = self.compute_thermo
         if not self.include_in_thermo_lib:
             species_dict['include_in_thermo_lib'] = self.include_in_thermo_lib
         species_dict['number_of_rotors'] = self.number_of_rotors
@@ -660,23 +665,39 @@ class ARCSpecies(object):
         if self.neg_freqs_trshed:
             species_dict['neg_freqs_trshed'] = self.neg_freqs_trshed.tolist() \
                 if isinstance(self.neg_freqs_trshed, np.ndarray) else self.neg_freqs_trshed
-        species_dict['arkane_file'] = self.arkane_file
-        species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
+        if self.arkane_file is not None:
+            species_dict['arkane_file'] = self.arkane_file
+        if not self.consider_all_diastereomers:
+            species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
         if self.is_ts:
-            species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
-            species_dict['ts_conf_spawned'] = self.ts_conf_spawned
-            species_dict['ts_guesses_exhausted'] = self.ts_guesses_exhausted
-            species_dict['ts_number'] = self.ts_number
-            species_dict['ts_report'] = self.ts_report
-            species_dict['rxn_label'] = self.rxn_label
-            species_dict['rxn_index'] = self.rxn_index
-            species_dict['successful_methods'] = self.successful_methods
-            species_dict['unsuccessful_methods'] = self.unsuccessful_methods
-            species_dict['chosen_ts_method'] = self.chosen_ts_method
-            species_dict['chosen_ts'] = self.chosen_ts
-            species_dict['rxn_zone_atom_indices'] = self.rxn_zone_atom_indices
-            species_dict['chosen_ts_list'] = self.chosen_ts_list
-            species_dict['ts_checks'] = self.ts_checks
+            if len(self.ts_guesses):
+                species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
+            if self.ts_conf_spawned:
+                species_dict['ts_conf_spawned'] = self.ts_conf_spawned
+            if self.ts_guesses_exhausted:
+                species_dict['ts_guesses_exhausted'] = self.ts_guesses_exhausted
+            if self.ts_number is not None:
+                species_dict['ts_number'] = self.ts_number
+            if self.ts_report:
+                species_dict['ts_report'] = self.ts_report
+            if self.rxn_label is not None:
+                species_dict['rxn_label'] = self.rxn_label
+            if self.rxn_index is not None:
+                species_dict['rxn_index'] = self.rxn_index
+            if len(self.successful_methods):
+                species_dict['successful_methods'] = self.successful_methods
+            if len(self.unsuccessful_methods):
+                species_dict['unsuccessful_methods'] = self.unsuccessful_methods
+            if self.chosen_ts_method is not None:
+                species_dict['chosen_ts_method'] = self.chosen_ts_method
+            if self.chosen_ts is not None:
+                species_dict['chosen_ts'] = self.chosen_ts
+            if self.rxn_zone_atom_indices is not None:
+                species_dict['rxn_zone_atom_indices'] = self.rxn_zone_atom_indices
+            if len(self.chosen_ts_list):
+                species_dict['chosen_ts_list'] = self.chosen_ts_list
+            if self.ts_checks:
+                species_dict['ts_checks'] = self.ts_checks
         if self.original_label is not None:
             species_dict['original_label'] = self.original_label
         if self.e_elect is not None:
@@ -2143,16 +2164,22 @@ class TSGuess(object):
         ts_dict = dict()
         ts_dict['method'] = self.method
         ts_dict['method_index'] = self.method_index
-        ts_dict['method_direction'] = self.method_direction
-        ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
-            else self.execution_time
+        if self.method_direction is not None:
+            ts_dict['method_direction'] = self.method_direction
+        if self.execution_time is not None:
+            ts_dict['execution_time'] = str(self.execution_time) if isinstance(self.execution_time, datetime.timedelta) \
+                else self.execution_time
         ts_dict['success'] = self.success
-        ts_dict['energy'] = self.energy
+        if self.energy is not None:
+            ts_dict['energy'] = self.energy
         ts_dict['index'] = self.index
-        ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs] if self.imaginary_freqs is not None else None
+        if self.imaginary_freqs is not None:
+            ts_dict['imaginary_freqs'] = [float(f) for f in self.imaginary_freqs]
         ts_dict['conformer_index'] = self.conformer_index
-        ts_dict['successful_irc'] = self.successful_irc
-        ts_dict['successful_normal_mode'] = self.successful_normal_mode
+        if self.successful_irc is not None:
+            ts_dict['successful_irc'] = self.successful_irc
+        if self.successful_normal_mode is not None:
+            ts_dict['successful_normal_mode'] = self.successful_normal_mode
         if self.initial_xyz or for_report:
             ts_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.opt_xyz or for_report:
@@ -2191,7 +2218,7 @@ class TSGuess(object):
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
         self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
-        self.method_direction = ts_dict['method_direction'] if 'method_index' in ts_dict else None
+        self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
         self.conformer_index = ts_dict['conformer_index'] if 'conformer_index' in ts_dict else None
         self.successful_irc = ts_dict['successful_irc'] if 'successful_irc' in ts_dict else None

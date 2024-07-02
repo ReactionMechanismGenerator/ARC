@@ -625,17 +625,11 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         spc_dict = self.spc3.as_dict()
         expected_dict = {'number_of_rotors': 0,
                          'multiplicity': 1,
-                         'arkane_file': None,
                          'mol': {'atom_order': spc_dict['mol']['atom_order'],
                                  'atoms': spc_dict['mol']['atoms'],
                                  'multiplicity': 1, 'props': {}},
-                         'compute_thermo': True,
                          'label': 'methylamine',
                          'long_thermo_description': spc_dict['long_thermo_description'],
-                         'charge': 0,
-                         'consider_all_diastereomers': True,
-                         'force_field': 'MMFF94s',
-                         'is_ts': False,
                          'bond_corrections': {'C-H': 3, 'C-N': 1, 'H-N': 2}}
         self.assertEqual(spc_dict, expected_dict)
         self.assertEqual(len(set([spc_dict['mol']['atoms'][i]['id'] for i in range(len(spc_dict['mol']['atoms']))])),
@@ -667,9 +661,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertFalse(spc.is_ts)
 
         species_dict = {
-            'arkane_file': None,
             'bond_corrections': {'C-C': 2, 'C-H': 7},
-            'charge': 0,
             'cheap_conformer': """C      -1.28873024    0.06292844    0.10889819
     C       0.01096161   -0.45756396   -0.39342150
     C       1.28410310    0.11324608    0.12206177
@@ -680,7 +672,6 @@ H      -1.67091600   -1.35164600   -0.93286400"""
     H       2.12255117   -0.53409831   -0.15158596
     H       1.26342625    0.19628892    1.21256167
     H       1.45962973    1.10366979   -0.30725541""",
-            'compute_thermo': True,
             'conf_is_isomorphic': True,
             'conformer_energies': {-310736.67239208287, -310736.6722398039},
             'conformers': ["""C       1.29970500    0.14644400    0.33188600
@@ -746,7 +737,6 @@ H      -1.67091600   -1.35164600   -0.93286400"""
     H      -1.52797900    0.06385600   -0.64425600
     H      -2.14561400    0.28815000    1.00583400
     H      -1.15029500    1.55122700    0.23360600""",
-            'is_ts': False,
             'label': 'C3_2',
             'long_thermo_description': "Bond corrections: {'C-H': 7, 'C-C': 2}",
             'mol': {
@@ -2701,18 +2691,13 @@ class TestTSGuess(unittest.TestCase):
         tsg_dict = self.tsg1.as_dict()
         expected_dict = {'method': 'autotst',
                          'conformer_index': None,
-                         'imaginary_freqs': None,
-                         'successful_irc': None,
-                         'successful_normal_mode': None,
-                         'energy': None,
                          'family': 'H_Abstraction',
                          'index': None,
                          'rmg_reaction': 'CON=O <=> [O-][N+](=O)C',
                          'success': None,
-                         'method_direction': None,
                          'method_index': None,
                          't0': None,
-                         'execution_time': None}
+                         }
         self.assertEqual(tsg_dict, expected_dict)
 
     def test_from_dict(self):
@@ -2726,10 +2711,8 @@ class TestTSGuess(unittest.TestCase):
         self.assertEqual(tsg.method, 'autotst')
         self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
-        self.assertEqual(list(ts_dict_for_report.keys()),
-                         ['method', 'method_index', 'method_direction', 'execution_time', 'success', 'energy', 'index',
-                          'imaginary_freqs', 'conformer_index', 'successful_irc', 'successful_normal_mode',
-                          'initial_xyz', 'opt_xyz'])
+        self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_index', 'success', 'index',
+                                                           'conformer_index', 'initial_xyz', 'opt_xyz'])
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""

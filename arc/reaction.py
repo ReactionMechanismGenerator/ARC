@@ -230,9 +230,11 @@ class ARCReaction(object):
         """
         reaction_dict = dict()
         reaction_dict['label'] = self.label
-        reaction_dict['index'] = self.index
+        if self.index is not None:
+            reaction_dict['index'] = self.index
         reaction_dict['multiplicity'] = self.multiplicity
-        reaction_dict['charge'] = self.charge
+        if self.charge != 0:
+            reaction_dict['charge'] = self.charge
         reaction_dict['reactants'] = self.reactants
         reaction_dict['products'] = self.products
         reaction_dict['r_species'] = [spc.as_dict(reset_atom_ids=reset_atom_ids) for spc in self.r_species]
@@ -256,7 +258,8 @@ class ARCReaction(object):
         if len(self.ts_xyz_guess):
             reaction_dict['ts_xyz_guess'] = self.ts_xyz_guess
         reaction_dict['label'] = self.label
-        reaction_dict['ts_label'] = self.ts_label
+        if self.ts_label is not None:
+            reaction_dict['ts_label'] = self.ts_label
         return reaction_dict
 
     def from_dict(self,
