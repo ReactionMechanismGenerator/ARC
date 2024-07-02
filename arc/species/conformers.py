@@ -965,13 +965,26 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
         for j, top in enumerate([top1, top2]):
             if check_tops[j]:
                 groups, grp_idx, groups_indices = list(), list(), list()
+                sssr_list = mol.get_deterministic_sssr()
+                sssr_index_list = [[mol.atoms.index(atom) for atom in ring] for ring in sssr_list]
+                atom_in_ring = dict()
                 for atom in mol.atoms[top[0] - 1].edges.keys():
+                    atom_index = mol.atoms.index(atom)
+                    for i, ring in enumerate(sssr_index_list):
+                        if atom_index in ring:
+                            if atom_index in atom_in_ring:
+                                atom_in_ring[atom_index].append(i)
+                            else:
+                                atom_in_ring[atom_index] = [i]
                     if mol.vertices.index(atom) + 1 in top:
                         atom_indices = determine_top_group_indices(
                             mol=mol, atom1=mol.atoms[top[0] - 1], atom2=atom, index=0)[0]
                         groups.append(to_group(mol, atom_indices))
                         grp_idx.append(atom_indices)
                         groups_indices.append([g + 1 for g in atom_indices])
+                flat_list = [num for sublist in atom_in_ring.values() for num in sublist]
+                if len(flat_list) != len(set(flat_list)):
+                    break
                 # hard-coding for NO2/NS2 groups, since the two O or S atoms have different atom types in each localized
                 # structure, hence are not isomorphic
                 if len(top) == 3 and mol.atoms[top[0] - 1].atomtype.label == 'N5dc' \
