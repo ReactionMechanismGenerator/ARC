@@ -11,7 +11,8 @@ import unittest
 
 from arc.common import ARC_PATH
 from arc.level import Level
-from arc.reaction import ARCReaction, ARCSpecies
+from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 from arc.statmech.arkane import ArkaneAdapter
 
 
