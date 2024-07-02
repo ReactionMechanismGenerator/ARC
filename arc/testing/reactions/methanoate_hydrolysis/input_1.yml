@@ -39,6 +39,8 @@ job_types:
   freq: true
   sp: true
 
+freq_scale_factor: 1.0
+
 species:
   - label: 'H2O'
     smiles: O

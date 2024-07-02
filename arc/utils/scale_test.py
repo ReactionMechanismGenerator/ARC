@@ -85,15 +85,15 @@ class TestScale(unittest.TestCase):
         with open(info_file_path, 'r') as f:
             lines = f.readlines()
         self.assertIn('CITATIONS:\n', lines)
-        self.assertIn('Level of theory: cbs-qb3, software: gaussian (composite)\n', lines)
-        self.assertIn('Level of theory: b2plypd3/def2tzvp, software: gaussian (dft)\n', lines)
+        self.assertIn('Level of theory: cbs-qb3, software: gaussian\n', lines)
+        self.assertIn('Level of theory: b2plypd3/def2tzvp, software: gaussian\n', lines)
         self.assertIn('The following species from the standard set did not converge at this level:\n', lines)
         self.assertIn(" ['CO2']\n", lines)
         self.assertIn('Scale Factor for Fundamental Frequencies = 0.955\n', lines)
         self.assertIn('Scale Factor for Harmonic Frequencies    = 0.994\n', lines)
-        self.assertIn('You may copy-paste the following harmonic frequency scaling factor(s) to the RMG-database repository\n', lines)
-        self.assertIn("""             "LevelOfTheory(method='cbs-qb3')": 0.963,  # [4]\n""", lines)
-        self.assertIn("""             "LevelOfTheory(method='b2plypd3',basis='def2tzvp')": 0.994,  # [4]\n""", lines)
+        self.assertIn('You may copy-paste the computed harmonic frequency scaling factor(s) to ARC (under the `freq_dict` in ARC/data/freq_scale_factors.yml):\n', lines)
+        self.assertIn("  'cbs-qb3, software: gaussian': 0.963,  # [4]\n", lines)
+        self.assertIn("  'b2plypd3/def2tzvp, software: gaussian': 0.994,  # [4]\n", lines)
         self.assertIn('Scaling factors calculation for 2 levels of theory completed (elapsed time: 8.5).\n', lines)
 
     def test_get_species_list(self):
