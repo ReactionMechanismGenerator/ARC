@@ -559,7 +559,7 @@ class ARCReaction(object):
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
         """
         if self.rmg_reaction is None:
-            self.rmg_reaction_from_arc_species()
+            self.rmg_reaction_from_arc_species()  # needed?
         if self.rmg_reaction is not None:
             product_dicts = determine_reaction_family(rxn=self,
                                                       rmg_family_set=rmg_family_set,
