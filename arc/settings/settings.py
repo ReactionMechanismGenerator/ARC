@@ -291,6 +291,9 @@ default_job_settings = {
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 
+# ARC families folder path
+ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
+
 # default environment names for sister repos
 TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_DB_PATH = \
     None, None, None, None, None, None, None
