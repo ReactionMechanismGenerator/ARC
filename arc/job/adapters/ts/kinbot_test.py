@@ -37,9 +37,8 @@ class TestKinBotAdapter(unittest.TestCase):
             rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
             rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
                                          products=[Species().from_smiles('[CH2]CO')])
-            rxn1.determine_family()
             rxn1.arc_species_from_rmg_reaction()
-            self.assertEqual(rxn1.family.label, 'intra_H_migration')
+            self.assertEqual(rxn1.family, 'intra_H_migration')
             kinbot1 = KinBotAdapter(job_type='tsg',
                                     reactions=[rxn1],
                                     testing=True,
