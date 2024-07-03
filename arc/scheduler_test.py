@@ -9,7 +9,6 @@ import unittest
 import os
 import shutil
 
-import arc.rmgdb as rmgdb
 import arc.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
@@ -69,7 +68,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                species=[cls.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
                                level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
                                project_directory=cls.project_directory, job_num=104)
-        cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conf_opt': True,
                           'conf_sp': False,
                           'opt': True,

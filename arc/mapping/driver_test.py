@@ -10,10 +10,8 @@ import unittest
 
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
-from rmgpy.data.rmg import RMGDatabase
 
 from arc.mapping.driver import *
-from arc.rmgdb import load_families_only 
 from arc.reaction import ARCReaction
 from arc.mapping.engine import check_atom_map
 from arc.species.species import ARCSpecies
@@ -32,8 +30,6 @@ class TestMappingDriver(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = RMGDatabase()
-        load_families_only(cls.rmgdb, 'all')
         cls.ch4_xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
                        'coords': ((-5.45906343962835e-10, 4.233517924761169e-10, 2.9505240956083194e-10),
                                   (-0.6505520089868748, -0.7742801979689132, -0.4125187934483119),
@@ -447,7 +443,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
         p_2 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertIn(atom_map[0], [0, 1])
         self.assertEqual(atom_map[1], 2)
@@ -458,7 +454,7 @@ class TestMappingDriver(unittest.TestCase):
 
         # H + CH4 <=> CH3 + H2 (different order)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertIn(atom_map[0], [4, 5])
         self.assertEqual(atom_map[1], 0)
@@ -469,7 +465,7 @@ class TestMappingDriver(unittest.TestCase):
 
         # CH4 + H <=> H2 + CH3 (different order)
         rxn = ARCReaction(r_species=[r_2, r_1], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0], 2)
         for index in [1, 2, 3, 4]:
@@ -480,7 +476,7 @@ class TestMappingDriver(unittest.TestCase):
 
         # CH4 + H <=> CH3 + H2 (different order)
         rxn = ARCReaction(r_species=[r_2, r_1], p_species=[p_2, p_1])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0], 0)
         for index in [1, 2, 3, 4]:
@@ -513,7 +509,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
         p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertIn(atom_map[0], [0,1])
         self.assertEqual(atom_map[1], 2)
@@ -532,7 +528,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
         p_2 = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0], 0)
         self.assertIn(atom_map[1], [1, 2, 3, 5, 6])
@@ -550,7 +546,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='NH3', smiles='N', xyz=self.nh3_xyz)
         p_2 = ARCSpecies(label='N2H3', smiles='N[NH]', xyz=self.n2h3_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0], 0)
         self.assertIn(atom_map[1], [1, 2, 3])
@@ -562,7 +558,7 @@ class TestMappingDriver(unittest.TestCase):
 
         # NH2 + N2H4 <=> N2H3 + NH3 (reversed product order compared to the above reaction)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0], 5)
         self.assertIn(atom_map[1], [6, 7, 8])
@@ -607,7 +603,7 @@ class TestMappingDriver(unittest.TestCase):
                                                                  H       1.11374677    1.03794239    0.06905096
                                                                  H       1.06944350   -0.38306117    1.00698657""")
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual([0,5,3],atom_map[0:3])
         self.assertIn(tuple(atom_map[3:6]), list(permutations([1, 2, 4])))
@@ -623,7 +619,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=self.c3h5o_xyz)
         p_2 = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[:4], [0, 1, 3, 4])
         self.assertIn(atom_map[4], [5,6, 7])
@@ -639,7 +635,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='C4H9O', smiles='[CH2]C(C)CO', xyz=self.c4h9o_xyz)
         p_2 = ARCSpecies(label='H2O', smiles='O', xyz=self.h2o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[:5], [0, 3, 4, 5, 6])
         for index in [5, 6, 7]:
@@ -660,7 +656,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=self.c3h5o_xyz)
         p_2 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=self.c4h10o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
         self.assertIn(atom_map[4], [5,6, 7])
@@ -692,7 +688,7 @@ class TestMappingDriver(unittest.TestCase):
         p_1 = ARCSpecies(label="CH3", smiles="[CH3]", xyz=self.ch3_xyz_2)
         p_2 = ARCSpecies(label="HCl", smiles="[H][Cl]", xyz=self.hcl_xyz)
         rxn = ARCReaction(r_species=[r_2, r_1], p_species=[p_2, p_1])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(rxn.family.label.lower(),"cl_abstraction")
         self.assertEqual(atom_map[:3], [0, 1, 2])
@@ -701,7 +697,7 @@ class TestMappingDriver(unittest.TestCase):
         self.assertTrue(check_atom_map(rxn))
         # ClCH3 + H <=> CH3 + HCl different order
         rxn_2 = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
-        rxn_2.determine_family(self.rmgdb)
+        rxn_2.determine_family()
         atom_map = rxn_2.atom_map
         self.assertEqual(atom_map[:2], [1, 2])
         for index in [2, 3, 4]:
@@ -755,7 +751,7 @@ class TestMappingDriver(unittest.TestCase):
         p_2 = ARCSpecies(label='p2', smiles=smiles[3],xyz=p_2_xyz)
 
         rxn1 = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn1.determine_family(self.rmgdb)
+        rxn1.determine_family()
         atom_map = rxn1.atom_map
         #expected: [0, 2, 3, 4, 1, 5, [6, 7], [6, 7], [8, 9, 10], [8, 9, 10], [8, 9, 10], 11, 12]
         self.assertEqual(atom_map[:6], [0,2,3,4,1,5])
@@ -797,7 +793,7 @@ class TestMappingDriver(unittest.TestCase):
         p_2 = ARCSpecies(label='p2', smiles='[CH3]', xyz=p_2_xyz)
 
         rxn1 = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn1.determine_family(self.rmgdb)
+        rxn1.determine_family()
         atom_map = rxn1.atom_map
         self.assertEqual(atom_map[:4],[0,2,3,1])
         self.assertIn(atom_map[4], [4,5,6])
@@ -834,7 +830,7 @@ class TestMappingDriver(unittest.TestCase):
         p_2 = ARCSpecies(label='p2', smiles='[Br][H]', xyz=p_2_xyz)
 
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map=rxn.atom_map
         self.assertEqual(atom_map[:5], [1, 2, 3, 4, 0])
         self.assertIn(tuple(atom_map[5:]), permutations([5, 6, 7]))
@@ -847,7 +843,7 @@ class TestMappingDriver(unittest.TestCase):
         p_2 = ARCSpecies(label='p2', smiles='[H][Br]', xyz=p_2_xyz)
 
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
+        rxn.determine_family()
         atom_map=rxn.atom_map
         self.assertEqual(atom_map[:5], [7, 0, 1, 2, 6])
         self.assertIn(tuple(atom_map[5:]), list(permutations([3, 4, 5])))
@@ -893,7 +889,7 @@ class TestMappingDriver(unittest.TestCase):
         p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_xyz)
         
         rxn1 = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn1.determine_family(self.rmgdb)
+        rxn1.determine_family()
         atom_map = rxn1.atom_map
         self.assertEqual(atom_map[:3],[0,2,3])
         self.assertIn(atom_map[3:5],[[1,4],[4,1]])

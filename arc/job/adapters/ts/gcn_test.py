@@ -12,7 +12,6 @@ import unittest
 from arc.common import ARC_PATH
 import arc.job.adapters.ts.gcn_ts as ts_gcn
 from arc.reaction import ARCReaction
-from arc.rmgdb import load_families_only, make_rmg_database_object
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies, TSGuess
 
@@ -28,8 +27,6 @@ class TestGCNAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
         cls.output_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'GCN')
         if not os.path.isdir(cls.output_dir):
             os.makedirs(cls.output_dir)

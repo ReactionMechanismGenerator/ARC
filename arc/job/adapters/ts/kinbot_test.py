@@ -16,7 +16,6 @@ from rmgpy.species import Species
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.kinbot_ts import KinBotAdapter, HAS_KINBOT
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only
 
 
 class TestKinBotAdapter(unittest.TestCase):
@@ -30,16 +29,15 @@ class TestKinBotAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
-    #@pytest.mark.skip(reason="KinBot has been deprecated")
+
+    # @pytest.mark.skip(reason="KinBot support in ARC has been deprecated")
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""
         if HAS_KINBOT:
             rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
             rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
                                          products=[Species().from_smiles('[CH2]CO')])
-            rxn1.determine_family(rmg_database=self.rmgdb)
+            rxn1.determine_family()
             rxn1.arc_species_from_rmg_reaction()
             self.assertEqual(rxn1.family.label, 'intra_H_migration')
             kinbot1 = KinBotAdapter(job_type='tsg',
