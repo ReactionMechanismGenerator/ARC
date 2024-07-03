@@ -160,7 +160,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_as_dict(self):
         """Test ARCReaction.as_dict()"""
-        self.rxn1.determine_family()
         rxn_dict_1 = self.rxn1.as_dict()
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
         expected_dict_1 = {'family': 'H_Abstraction',
@@ -225,6 +224,7 @@ class TestARCReaction(unittest.TestCase):
         rxn_dict_6 = self.rxn6.as_dict()
         # The ``long_thermo_description`` attribute isn't deterministic (order could change)
         expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
+                           'family': 'Disproportionation',
                            'multiplicity': 1,
                            'p_species': [{'bond_corrections': {'H-N': 3},
                                           'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
@@ -296,7 +296,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
         self.assertEqual(rxn.multiplicity, 2)
         self.assertEqual(rxn.charge, 0)
-        self.assertEqual(rxn.family.label, 'H_Abstraction')
+        self.assertEqual(rxn.family, 'H_Abstraction')
         self.assertEqual(rxn.family_own_reverse, True)
         self.assertEqual(rxn.reactants, ['CH4', 'OH'])
         self.assertEqual(rxn.products, ['CH3', 'H2O'])
@@ -394,39 +394,30 @@ class TestARCReaction(unittest.TestCase):
 
     def test_rxn_family(self):
         """Test that ARC gets the correct RMG family for different reactions"""
-        self.rxn1.determine_family()
-        self.assertEqual(self.rxn1.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn1.family, 'H_Abstraction')
         self.assertTrue(self.rxn1.family_own_reverse)
-        self.rxn2.determine_family()
-        self.assertEqual(self.rxn2.family.label, 'Disproportionation')
+        self.assertEqual(self.rxn2.family, 'Disproportionation')
         self.assertFalse(self.rxn2.family_own_reverse)
-        self.rxn3.determine_family()
-        self.assertEqual(self.rxn3.family.label, 'intra_H_migration')
+        self.assertEqual(self.rxn3.family, 'intra_H_migration')
         self.assertTrue(self.rxn3.family_own_reverse)
-        self.rxn4.determine_family()
-        self.assertEqual(self.rxn4.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn4.family, 'H_Abstraction')
         self.rxn5.rmg_reaction_from_arc_species()
         self.rxn5.check_attributes()
-        self.rxn5.determine_family()
-        self.assertEqual(self.rxn5.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn5.family, 'H_Abstraction')
         self.rxn9.rmg_reaction_from_arc_species()
         self.rxn9.check_attributes()
-        self.rxn9.determine_family()
-        self.assertEqual(self.rxn9.family.label, 'HO2_Elimination_from_PeroxyRadical')
+        self.assertEqual(self.rxn9.family, 'HO2_Elimination_from_PeroxyRadical')
         rxn_9_flipped = self.rxn9.flip_reaction()
         rxn_9_flipped.rmg_reaction_from_arc_species()
         rxn_9_flipped.check_attributes()
-        rxn_9_flipped.determine_family()
-        self.assertEqual(rxn_9_flipped.family.label, 'HO2_Elimination_from_PeroxyRadical')
-        self.rxn10.determine_family()
-        self.assertEqual(self.rxn10.family.label, 'H_Abstraction')
+        self.assertEqual(rxn_9_flipped.family, 'HO2_Elimination_from_PeroxyRadical')
+        self.assertEqual(self.rxn10.family, 'H_Abstraction')
         rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
                                        ARCSpecies(label='CCOOj', smiles='CCO[O]')],
                             p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
                                        ARCSpecies(label='C2H5', smiles='C[CH2]')])
         rxn_1.check_attributes()
-        rxn_1.determine_family()
-        self.assertEqual(rxn_1.family.label, 'H_Abstraction')
+        self.assertEqual(rxn_1.family, 'H_Abstraction')
 
         # Test identifying the reaction family for with zwitterions read from Arkane YAML files
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'HNNO+NH3O=H2NO+NH2NO')
@@ -434,8 +425,7 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='NH3O', smiles='[O-][NH3+]', yml_path=os.path.join(base_path, 'NH3O.yml'))],
                            p_species=[ARCSpecies(label='H2NO', smiles='N[O]', yml_path=os.path.join(base_path, 'H2NO.yml')),
                                       ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
-        rxn2.determine_family()
-        self.assertEqual(rxn2.family.label, 'H_Abstraction')
+        self.assertEqual(rxn2.family, 'H_Abstraction')
 
     def test_charge_property(self):
         """Test determining charge"""
@@ -617,7 +607,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_expected_changing_bonds(self):
         """Test the get_expected_changing_bonds() method."""
-        self.rxn11.determine_family()
         expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
             r_label_dict={'*1': 1, '*2': 2, '*3': 6})
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
@@ -625,10 +614,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_number_of_atoms_in_reaction_zone(self):
         """Test the get_number_of_atoms_in_reaction_zone() method."""
-        for rxn in [self.rxn1, self.rxn2, self.rxn3, self.rxn4, self.rxn5, self.rxn6, self.rxn7, self.rxn8,
-                    self.rxn9, self.rxn10, self.rxn11]:
-            if rxn.family is None:
-                rxn.determine_family()
         self.assertEqual(self.rxn1.get_number_of_atoms_in_reaction_zone(), 3)  # H_Abstraction
         self.assertEqual(self.rxn2.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
         self.assertEqual(self.rxn3.get_number_of_atoms_in_reaction_zone(), 3)
@@ -689,8 +674,7 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
         rxn_3 = ARCReaction(reactants=['H', 'CH3NH2'], products=['H2', 'CH2NH2'],
                             r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn_3.determine_family()
-        self.assertEqual(rxn_3.family.label.lower(), "H_Abstraction".lower())
+        self.assertEqual(rxn_3.family, "H_Abstraction")
         self.assertIn(rxn_3.atom_map[0], [0, 1])
         self.assertEqual(rxn_3.atom_map[1:3], [2, 5])
         for index in [3, 4, 5]:
@@ -770,7 +754,6 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=c3h5o_xyz)
         p_2 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=c4h10o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family()
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
         self.assertIn(atom_map[4], [5,6, 7])
@@ -1566,7 +1549,6 @@ class TestARCReaction(unittest.TestCase):
         rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
                           p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
                                      ARCSpecies(label="p2", smiles= 'C=CC=C')])
-        rxn.determine_family()
         c_symmetry_h_1 = [1, 2, 11, 12]            # symmetry of carbons with one hydrogen
         c_symmetry_h_2 = [0, 3, 10, 13]            # symmetry of carbons with two hydrogens
         h_symmetry1 = [6, 7, 16, 17]               # symmetry of hydrogens with one other hydrogen second order neighbor
@@ -1595,7 +1577,6 @@ class TestARCReaction(unittest.TestCase):
                           p_species=[ARCSpecies(label="p1", smiles='C=C'),
                                      ARCSpecies(label="p2", smiles="F"),
                                      ARCSpecies(label="p3", smiles="O=C=O")])
-        rxn.determine_family()
         # if not rxn.family:  # reaction family not found for some reason.
         #     rxn.family = "XY_elimination_hydroxyl"
         atom_map = rxn.atom_map
