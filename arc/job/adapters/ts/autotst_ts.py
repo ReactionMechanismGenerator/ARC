@@ -233,7 +233,7 @@ class AutoTSTAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            if rxn.family.label in self.supported_families:
+            if rxn.family in self.supported_families:
                 if rxn.ts_species is None:
                     # Mainly used for testing, in an ARC run the TS species should already exist.
                     rxn.ts_species = ARCSpecies(label='TS',
