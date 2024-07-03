@@ -334,10 +334,9 @@ class Scheduler(object):
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
-                rxn.determine_family()
                 family_text = ''
                 if rxn.family is not None:
-                    family_text = f'identified as belonging to RMG family {rxn.family.label}'
+                    family_text = f'identified as belonging to RMG family {rxn.family}'
                 logger.info(f'Considering reaction: {rxn.label}')
                 if family_text:
                     logger.info(f'({family_text})')
@@ -1604,8 +1603,8 @@ class Scheduler(object):
                     for method in self.ts_adapters:
                         if method in all_families_ts_adapters or \
                                 (rxn.family is not None
-                                 and rxn.family.label in list(ts_adapters_by_rmg_family.keys())
-                                 and method in ts_adapters_by_rmg_family[rxn.family.label]):
+                                 and rxn.family in list(ts_adapters_by_rmg_family.keys())
+                                 and method in ts_adapters_by_rmg_family[rxn.family]):
                             self.run_job(job_type='tsg',
                                          job_adapter=method,
                                          reactions=[rxn],
@@ -3812,7 +3811,7 @@ class Scheduler(object):
                 ts_dict['rxn_index'] = species.rxn_index
                 for reaction in self.rxn_list:
                     if reaction.ts_label == species.label:
-                        ts_dict['family'] = reaction.family.label if reaction.family is not None else None
+                        ts_dict['family'] = reaction.family
                         break
                 else:
                     ts_dict['family'] = None
