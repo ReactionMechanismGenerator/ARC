@@ -21,7 +21,6 @@ from typing import Dict, List, Optional, Tuple, Union
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
-import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
                         ARC_PATH,
                         check_ess_settings,
@@ -309,7 +308,6 @@ class ARC(object):
                     job['xyz'] = str_to_xyz(job['xyz'])
         self.lib_long_desc = ''
         self.unique_species_labels = list()
-        self.rmg_database = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory or default_job_settings.get('job_total_memory_gb', 14)
