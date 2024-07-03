@@ -160,29 +160,6 @@ def load_rmg_database(rmgdb: RMGDatabase,
     logger.info('\n\n')
 
 
-def determine_family(reaction: 'ARCReaction',
-                     db: Optional[RMGDatabase] = None,
-                     ):
-    """
-    Determine the RMG reaction family for an ARC reaction.
-    A wrapper for ARCReaction.determine_family().
-    This wrapper is useful because it makes a new instance of the rmgdb if needed.
-
-    Args:
-        reaction ('ARCReaction'): An ARCReaction object instance.
-        db (RMGDatabase, optional): The RMG database instance.
-    """
-    global rmg_database_instance
-    if reaction.family is None:
-        db = db or rmg_database_instance
-        if db is None:
-            db = make_rmg_database_object()
-            load_families_only(db)
-        if reaction.rmg_reaction is None:
-            reaction.rmg_reaction_from_arc_species()
-        reaction.determine_family(db)
-
-
 def determine_reaction_family(rmgdb: RMGDatabase,
                               reaction: Reaction,
                               save_order: bool = True,
