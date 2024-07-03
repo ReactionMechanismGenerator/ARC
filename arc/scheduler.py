@@ -2243,6 +2243,8 @@ class Scheduler(object):
                 im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
                     if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
             )
+            if len(self.species_dict[label].ts_guesses) <= 1:
+                self.species_dict[label].ts_guesses_exhausted = True
 
     def parse_composite_geo(self,
                             label: str,
