@@ -63,9 +63,8 @@ def map_reaction(rxn: 'ARCReaction',
         return _map
     else:
         if rxn.family is None:
-            rxn.determine_family()
-        if rxn.family is None:
-            logger.warning(f'Could not determine the reaction family for {rxn.label}. Mapping as a general or isomerization reaction.')
+            logger.warning(f'Could not determine the reaction family for {rxn.label}. '
+                           f'Mapping as a general or isomerization reaction.')
             _map = map_general_rxn(rxn, backend=backend)
             return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
         try:
