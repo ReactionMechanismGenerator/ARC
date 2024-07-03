@@ -399,7 +399,7 @@ def determine_reaction_family(rxn: 'ARCReaction',
             product_dicts.extend(filter_products_by_reaction(rxn=rxn, product_dicts=products))
 
         # Reverse:
-        flipped_rxn = rxn.flip_reaction()
+        flipped_rxn = rxn.flip_reaction(report_family=False)
         products = determine_possible_reaction_products_from_family(rxn=flipped_rxn,
                                                                     family_label=family_label,
                                                                     consider_arc_families=consider_arc_families,
