@@ -21,7 +21,6 @@ from rmgpy.species import Species
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
-from arc.rmgdb import make_rmg_database_object, load_families_only
 from arc.mapping.engine import get_rmg_reactions_from_arc_reaction
 import arc.species.converter as converter
 from arc.reaction import ARCReaction
@@ -41,8 +40,6 @@ class TestCommon(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
         cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
                                  'fine': True,
@@ -1275,7 +1272,7 @@ class TestCommon(unittest.TestCase):
         """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
         arc_rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
                               p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
-        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=arc_rxn, db=self.rmgdb)
+        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=arc_rxn)
         self.assertTrue(common._check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_rxn, rmg_reactions))
 
     def test_almost_equal_coords(self):
