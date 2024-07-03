@@ -239,9 +239,8 @@ class HeuristicsAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            family_label = rxn.family.label
-            if family_label not in supported_families:
-                logger.warning(f'The heuristics TS search adapter does not support the {family_label} reaction family.')
+            if rxn.family not in supported_families:
+                logger.warning(f'The heuristics TS search adapter does not support the {rxn.family} reaction family.')
                 continue
             if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
                 logger.warning(f'The heuristics TS search adapter cannot process a reaction if 3D coordinates of '
@@ -272,7 +271,7 @@ class HeuristicsAdapter(JobAdapter):
 
             xyzs = list()
             tsg = None
-            if family_label == 'H_Abstraction':
+            if rxn.family == 'H_Abstraction':
                 # Todo: train guess params
                 # r1_stretch_, r2_stretch_, a2_ = get_training_params(
                 #     family='H_Abstraction',
@@ -303,7 +302,7 @@ class HeuristicsAdapter(JobAdapter):
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,
                                        success=True,
-                                       family=family_label,
+                                       family=rxn.family,
                                        xyz=xyz,
                                        )
                     rxn.ts_species.ts_guesses.append(ts_guess)
@@ -311,7 +310,7 @@ class HeuristicsAdapter(JobAdapter):
                              path=self.local_path,
                              filename=f'Heuristics_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {family_label}',
+                             comment=f'Heuristics {method_index}, family: {rxn.family}',
                              )
 
             if len(self.reactions) < 5:
