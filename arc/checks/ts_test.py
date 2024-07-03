@@ -182,15 +182,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                           xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'))
         cls.rxn_8.ts_label = cls.rxn_8.ts_species.label
 
-        cls.rxn_2a.determine_family()
-        cls.rxn_2b.determine_family()
-        cls.rxn_3.determine_family()
-        cls.rxn_4.determine_family()
-        cls.rxn_5.determine_family()
-        cls.rxn_6.determine_family()
-        cls.rxn_7.determine_family()
-        cls.rxn_8.determine_family()
-
         cls.ccooj_xyz = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H'),
                          'isotopes': (12, 12, 16, 16, 1, 1, 1, 1, 1),
                          'coords': ((-1.0558210286905791, -0.033295741345331475, -0.10080257427276477),
@@ -377,7 +368,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
                                                            'TS_intra_H_migration_CBS-QB3.out')
-        self.rxn_2a.determine_family()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
         self.rxn_2a.ts_species.populate_ts_checks()
@@ -656,7 +646,8 @@ H                 -1.28677889    1.04716138   -1.01532486"""
             ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=['family'])
         with self.assertRaises(TypeError):
             ts.get_rxn_normal_mode_disp_atom_number('family', rms_list=15.215)
-        self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number(), 3)
+        with self.assertRaises(ValueError):
+            self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number(), 3)
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('default'), 3)
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration'), 3)
         self.assertEqual(ts.get_rxn_normal_mode_disp_atom_number('intra_H_migration', rms_list=self.rms_list_1), 4)
