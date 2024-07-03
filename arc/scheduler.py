@@ -14,7 +14,6 @@ import numpy as np
 from IPython.display import display
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import arc.rmgdb as rmgdb
 from arc import parser, plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
@@ -145,7 +144,6 @@ class Scheduler(object):
                                           in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                           values are dictionaries with job type tuples as keys and levels of theory
                                           as values. 'inf' is accepted in max_num_atoms
-        rmg_database (RMGDatabase, optional): The RMG database object.
         job_types (dict, optional): A dictionary of job types to execute. Keys are job types, values are boolean.
         bath_gas (str, optional): A bath gas. Currently used in OneDMin to calc L-J parameters.
                                   Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
@@ -192,7 +190,6 @@ class Scheduler(object):
         restart_path (str): Path to the `restart.yml` file to be saved.
         max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
         testing (bool): Used for internal ARC testing (generating the object w/o executing it).
-        rmg_database (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.
         dont_gen_confs (list): A list of species labels for which conformer jobs were loaded from a restart file,
@@ -218,7 +215,6 @@ class Scheduler(object):
                                 in the species. Keys are tuples of (min_num_atoms, max_num_atoms),
                                 values are dictionaries with job type tuples as keys and levels of theory
                                 as values. 'inf' is accepted in max_num_atoms
-        rmg_database (RMGDatabase, optional): The RMG database object.
         fine_only (bool): If ``True`` ARC will not run optimization jobs without ``fine=True``.
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float): The harmonic frequencies scaling factor.
@@ -244,7 +240,6 @@ class Scheduler(object):
                  irc_level: Optional[Level] = None,
                  orbitals_level: Optional[Level] = None,
                  adaptive_levels: Optional[dict] = None,
-                 rmg_database: Optional = None,
                  job_types: Optional[dict] = None,
                  rxn_list: Optional[list] = None,
                  bath_gas: Optional[str] = None,
@@ -271,7 +266,6 @@ class Scheduler(object):
         self.species_list = species_list
         self.project_directory = project_directory
 
-        self.rmg_database = rmg_database or rmgdb.make_rmg_database_object()
         self.restart_dict = restart_dict
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
@@ -329,8 +323,6 @@ class Scheduler(object):
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
-            logger.info("\nLoading RMG's families...")
-            rmgdb.load_families_only(self.rmg_database)
             for rxn in self.rxn_list:
                 logger.info('\n\n')
                 # 1. Update the ARCReaction object and generate an ARCSpecies object for its TS.
@@ -342,7 +334,7 @@ class Scheduler(object):
                         rxn.p_species.append(spc)
                 rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
-                rxn.determine_family(rmg_database=self.rmg_database)
+                rxn.determine_family()
                 family_text = ''
                 if rxn.family is not None:
                     family_text = f'identified as belonging to RMG family {rxn.family.label}'
