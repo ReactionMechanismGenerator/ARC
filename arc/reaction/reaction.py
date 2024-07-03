@@ -107,8 +107,8 @@ class ARCReaction(object):
         self.kinetics = None
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
-        self.family = None
-        self.family_own_reverse = False
+        self._family = None
+        self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
         self.rmg_reactions = None
@@ -200,6 +200,34 @@ class ARCReaction(object):
                 raise InputError(f'Reaction multiplicity must be an integer, got {value} which is a {type(value)}.')
             logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
 
+    @property
+    def family(self):
+        """The RMG reaction family"""
+        if self._family is None:
+            self._family, self._family_own_reverse = self.determine_family()
+        return self._family
+
+    @family.setter
+    def family(self, value):
+        """Allow setting family"""
+        self._family = value
+        if value is not None and not isinstance(value, str):
+            raise InputError(f'Reaction family must be a string, got {value} which is a {type(value)}.')
+
+    @property
+    def family_own_reverse(self):
+        """The RMG reaction family's own reverse property"""
+        if self._family_own_reverse is None:
+            self._family, self._family_own_reverse = self.determine_family()
+        return self._family_own_reverse
+
+    @family_own_reverse.setter
+    def family_own_reverse(self, value):
+        """Allow setting family_own_reverse"""
+        self._family_own_reverse = value
+        if value is not None and not isinstance(value, bool):
+            raise InputError(f'Reaction family_own_reverse must be a boolean, got {value} which is a {type(value)}.')
+
     def __str__(self) -> str:
         """Return a string representation of the object"""
         str_representation = f'ARCReaction('
@@ -213,6 +241,7 @@ class ARCReaction(object):
 
     def as_dict(self,
                 reset_atom_ids: bool = False,
+                report_family: bool = True,
                 ) -> dict:
         """
         A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.
@@ -221,6 +250,7 @@ class ARCReaction(object):
             reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute of reactant
                                              and product species. Useful when copying the object to avoid duplicate
                                              atom IDs between different object instances.
+            report_family (bool, optional): Whether to report the reaction family.
 
         Returns:
             dict: The dictionary representation of the object instance.
@@ -246,10 +276,11 @@ class ARCReaction(object):
             reaction_dict['preserve_param_in_scan'] = self.preserve_param_in_scan
         if 'rmg_reaction' in reaction_dict:
             reaction_dict['rmg_reaction'] = self.rmg_reaction_to_str()
-        if self.family is not None:
-            reaction_dict['family'] = self.family
-        if self.family_own_reverse:
-            reaction_dict['family_own_reverse'] = self.family_own_reverse
+        if report_family:
+            if self.family is not None:
+                reaction_dict['family'] = self.family
+            if self.family_own_reverse:
+                reaction_dict['family_own_reverse'] = self.family_own_reverse
         if self.long_kinetic_description:
             reaction_dict['long_kinetic_description'] = self.long_kinetic_description
         if len(self.ts_xyz_guess):
@@ -329,14 +360,17 @@ class ARCReaction(object):
         reaction_dict = self.as_dict(reset_atom_ids=True)
         return ARCReaction(reaction_dict=reaction_dict)
 
-    def flip_reaction(self):
+    def flip_reaction(self, report_family: bool = True):
         """
         Get a copy of this object instance with flipped reactants and products.
+
+        Args:
+            report_family (bool, optional): Whether to report the reaction family.
 
         Returns:
             ARCReaction: A copy of this object instance with flipped reactants and products.
         """
-        reaction_dict = self.as_dict(reset_atom_ids=True)
+        reaction_dict = self.as_dict(reset_atom_ids=True, report_family=report_family)
         reset_keys = ['label', 'index', 'atom_map', 'rmg_reaction',
                       'family', 'family_own_reverse', 'long_kinetic_description']
         if 'r_species' in reaction_dict.keys() and 'p_species' in reaction_dict.keys():
@@ -558,8 +592,6 @@ class ARCReaction(object):
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
         """
-        if self.rmg_reaction is None:
-            self.rmg_reaction_from_arc_species()  # needed?
         if self.rmg_reaction is not None:
             product_dicts = determine_reaction_family(rxn=self,
                                                       rmg_family_set=rmg_family_set,
@@ -567,7 +599,10 @@ class ARCReaction(object):
                                                       consider_arc_families=consider_arc_families,
                                                       discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
                                                       )
-            self.family, self.family_own_reverse = product_dicts[0]['family'], product_dicts[0]['own_reverse']
+            if len(product_dicts):
+                family, family_own_reverse = product_dicts[0]['family'], product_dicts[0]['own_reverse']
+                return family, family_own_reverse
+            return None, None
 
     def check_attributes(self):
         """Check that the Reaction object is defined correctly"""
