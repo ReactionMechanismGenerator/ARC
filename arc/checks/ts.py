@@ -8,7 +8,6 @@ import os
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import arc.rmgdb as rmgdb
 from arc import parser
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
@@ -302,8 +301,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     """
     if job is None:
         return
-    if reaction.family is None:
-        rmgdb.determine_family(reaction)
+    reaction.determine_family()
     amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.6, 0.8, 1]
     amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
     reaction.ts_species.ts_checks['NMD'] = False

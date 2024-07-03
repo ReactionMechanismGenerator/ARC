@@ -17,7 +17,6 @@ from qcelemental.models.molecule import Molecule as QCMolecule
 from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
-import arc.rmgdb as rmgdb
 from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
 from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
@@ -167,7 +166,6 @@ def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
 
 def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
                                         backend: str = 'ARC',
-                                        db: Optional['RMGDatabase'] = None,
                                         ) -> Optional[List['TemplateReaction']]:
     """
     A helper function for getting RMG reactions from an ARC reaction.
@@ -177,14 +175,13 @@ def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
     Args:
         arc_reaction (ARCReaction): The ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[TemplateReaction]]:
             The respective RMG TemplateReaction object instances (considering resonance structures).
     """
     if arc_reaction.family is None:
-        rmgdb.determine_family(reaction=arc_reaction, db=db)
+        arc_reaction.determine_family()
     if arc_reaction.family is None:
         return None
     if not arc_reaction.family.save_order:
