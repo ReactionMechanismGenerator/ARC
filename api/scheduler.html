@@ -875,6 +875,17 @@ stable species, and that exactly one imaginary frequency was assigned for a TS.<
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit">
+<span class="sig-name descname"><span class="pre">check_max_simultaneous_jobs_limit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_max_simultaneous_jobs_limit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_max_simultaneous_jobs_limit" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the number of running jobs on the server is not above the set server limit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>server</strong> (<em>str</em>) – The server name.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.check_negative_freq">
 <span class="sig-name descname"><span class="pre">check_negative_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">JobAdapter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vibfreqs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.check_negative_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.check_negative_freq" title="Permalink to this definition">¶</a></dt>
 <dd><p>A helper function for determining the number of negative frequencies. Also logs appropriate errors.
@@ -1040,8 +1051,13 @@ Save the resulting xyz as <cite>initial_xyz</cite>.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="arc.scheduler.Scheduler.get_server_job_ids">
-<span class="sig-name descname"><span class="pre">get_server_job_ids</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.get_server_job_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.get_server_job_ids" title="Permalink to this definition">¶</a></dt>
-<dd><p>Check job status on all active servers, get a list of relevant running job IDs.</p>
+<span class="sig-name descname"><span class="pre">get_server_job_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">specific_server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/scheduler.html#Scheduler.get_server_job_ids"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.scheduler.Scheduler.get_server_job_ids" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check job status on a specific server or on all active servers, get a list of relevant running job IDs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>specific_server</strong> (<em>str</em><em>, </em><em>optional</em>) – The server to check. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, check all active servers.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
