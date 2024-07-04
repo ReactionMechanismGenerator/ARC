@@ -267,7 +267,7 @@ class GaussianAdapter(JobAdapter):
             self.level.method = 'cbs-qb3'
 
         # Job type specific options
-        max_c = self.args['trsh'].split()[1] if 'max_cycles' in self.args['trsh'] else 100
+        max_c = self.args['trsh'].split()[1] if 'max_cycles' in self.args['trsh'] else 200
         if self.job_type in ['opt', 'conformers', 'optfreq', 'composite']:
             keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycles={max_c}'] if self.is_ts else ['calcfc']
             if self.level.method in ['rocbs-qb3']:
