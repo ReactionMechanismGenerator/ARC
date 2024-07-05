@@ -8,7 +8,7 @@ This module contains unit tests of the arc.reaction.family module
 import os
 import unittest
 
-from rmgpy.molecule import Molecule
+from rmgpy.molecule import Group, Molecule
 
 from arc.common import generate_resonance_structures
 from arc.reaction.family import (ReactionFamily,
@@ -20,7 +20,9 @@ from arc.reaction.family import (ReactionFamily,
                                  determine_reaction_family,
                                  get_all_families,
                                  get_entries,
+                                 get_group_adjlist,
                                  get_initial_reactant_labels_from_template,
+                                 get_isomorphic_subgraph,
                                  get_product_num,
                                  get_reactant_groups_from_template,
                                  get_recipe_actions,
@@ -606,6 +608,57 @@ H       1.24252625    0.91583948   -0.84155142"""
 3    H         u0 {1,S}
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}"""})
+
+    def test_get_isomorphic_subgraph(self):
+        """Test getting the isomorphic subgraph"""
+        oh_xyz = {'symbols': ('O', 'H'), 'isotopes': (16, 1), 'coords': ((0.0, 0.0, 0.6131), (0.0, 0.0, -0.6131))}
+        ncc_xyz = {'symbols': ('N', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                   'isotopes': (14, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+                   'coords': ((1.2562343261659277, 0.055282951474465256, -0.5803566480287667),
+                              (0.2433806820538858, -0.2998022593250662, 0.4048026179081362),
+                              (-1.1419715208061372, 0.05031794898903049, -0.10936163768735493),
+                              (0.30010122891852403, -1.3732777777516794, 0.6116620393221122),
+                              (0.4378838143353429, 0.23284176746008836, 1.3415344409291001),
+                              (-1.3668225970409684, -0.4847381186432614, -1.0382269930378532),
+                              (-1.2346536276957667, 1.1246102699428049, -0.30155738107540364),
+                              (-1.899948780117477, -0.22595560919578353, 0.6306294743856438),
+                              (1.224390390624704, 1.0579934139157359, -0.7603389078698333),
+                              (2.1814060835619262, -0.13727258686634466, -0.1987870048457775))}
+        spc_1 = ARCSpecies(label='OH', smiles='[OH]', xyz=oh_xyz)
+        spc_2 = ARCSpecies(label='NCC', smiles='NCC', xyz=ncc_xyz)
+        groups_as_lines = ReactionFamily('H_Abstraction').groups_as_lines
+        group_1 = Group().from_adjacency_list(get_group_adjlist(groups_as_lines=groups_as_lines, entry_label='Y_rad'))
+        group_2 = Group().from_adjacency_list(get_group_adjlist(groups_as_lines=groups_as_lines, entry_label='X_H'))
+        isomorphic_subgraphs_1 = spc_1.mol.find_subgraph_isomorphisms(other=group_1, save_order=True)
+        isomorphic_subgraphs_2 = spc_2.mol.find_subgraph_isomorphisms(other=group_2, save_order=True)
+        self.assertEqual(len(isomorphic_subgraphs_1), 1)
+        self.assertEqual(len(isomorphic_subgraphs_2), 7)
+        for key, val in isomorphic_subgraphs_1[0].items():  # [{<Atom 'O.'>: <GroupAtom [*3 'R']>}]
+            self.assertEqual(key.atomtype.label, 'O2s')
+            self.assertEqual(val.label, '*3')
+        for isomorphic_subgraph in isomorphic_subgraphs_2:
+            # [{<Atom 'C'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'C'>: <GroupAtom [*1 'R']>,
+            # <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'C'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>},
+            # {<Atom 'C'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'C'>: <GroupAtom [*1 'R']>,
+            # <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'N'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>},
+            # {<Atom 'N'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>}]
+            for key, val in isomorphic_subgraph.items():
+                if key.is_hydrogen():
+                    self.assertEqual(val.label, '*2')
+                else:
+                    self.assertEqual(val.label, '*1')
+        isomorphic_subgraph = get_isomorphic_subgraph(isomorphic_subgraph_1=isomorphic_subgraphs_1[0],
+                                                      isomorphic_subgraph_2=isomorphic_subgraphs_2[0],
+                                                      mol_1=spc_1.mol,
+                                                      mol_2=spc_2.mol,
+                                                      )
+        self.assertEqual(isomorphic_subgraph, {0: '*3', 3: '*1', 5: '*2'})
+        isomorphic_subgraph = get_isomorphic_subgraph(isomorphic_subgraph_1=isomorphic_subgraphs_1[0],
+                                                      isomorphic_subgraph_2=isomorphic_subgraphs_2[2],
+                                                      mol_1=spc_1.mol,
+                                                      mol_2=spc_2.mol,
+                                                      )
+        self.assertEqual(isomorphic_subgraph, {0: '*3', 4: '*1', 7: '*2'})
 
 
 if __name__ == '__main__':
