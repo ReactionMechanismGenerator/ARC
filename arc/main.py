@@ -503,7 +503,8 @@ class ARC(object):
                 if not isinstance(self.freq_level, (dict, str)) else self.freq_level
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
-        if self.irc_level is not None and str(self.irc_level).split()[0] != default_levels_of_theory['irc']:
+        if self.irc_level is not None and len(self.irc_level.method) \
+                and str(self.irc_level).split()[0] != default_levels_of_theory['irc']:
             restart_dict['irc_level'] = self.irc_level.as_dict() \
                 if not isinstance(self.irc_level, (dict, str)) else self.irc_level
         if self.keep_checks:
@@ -520,7 +521,8 @@ class ARC(object):
         if self.opt_level is not None and str(self.opt_level).split()[0] != default_levels_of_theory['opt']:
             restart_dict['opt_level'] = self.opt_level.as_dict() \
                 if not isinstance(self.opt_level, (dict, str)) else self.opt_level
-        if self.orbitals_level is not None and str(self.orbitals_level).split()[0] != default_levels_of_theory['orbitals']:
+        if self.orbitals_level is not None and len(self.orbitals_level.method) \
+                and str(self.orbitals_level).split()[0] != default_levels_of_theory['orbitals']:
             restart_dict['orbitals_level'] = self.orbitals_level.as_dict() \
                 if not isinstance(self.orbitals_level, (dict, str)) else self.orbitals_level
         if self.output:
@@ -532,10 +534,12 @@ class ARC(object):
             restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         if self.running_jobs:
             restart_dict['running_jobs'] = self.running_jobs
-        if self.scan_level is not None and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
+        if self.scan_level is not None and len(self.scan_level.method) \
+                and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
                 if not isinstance(self.scan_level, (dict, str)) else self.scan_level
-        if self.sp_level is not None and str(self.sp_level).split()[0] != default_levels_of_theory['sp']:
+        if self.sp_level is not None and len(self.sp_level.method) \
+                and str(self.sp_level).split()[0] != default_levels_of_theory['sp']:
             restart_dict['sp_level'] = self.sp_level.as_dict() \
                 if not isinstance(self.sp_level, (dict, str)) else self.sp_level
         restart_dict['species'] = [spc.as_dict() for spc in self.species]
