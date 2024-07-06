@@ -82,7 +82,7 @@ class ReactionFamily(object):
 
     def generate_products(self,
                           reactants: List['ARCSpecies'],
-                          ) -> Dict[Union[str, Tuple[str, str]], List[List['Molecule']]]:
+                          ) -> Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
         """
         Generate a list of all the possible reaction products of this family starting from the list of ``reactants``.
 
@@ -95,10 +95,10 @@ class ReactionFamily(object):
             reactants (List['ARCSpecies']): The reactants to generate reaction products for.
 
         Returns:
-            Dict[Union[str, Tuple[str, str]], List[List['Molecule']]]:
-                The generated reaction products in different possible iso-teleological reactions.
-                keys are family group labels used to generate the products.
-                values are a list of the corresponding possible products.
+            Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                The generated reaction products in different possible reaction paths including iso-teleological paths.
+                keys are family group labels used to generate the products,
+                values are a list of the corresponding possible products and isomorphic subgraphs.
         """
         if self.reactant_num != len(reactants):
             return dict()
@@ -123,7 +123,7 @@ class ReactionFamily(object):
     def generate_products_by_reactant_groups(self,
                                              reactants: List['ARCSpecies'],
                                              reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                             ) -> Dict[Union[str, Tuple[str, str]], List[List['Molecule']]]:
+                                             ) -> Dict[Union[str, Tuple[str, str]], List[Tuple[List['Molecule'], Dict[int, str]]]]:
         """
         Generate a list of all the possible reaction products of this family starting from the list of ``reactants``
         and the mapping of reactant indices to family groups.
@@ -134,7 +134,11 @@ class ReactionFamily(object):
                                                                                   to groups that match them.
 
         Returns:
-            Dict[str, List['Molecule']]: The generated reaction products in different possible iso-teleological reactions.
+            Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                The generated reaction products.
+                Keys are family group labels used to generate the products.
+                Values are lists of tuples with entries:
+                (0) a list of the corresponding possible reactions, (1) the isomorphic subgraph.
         """
         if len(reactants) == 1:
             return self.generate_unimolecular_products(reactants=reactants,
@@ -149,7 +153,7 @@ class ReactionFamily(object):
     def generate_unimolecular_products(self,
                                        reactants: List['ARCSpecies'],
                                        reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                       ) -> Dict[str, List[List['Molecule']]]:
+                                       ) -> Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
         """
         Generate a list of all the possible unimolecular reaction products of this family starting from
         the list of ``reactants`` and the mapping of reactant indices to family groups.
@@ -160,9 +164,11 @@ class ReactionFamily(object):
                                                                                   to groups that match them.
 
         Returns:
-            Dict[str, List['Molecule']]: The generated reaction products.
-                                           Keys are family group labels used to generate the products.
-                                           Values are a list of the corresponding possible iso-teleological reactions.
+            Dict[str, List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                The generated reaction products.
+                Keys are family group labels used to generate the products.
+                Values are lists of tuples with entries:
+                (0) a list of the corresponding possible reactions, (1) the isomorphic subgraph.
         """
         isomorphic_subgraph_dicts = list()
         reactant_to_group_maps = reactant_to_group_maps[0]
@@ -174,27 +180,29 @@ class ReactionFamily(object):
                 if len(isomorphic_subgraphs):
                     for isomorphic_subgraph in isomorphic_subgraphs:
                         isomorphic_subgraph_dicts.append(
-                            {'mol': mol,
+                            {'mols': [mol],
+                             'groups': [group],
                              'subgroup': reactant_to_group_map['subgroup'],
                              'isomorphic_subgraph': {mol.atoms.index(atom): group_atom.label
                                                      for atom, group_atom in isomorphic_subgraph.items()}})
         products_by_group = dict()
         for isomorphic_subgraph_dict in isomorphic_subgraph_dicts:
             try:
-                product_list = self.apply_recipe(mols=[isomorphic_subgraph_dict['mol']],
+                product_list = self.apply_recipe(mols=isomorphic_subgraph_dict['mols'],
                                                  isomorphic_subgraph=isomorphic_subgraph_dict['isomorphic_subgraph'])
             except ValueError:
                 continue
             if product_list is not None:
                 if isomorphic_subgraph_dict['subgroup'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroup']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroup']].append(product_list)
+                products_by_group[isomorphic_subgraph_dict['subgroup']].append((product_list,
+                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def generate_bimolecular_products(self,
                                       reactants: List['ARCSpecies'],
                                       reactant_to_group_maps: Dict[int, List[Dict[str, Union[int, str]]]],
-                                      ) -> Dict[Tuple[str, str], List[List['Molecule']]]:
+                                      ) -> Dict[Tuple[str, str], List[Tuple[List['Molecule'], Dict[int, str]]]]:
         """
         Generate a list of all the possible bimolecular reaction products of this family starting from
         the list of ``reactants`` and the mapping of reactant indices to family groups.
@@ -210,9 +218,11 @@ class ReactionFamily(object):
                                                                                   to groups that match them.
 
         Returns:
-            Dict[str, List['Molecule']]: The generated reaction products.
-                                           Keys are family group labels used to generate the products.
-                                           Values are a list of the corresponding possible iso-teleological reactions.
+            Dict[Tuple[str, str], List[Tuple[List['Molecule'], Dict[int, str]]]]:
+                The generated reaction products.
+                Keys are family group labels used to generate the products.
+                Values are lists of tuples with entries:
+                (0) a list of the corresponding possible reactions, (1) the isomorphic subgraph.
         """
         if list(reactant_to_group_maps.keys()) != [0, 1]:
             return dict()
@@ -265,12 +275,13 @@ class ReactionFamily(object):
             if product_list is not None:
                 if isomorphic_subgraph_dict['subgroups'] not in products_by_group:
                     products_by_group[isomorphic_subgraph_dict['subgroups']] = list()
-                products_by_group[isomorphic_subgraph_dict['subgroups']].append(product_list)
+                products_by_group[isomorphic_subgraph_dict['subgroups']].append((product_list,
+                                                                                isomorphic_subgraph_dict['isomorphic_subgraph']))
         return products_by_group
 
     def apply_recipe(self,
                      mols: List['Molecule'],
-                     isomorphic_subgraph: dict,
+                     isomorphic_subgraph: Dict[int, str],
                      ) -> Optional[List['Molecule']]:
         """
         Generate a reaction product of this family from a reactant mol and the isomorphic subgraph
@@ -278,7 +289,7 @@ class ReactionFamily(object):
 
         Args:
             mols (['Molecule']): The reactant molecule(s).
-            isomorphic_subgraph (dict): A dictionary representing the isomorphic subgraph.
+            isomorphic_subgraph (Dict[int, str]): A dictionary representing the isomorphic subgraph.
 
         Raises:
             ValueError: If an invalid action is encountered.
@@ -358,14 +369,14 @@ class ReactionFamily(object):
             return len(self.reactants)
 
 
-def determine_reaction_family(rxn: 'ARCReaction',
-                              rmg_family_set: str = 'default',
-                              consider_rmg_families: bool = True,
-                              consider_arc_families: bool = True,
-                              discover_own_reverse_rxns_in_reverse: bool = False,
-                              ) -> List[dict]:
+def get_reaction_family_products(rxn: 'ARCReaction',
+                                 rmg_family_set: str = 'default',
+                                 consider_rmg_families: bool = True,
+                                 consider_arc_families: bool = True,
+                                 discover_own_reverse_rxns_in_reverse: bool = False,
+                                 ) -> List[dict]:
     """
-    Determine the RMG reaction family for a given ARC reaction.
+    Determine the RMG reaction family for a given ARC reaction by generating corresponding product dicts.
 
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
@@ -435,12 +446,13 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     product_dicts = list()
     family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
     products = family.generate_products(reactants=rxn.get_reactants_and_products(arc=True, return_copies=True)[0])
-    if products:
+    if products:  # changed
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
                 product_dicts.append({'family': family_label,
                                       'group_labels': group_labels,
-                                      'products': product_list,
+                                      'products': product_list[0],
+                                      'label_map': {k: v for k, v in product_list[1].items() if v},
                                       'own_reverse': family.own_reverse,
                                       'discovered_in_reverse': reverse,
                                       })
@@ -479,7 +491,7 @@ def check_product_isomorphism(products: List['Molecule'],
     Supports unimolecular and bimolecular reactions.
 
     Args:
-        products (List[List['Molecule']]): The products to check.
+        products (Tuple[List['Molecule'], Dict[int, str]]): The products to check.
         p_species (List['ARCSpecies']): The species to check against.
 
     Returns:
@@ -489,7 +501,7 @@ def check_product_isomorphism(products: List['Molecule'],
         return products[0].is_isomorphic(p_species[0].mol)
     if len(products) == 2:
         for i in [0, 1]:
-            if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):
+            if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):  # AttributeError: 'list' object has no attribute 'is_isomorphic'
                 return True
     return False
 
@@ -757,6 +769,7 @@ def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
                             ) -> dict:
     """
     Get the isomorphic subgraph from two isomorphic subgraphs and the corresponding molecules.
+
     Args:
         isomorphic_subgraph_1 (dict): The isomorphic subgraph of the first molecule.
         isomorphic_subgraph_2 (dict): The isomorphic subgraph of the second molecule.
@@ -764,7 +777,8 @@ def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
         mol_2 ('Molecule'): The second molecule.
 
     Returns:
-        dict: The isomorphic subgraph.
+        dict: The isomorphic subgraph which is a dict map of atom indices and group labels.
+              E.g.: {0: '*3', 4: '*1', 7: '*2'}
     """
     isomorphic_subgraph = dict()
     len_mol_1 = len(mol_1.atoms)
