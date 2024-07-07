@@ -446,13 +446,13 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     product_dicts = list()
     family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
     products = family.generate_products(reactants=rxn.get_reactants_and_products(arc=True, return_copies=True)[0])
-    if products:  # changed
+    if products:
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
                 product_dicts.append({'family': family_label,
                                       'group_labels': group_labels,
                                       'products': product_list[0],
-                                      'label_map': {k: v for k, v in product_list[1].items() if v},
+                                      'label_map': {val: key for key, val in product_list[1].items() if val},
                                       'own_reverse': family.own_reverse,
                                       'discovered_in_reverse': reverse,
                                       })
@@ -501,7 +501,7 @@ def check_product_isomorphism(products: List['Molecule'],
         return products[0].is_isomorphic(p_species[0].mol)
     if len(products) == 2:
         for i in [0, 1]:
-            if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):  # AttributeError: 'list' object has no attribute 'is_isomorphic'
+            if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):
                 return True
     return False
 
