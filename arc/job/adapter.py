@@ -518,8 +518,6 @@ class JobAdapter(ABC):
         }
 
         if queue is None:
-            logger.debug(f'Queue not defined for server {self.server}. '
-                         f'Assuming the queue name is defined in your submit.py script.')
             del format_params['queue']
 
         try:
