@@ -794,6 +794,12 @@ class Scheduler(object):
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
         ess_trsh_methods = ess_trsh_methods if ess_trsh_methods is not None else list()
+        if ess_trsh_methods == ['rerun']:
+            ess_trsh_methods = list()
+            times_rerun += 1
+        if times_rerun > 5:
+            logger.error(f'Job {label} has been re-run too many times. Not attempting any more troubleshooting methods.')
+            return
         species = None
         if isinstance(label, str) and label in self.output:
             species = self.species_dict[label]
@@ -1986,7 +1992,10 @@ class Scheduler(object):
             logger.warning(f'Conformer {i} for {label} did not converge.')
             if job.job_status[1]['status'] == 'errored' and job.times_rerun == 0:
                 job.times_rerun += 1
-                self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None) 
+                self.troubleshoot_ess(label=label,
+                                      job=job,
+                                      level_of_theory=job.level,
+                                      conformer=job.conformer if job.conformer is not None else None)
                 return True
             if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)

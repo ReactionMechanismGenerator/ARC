@@ -895,7 +895,6 @@ def trsh_ess_job(label: str,
         if fine:
             logger_info.append('using a fine grid')
 
-
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
             # Increase memory allocation
@@ -1051,6 +1050,10 @@ def trsh_ess_job(label: str,
         Optimize the geometry and try again
         """
         couldnt_trsh = True
+
+    # ESS did not run, try rerunning
+    elif 'NoOutput' in job_status['keywords']:
+        ess_trsh_methods.append('rerun')
 
     else:
         logger.error(f'Troubleshooting methods are not implemented for {software}')
