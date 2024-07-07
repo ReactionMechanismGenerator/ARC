@@ -854,7 +854,7 @@ def trsh_ess_job(label: str,
                     '"Basis set data is not on the checkpoint file" by removing the checkfile.')
 
     elif software == 'gaussian':
-        trsh_keyword = [] # initialize as a list
+        trsh_keyword = []
         logger_phrase = f'Troubleshooting {job_type} job in {software} for {label}'
         logger_info = []
         couldnt_trsh = True
@@ -907,8 +907,9 @@ def trsh_ess_job(label: str,
                 ess_trsh_methods.append('memory')
 
         if attempted_ess_trsh_methods:
-            if attempted_ess_trsh_methods == ess_trsh_methods:
-                logger.info(f'{logger_phrase} was not successful. Already attempted all possible troubleshooting methods. Will not troubleshoot again.')
+            if attempted_ess_trsh_methods == ess_trsh_methods and 'NoOutput' not in job_status['keywords']:
+                logger.info(f'{logger_phrase} was not successful. Already attempted all possible '
+                            f'troubleshooting methods. Will not troubleshoot again.')
                 couldnt_trsh = True
             else:
                 if logger_info:
