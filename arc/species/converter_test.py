@@ -3588,6 +3588,8 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol18 = converter.molecules_from_xyz(converter.str_to_xyz(xyz18))[1]
         mol19 = converter.molecules_from_xyz(converter.str_to_xyz(xyz19))[1]
         mol20 = converter.molecules_from_xyz(converter.str_to_xyz(xyz20))[1]
+        mol21 = converter.molecules_from_xyz("""O	0.0000000	0.0000000	0.6076340
+                                                O	0.0000000	0.0000000	-0.6076340""")[1]
 
         self.assertEqual(mol1.to_smiles(), '[NH-][S+](=O)(O)C')
         self.assertIn(mol2.to_smiles(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
@@ -3618,6 +3620,8 @@ H      -4.07566100   -0.52115800    0.00003300"""
 8 H u0 p0 c0 {5,S}
 """)  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
         self.assertEqual(mol20.to_smiles(), 'C=C[CH]C=CC')
+        self.assertEqual(mol21.to_smiles(), '[O][O]')
+        self.assertEqual(mol21.multiplicity, 3)
 
     def test_to_rdkit_mol(self):
         """Test converting an RMG Molecule object to an RDKit Molecule object"""
