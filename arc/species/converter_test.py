@@ -3481,37 +3481,37 @@ H      -0.86709400    0.00000000    1.02859700"""
 C       0.00000000    0.00000000   -0.50136500
 H       0.00000000    0.00000000   -1.57173600"""
 
-#         xyz9 = """S      -0.00866000   -0.60254900    0.00000000
-# N      -0.96878800    0.63275900    0.00000000
-# N       1.01229100    0.58298500    0.00000000"""
-#
-#         xyz10 = """O      -0.79494500   -0.93969200    0.00000000
-# O      -0.32753500    1.24003800    0.00000000
-# O       1.28811400   -0.24729000    0.00000000
-# N       0.14143500    0.11571500    0.00000000
-# H      -1.65602000   -0.48026800    0.00000000"""
-#
-#         xyz11 = """O       1.64973000   -0.57433600    0.02610800
-# O       0.49836300    1.28744800   -0.18806200
-# N      -0.57621600   -0.65116600    0.24595200
-# N      -1.78357200   -0.10211200   -0.14953800
-# N       0.61460400    0.08152700   -0.00952700
-# H      -0.42001200   -1.61494900   -0.03311600
-# H      -1.72480300    0.33507600   -1.06884500
-# H      -2.07362100    0.59363400    0.53038600"""
+        xyz9 = """S      -0.00866000   -0.60254900    0.00000000
+N      -0.96878800    0.63275900    0.00000000
+N       1.01229100    0.58298500    0.00000000"""
+
+        xyz10 = """O      -0.79494500   -0.93969200    0.00000000
+O      -0.32753500    1.24003800    0.00000000
+O       1.28811400   -0.24729000    0.00000000
+N       0.14143500    0.11571500    0.00000000
+H      -1.65602000   -0.48026800    0.00000000"""
+
+        xyz11 = """O       1.64973000   -0.57433600    0.02610800
+O       0.49836300    1.28744800   -0.18806200
+N      -0.57621600   -0.65116600    0.24595200
+N      -1.78357200   -0.10211200   -0.14953800
+N       0.61460400    0.08152700   -0.00952700
+H      -0.42001200   -1.61494900   -0.03311600
+H      -1.72480300    0.33507600   -1.06884500
+H      -2.07362100    0.59363400    0.53038600"""
 
         xyz12 = """O       1.10621000    0.00000000   -0.13455300
 O      -1.10621000    0.00000000   -0.13455300
 N       0.00000000    0.00000000    0.33490500"""
 
-#         xyz13 = """O      -0.37723000   -1.27051900    0.00000000
-# N      -0.12115000   -0.04252600    0.00000000
-# N      -0.95339100    0.91468300    0.00000000
-# C       1.31648000    0.33217600    0.00000000
-# H       1.76422500   -0.11051900   -0.89038300
-# H       1.76422500   -0.11051900    0.89038300
-# H       1.40045900    1.41618100    0.00000000
-# H      -1.88127600    0.47189500    0.00000000"""
+        xyz13 = """O      -0.37723000   -1.27051900    0.00000000
+N      -0.12115000   -0.04252600    0.00000000
+N      -0.95339100    0.91468300    0.00000000
+C       1.31648000    0.33217600    0.00000000
+H       1.76422500   -0.11051900   -0.89038300
+H       1.76422500   -0.11051900    0.89038300
+H       1.40045900    1.41618100    0.00000000
+H      -1.88127600    0.47189500    0.00000000"""
 
         xyz14 = """S      -0.12942800    0.11104800    0.22427200
 O       0.98591500   -1.00752300   -0.31179100
@@ -3576,7 +3576,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol6 = converter.molecules_from_xyz(converter.str_to_xyz(xyz6), multiplicity=1)[1]
         mol7 = converter.molecules_from_xyz(converter.str_to_xyz(xyz7), multiplicity=1)[1]
         mol8 = converter.molecules_from_xyz(converter.str_to_xyz(xyz8))[1]
-        # mol9 = converter.molecules_from_xyz(converter.str_to_xyz(xyz9), multiplicity=1)[1]
+        mol9 = converter.molecules_from_xyz(converter.str_to_xyz(xyz9), multiplicity=1)[1]
         # mol10 = converter.molecules_from_xyz(converter.str_to_xyz(xyz10))[1]
         # mol11 = converter.molecules_from_xyz(converter.str_to_xyz(xyz11))[1]
         mol12 = converter.molecules_from_xyz(converter.str_to_xyz(xyz12))[1]
@@ -3588,6 +3588,8 @@ H      -4.07566100   -0.52115800    0.00003300"""
         mol18 = converter.molecules_from_xyz(converter.str_to_xyz(xyz18))[1]
         mol19 = converter.molecules_from_xyz(converter.str_to_xyz(xyz19))[1]
         mol20 = converter.molecules_from_xyz(converter.str_to_xyz(xyz20))[1]
+        mol21 = converter.molecules_from_xyz("""O	0.0000000	0.0000000	0.6076340
+                                                O	0.0000000	0.0000000	-0.6076340""")[1]
 
         self.assertEqual(mol1.to_smiles(), '[NH-][S+](=O)(O)C')
         self.assertIn(mol2.to_smiles(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
@@ -3597,7 +3599,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         self.assertEqual(mol6.to_smiles(), 'N#S')
         self.assertEqual(mol7.to_smiles(), '[N-]=[NH2+]')
         self.assertEqual(mol8.to_smiles(), 'C#N')
-        # self.assertEqual(mol9.to_smiles(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
+        self.assertEqual(mol9.to_smiles(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
         # self.assertEqual(mol10.to_smiles(), '[N+](=O)(O)[O-]')  # gives None
         # self.assertEqual(mol11.to_smiles(), 'N(N)[N+](=O)[O-]')  # gives None
         self.assertEqual(mol12.to_smiles(), '[O]N=O')
@@ -3618,6 +3620,8 @@ H      -4.07566100   -0.52115800    0.00003300"""
 8 H u0 p0 c0 {5,S}
 """)  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
         self.assertEqual(mol20.to_smiles(), 'C=C[CH]C=CC')
+        self.assertEqual(mol21.to_smiles(), '[O][O]')
+        self.assertEqual(mol21.multiplicity, 3)
 
     def test_to_rdkit_mol(self):
         """Test converting an RMG Molecule object to an RDKit Molecule object"""
