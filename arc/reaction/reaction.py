@@ -10,7 +10,7 @@ from rmgpy.species import Species
 
 from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.reaction.family import ReactionFamily, determine_reaction_family
+from arc.reaction.family import ReactionFamily, get_reaction_family_products
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
@@ -593,12 +593,12 @@ class ARCReaction(object):
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
         """
         if self.rmg_reaction is not None:
-            product_dicts = determine_reaction_family(rxn=self,
-                                                      rmg_family_set=rmg_family_set,
-                                                      consider_rmg_families=consider_rmg_families,
-                                                      consider_arc_families=consider_arc_families,
-                                                      discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
-                                                      )
+            product_dicts = get_reaction_family_products(rxn=self,
+                                                         rmg_family_set=rmg_family_set,
+                                                         consider_rmg_families=consider_rmg_families,
+                                                         consider_arc_families=consider_arc_families,
+                                                         discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                                         )
             if len(product_dicts):
                 family, family_own_reverse = product_dicts[0]['family'], product_dicts[0]['own_reverse']
                 return family, family_own_reverse
