@@ -393,7 +393,7 @@ def get_reaction_family_products(rxn: 'ARCReaction',
 
     Returns:
         List[dict]: The list of product dictionaries with the reaction family label.
-                    Keys are: 'family', 'group_labels', 'products', 'own_reverse', 'discovered_in_reverse'.
+                    Keys are: 'family', 'group_labels', 'products', 'own_reverse', 'discovered_in_reverse', 'actions'.
     """
     family_labels = get_all_families(rmg_family_set=rmg_family_set,
                                      consider_rmg_families=consider_rmg_families,
@@ -504,6 +504,22 @@ def check_product_isomorphism(products: List['Molecule'],
             if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):
                 return True
     return False
+
+
+# def get_all_reactions_paths(rxn: 'ARCReaction') -> List['ARCReaction']:
+#     """
+#     Get all possible reaction paths with labeled atoms for a given ARC reaction.
+#
+#     Args:
+#         rxn ('ARCReaction'): The ARC reaction object.
+#
+#     Returns:
+#         List['ARCReaction']: A list of reactions, each represents a possible reaction path.
+#     """
+#     reaction_paths = list()
+#     for reactant in rxn.get_reactants_and_products(arc=True, return_copies=True)[0]:
+#         all_reactions.extend(reactant.generate_reactions())
+#     return all_reactions
 
 
 def get_all_families(rmg_family_set: str = 'default',

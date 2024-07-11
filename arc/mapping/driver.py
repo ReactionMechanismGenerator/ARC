@@ -14,8 +14,7 @@ from arc.mapping.engine import (assign_labels_to_products,
                                 create_qc_mol,
                                 flip_map,
                                 fingerprint,
-                                get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
+                                get_atom_indices_of_labeled_atoms_in_a_reaction,
                                 glue_maps,
                                 label_species_atoms,
                                 make_bond_changes,
@@ -26,20 +25,19 @@ from arc.mapping.engine import (assign_labels_to_products,
                                 find_all_bdes,
                                 cut_species_based_on_atom_indices,
                                 update_xyz,
-                                RESERVED_FINGERPRINT_KEYS,)
+                                RESERVED_FINGERPRINT_KEYS,
+                                )
 from arc.common import logger
 
 from rmgpy.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
-    from rmgpy.data.rmg import RMGDatabase
     from arc.reaction import ARCReaction
 
 
 def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
-                 db: Optional['RMGDatabase'] = None,
-                 flip = False
+                 flip: bool = False
                  ) -> Optional[List[int]]:
     """
     Map a reaction.
@@ -47,7 +45,7 @@ def map_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
+        flip (bool, optional): Whether to attempts fliping the reaction.
 
     Returns:
         Optional[List[int]]:
@@ -57,7 +55,7 @@ def map_reaction(rxn: 'ARCReaction',
     if flip:
         logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. Trying again with the flipped reaction.")
         try:
-            _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend, db=db))
+            _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
             return None
         return _map
@@ -65,18 +63,16 @@ def map_reaction(rxn: 'ARCReaction',
         if rxn.family is None:
             logger.warning(f'Could not determine the reaction family for {rxn.label}. '
                            f'Mapping as a general or isomerization reaction.')
-            _map = map_general_rxn(rxn, backend=backend)
-            return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
+            _map = map_general_rxn(rxn)
+            return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
         try:
-            _map = map_rxn(rxn, backend=backend, db=db)
-        except ValueError as e:
-            return map_reaction(rxn, backend=backend, db=db, flip=True)
-        return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
+            _map = map_rxn(rxn, backend=backend)
+        except ValueError:
+            return map_reaction(rxn, backend=backend, flip=True)
+        return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
 
 
 def map_general_rxn(rxn: 'ARCReaction',
-                    backend: str = 'ARC',
-                    db: Optional['RMGDatabase'] = None,
                     ) -> Optional[List[int]]:
     """
     Map a general reaction (one that was not categorized into a reaction family by RMG).
@@ -84,8 +80,6 @@ def map_general_rxn(rxn: 'ARCReaction',
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[int]]:
@@ -121,7 +115,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[int]]:
@@ -209,7 +202,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
 
 def map_rxn(rxn: 'ARCReaction',
             backend: str = 'ARC',
-            db: Optional['RMGDatabase'] = None,
             ) -> Optional[List[int]]:
     """
     A wrapper function for mapping reaction, uses databases for mapping with the correct reaction family parameters.
@@ -224,26 +216,16 @@ def map_rxn(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
         
     Returns:
         Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    # step 1:
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
-    
-    if not rmg_reactions:
-        return None
-    
-    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
-                                                                                      rmg_reaction=rmg_reactions[0])
+    r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction=rxn)
 
-    # step 2:
     assign_labels_to_products(rxn, p_label_dict)
-    
-    #step 3:
+
     reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
     label_species_atoms(reactants), label_species_atoms(products)
     
@@ -259,13 +241,10 @@ def map_rxn(rxn: 'ARCReaction',
 
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
-    #step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
     if len(p_cuts):
         logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
         return None
-    # step 5:
     maps = map_pairs(pairs_of_reactant_and_products)
 
-    #step 6:
     return glue_maps(maps, pairs_of_reactant_and_products)

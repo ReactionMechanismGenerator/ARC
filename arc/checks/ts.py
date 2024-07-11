@@ -19,9 +19,7 @@ from arc.common import (ARC_PATH,
                         )
 from arc.imports import settings
 from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
-from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
-                                )
+from arc.mapping.engine import get_atom_indices_of_labeled_atoms_in_a_reaction
 from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:
@@ -330,8 +328,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                                            bond_lone_hydrogens=bond_lone_hs)
         got_expected_changing_bonds = False
         for i, rmg_reaction in enumerate(rmg_reactions):
-            r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
-                                                                                rmg_reaction=rmg_reaction)[0]
+            r_label_dict = get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction=reaction)[0]
             if r_label_dict is None:
                 continue
             expected_breaking_bonds, expected_forming_bonds = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
