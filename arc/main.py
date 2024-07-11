@@ -18,7 +18,6 @@ from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
-from arkane.encorr.corr import assign_frequency_scale_factor
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -37,7 +36,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level
+from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
@@ -906,16 +905,12 @@ class ARC(object):
             freq_level = self.composite_method if self.composite_method is not None \
                 else self.freq_level if self.freq_level is not None else None
             if freq_level is not None:
-                arkane_freq_lot = freq_level.to_arkane_level_of_theory(variant='freq')
-                if arkane_freq_lot is not None:
-                    # Arkane has this harmonic frequencies scaling factor.
-                    self.freq_scale_factor = assign_frequency_scale_factor(level_of_theory=arkane_freq_lot)
-                else:
-                    logger.info(f'Could not determine the harmonic frequencies scaling factor for '
-                                f'{arkane_freq_lot} from Arkane.')
+                self.freq_scale_factor = assign_frequency_scale_factor(level=freq_level)
+                if self.freq_scale_factor is None:
+                    logger.info(f'Could not determine the harmonic frequencies scaling factor for {freq_level}.')
                     if self.calc_freq_factor:
                         logger.info("Calculating it using Truhlar's method.")
-                        logger.warning("This proceedure normally spawns QM jobs for various small species "
+                        logger.warning("This procedure normally spawns QM jobs for various small species "
                                        "not directly asked for by the user.\n\n")
                         self.freq_scale_factor = determine_scaling_factors(levels=[freq_level],
                                                                            ess_settings=self.ess_settings,
