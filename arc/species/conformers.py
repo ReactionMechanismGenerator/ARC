@@ -341,7 +341,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
     symmetries = dict()
     for torsion, top in zip(torsions, tops):
         # identify symmetric torsions so we don't bother considering them in the conformational combinations
-        symmetry = determine_torsion_symmetry(label, top, mol_list, torsion_angles[tuple(torsion)])
+        symmetry, torsion_angles[tuple(torsion)] = determine_torsion_symmetry(label, top, mol_list, torsion_angles[tuple(torsion)])
         symmetries[tuple(torsion)] = symmetry
     logger.debug(f'Identified {len([s for s in symmetries.values() if s > 1])} symmetric wells for {label}')
 
@@ -938,6 +938,7 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
 
     Returns:
         int: The rotor symmetry number.
+        torsion_scan (list): The angles corresponding to this torsion from all conformers.
     """
     symmetry = 1
     check_tops = [1, 1]  # flags for checking top1 and top2
@@ -950,6 +951,22 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                     and all(len(mol.atoms[top[i] - 1].bonds) == 1 for i in range(1, 4)):
             symmetry *= 3
             check_tops[j] = 0
+
+            new_angles = []
+            for angle in torsion_scan:
+                test_angle = (angle + 60) % 360
+                if any((test_angle - 5) % 360 <= existing_angle <= (test_angle + 5) % 360 for existing_angle in torsion_scan):
+                    for angle_tba in torsion_scan:
+                        new_angle = (angle_tba + 60) % 360  # Calculate new angle and ensure it wraps around at 360
+                        # Check if the new angle, adjusted by ±30 degrees, overlaps with any existing angles
+                        if not any((new_angle - 30) % 360 <= existing_angle <= (new_angle + 30) % 360 for existing_angle in torsion_scan + new_angles):
+                            new_angles.append(new_angle)
+                    break
+    
+            # Extend the original list with non-overlapping new angles
+            torsion_scan.extend(new_angles)
+            torsion_scan.sort()  # Sort the list to maintain order
+
         # A quick bypass for methylene radicals:
         if len(top) == 3 and mol.atoms[top[0] - 1].is_carbon() and mol.atoms[top[0] - 1].radical_electrons == 1 \
                 and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 3)]):
@@ -1008,7 +1025,7 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                 elif not mol.atoms[top[0] - 1].lone_pairs > 0 and not mol.atoms[top[0] - 1].radical_electrons > 0 \
                         and all([groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]]):
                     symmetry *= len(groups)
-    return symmetry
+    return symmetry, torsion_scan
 
 
 def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
