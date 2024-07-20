@@ -200,9 +200,10 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         ConformerError: If something goes wrong.
         TypeError: If xyzs has entries of a wrong type.
 
-    Returns: Optional[Union[list, Tuple[list, list]]]
+    Returns: Optional[Union[list, Tuple[list, list], int]]
         - Lowest conformers
         - Lowest conformers and all new conformers.
+        - The hypothetical number of conformer combinations.
     """
     cheat = cheat_sheet(mol_list) 
     if cheat is not None:
@@ -245,7 +246,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
     if confs is not None:
         if return_all_conformers:
             return confs, confs
-        return confs
+        return confs, None
 
     if xyzs is not None and any([not isinstance(xyz, dict) for xyz in xyzs]):
         raise TypeError(f"xyz entries of xyzs must be dictionaries, e.g.:\n\n"
@@ -273,7 +274,8 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
     if len(conformers):
         conformers = determine_dihedrals(conformers, torsions)
 
-        new_conformers, symmetries = deduce_new_conformers(
+
+        new_conformers, symmetries, hypothetical_num_comb = deduce_new_conformers(
             label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
             combination_threshold=combination_threshold, force_field=force_field,
             max_combination_iterations=max_combination_iterations, diastereomers=diastereomers,
@@ -298,9 +300,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
-        return lowest_confs
+        return lowest_confs, hypothetical_num_comb
     else:
-        return lowest_confs, new_conformers
+        return lowest_confs, new_conformers, hypothetical_num_comb
 
 
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
@@ -328,9 +330,10 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                                         will not be considered.
 
     Returns:
-        Tuple[list, dict]:
+        Tuple[list, dict, int]:
             - The deduced conformers.
             - Keys are torsion tuples.
+            - The hypothetical number of conformer combinations.
     """
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
@@ -410,7 +413,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
                     f'{converter.xyz_to_str(lowest_conf["xyz"])}\n')
         arc.plotter.draw_structure(xyz=lowest_conf['xyz'])
 
-    return new_conformers, symmetries
+    return new_conformers, symmetries, hypothetical_num_comb
 
 
 def generate_conformer_combinations(label, mol, base_xyz, hypothetical_num_comb, multiple_tors,
