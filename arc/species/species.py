@@ -1105,7 +1105,7 @@ class ARCSpecies(object):
         else:
             xyz = self.get_xyz(generate=False)
             diastereomers = [xyz] if xyz is not None else None
-        lowest_confs = conformers.generate_conformers(mol_list=mol_list,
+        lowest_confs, _ = conformers.generate_conformers(mol_list=mol_list,
                                                       label=self.label,
                                                       charge=self.charge,
                                                       multiplicity=self.multiplicity,
