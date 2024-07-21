@@ -335,7 +335,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     if not any(['torsion_dihedrals' in conformer for conformer in conformers]):
         conformers = determine_dihedrals(conformers, torsions)
-    torsion_angles = get_torsion_angles(label, conformers, torsions)  # get all wells per torsion
+    torsion_angles = get_torsion_angles(label, conformers, torsions, mol_list, tops)  # get all wells per torsion
     mol = mol_list[0]
 
     symmetries = dict()
@@ -896,6 +896,8 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     sampling_points = list()
     wells = get_wells(label, torsion_angles, blank=WELL_GAP)
+    if symmetry % len(wells) == 0:
+        symmetry = len(wells)
     for i, well in enumerate(wells):
         width = abs(well['end_angle'] - well['start_angle'])
         mean = sum(well['angles']) / len(well['angles'])
@@ -932,9 +934,10 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     mol = mol_list[0]
     top2 = [i + 1 for i in range(len(mol.atoms)) if i + 1 not in top1]
     for j, top in enumerate([top1, top2]):
-        # A quick bypass for methyl rotors which are too common:
+        # A quick bypass for carbon rotors that have three equal elements with only one bond that is connected to the carbon atom
         if len(top) == 4 and mol.atoms[top[0] - 1].is_carbon() \
-                and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 4)]):
+                and all(mol.atoms[top[1] - 1].symbol == mol.atoms[top[i] - 1].symbol for i in range(2, 4)) \
+                    and all(len(mol.atoms[top[i] - 1].bonds) == 1 for i in range(1, 4)):
             symmetry *= 3
             check_tops[j] = 0
         # A quick bypass for methylene radicals:
@@ -996,6 +999,45 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
                         and all([groups[0].is_isomorphic(group, save_order=True) for group in groups[1:]]):
                     symmetry *= len(groups)
     return symmetry
+
+
+def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
+    """
+    Add symmetry to a torsion scan in the rotor for efficient conformer generation.
+
+    Args:
+        top1 (list): A list of atom indices on one side of the torsion, including the pivotal atom.
+        mol_list (list): A list of molecules.
+        torsion_scan (list): The angles corresponding to this torsion from all conformers.
+
+    Returns:
+        torsion_scan (list): The modified torsion_scan with added symmetric angles.
+    """
+    mol = mol_list[0]
+    top2 = [i + 1 for i in range(len(mol.atoms)) if i + 1 not in top1]
+    for j, top in enumerate([top1, top2]):
+        # A quick bypass for carbon rotors that have three equal elements (e.g., CH3 or CF3) with only one bond that is connected to the carbon atom
+        # For such rotors, if a torsion angle difference of 60 degrees is found during the sampling, we would like to manually add this gap for the existing symmetries
+        if len(top) == 4 and mol.atoms[top[0] - 1].is_carbon() \
+                and all(mol.atoms[top[1] - 1].symbol == mol.atoms[top[i] - 1].symbol for i in range(2, 4)) \
+                    and all(len(mol.atoms[top[i] - 1].bonds) == 1 for i in range(1, 4)):
+
+            new_angles = []
+            for angle in torsion_scan:
+                test_angle = (angle + 60) % 360
+                if any((test_angle - 5) % 360 <= existing_angle <= (test_angle + 5) % 360 for existing_angle in torsion_scan):
+                    for angle_tba in torsion_scan:
+                        new_angle = (angle_tba + 60) % 360  # Calculate new angle and ensure it wraps around at 360
+                        # Check if the new angle, adjusted by ±30 degrees, overlaps with any existing angles
+                        if not any((new_angle - 30) % 360 <= existing_angle <= (new_angle + 30) % 360 for existing_angle in torsion_scan + new_angles):
+                            new_angles.append(new_angle)
+                            break
+    
+            # Extend the original list with non-overlapping new angles
+            torsion_scan.extend(new_angles)
+            torsion_scan.sort()  # Sort the list to maintain order
+
+    return torsion_scan
 
 
 def determine_well_width_tolerance(mean_width):
@@ -1077,7 +1119,7 @@ def get_lowest_confs(label: str,
     return lowest_confs
 
 
-def get_torsion_angles(label, conformers, torsions):
+def get_torsion_angles(label, conformers, torsions, mol_list=None, tops=None):
     """
     Populate each torsion pivots with all available angles from the generated conformers.
 
@@ -1085,6 +1127,8 @@ def get_torsion_angles(label, conformers, torsions):
         label (str): The species' label.
         conformers (list): The conformers from which to extract the angles.
         torsions (list): The torsions to consider.
+        mol_list (list, optional): A list of Molecule objects.
+        tops (list, optional): A list of tops corresponding to torsions.
 
     Returns:
         dict: The torsion angles. Keys are torsion tuples, values are lists of all corresponding angles from conformers.
@@ -1101,6 +1145,9 @@ def get_torsion_angles(label, conformers, torsions):
                 torsion_angles[tuple(torsion)].append(conformer['torsion_dihedrals'][tuple(torsion)])
     for tor in torsion_angles.keys():
         torsion_angles[tor].sort()
+    if mol_list is not None and tops is not None:
+        for torsion, top in zip(torsions, tops):
+            torsion_angles[tuple(torsion)] = add_missing_symmetric_torsion_values(top, mol_list, torsion_angles[tuple(torsion)])
     return torsion_angles
 
 
