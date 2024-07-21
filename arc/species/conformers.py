@@ -934,9 +934,10 @@ def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     mol = mol_list[0]
     top2 = [i + 1 for i in range(len(mol.atoms)) if i + 1 not in top1]
     for j, top in enumerate([top1, top2]):
-        # A quick bypass for methyl rotors which are too common:
+        # A quick bypass for carbon rotors that have three equal elements with only one bond that is connected to the carbon atom
         if len(top) == 4 and mol.atoms[top[0] - 1].is_carbon() \
-                and all([mol.atoms[top[i] - 1].is_hydrogen() for i in range(1, 4)]):
+                and all(mol.atoms[top[1] - 1].symbol == mol.atoms[top[i] - 1].symbol for i in range(2, 4)) \
+                    and all(len(mol.atoms[top[i] - 1].bonds) == 1 for i in range(1, 4)):
             symmetry *= 3
             check_tops[j] = 0
         # A quick bypass for methylene radicals:
