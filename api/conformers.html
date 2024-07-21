@@ -219,6 +219,27 @@ while atoms in Molecules are 0-indexed.</p>
 </pre></div>
 </div>
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.add_missing_symmetric_torsion_values">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">add_missing_symmetric_torsion_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">top1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_scan</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#add_missing_symmetric_torsion_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.add_missing_symmetric_torsion_values" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add symmetry to a torsion scan in the rotor for efficient conformer generation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>top1</strong> (<em>list</em>) – A list of atom indices on one side of the torsion, including the pivotal atom.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em>) – A list of molecules.</p></li>
+<li><p><strong>torsion_scan</strong> (<em>list</em>) – The angles corresponding to this torsion from all conformers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The modified torsion_scan with added symmetric angles.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torsion_scan (list)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.conformers.change_dihedrals_and_force_field_it">
 <span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">change_dihedrals_and_force_field_it</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_dihedrals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#change_dihedrals_and_force_field_it"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.change_dihedrals_and_force_field_it" title="Permalink to this definition">¶</a></dt>
 <dd><p>Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.</p>
@@ -959,7 +980,7 @@ just returns the number of chiral centers (integer).</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.species.conformers.get_torsion_angles">
-<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_torsion_angles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_torsion_angles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_torsion_angles" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_torsion_angles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_torsion_angles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_torsion_angles" title="Permalink to this definition">¶</a></dt>
 <dd><p>Populate each torsion pivots with all available angles from the generated conformers.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -967,6 +988,8 @@ just returns the number of chiral centers (integer).</p>
 <li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
 <li><p><strong>conformers</strong> (<em>list</em>) – The conformers from which to extract the angles.</p></li>
 <li><p><strong>torsions</strong> (<em>list</em>) – The torsions to consider.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of Molecule objects.</p></li>
+<li><p><strong>tops</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of tops corresponding to torsions.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
