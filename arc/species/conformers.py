@@ -896,6 +896,8 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
     smeared_scan_res = smeared_scan_res or SMEARED_SCAN_RESOLUTIONS
     sampling_points = list()
     wells = get_wells(label, torsion_angles, blank=WELL_GAP)
+    if symmetry % len(wells) == 0:
+        symmetry = len(wells)
     for i, well in enumerate(wells):
         width = abs(well['end_angle'] - well['start_angle'])
         mean = sum(well['angles']) / len(well['angles'])
