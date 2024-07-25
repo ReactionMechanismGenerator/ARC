@@ -43,6 +43,37 @@ class TestMolproAdapter(unittest.TestCase):
                                   species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                   testing=True,
                                   )
+        cls.job_3 = MolproAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='CCSD(T)', basis='cc-pVQZ'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  testing=True,
+                                  ess_trsh_methods=['memory','cpu', 'molpro_memory: 2800 '],
+                                  job_memory_gb=64,
+                                  )
+        cls.job_4 = MolproAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='CCSD(T)', basis='cc-pVQZ'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  testing=True,
+                                  ess_trsh_methods=['memory','cpu', 'molpro_memory: 4300 '],
+                                  job_memory_gb=64,
+                                  )
+
+        cls.job_5 = MolproAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='CCSD(T)', basis='cc-pVQZ'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  testing=True,
+                                  ess_trsh_methods=['memory','cpu', 'molpro_memory: 2800 '],
+                                  job_memory_gb=64,
+                                  )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -51,6 +82,18 @@ class TestMolproAdapter(unittest.TestCase):
         self.job_1.submit_script_memory = 14
         self.job_1.set_cpu_and_mem()
         self.assertEqual(self.job_1.cpu_cores, 48)
+
+    def test_memory_change(self):
+        """Test changing the memory
+
+        1. Test that the required memory is set correctly and that the number of CPUs changes accordingly
+        2. Test that the required memory requires 1 CPU and will therefore not attempt to the total memory
+        """
+        self.assertEqual(self.job_3.input_file_memory, 2864)
+        self.assertEqual(self.job_3.cpu_cores, 3)
+
+        self.assertEqual(self.job_4.input_file_memory, 4300)
+        self.assertEqual(self.job_4.cpu_cores, 1)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
@@ -128,6 +171,15 @@ optg, savexyz='geometry.xyz'
 """
         self.assertEqual(content_2, job_2_expected_input_file)
 
+    def test_core_reduction_logic(self):
+        """Test the core reduction logic"""
+
+        # Job 5 again to trigger the condition of the core reduction logic
+        # Job 5 technically would be 3 CPUs prior to the reactive setting the input file memory.
+        self.job_5.set_input_file_memory()
+        self.assertEqual(self.job_5.input_file_memory, 4296)
+        self.assertEqual(self.job_5.cpu_cores, 2)
+
     def test_set_files(self):
         """Test setting files"""
         job_1_files_to_upload = [{'file_name': 'submit.sub',
@@ -141,7 +193,7 @@ optg, savexyz='geometry.xyz'
                                   'source': 'path',
                                   'make_x': False},
                                  ]
-        job_1_files_to_download = [{'file_name': 'input.out',
+        job_1_files_to_download = [{'file_name':'output.out',
                                     'local': os.path.join(self.job_1.local_path, output_filenames[self.job_1.job_adapter]),
                                     'remote': os.path.join(self.job_1.remote_path, output_filenames[self.job_1.job_adapter]),
                                     'source': 'path',

@@ -12,9 +12,8 @@ from arkane.encorr.bac import BAC
 from arkane.encorr.corr import assign_frequency_scale_factor
 from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, standardize_name
 
-from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
+from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file, normalize_method_name
 from arc.imports import settings
-
 
 logger = get_logger()
 
@@ -499,12 +498,28 @@ class Level(object):
             self.software = 'orca'
 
         # Gaussian
-        if self.method_type == 'composite' or job_type == 'composite' or job_type == 'irc' \
+        if self.method_type == 'composite' or job_type == 'composite' \
                 or any([sum(['iop' in value.lower() for value in subdict.values()]) for subdict in self.args.values()]):
             if 'gaussian' not in supported_ess:
                 raise ValueError(f'Could not find Gaussian to run the {self.method}.\n'
                                  f'levels_ess is:\n{levels_ess}')
             self.software = 'gaussian'
+
+        # QChem & Gaussian for IRC jobs
+        if job_type == 'irc':
+            preferred_ess_order_for_irc = ['gaussian', 'qchem']
+
+            if 'qchem' in supported_ess and 'gaussian' in supported_ess:
+                # Use preferred order if both are available
+                relevant_software = get_ordered_intersection_of_two_lists(preferred_ess_order_for_irc, supported_ess)
+                self.software = relevant_software[0]
+            elif 'qchem' in supported_ess:
+                self.software = 'qchem'
+            elif 'gaussian' in supported_ess:
+                self.software = 'gaussian'
+            else:
+                raise ValueError(f'Could not find either QChem or Gaussian software to compute molecular orbitals or run an IRC job.\n'
+                                f'levels_ess is:\n{levels_ess}')
 
         # TorchANI
         if 'torchani' in self.method:
@@ -548,8 +563,13 @@ class Level(object):
             self.compatible_ess = list()
             ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
             ess_methods = {ess: [method.lower() for method in methods] for ess, methods in ess_methods.items()}
-            for ess in supported_ess:
-                if ess in ess_methods and self.method in ess_methods[ess]:
+            # Normalize self.method for comparison
+            normalized_self_method = self.method.lower().replace('-', '')
+            
+            for ess, methods in ess_methods.items():
+                # Check if self.method or its normalized version matches any of the methods for the ESS
+                normalized_methods = [method.replace('-', '') for method in methods]
+                if self.method.lower() in methods or normalized_self_method in normalized_methods:
                     self.compatible_ess.append(ess)
 
 

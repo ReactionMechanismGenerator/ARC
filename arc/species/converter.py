@@ -49,9 +49,7 @@ ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 
-def str_to_xyz(xyz_str: str,
-               project_directory: Optional[str] = None,
-               ) -> dict:
+def str_to_xyz(xyz_str: str, project_directory: Optional[str] = None) -> dict:
     """
     Convert a string xyz format to the ARC dict xyz style.
     Note: The ``xyz_str`` argument could also direct to a file path to parse the data from.
@@ -93,6 +91,10 @@ def str_to_xyz(xyz_str: str,
         xyz_str = os.path.join(project_directory, xyz_str)
     if os.path.isfile(xyz_str):
         from arc.parser import parse_xyz_from_file
+        return parse_xyz_from_file(xyz_str)
+    elif project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
+        from arc.parser import parse_xyz_from_file
+        xyz_str = os.path.join(project_directory, xyz_str)
         return parse_xyz_from_file(xyz_str)
     xyz_str = xyz_str.replace(',', ' ')
     if len(xyz_str.splitlines()) and len(xyz_str.splitlines()[0]) == 1:
@@ -675,9 +677,7 @@ def standardize_xyz_string(xyz_str, isotope_format=None):
     return xyz_to_str(xyz_dict=xyz_dict, isotope_format=isotope_format)
 
 
-def check_xyz_dict(xyz: Union[dict, str],
-                   project_directory: Optional[str] = None,
-                   ) -> Optional[dict]:
+def check_xyz_dict(xyz: Union[dict, str], project_directory: Optional[str] = None) -> Optional[dict]:
     """
     Check that the xyz dictionary entered is valid.
     If it is a string, convert it.
@@ -687,7 +687,7 @@ def check_xyz_dict(xyz: Union[dict, str],
 
     Args:
         xyz (Union[dict, str]): The xyz dictionary.
-        project_directory (str, optional): The path to the project directory.
+        project_directory (str, optional): The project directory path.
 
     Raises:
         ConverterError: If ``xyz`` is of wrong type or is missing symbols or coords.
@@ -2099,6 +2099,22 @@ def ics_to_scan_constraints(ics: list,
             elif len(ic) == 4:
                 scan_trsh += 'D '
             scan_trsh += ''.join([str(num) + ' ' for num in ic]) + 'F\n'
+
+
+    elif software == 'qchem':
+        scan_trsh += 'CONSTRAINT\n'
+        for ic in ics:
+            if len(ic) == 2:  # Bond length
+                scan_trsh += 'stre '
+            elif len(ic) == 3:  # Angle
+                scan_trsh += 'bend '
+            elif len(ic) == 4:  # Dihedral
+                scan_trsh += 'tors '
+            scan_trsh += ''.join([str(num) + ' ' for num in ic[:-1]])
+            # Add value placeholder or calculation here if needed
+            scan_trsh += str(ic[-1]) + '\n'
+        scan_trsh += 'ENDCONSTRAINT\n'
+
     else:
         raise NotImplementedError(f'Given software {software} is not implemented '
                                   f'for ics_to_scan_constraints().')

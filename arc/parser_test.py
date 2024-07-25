@@ -114,7 +114,7 @@ class TestParser(unittest.TestCase):
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-18.0696, 127.6948, 174.9499, 207.585, 228.8421, 281.2939, 292.4101,
                                    308.0345, 375.4493, 486.8396, 498.6986, 537.6196, 564.0223, 615.3762,
                                    741.8843, 749.3428, 777.1524, 855.3031, 871.055, 962.7075, 977.6181,
@@ -132,7 +132,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_0)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CHO_neg_freq.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-1612.8294, 840.8655, 1883.4822, 3498.091], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_modes_disp_1 = np.array(
@@ -143,7 +143,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_1)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH3OO_freq_gaussian.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([136.4446, 494.1267, 915.7812, 1131.4603, 1159.9315, 1225.148, 1446.5652,
                                    1474.8065, 1485.6423, 3046.2186, 3134.8026, 3147.5619], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
@@ -175,7 +175,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_2)
 
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=freq_path, raise_error=False)
         expected_freqs = np.array([-1745.4843, 64.9973, 168.1583, 234.1226, 453.2505, 657.1672, 737.7965, 844.5179,
                                    1156.12, 1177.1321, 1390.4004, 1454.281, 1565.3214, 1680.0987, 3367.2838, 3512.739,
                                    3550.219, 3652.1575], np.float64)
@@ -220,7 +220,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_2)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'normal_mode', 'HO2', 'output.out')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, raise_error=False)
         expected_freqs = np.array([1224.9751, 1355.2709, 3158.763], np.float64)
         np.testing.assert_almost_equal(freqs, expected_freqs)
         expected_normal_modes_disp_3 = np.array(
@@ -230,7 +230,7 @@ class TestParser(unittest.TestCase):
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_3)
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
-        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path)
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, raise_error=False)
         self.assertEqual(freqs[-1], 3922.9230982968807)
         expected_normal_modes_disp_4_0 = np.array(
             [[0.008599578508578239, 0.01787645439208711, -0.04175706756233052],
@@ -243,6 +243,23 @@ class TestParser(unittest.TestCase):
              [0.07839541036186716, -0.009452306143447562, 0.15793005333991175],
              [-0.16184923713199378, -0.3376354950974596, 0.787886990928027]], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp[0], expected_normal_modes_disp_4_0)
+
+        # QChem
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'normal_mode', 'HO2', 'qchem-freq.out')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=path, software='qchem', raise_error=False)
+        print(freqs)
+        expected_freqs = np.array([1164.75, 1431.41, 3582.24], np.float64)
+        np.testing.assert_allclose(freqs, expected_freqs, rtol=1e-5, atol=1e-8)
+        expected_normal_modes_disp_3 = np.array([[[-0.584,  0.091, -0.   ],
+                                                [ 0.612, -0.107,  0.   ],
+                                                [-0.448,  0.253,  0.   ]],
+                                                [[-0.065, -0.039, -0.   ],
+                                                [ 0.005,  0.057,  0.   ],
+                                                [ 0.951, -0.294, -0.   ]],
+                                                [[-0.001,  0.001,  0.   ],
+                                                [-0.021, -0.06 , -0.   ],
+                                                [ 0.348,  0.935,  0.   ]]])
+        np.testing.assert_allclose(normal_modes_disp, expected_normal_modes_disp_3, rtol=1e-5, atol=1e-8)
 
     def test_parse_xyz_from_file(self):
         """Test parsing xyz from a file"""
@@ -398,6 +415,18 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(len(trajectory), 9)
         self.assertIsInstance(trajectory[0], dict)
         self.assertEqual(len(trajectory[0]['symbols']), 3)
+        
+        # Testing QChem IRC (Does both forward and backwards)
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'qchem_irc.out')
+        trajectory = parser.parse_trajectory(path, direction="forward")
+        self.assertEqual(len(trajectory), 12)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 18)
+        trajectory = parser.parse_trajectory(path, direction="backward")
+        self.assertEqual(len(trajectory), 16)
+        self.assertIsInstance(trajectory[0], dict)
+        self.assertEqual(len(trajectory[0]['symbols']), 18)
+        
 
     def test_parse_1d_scan_coords(self):
         """Test parsing the optimized coordinates of a torsion scan at each optimization point"""
@@ -427,6 +456,12 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(traj_4[0]['symbols'], ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                                 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                                 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+
+        path_5 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'qchem-pes.out')
+        traj_5 = parser.parse_1d_scan_coords(path_5)
+        self.assertEqual(len(traj_5), 25)
+        self.assertEqual(traj_5[0]['symbols'], ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+        self.assertEqual(traj_5[0]['coords'][13], (-2.1002861161, 0.7502495424, -0.8796160845))
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""

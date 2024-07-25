@@ -132,7 +132,7 @@ touch final_time
 #SBATCH -p long
 #SBATCH -J {name}
 #SBATCH -N 1
-#SBATCH -n {cpus}
+#SBATCH --ntask-per-node={cpus}
 #SBATCH --time={t_max}
 #SBATCH --mem-per-cpu={memory}
 #SBATCH -o out.txt
@@ -158,7 +158,7 @@ cd $sdir
 
 cp "$SubmitDir/input.in" .
 
-molpro -n {cpus} -d $sdir input.in
+molpro -n {cpus} -t {cpus} -d $sdir input.in
 
 cp input.* "$SubmitDir/"
 cp geometry*.* "$SubmitDir/"
@@ -282,6 +282,33 @@ touch initial_time
 conda activate xtb_env
 
 ./gsm.orca
+
+touch final_time
+
+""",
+        'qchem': """#!/bin/bash -l
+#SBATCH -p long
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -cpus-per-task={cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+ . /opt/qchem/qchem_env.sh
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+touch initial_time
+
+qchem -nt {cpus} input.in output.out
 
 touch final_time
 
@@ -456,7 +483,7 @@ hostname
 source /opt/qchem/qcenv.sh
 
 export QC=/opt/qchem
-export QCSCRATCH=/scratch/{un}/{name}
+export QCSCRATCH=$PWD
 export QCLOCALSCR=/scratch/{un}/{name}/qlscratch
 . $QC/qcenv.sh
 
