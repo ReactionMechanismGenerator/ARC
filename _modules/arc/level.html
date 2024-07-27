@@ -173,7 +173,6 @@
 
 <span class="kn">import</span> <span class="nn">arkane.encorr.data</span> <span class="k">as</span> <span class="nn">arkane_data</span>
 <span class="kn">from</span> <span class="nn">arkane.encorr.bac</span> <span class="kn">import</span> <span class="n">BAC</span>
-<span class="kn">from</span> <span class="nn">arkane.encorr.corr</span> <span class="kn">import</span> <span class="n">assign_frequency_scale_factor</span>
 <span class="kn">from</span> <span class="nn">arkane.modelchem</span> <span class="kn">import</span> <span class="n">METHODS_THAT_REQUIRE_SOFTWARE</span><span class="p">,</span> <span class="n">LevelOfTheory</span><span class="p">,</span> <span class="n">standardize_name</span>
 
 <span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">get_ordered_intersection_of_two_lists</span><span class="p">,</span> <span class="n">read_yaml_file</span>
@@ -223,7 +222,7 @@
                  <span class="n">method_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">software</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">software_version</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">compatible_ess</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">compatible_ess</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">solvation_method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">solvent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">solvation_scheme_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -318,8 +317,6 @@
                 <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">arg</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                     <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;keyword&#39;</span><span class="p">:</span>
                         <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1">&#39;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">method_type</span><span class="si">}</span><span class="s1">)&#39;</span>
         <span class="k">return</span> <span class="n">str_</span>
 
 <div class="viewcode-block" id="Level.copy"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.copy">[docs]</a>    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -562,12 +559,7 @@
                 <span class="n">var_1</span> <span class="o">=</span> <span class="kc">None</span>
 
             <span class="k">if</span> <span class="n">variant</span> <span class="o">==</span> <span class="s1">&#39;freq&#39;</span><span class="p">:</span>
-                <span class="c1"># if not found, the factor is set to exactly 1</span>
-                <span class="k">if</span> <span class="n">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level_of_theory</span><span class="o">=</span><span class="n">var_1</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="k">return</span> <span class="n">var_1</span>
-                <span class="k">if</span> <span class="n">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level_of_theory</span><span class="o">=</span><span class="n">var_2</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="k">return</span> <span class="n">var_2</span>
-                <span class="k">return</span> <span class="kc">None</span>
+                <span class="k">return</span> <span class="n">var_2</span>
 
             <span class="k">if</span> <span class="n">variant</span> <span class="o">==</span> <span class="s1">&#39;AEC&#39;</span><span class="p">:</span>
                 <span class="k">try</span><span class="p">:</span>
@@ -737,6 +729,27 @@
             <span class="n">splits</span> <span class="o">=</span> <span class="n">arkane_level</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">=&#39;&quot;</span><span class="p">)</span>
             <span class="n">level_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">return</span> <span class="n">level_dict</span></div>
+
+
+<div class="viewcode-block" id="assign_frequency_scale_factor"><a class="viewcode-back" href="../../api/level.html#arc.level.assign_frequency_scale_factor">[docs]</a><span class="k">def</span> <span class="nf">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Level</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Assign a frequency scaling factor to a level of theory.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        level (Union[str, Level]): The level of theory.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Optional[int]: The frequency scaling factor.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">freq_scale_factors</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;freq_scale_factors.yml&#39;</span><span class="p">))[</span><span class="s1">&#39;freq_scale_factors&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">level</span> <span class="ow">in</span> <span class="n">freq_scale_factors</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">freq_scale_factors</span><span class="p">[</span><span class="n">level</span><span class="p">]</span>
+        <span class="n">level</span> <span class="o">=</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="n">level</span><span class="p">)</span>
+    <span class="n">level_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">level</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">level_str</span> <span class="ow">in</span> <span class="n">freq_scale_factors</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">freq_scale_factors</span><span class="p">[</span><span class="n">level_str</span><span class="p">]</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
 </pre></div>
 
            </div>

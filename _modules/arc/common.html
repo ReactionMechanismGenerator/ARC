@@ -1867,8 +1867,9 @@
 
     <span class="k">for</span> <span class="n">element</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">element_dict_mol</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">if</span> <span class="n">element</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">element_dict_xyz</span> <span class="ow">or</span> <span class="n">element_dict_xyz</span><span class="p">[</span><span class="n">element</span><span class="p">]</span> <span class="o">!=</span> <span class="n">count</span><span class="p">:</span>
-           <span class="k">return</span> <span class="kc">False</span>
+            <span class="k">return</span> <span class="kc">False</span>
     <span class="k">return</span> <span class="kc">True</span></div>
+
 
 <div class="viewcode-block" id="convert_to_hours"><a class="viewcode-back" href="../../api/common.html#arc.common.convert_to_hours">[docs]</a><span class="k">def</span> <span class="nf">convert_to_hours</span><span class="p">(</span><span class="n">time_str</span><span class="p">:</span><span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;Convert walltime string in format HH:MM:SS to hours.</span>
