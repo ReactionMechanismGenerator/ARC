@@ -372,7 +372,18 @@ class ARCReaction(object):
         Returns:
             bool: Whether this is an isomerization reaction.
         """
-        return True if len(self.r_species) == 1 and len(self.p_species) == 1 else False
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 and len(products) == 1
+
+    def is_unimolecular(self):
+        """
+        Determine whether this is a unimolecular reaction.
+
+        Returns:
+            bool: Whether this is a unimolecular reaction.
+        """
+        reactants, products = self.get_reactants_and_products()
+        return len(reactants) == 1 or len(products) == 1
 
     def set_label_reactants_products(self, species_list: Optional[List[ARCSpecies]] = None):
         """A helper function for settings the label, reactants, and products attributes for a Reaction"""
@@ -798,7 +809,7 @@ class ARCReaction(object):
             else:
                 for i in range(self.get_species_count(species=p_spc, well=1)):
                     products.append(Species(label=p_spc.label, molecule=[p_spc.mol.copy(deep=True) if return_copies
-                                                                          else p_spc.mol]))
+                                                                         else p_spc.mol]))
         return reactants, products
 
     def get_expected_changing_bonds(self,
