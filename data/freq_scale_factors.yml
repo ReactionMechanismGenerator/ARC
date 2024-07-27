@@ -1,0 +1,67 @@
+freq_scale_factors:
+  #    Refer to https://comp.chem.umn.edu/freqscale/index.html for future updates of these factors
+  #    Sources:
+  #        [1] I.M. Alecu, J. Zheng, Y. Zhao, D.G. Truhlar, J. Chem. Theory Comput. 2010, 6, 2872, DOI: 10.1021/ct100326h
+  #        [2] http://cccbdb.nist.gov/vibscalejust.asp
+  #        [3] http://comp.chem.umn.edu/freqscale/190107_Database_of_Freq_Scale_Factors_v4.pdf
+  #        [4] Calculated as described in 10.1021/ct100326h
+  #        [5] J.A. Montgomery, M.J. Frisch, J. Chem. Phys. 1999, 110, 2822–2827, DOI: 10.1063/1.477924
+  'hf/sto3g, software: gaussian': 0.817  # [2]
+  'hf/6-31g, software: gaussian': 0.903  # [2]
+  'hf/6-31g(d), software: gaussian': 0.899  # [2]
+  'hf/6-31g(d,p), software: gaussian': 0.903  # [2]
+  'hf/6-31+g(d,p), software: gaussian': 0.928  # 0.915 * 1.014, [1] Table 7
+  'pm3, software: gaussian': 0.953  # 0.940 * 1.014, [1] Table 7, the 0.940 value is the ZPE scale factor
+  'pm6, software: gaussian': 1.093  # 1.078 * 1.014, [1] Table 7, the 1.078 value is the ZPE scale factor
+  'b3lyp/6-31g(d,p), software: gaussian': 0.961  # [2]
+  'b3lyp/6-311g(d,p), software: gaussian': 0.967  # [2]
+  'b3lyp/6-311+g(3df,2p), software: gaussian': 0.967  # [2]
+  'b3lyp/6-311+g(3df,2pd), software: gaussian': 0.970  # [2]
+  'b3lyp/cc-pvtz, software: gaussian': 0.998  # [2]
+  'b3lyp/aug-cc-pvtz, software: gaussian': 0.999  # [2]
+  'b3lyp/def2tzvp, software: gaussian': 0.999  # [2]
+  'm062x/6-31g(d,p), software: gaussian': 0.952  # [2]
+  'm062x/6-31+g(d,p), software: gaussian': 0.979  # [3]
+  'm062x/6-311+g(d,p), software: gaussian': 0.983  # [3]
+  'm062x/6-311++g(d,p), software: gaussian': 0.983  # [3]
+  'm062x/cc-pvtz, software: gaussian': 0.955  # [2]
+  'm062x/aug-cc-pvdz, software: gaussian': 0.993  # [3]
+  'm062x/aug-cc-pvtz, software: gaussian': 0.985  # [1] Table 3, [3]
+  'm062x/def2tzvp, software: gaussian': 0.984  # [3]
+  'm062x/def2qzvp, software: gaussian': 0.983  # [3]
+  'm062x/def2tzvpp, software: gaussian': 0.983  # [1] Table 3, [3]
+  'm08so/mg3s*, software: gaussian': 0.995  # [1] Table 3, taken as 'M08-SO/MG3S'
+  'b97d3/def2msvp, software: gaussian': 1.014  # [4]
+  'wb97xd/cc-pvtz, software: gaussian': 0.987  # [4]
+  'wb97xd/aug-cc-pvtz, software: gaussian': 0.988  # [3], taken as 'ωB97X-D/maug-cc-pVTZ'
+  'wb97xd/6-311++g(d,p), software: gaussian': 0.988  # [4]
+  'wb97xd/def2svp, software: gaussian': 0.986  # [4]
+  'wb97xd/def2tzvp, software: gaussian': 0.988  # [4]
+  'wb97xd3/def2-tzvp, software: qchem': 0.984  # [4]
+  'wb97m-v/def2-tzvpd, software: qchem': 1.002  # [4]
+  'b2plypd3/cc-pvtz, software: gaussian': 0.993  # [4]
+  'b2plypd3/aug-cc-pvtz, software: gaussian': 0.995  # [4]
+  'b2plypd3/def2tzvp, software: gaussian': 0.995  # [4]
+  'apfd/def2tzvp, software: gaussian': 0.993  # [4]
+  'apfd/def2tzvpp, software: gaussian': 0.992  # [4]
+  'mp2/cc-pvdz, software: gaussian': 0.953  # [2]
+  'mp2/cc-pvtz, software: gaussian': 0.950  # [2]
+  'mp2/cc-pvqz, software: gaussian': 0.962  # [2]
+  'cbs-qb3, software: gaussian': 1.004  # 0.99 * 1.014, [5], the 0.99 value is the ZPE scale factor of CBS-QB3
+  'cbs-qb3-paraskevas, software: gaussian': 1.004  # Same as above, added for consistency with Arkane
+  'ccsd/cc-pvdz, software: molpro': 0.947  # [2], taken as 'CCSD/cc-pVDZ'
+  'ccsd(t)/cc-pvdz, software: molpro': 0.979  # [2]
+  'ccsd(t)/cc-pvtz, software: molpro': 0.975  # [2]
+  'ccsd(t)/cc-pvqz, software: molpro': 0.970  # [2]
+  'ccsd(t)/aug-cc-pvdz, software: molpro': 0.963  # [2]
+  'ccsd(t)/aug-cc-pvtz, software: molpro': 1.001  # [3]
+  'ccsd(t)/aug-cc-pvqz, software: molpro': 0.975  # [2]
+  'ccsd(t)/cc-pv(t+d)z, software: molpro': 0.965  # [2]
+  'ccsd(t)-f12/cc-pvdz-f12, software: molpro': 0.997  # [3], taken as 'CCSD(T)-F12a/cc-pVDZ-F12'
+  'ccsd(t)-f12/cc-pvtz-f12, software: molpro': 0.998  # [3], taken as 'CCSD(T)-F12a/cc-pVTZ-F12'
+  'ccsd(t)-f12/cc-pvqz-f12, software: molpro': 0.998  # [3], taken as 'CCSD(T)-F12b/VQZF12//CCSD(T)-F12a/TZF'
+  'ccsd(t)-f12/cc-pcvdz-f12, software: molpro': 0.997  # [3], taken as 'CCSD(T)-F12a/cc-pVDZ-F12'
+  'ccsd(t)-f12/cc-pcvtz-f12, software: molpro': 0.998  # [3], taken as 'CCSD(T)-F12a/cc-pVTZ-F12'
+  'ccsd(t)-f12/aug-cc-pvdz, software: molpro': 0.997  # [3], taken as 'CCSD(T)/cc-pVDZ'
+  'ccsd(t)-f12/aug-cc-pvtz, software: molpro': 0.998  # [3], taken as CCSD(T)-F12a/cc-pVTZ-F12
+  'ccsd(t)-f12/aug-cc-pvqz, software: molpro': 0.998  # [3], taken as 'CCSD(T)-F12b/VQZF12//CCSD(T)-F12a/TZF'

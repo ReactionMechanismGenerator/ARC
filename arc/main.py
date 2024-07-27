@@ -18,7 +18,6 @@ from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
-from arkane.encorr.corr import assign_frequency_scale_factor
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
@@ -37,7 +36,7 @@ from arc.common import (VERSION,
                         )
 from arc.exceptions import InputError, SettingsError, SpeciesError
 from arc.imports import settings
-from arc.level import Level
+from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
 from arc.processor import process_arc_project
@@ -504,7 +503,8 @@ class ARC(object):
                 if not isinstance(self.freq_level, (dict, str)) else self.freq_level
         if self.freq_scale_factor is not None:
             restart_dict['freq_scale_factor'] = self.freq_scale_factor
-        if self.irc_level is not None and str(self.irc_level).split()[0] != default_levels_of_theory['irc']:
+        if self.irc_level is not None and len(self.irc_level.method) \
+                and str(self.irc_level).split()[0] != default_levels_of_theory['irc']:
             restart_dict['irc_level'] = self.irc_level.as_dict() \
                 if not isinstance(self.irc_level, (dict, str)) else self.irc_level
         if self.keep_checks:
@@ -521,7 +521,8 @@ class ARC(object):
         if self.opt_level is not None and str(self.opt_level).split()[0] != default_levels_of_theory['opt']:
             restart_dict['opt_level'] = self.opt_level.as_dict() \
                 if not isinstance(self.opt_level, (dict, str)) else self.opt_level
-        if self.orbitals_level is not None and str(self.orbitals_level).split()[0] != default_levels_of_theory['orbitals']:
+        if self.orbitals_level is not None and len(self.orbitals_level.method) \
+                and str(self.orbitals_level).split()[0] != default_levels_of_theory['orbitals']:
             restart_dict['orbitals_level'] = self.orbitals_level.as_dict() \
                 if not isinstance(self.orbitals_level, (dict, str)) else self.orbitals_level
         if self.output:
@@ -533,10 +534,12 @@ class ARC(object):
             restart_dict['reactions'] = [rxn.as_dict() for rxn in self.reactions]
         if self.running_jobs:
             restart_dict['running_jobs'] = self.running_jobs
-        if self.scan_level is not None and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
+        if self.scan_level is not None and len(self.scan_level.method) \
+                and str(self.scan_level).split()[0] != default_levels_of_theory['scan']:
             restart_dict['scan_level'] = self.scan_level.as_dict() \
                 if not isinstance(self.scan_level, (dict, str)) else self.scan_level
-        if self.sp_level is not None and str(self.sp_level).split()[0] != default_levels_of_theory['sp']:
+        if self.sp_level is not None and len(self.sp_level.method) \
+                and str(self.sp_level).split()[0] != default_levels_of_theory['sp']:
             restart_dict['sp_level'] = self.sp_level.as_dict() \
                 if not isinstance(self.sp_level, (dict, str)) else self.sp_level
         restart_dict['species'] = [spc.as_dict() for spc in self.species]
@@ -906,16 +909,12 @@ class ARC(object):
             freq_level = self.composite_method if self.composite_method is not None \
                 else self.freq_level if self.freq_level is not None else None
             if freq_level is not None:
-                arkane_freq_lot = freq_level.to_arkane_level_of_theory(variant='freq')
-                if arkane_freq_lot is not None:
-                    # Arkane has this harmonic frequencies scaling factor.
-                    self.freq_scale_factor = assign_frequency_scale_factor(level_of_theory=arkane_freq_lot)
-                else:
-                    logger.info(f'Could not determine the harmonic frequencies scaling factor for '
-                                f'{arkane_freq_lot} from Arkane.')
+                self.freq_scale_factor = assign_frequency_scale_factor(level=freq_level)
+                if self.freq_scale_factor is None:
+                    logger.info(f'Could not determine the harmonic frequencies scaling factor for {freq_level}.')
                     if self.calc_freq_factor:
                         logger.info("Calculating it using Truhlar's method.")
-                        logger.warning("This proceedure normally spawns QM jobs for various small species "
+                        logger.warning("This procedure normally spawns QM jobs for various small species "
                                        "not directly asked for by the user.\n\n")
                         self.freq_scale_factor = determine_scaling_factors(levels=[freq_level],
                                                                            ess_settings=self.ess_settings,
