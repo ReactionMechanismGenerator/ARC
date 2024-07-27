@@ -1143,6 +1143,7 @@ class Scheduler(object):
                         f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                         f'{tsg.method_index if tsg.method_index is not None else ""} '
                         for tsg in self.species_dict[label].ts_guesses],
+            before_optimization=True,
         )
         successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
         if len(successful_tsgs) > 1:
@@ -1850,6 +1851,8 @@ class Scheduler(object):
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge,
                                      is_ts=False,
+                                     energies=self.species_dict[label].conformer_energies,
+                                     before_optimization=True,
                                      )  # before optimization
         self.species_dict[label].conformers_before_opt = tuple(self.species_dict[label].conformers)
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
@@ -2026,8 +2029,9 @@ class Scheduler(object):
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
-                                         energies=self.species_dict[label].conformer_energies,  # after optimization
-                                         )
+                                         energies=self.species_dict[label].conformer_energies,
+                                         before_optimization=False,
+                                         )  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
@@ -2242,6 +2246,7 @@ class Scheduler(object):
                             for tsg in self.species_dict[label].ts_guesses],
                 im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
                     if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+                before_optimization=False,
             )
 
     def parse_composite_geo(self,
@@ -2577,6 +2582,7 @@ class Scheduler(object):
                                 for tsg in self.species_dict[label].ts_guesses],
                     im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
                         if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+                    before_optimization=False,
                 )
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
