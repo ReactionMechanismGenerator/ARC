@@ -1638,6 +1638,8 @@ class ARCSpecies(object):
         if xyz_list is not None:
             if not isinstance(xyz_list, list):
                 xyz_list = [xyz_list]
+            elif isinstance(xyz_list, list) and not all('\n' in item for item in xyz_list):
+                xyz_list = ['\n'.join(xyz_list)]
             xyzs, energies = list(), list()
             for xyz in xyz_list:
                 xyz_ = ''
