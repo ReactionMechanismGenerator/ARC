@@ -9,7 +9,7 @@ import re
 
 from rmgpy.molecule import Bond, Group, Molecule
 
-from arc.common import clean_text, get_logger
+from arc.common import clean_text, generate_resonance_structures, get_logger
 from arc.imports import settings
 
 if TYPE_CHECKING:
@@ -108,7 +108,7 @@ class ReactionFamily(object):
                 for group_label in group_labels:
                     group = Group().from_adjacency_list(
                         get_group_adjlist(self.groups_as_lines, entry_label=group_label))
-                    for mol in reactant.mol_list:
+                    for mol in reactant.mol_list or [reactant.mol]:
                         splits = group.split()
                         if mol.is_subgraph_isomorphic(other=group, save_order=True) \
                                 or len(splits) > 1 and any(mol.is_subgraph_isomorphic(other=g, save_order=True) for g in splits):
@@ -172,7 +172,7 @@ class ReactionFamily(object):
         """
         isomorphic_subgraph_dicts = list()
         reactant_to_group_maps = reactant_to_group_maps[0]
-        for mol in reactants[0].mol_list:
+        for mol in reactants[0].mol_list or [reactants[0].mol]:
             for reactant_to_group_map in reactant_to_group_maps:
                 group = Group().from_adjacency_list(get_group_adjlist(self.groups_as_lines,
                                                                       entry_label=reactant_to_group_map['subgroup']))
@@ -227,8 +227,8 @@ class ReactionFamily(object):
         if list(reactant_to_group_maps.keys()) != [0, 1]:
             return dict()
         isomorphic_subgraph_dicts = list()
-        for mol_1 in reactants[0].mol_list:
-            for mol_2 in reactants[1].mol_list:
+        for mol_1 in reactants[0].mol_list or [reactants[0].mol]:
+            for mol_2 in reactants[1].mol_list or [reactants[1].mol]:
                 splits = Group().from_adjacency_list(
                     get_group_adjlist(self.groups_as_lines, entry_label=reactant_to_group_maps[0][0]['subgroup'])).split()
                 if len(splits) > 1:
@@ -497,12 +497,26 @@ def check_product_isomorphism(products: List['Molecule'],
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    if len(products) == 1:
-        return products[0].is_isomorphic(p_species[0].mol)
-    if len(products) == 2:
-        for i in [0, 1]:
-            if products[0].is_isomorphic(p_species[i].mol) and products[1].is_isomorphic(p_species[not i].mol):
+    prods_a = [generate_resonance_structures(mol) or [mol] for mol in products]
+    prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
+    if len(prods_a) == 1:
+        prod_a = prods_a[0]
+        prod_b = prods_b[0]
+        for mol_a in prod_a:
+            if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
                 return True
+    if len(products) == 2:
+        isomorphic = [False, False]
+        for i, prod_a in enumerate(prods_a):
+            skip = False
+            for prod_b in prods_b:
+                if skip:
+                    break
+                for mol_a in prod_a:
+                    if any(mol_b.is_isomorphic(mol_a) for mol_b in prod_b):
+                        isomorphic[i] = True
+                        skip = True
+        return all(isomorphic)
     return False
 
 
