@@ -15,6 +15,7 @@ from arc.reaction.family import (ReactionFamily,
                                  ARC_FAMILIES_PATH,
                                  RMG_DB_PATH,
                                  add_labels_to_molecule,
+                                 check_product_isomorphism,
                                  descent_complex_group,
                                  determine_possible_reaction_products_from_family,
                                  get_reaction_family_products,
@@ -131,15 +132,39 @@ H      -0.83821148   -0.26602407    0.00000000"""
         rxn_0b = ARCReaction(r_species=[ARCSpecies(label='CH4', xyz=ch4_xyz), ARCSpecies(label='O2', xyz=o2_xyz, multiplicity=3)],
                              p_species=[ARCSpecies(label='CH3', xyz=ch3_xyz), ARCSpecies(label='HO2', xyz=ho2_xyz)])
         products = get_reaction_family_products(rxn_0b)
-        expected_products = [{'discovered_in_reverse': True,
-                              'family': 'Disproportionation',  # Todo: should be H_abs after merging Calvin's PR
-                              'group_labels': 'Root',
-                              'label_map': {'*1': 0, '*2': 4, '*3': 5, '*4': 6},
-                              'own_reverse': False,
-                              'products': [Molecule(smiles="C"), Molecule(smiles="O=O")]}]
-        print(products)
+        expected_products = [{'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 1, '*3': 5},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 1, '*3': 6},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 2, '*3': 5},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 2, '*3': 6},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 3, '*3': 5},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 3, '*3': 6},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 4, '*3': 5},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")],
+                              'label_map': {'*1': 0, '*2': 4, '*3': 6},
+                              'own_reverse': True, 'discovered_in_reverse': False}]
         self.assertEqual(products, expected_products)
-
 
         rxn_1 = ARCReaction(reactants=['NH2', 'NH2'], products=['NH', 'NH3'],
                             r_species=[ARCSpecies(label='NH2', smiles='[NH2]')],
@@ -354,7 +379,13 @@ H      -0.83821148   -0.26602407    0.00000000"""
                               'group_labels': ('R_R', 'OJ_sec'),
                               'label_map': {'*1': 1, '*2': 0, '*3': 6},
                               'own_reverse': False,
-                              'products': [Molecule(smiles="[CH2]C(=O)OO")]}]
+                              'products': [Molecule(smiles="[CH2]C(=O)OO")]},
+                             {'discovered_in_reverse': True,
+                              'family': 'R_Addition_MultipleBond',
+                              'group_labels': ('R_R', 'OJ_sec'),
+                              'label_map': {'*1': 1, '*2': 2, '*3': 6},
+                              'own_reverse': False,
+                              'products': [Molecule(smiles="C=C([O])OO")]}]
         self.assertEqual(products, expected_products)
 
         rxn_8 = ARCReaction(r_species=[ARCSpecies(label='C3H7O2a', smiles='C[CH]COO')],
@@ -409,6 +440,23 @@ H      -0.83821148   -0.26602407    0.00000000"""
                               'products': [Molecule(smiles="[CH2]CCCCC")]}]
         self.assertEqual(products, expected_products)
 
+    def test_get_reaction_family_products_considering_resonance(self):
+        """Test determining the reaction family using product dicts for the non-trivial resonance structure"""
+        rxn_0a = ARCReaction(r_species=[ARCSpecies(label='R1', smiles='CC(C=S)S'),
+                                        ARCSpecies(label='R2', smiles='C=C[CH]C')],
+                             p_species=[ARCSpecies(label='P1', smiles='[S]C=C(S)C'),
+                                        ARCSpecies(label='P2', smiles='C=CCC')])
+        products = get_reaction_family_products(rxn_0a)
+        expected_products = [{'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="C=CCC"), Molecule(smiles="C[C](C=S)S")],
+                              'label_map': {'*1': 1, '*2': 8, '*3': 13},
+                              'own_reverse': True, 'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                              'products': [Molecule(smiles="C=CCC"), Molecule(smiles="C[C](C=S)S")],
+                              'label_map': {'*1': 1, '*2': 8, '*3': 13},
+                              'own_reverse': True, 'discovered_in_reverse': False}]
+        self.assertEqual(products, expected_products)
+
     def test_determine_possible_reaction_products_from_family(self):
         """Test determining the possible reaction products from a family"""
         rxn_1 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
@@ -445,6 +493,34 @@ H      -0.83821148   -0.26602407    0.00000000"""
                                    'own_reverse': True,
                                    'products': [Molecule(smiles="C[CH]C")]}]
         self.assertEqual(product_dicts, expected_product_dicts)
+
+    def test_check_product_isomorphism(self):
+        """Test checking product isomorphism"""
+        product_1 = Molecule(smiles='C[CH]C')
+        product_2 = ARCSpecies(label='S1', mol=Molecule(smiles='C[CH]C'))
+        self.assertTrue(check_product_isomorphism([product_1], [product_2]))
+        product_2 = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]CC'))
+        self.assertFalse(check_product_isomorphism([product_1], [product_2]))
+
+        product_1 = Molecule(smiles='C=C[O]')
+        product_2 = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]C=O'))
+        self.assertTrue(check_product_isomorphism([product_1], [product_2]))
+
+        product_1 = Molecule(smiles='C[C](C=S)S')
+        product_2 = ARCSpecies(label='S1', mol=Molecule(smiles='[S]C=C(S)C'))
+        self.assertTrue(check_product_isomorphism([product_1], [product_2]))
+
+        product_1 = Molecule(smiles='[CH2]C(C=S)S')
+        self.assertFalse(check_product_isomorphism([product_1], [product_2]))
+
+        products = [Molecule(smiles="[CH2]C(C=S)S")]
+        p_species = [ARCSpecies(label="P1", smiles="[S]C=C(S)C", is_ts=False, multiplicity=2, charge=0),]
+        self.assertFalse(check_product_isomorphism(products, p_species))
+
+        products = [Molecule(smiles="C=CCC"), Molecule(smiles="[CH2]C(C=S)S")]
+        p_species = [ARCSpecies(label="P1", smiles="[S]C=C(S)C", is_ts=False, multiplicity=2, charge=0),
+                     ARCSpecies(label="P2", smiles="C=CCC", is_ts=False, multiplicity=1, charge=0)]
+        self.assertFalse(check_product_isomorphism(products, p_species))
 
     def test_get_all_families(self):
         """Test getting all families from RMG and/or ARC"""
