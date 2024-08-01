@@ -256,10 +256,11 @@ class MolproAdapter(JobAdapter):
                 methods = self.level.method.split('_')
                 input_dict['method'] = ''
                 for method in methods:
-                    input_dict['method'] += f"""{{
-{method.lower()};
- {'maxit,1000; ' if 'mp2' not in method.lower() else ''}wf,spin={input_dict['spin']},charge={input_dict['charge']};}}
-"""
+                    input_dict['method'] += '\n\n{' + method.lower() + ';\n'
+                    if 'mp2' not in method.lower():
+                        input_dict['method'] += ' maxit,1000;\n'
+                    input_dict['method'] += f' wf,spin={input_dict["spin"]},charge={input_dict["charge"]};' + '}'
+                # input_dict['method'] += ';'
             else:
                 input_dict['method'] = f"""{{casscf;
  maxit,1000;
