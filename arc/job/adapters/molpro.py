@@ -46,8 +46,8 @@ ${auxiliary_basis}
 ${cabs}
 int;
 {hf;${shift}
-maxit,1000;
-wf,spin=${spin},charge=${charge};}
+ maxit,1000;
+ wf,spin=${spin},charge=${charge};}
 
 ${restricted}${method};
 
@@ -252,13 +252,23 @@ class MolproAdapter(JobAdapter):
         if 'mrci' in self.level.method:
             input_dict['orbitals'] = '\ngprint,orbitals;\n'
             input_dict['restricted'] = ''
-            input_dict['method'] = f"""{{casscf;
+            if '_' in self.level.method:
+                methods = self.level.method.split('_')
+                input_dict['method'] = ''
+                for method in methods:
+                    input_dict['method'] += f"""{{{method.lower()};
+ maxit,999;
+ wf,spin={input_dict['spin']},charge={input_dict['charge']};}}
+"""
+            else:
+                input_dict['method'] = f"""{{casscf;
  maxit,999;
  wf,spin={input_dict['spin']},charge={input_dict['charge']};}}
  
 {{mrci{"-f12" if "f12" in self.level.method.lower() else ""};
  maxit,999;
  wf,spin={input_dict['spin']},charge={input_dict['charge']};}}"""
+
             input_dict['block'] += '\n\nE_mrci=energy;\nE_mrci_Davidson=energd;\n\ntable,E_mrci,E_mrci_Davidson;'
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
