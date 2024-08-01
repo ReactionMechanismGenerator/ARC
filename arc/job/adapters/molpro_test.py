@@ -54,15 +54,25 @@ class TestMolproAdapter(unittest.TestCase):
                                   testing=True,
                                   )
         cls.job_4 = MolproAdapter(execution_type='queue',
-                            job_type='sp',
-                            level=Level(method='MRCI-F12', basis='aug-cc-pvtz-f12'),
-                            project='test',
-                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_4'),
-                            species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
-                                                                        O      1.01258   -0.17285    0.00000
-                                                                        H     -0.93116   -0.20169    0.00000"""])],
-                            testing=True,
-                            )
+                                  job_type='sp',
+                                  level=Level(method='MRCI-F12', basis='aug-cc-pvtz-f12'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_4'),
+                                  species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
+                                                                             O      1.01258   -0.17285    0.00000
+                                                                             H     -0.93116   -0.20169    0.00000"""])],
+                                  testing=True,
+                                  )
+        cls.job_5 = MolproAdapter(execution_type='queue',
+                                  job_type='sp',
+                                  level=Level(method='MP2_RS3_MRCI-F12', basis='aug-cc-pVTZ-F12'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_4'),
+                                  species=[ARCSpecies(label='HNO_t', xyz=["""N     -0.08142    0.37454    0.00000
+                                                                             O      1.01258   -0.17285    0.00000
+                                                                             H     -0.93116   -0.20169    0.00000"""])],
+                                  testing=True,
+                                  )
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -107,8 +117,8 @@ basis=cc-pvtz-f12
 
 int;
 {hf;
-maxit,1000;
-wf,spin=2,charge=0;}
+ maxit,1000;
+ wf,spin=2,charge=0;}
 
 uccsd(t)-f12;
 
@@ -136,8 +146,8 @@ basis=cc-pvqz
 
 int;
 {hf;
-maxit,1000;
-wf,spin=2,charge=0;}
+ maxit,1000;
+ wf,spin=2,charge=0;}
 
 uccsd(t);
 
@@ -171,15 +181,15 @@ basis=aug-cc-pvtz-f12
 
 int;
 {hf;
-maxit,1000;
-wf,spin=0,charge=0;}
+ maxit,1000;
+ wf,spin=0,charge=0;}
 
 {casscf;
- maxit,999;
+ maxit,1000;
  wf,spin=0,charge=0;}
  
 {mrci;
- maxit,999;
+ maxit,1000;
  wf,spin=0,charge=0;};
 
 
@@ -215,15 +225,15 @@ basis=aug-cc-pvtz-f12
 
 int;
 {hf;
-maxit,1000;
-wf,spin=0,charge=0;}
+ maxit,1000;
+ wf,spin=0,charge=0;}
 
 {casscf;
- maxit,999;
+ maxit,1000;
  wf,spin=0,charge=0;}
  
 {mrci-f12;
- maxit,999;
+ maxit,1000;
  wf,spin=0,charge=0;};
 
 
@@ -237,6 +247,57 @@ table,E_mrci,E_mrci_Davidson;
 
 """
         self.assertEqual(content_4, job_4_expected_input_file)
+
+        self.job_5.cpu_cores = 48
+        self.job_5.set_input_file_memory()
+        self.job_5.write_input_file()
+        with open(os.path.join(self.job_5.local_path, input_filenames[self.job_5.job_adapter]), 'r') as f:
+            content_5 = f.read()
+        job_5_expected_input_file = """***,HNO_t
+memory,Total=438,m;
+
+geometry={angstrom;
+N      -0.08142000    0.37454000    0.00000000
+O       1.01258000   -0.17285000    0.00000000
+H      -0.93116000   -0.20169000    0.00000000}
+
+gprint,orbitals;
+
+basis=aug-cc-pvtz-f12
+
+
+
+int;
+{hf;
+ maxit,1000;
+ wf,spin=0,charge=0;}
+
+
+
+{mp2;
+ wf,spin=0,charge=0;}
+
+{rs3;
+ maxit,1000;
+ wf,spin=0,charge=0;}
+
+{mrci-f12;
+ maxit,1000;
+ wf,spin=0,charge=0;};
+
+
+
+
+E_mrci=energy;
+E_mrci_Davidson=energd;
+
+table,E_mrci,E_mrci_Davidson;
+---;
+
+"""
+        print('*****')
+        print(content_5)
+        self.assertEqual(content_5, job_5_expected_input_file)
 
     def test_set_files(self):
         """Test setting files"""
