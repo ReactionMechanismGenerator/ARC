@@ -916,13 +916,14 @@ def key_by_val(dictionary: dict,
     raise ValueError(f'Could not find value {value} in the dictionary\n{dictionary}')
 
 
-def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
-                       iter2: Union[list, tuple, np.ndarray],
-                       rtol: float = 1e-05,
-                       atol: float = 1e-08,
-                       ) -> bool:
+def almost_equal_lists_of_single_entries(iter1: Union[list, tuple, np.ndarray],
+                                         iter2: Union[list, tuple, np.ndarray],
+                                         rtol: float = 1e-05,
+                                         atol: float = 1e-08,
+                                         ) -> bool:
     """
     A helper function for checking whether two iterables are almost equal.
+    Each iterable is assumed to contain only floats or integers.
 
     Args:
         iter1 (list, tuple, np.array): An iterable.
@@ -936,17 +937,49 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
     if len(iter1) != len(iter2):
         return False
     for entry1, entry2 in zip(iter1, iter2):
-        if isinstance(entry1, (list, tuple, np.ndarray)) and isinstance(entry2, (list, tuple, np.ndarray)):
-            if not almost_equal_lists(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol):
+        try:
+            if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
                 return False
-        else:
-            if isinstance(entry1, (int, float, np.float32, np.float64)) \
-                    and isinstance(entry2, (int, float, np.float32, np.float64)):
-                if not np.isclose([entry1], [entry2], rtol=rtol, atol=atol):
-                    return False
-            else:
-                if entry1 != entry2:
-                    return False
+        except TypeError:
+            if entry1 != entry2:
+                return False
+    return True
+
+
+def almost_equal_lists_of_iterable_entries(iter1: np.ndarray,
+                                           iter2: np.ndarray,
+                                           rtol: float = 1e-05,
+                                           atol: float = 1e-08,
+                                           ) -> bool:
+    """
+    A helper function for checking whether two iterables are almost equal.
+    Each iterable is assumed to contain a list of floats or integers (e.g., a dmat).
+
+    dmat::
+
+        [[0., 1.019, 1.01900001, 1.019],
+        [1.019, 0., 1.62759778, 1.62759777],
+        [1.01900001, 1.62759778, 0., 1.62759778],
+        [1.019, 1.62759777, 1.62759778, 0.]]
+
+    Args:
+        iter1 (np.array): An iterable.
+        iter2 (np.array): An iterable.
+        rtol (float, optional): The relative tolerance parameter.
+        atol (float, optional): The absolute tolerance parameter.
+
+    Returns: bool
+        ``True`` if they are almost equal, ``False`` otherwise.
+    """
+    if len(iter1) != len(iter2):
+        return False
+    min_1, min_2 = np.min(iter1), np.min(iter2)
+    max_1, max_2 = np.max(iter1), np.max(iter2)
+    if not almost_equal_lists_of_single_entries(iter1=[min_1, max_1], iter2=[min_2, max_2], rtol=rtol, atol=atol):
+        return False
+    for entry1, entry2 in zip(iter1, iter2):
+        if not almost_equal_lists_of_single_entries(iter1=entry1, iter2=entry2, rtol=rtol, atol=atol):
+            return False
     return True
 
 

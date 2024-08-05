@@ -356,35 +356,26 @@ class TestCommon(unittest.TestCase):
         """Test the almost_equal_lists() function."""
         l1 = [0]
         l2 = [0]
-        self.assertTrue(common.almost_equal_lists(l1, l2))
+        self.assertTrue(common.almost_equal_lists_of_single_entries(l1, l2))
 
         l1, l2 = [0.0000000001], [0]
-        l1, l2 = [0.0000000001], [0]
-        self.assertTrue(common.almost_equal_lists(l1, l2))
+        self.assertTrue(common.almost_equal_lists_of_single_entries(l1, l2))
 
         l1 = [[1, 2.0000000005], [3, 5]]
         l2 = [[1, 2],            [3, 5.00000001]]
-        self.assertTrue(common.almost_equal_lists(l1, l2))
+        self.assertTrue(common.almost_equal_lists_of_iterable_entries(np.array(l1), np.array(l2)))
 
         l1 = [[1, 2.005], [3, 5]]
         l2 = [[1, 2],     [3, 5.01]]
-        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+        self.assertTrue(common.almost_equal_lists_of_iterable_entries(np.array(l1), np.array(l2), rtol=0.01, atol=0.1))
 
         l1 = [[1, 6], [3, 5]]
         l2 = [[1, 2], [3, 5.01]]
-        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+        self.assertFalse(common.almost_equal_lists_of_iterable_entries(np.array(l1), np.array(l2), rtol=0.01, atol=0.1))
 
         l1 = [[1, 2], [3, 5],    [4, 8]]
         l2 = [[1, 2], [3, 5.01], [4, 500]]
-        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
-
-        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
-        l2 = [[1, [2, 10, (8, 9.9)]],    [3, 5]]
-        self.assertTrue(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
-
-        l1 = [[1, [2, 10, (8, 9.9005)]], [3, 5]]
-        l2 = [[1, [2, 10, (8, 999.9)]],  [3, 5]]
-        self.assertFalse(common.almost_equal_lists(l1, l2, rtol=0.01, atol=0.1))
+        self.assertFalse(common.almost_equal_lists_of_iterable_entries(np.array(l1), np.array(l2), rtol=0.01, atol=0.1))
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
@@ -618,6 +609,11 @@ class TestCommon(unittest.TestCase):
                               (-0.5203922802597125, -0.7822529247012627, -0.10002797449860866),
                               (0.9376091065010891, -0.05885406074163403, -0.10079042914685925))}
         nh3_dmat = converter.xyz_to_dmat(nh3_xyz)
+        expected_nh3_dmat = [[0., 1.019, 1.01900001, 1.019],
+                             [1.019, 0., 1.62759778, 1.62759777],
+                             [1.01900001, 1.62759778, 0., 1.62759778],
+                             [1.019, 1.62759777, 1.62759778, 0.]]
+        self.assertTrue(common.almost_equal_lists(nh3_dmat, expected_nh3_dmat))
         bonds = common.get_bonds_from_dmat(dmat=nh3_dmat, elements=nh3_xyz['symbols'])
         self.assertTrue(common.check_that_all_entries_are_in_list(bonds, [(0, 1), (0, 2), (0, 3)]))
 

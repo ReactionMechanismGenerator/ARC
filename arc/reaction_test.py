@@ -14,7 +14,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
+from arc.common import ARC_PATH, almost_equal_lists_of_single_entries, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
 from arc.reaction import ARCReaction, remove_dup_species
@@ -1863,18 +1863,20 @@ H       1.12853146   -0.86793870    0.06973060"""
 
     def test_get_element_masses(self):
         """Test the get_element_masses() method."""
-        self.assertTrue(almost_equal_lists(self.rxn1.get_element_mass(),
-                                           [12.0, 1.00782503224, 1.00782503224, 1.00782503224,
-                                            1.00782503224, 15.99491461957, 1.00782503224]))
-        self.assertTrue(almost_equal_lists(self.rxn2.get_element_mass(),
-                                           [12.0, 12.0, 1.00782503224, 1.00782503224, 1.00782503224, 1.00782503224,
-                                            1.00782503224, 15.99491461957, 1.00782503224]))
-        self.assertTrue(almost_equal_lists(self.rxn3.get_element_mass(),
-                                           [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224, 1.00782503224,
-                                            1.00782503224, 1.00782503224, 1.00782503224]))
-        self.assertTrue(almost_equal_lists(self.rxn5.get_element_mass(),
-                                           [14.00307400443, 1.00782503224, 1.00782503224,
-                                            14.00307400443, 1.00782503224, 1.00782503224]))
+        self.assertTrue(almost_equal_lists_of_single_entries(self.rxn1.get_element_mass(),
+                                                             [12.0, 1.00782503224, 1.00782503224, 1.00782503224,
+                                                              1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists_of_single_entries(self.rxn2.get_element_mass(),
+                                                             [12.0, 12.0, 1.00782503224, 1.00782503224, 1.00782503224,
+                                                              1.00782503224,
+                                                              1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists_of_single_entries(self.rxn3.get_element_mass(),
+                                                             [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224,
+                                                              1.00782503224,
+                                                              1.00782503224, 1.00782503224, 1.00782503224]))
+        self.assertTrue(almost_equal_lists_of_single_entries(self.rxn5.get_element_mass(),
+                                                             [14.00307400443, 1.00782503224, 1.00782503224,
+                                                              14.00307400443, 1.00782503224, 1.00782503224]))
 
     def test_get_bonds(self):
         """Test the get_bonds() method."""

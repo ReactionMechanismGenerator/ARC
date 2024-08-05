@@ -23,7 +23,7 @@ from rmgpy.quantity import ArrayQuantity
 from rmgpy.species import Species
 from rmgpy.statmech import Conformer
 
-from arc.common import (almost_equal_lists,
+from arc.common import (almost_equal_lists_of_iterable_entries,
                         calc_rmsd,
                         get_atom_radius,
                         get_logger,
@@ -2043,7 +2043,7 @@ def compare_confs(xyz1: dict,
         rmsd = calc_rmsd(np.triu(dmat1), np.triu(dmat2))
         return rmsd
     else:
-        return almost_equal_lists(dmat1, dmat2, rtol=rtol, atol=atol)
+        return almost_equal_lists_of_iterable_entries(dmat1, dmat2, rtol=rtol, atol=atol)
 
 
 def cluster_confs_by_rmsd(xyzs: Iterable[Dict[str, tuple]],
