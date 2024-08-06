@@ -756,9 +756,13 @@ class ARC(object):
                 logger.info(f'Species {label} converged successfully\n')
             elif not label.startswith('IRC_'):
                 status_dict[label] = False
-                job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
-                                   if key in self.job_types and self.job_types[key]}
-                logger.info(f'  Species {label} failed with status:\n  {job_type_status}')
+                if label in self.output:
+                    job_type_status = {key: val for key, val in self.output[label]['job_types'].items()
+                                    if key in self.job_types and self.job_types[key]}
+                    logger.info(f'  Species {label} failed with status:\n  {job_type_status}')
+                else:
+                    logger.warning(f'  Species {label} is missing in self.output.')
+                    continue
                 keys = ['conformers', 'isomorphism', 'info']
                 for key in keys:
                     if key in output and output[key]:
