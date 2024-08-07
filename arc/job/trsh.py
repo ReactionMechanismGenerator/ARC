@@ -1797,3 +1797,15 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
         couldnt_trsh = False
 
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Check if the job requires change of opt(maxcycle=200)
+    """
+    
+    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycles=200)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(maxcycle=200)')
+        trsh_keyword.append('opt=(maxcycle=200)')
+        couldnt_trsh = False
+    
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
