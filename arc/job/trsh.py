@@ -91,8 +91,17 @@ def determine_ess_status(output_path: str,
             for i, line in enumerate(reverse_lines):
                 if 'termination' in line:
                     if 'l9999.exe' in line or 'link 9999' in line:
-                        keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
-                        error = 'Unconverged'
+                        cycle_issue = False
+                        for j in range(i + 300, i, -1):
+                            if 'Number of steps exceeded' in reverse_lines[j]:
+                                keywords = ['MaxOptCycles', 'GL9999', 'SCF']
+                                error = 'Maximum optimization cycles reached.'
+                                cycle_issue = True
+                                line = 'Number of steps exceeded'
+                                break
+                        if not cycle_issue:
+                            keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
+                            error = 'Unconverged'
                     elif 'l101.exe' in line:
                         keywords = ['InputError', 'GL101']
                         error = 'The blank line after the coordinate section is missing, ' \
@@ -878,6 +887,8 @@ def trsh_ess_job(label: str,
 
         # Check if SCF is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'scf=(maxcycle=512)' in ess_trsh_methods:
+            logger_info.append('using scf=(maxcycle=512)')
         if 'scf=(NDamp=30)' in ess_trsh_methods:
             logger_info.append('using scf=(NDamp=30)')
         if 'scf=(qc)' in ess_trsh_methods:
@@ -894,6 +905,13 @@ def trsh_ess_job(label: str,
         ess_trsh_methods, trsh_keyword, fine, couldnt_trsh = trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine)
         if fine:
             logger_info.append('using a fine grid')
+
+        # Troubleshoot by increasing opt max cycles
+        #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'opt=(maxcycle=200)' in ess_trsh_methods:
+            logger_info.append('using opt=(maxcycle=200)')
+        
 
 
         # Check if memory is in the keyword
@@ -1749,7 +1767,10 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
     Check if the job requires change of scf
     """
     scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
-    if 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods:
+    if 'SCF' in job_status['keywords'] and 'scf=(maxcycle=512)' not in ess_trsh_methods:
+        ess_trsh_methods.append('scf=(maxcycle=512)')
+        couldnt_trsh = False
+    elif 'SCF' in job_status['keywords'] and 'scf=(qc)' not in ess_trsh_methods:
         # try both qc and nosymm
         ess_trsh_methods.append('scf=(qc)')
         couldnt_trsh = False
@@ -1796,4 +1817,16 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
         trsh_keyword.append('nosymm')
         couldnt_trsh = False
 
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Check if the job requires change of opt(maxcycle=200)
+    """
+    
+    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycles=200)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(maxcycle=200)')
+        trsh_keyword.append('opt=(maxcycle=200)')
+        couldnt_trsh = False
+    
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
