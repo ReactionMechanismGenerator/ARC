@@ -77,17 +77,17 @@ class TestMappingEngine(unittest.TestCase):
                                 (-0.2965861926821434, 0.9189121874074381, -0.5532990701789506),
                                 (-0.44047773762823295, -0.8660709320146035, -0.5425894744224189),
                                 (-0.49026044722212864, 0.04550905897643097, 0.9980363028129072))}
-        cls.r_1 = ARCSpecies(label='r1', smiles=smiles[0],xyz=r_1_1_xyz )
-        cls.r_2 = ARCSpecies(label='r2', smiles=smiles[1],xyz=r_2_1_xyz)
-        cls.p_1 = ARCSpecies(label='p1', smiles=smiles[2],xyz=p_1_1_xyz)
-        cls.p_2 = ARCSpecies(label='p2', smiles=smiles[3],xyz=p_2_1_xyz)
+        cls.r_1 = ARCSpecies(label='r1', smiles=smiles[0], xyz=r_1_1_xyz)
+        cls.r_2 = ARCSpecies(label='r2', smiles=smiles[1], xyz=r_2_1_xyz)
+        cls.p_1 = ARCSpecies(label='p1', smiles=smiles[2], xyz=p_1_1_xyz)
+        cls.p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_1_xyz)
 
-        cls.r_1_1 = ARCSpecies(label='r1', smiles=smiles[0],xyz=r_1_1_xyz )
-        cls.r_2_2 = ARCSpecies(label='r2', smiles=smiles[1],xyz=r_2_1_xyz)
-        cls.p_1_1 = ARCSpecies(label='p1', smiles=smiles[2],xyz=p_1_1_xyz)
-        cls.p_2_2 = ARCSpecies(label='p2', smiles=smiles[3],xyz=p_2_1_xyz)
+        cls.r_1_1 = ARCSpecies(label='r1', smiles=smiles[0], xyz=r_1_1_xyz)
+        cls.r_2_2 = ARCSpecies(label='r2', smiles=smiles[1], xyz=r_2_1_xyz)
+        cls.p_1_1 = ARCSpecies(label='p1', smiles=smiles[2], xyz=p_1_1_xyz)
+        cls.p_2_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=p_2_1_xyz)
 
-        cls.rxn_1 = ARCReaction(r_species=[cls.r_1, cls.r_2], p_species=[cls.p_1, cls.p_2])
+        # cls.rxn_1 = ARCReaction(r_species=[cls.r_1, cls.r_2], p_species=[cls.p_1, cls.p_2])
         # cls.rmg_reactions_rxn_1 = get_rmg_reactions_from_arc_reaction(arc_reaction=cls.rxn_1, backend="ARC")
         # cls.r_label_dict_rxn_1, cls.p_label_dict_rxn_1 = (
         #     get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=cls.rxn_1,
@@ -567,11 +567,15 @@ class TestMappingEngine(unittest.TestCase):
     def test_assign_labels_to_products(self):
         """Test assigning labels to products based on the atom map of the reaction"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        assign_labels_to_products(rxn_1_test, self.p_label_dict_rxn_1)
+        assign_labels_to_products(rxn_1_test)
+        print([atom.label for atom in rxn_1_test.p_species[0].mol.atoms])
+        raise
         index = 0
         for product in rxn_1_test.p_species:
+            print(product.label, index)
             for atom in product.mol.atoms:
                 if not isinstance(atom.label, str) or atom.label != "":
+                    print(atom.label, index)
                     self.assertEqual(self.p_label_dict_rxn_1[atom.label], index)
                 index += 1
 
