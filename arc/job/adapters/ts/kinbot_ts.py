@@ -262,7 +262,7 @@ class KinBotAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            if rxn.family.label in self.supported_families:
+            if rxn.family in self.supported_families:
                 if rxn.ts_species is None:
                     # Mainly used for testing, in an ARC run the TS species should already exist.
                     rxn.ts_species = ARCSpecies(label='TS',
@@ -286,7 +286,7 @@ class KinBotAdapter(JobAdapter):
                     symbols = spc.get_xyz()['symbols']
                     for m, mol in enumerate(spc.mol_list):
                         reaction_generator = set_up_kinbot(mol=mol,
-                                                           families=self.family_map[rxn.family.label],
+                                                           families=self.family_map[rxn.family],
                                                            kinbot_xyz=xyz_to_kinbot_list(spc.get_xyz()),
                                                            multiplicity=rxn.multiplicity,
                                                            charge=rxn.charge,

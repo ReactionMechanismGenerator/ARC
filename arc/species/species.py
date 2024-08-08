@@ -1583,11 +1583,6 @@ class ARCSpecies(object):
         if xyz is None:
             return None
 
-        if len(xyz['symbols']) == 2 and xyz['symbols'][0] == xyz['symbols'][1] \
-                and xyz['symbols'][0] in ['O', 'S'] and self.multiplicity == 3:
-            # Hard-coded for triplet O2 and S2: Don't perceive mol.
-            return None
-
         if self.mol is not None:
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
