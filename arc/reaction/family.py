@@ -370,7 +370,7 @@ class ReactionFamily(object):
 
 
 def get_reaction_family_products(rxn: 'ARCReaction',
-                                 rmg_family_set: str = 'default',
+                                 rmg_family_set: str = 'default',  # todo: consider giving a particular set of families
                                  consider_rmg_families: bool = True,
                                  consider_arc_families: bool = True,
                                  discover_own_reverse_rxns_in_reverse: bool = False,

@@ -1130,26 +1130,41 @@ def make_bond_changes(rxn: 'ARCReaction',
                     r_cut.mol.update()
 
 
-def assign_labels_to_products(rxn: 'ARCReaction',
-                              p_label_dict: dict):
+def get_p_label_dict(rxn: 'ARCReaction'):
+    """
+    A function that returns the labels of the products.
+
+    Args:
+        rxn: ARCReaction object
+
+    Returns:
+        Optional[Dict[str, int]]: The labels of the products.
+    """
+    products = get_reaction_family_products(rxn=rxn)
+    if len(products):
+        return products[0]['label_map']
+    return None
+
+
+def assign_labels_to_products(rxn: 'ARCReaction'):
     """
     Add the indices to the reactants and products.
 
     Args:
         rxn: ARCReaction object to be mapped
-        p_label_dict: the labels of the products
         Consider changing in rmgpy.
 
     Returns:
         Adding labels to the atoms of the reactants and products, to be identified later.
     """
-
+    p_label_dict = get_p_label_dict(rxn)
+    print(p_label_dict)
     atom_index = 0
     for product in rxn.p_species:
         for atom in product.mol.atoms:
             if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
-                atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
+                atom.label = key_by_val(p_label_dict, atom_index)
+            atom_index += 1
 
 
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
