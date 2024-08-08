@@ -50,7 +50,7 @@ dependencies:
   - anaconda::sphinx_rtd_theme
   - anaconda::paramiko >=2.6.0
   - conda-forge::py3dmol >= 0.8.0
-  - conda-forge::ase >=3.15.0
+  - conda-forge::ase =3.16
   - anaconda::ipython
   - anaconda::sphinx
   - anaconda::sphinxcontrib-jsmath
