@@ -42,6 +42,7 @@ import sys
 import time
 from itertools import product
 from typing import Dict, List, Optional, Tuple, Union
+import pprint
 
 from openbabel import openbabel as ob
 from openbabel import pybel as pyb
@@ -91,7 +92,7 @@ SMEARED_SCAN_RESOLUTIONS = 30.0
 DE_THRESHOLD = 5.
 
 # The gap (in degrees) that defines different wells
-WELL_GAP = 20
+WELL_GAP = 31 # 20/2 works
 
 # The maximum number of times to iteratively search for the lowest conformer
 MAX_COMBINATION_ITERATIONS = 25
@@ -270,9 +271,12 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
         num_confs=num_confs_to_generate, force_field=force_field)
 
+    rings, rings_indexes = determine_rings(mol_list)
     lowest_confs = list()
     if len(conformers):
         conformers = determine_dihedrals(conformers, torsions)
+        if len(rings):
+            conformers = determine_puckering(conformers, rings_indexes)
 
 
         new_conformers, symmetries, hypothetical_num_comb = deduce_new_conformers(
@@ -796,6 +800,25 @@ def determine_rotors(mol_list):
     return torsions, tops
 
 
+def determine_rings(mol_list):
+    """
+    Determine possible unique rotors in the species to be treated as hindered rotors.
+
+    Args:
+        mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.
+
+    Returns:
+        Tuple[list, list]:
+            - A list of indices of scan pivots.
+            - A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.
+    """
+    rings, rings_indexes = list(), list()
+    for mol in mol_list:
+        rings = mol.get_deterministic_sssr()
+        rings_indexes = [[mol.atoms.index(atom) for atom in ring] for ring in rings]
+    return rings, rings_indexes
+
+
 def determine_number_of_conformers_to_generate(label: str,
                                                heavy_atoms: int,
                                                torsion_num: int,
@@ -887,6 +910,37 @@ def determine_dihedrals(conformers, torsions):
             for torsion in torsions:
                 dihedral = vectors.calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=1)
                 conformer['torsion_dihedrals'][tuple(torsion)] = dihedral
+    return conformers
+
+
+def determine_puckering(conformers, rings_indexes):
+    """
+    For each conformer in `conformers` determine the respective dihedrals.
+
+    Args:
+        conformers (list): Entries are conformer dictionaries.
+        torsions (list): All possible torsions in the molecule.
+
+    Returns:
+        list: Entries are conformer dictionaries.
+    """
+    for conformer in conformers:
+        # print(f'conformer:{conformer}')
+        if isinstance(conformer['xyz'], str):
+            xyz = converter.str_to_xyz(conformer['xyz'])
+        else:
+            xyz = conformer['xyz']
+        if 'puckering' not in conformer or not conformer['puckering']:
+            conformer['puckering'] = dict()
+            for i, ring in enumerate(rings_indexes):
+                # print(f'torsion:{ring}')
+                theta = vectors.calculate_plane_angles(coords=xyz['coords'], ring=ring, index=0)
+                print('line932, ring:',ring)
+                conformer['puckering'][tuple((ring[i], ring[(i + 1) % len(ring)]) for i in range(len(ring)))] = theta
+                # z = vectors.calculate_puckering_coord(coords=xyz['coords'], ring=ring, index=0)
+                # conformer['puckering'][tuple(ring)] = z
+    pprint.pprint(conformers)
+    
     return conformers
 
 

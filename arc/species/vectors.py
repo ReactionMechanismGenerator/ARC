@@ -232,6 +232,108 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     return get_dihedral(v1, v2, v3, units=units)
 
 
+def calculate_plane_angles(coords: Union[list, tuple, dict], 
+                           ring: list, 
+                           index: int = 0
+                           ) -> list:
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got {type(coords)}')
+
+    coords = np.array(coords, dtype=np.float32)
+    ring = [atom - index for atom in ring]  # Adjusting for zero-indexed
+    print('ring:', ring)
+    vectors = [coords[ring[i]] - coords[ring[i - 1]] for i in range(len(ring))]
+    normals = [np.cross(vectors[i], vectors[(i + 1) % len(vectors)]) for i in range(len(vectors))]
+    normals = [n / np.linalg.norm(n) if np.linalg.norm(n) != 0 else n for n in normals]
+    print('normals:', normals)
+    angles = []
+    for i in range(len(normals)):
+        n1 = normals[i]
+        n2 = normals[(i + 1) % len(normals)]
+        dot_product = np.dot(n1, n2)
+        dot_product = max(min(dot_product, 1.0), -1.0)
+        print('dot pdt:', dot_product)
+        angle = np.arccos(dot_product)
+        angle_deg = np.degrees(angle)
+        angles.append(angle_deg)
+
+    return angles
+
+
+def calculate_puckering_coord(coords: Union[list, tuple, dict],
+                              ring: list,
+                              index: int = 0,
+                              units: str = 'degs',
+                              ) -> float:
+    """
+    Calculate a dihedral angle.
+
+    Args:
+        coords (list, tuple, dict): The array-format or tuple-format coordinates, or the xyz dict.
+        torsion (list): The 4 atoms defining the dihedral angle.
+        index (int, optional): Whether ``torsion`` is 0-indexed or 1-indexed (values are 0 or 1).
+        units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
+
+    Raises:
+        VectorsError: If ``index`` is out of range, or ``torsion`` is of wrong length or has repeating indices.
+        TypeError: If ``coords`` is of wrong type.
+
+    Returns: float
+        The dihedral angle in a 0-360 degrees range.
+    """
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
+    if index not in [0, 1]:
+        raise VectorsError(f'index must be either 0 or 1, got {index}')
+    if ring is None:
+        raise VectorsError(f'torsion cannot be None')
+    # if len(ring) != 4:
+    #     raise VectorsError(f'torsion atom list must be of length four, got {len(ring)}')
+    # if len(set(ring)) < 4:
+    #     raise VectorsError(f'some indices in torsion are repetitive: {ring}')
+    new_ring = list()
+    for atoms in ring:
+        if isinstance(atoms, str) and 'X' in atom:
+            new_ring.append(int(atom[1:]))
+        else:
+            new_ring.append(atoms)
+    # if not all([isinstance(t, int) for t in new_ring]):
+    #     raise VectorsError(f'all entries in torsion must be integers, got: {new_ring} '
+    #                        f'({[type(t) for t in new_ring]})')
+    print('ring:',ring)
+    new_ring = [t - index for t in ring]  # convert 1-index to 0-index if needed
+    print('new_ring:',new_ring)
+    coords = np.asarray(coords, dtype=np.float32)
+    center = 0
+    for i, atom in enumerate(new_ring):
+        v1 = coords[new_ring[i]]
+        center += v1
+    
+    center = center/len(new_ring)
+    N = len(new_ring)
+    R_list = coords - center
+    print('R_list:',R_list)
+    R_prime = np.zeros(3)
+    R_double_prime = np.zeros(3)
+
+    for j, Rj in enumerate(new_ring, start=1):
+        angle = 2 * np.pi * (j - 1) / N
+        R_prime += np.sin(angle) * R_list[Rj]
+        R_double_prime += np.cos(angle) * R_list[Rj]
+
+    # Calculate the unit normal vector to the mean plane
+    n = np.cross(R_prime, R_double_prime)
+    n /= np.linalg.norm(n)
+
+    # Compute displacements from the mean plane
+    displacements = [np.dot(R_list[Rj], n) for Rj in new_ring]
+    return displacements
+
+
 def calculate_param(coords: Union[list, tuple, dict],
                     atoms: list,
                     index: int = 0,
