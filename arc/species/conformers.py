@@ -304,7 +304,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
-        return lowest_confs, hypothetical_num_comb
+        return lowest_confs, hypothetical_num_comb, conformers
     else:
         return lowest_confs, new_conformers, hypothetical_num_comb
 
