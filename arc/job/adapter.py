@@ -85,6 +85,7 @@ class JobEnum(str, Enum):
     # ESS
     cfour = 'cfour'
     gaussian = 'gaussian'
+    mockter = 'mockter'
     molpro = 'molpro'
     orca = 'orca'
     psi4 = 'psi4'
@@ -553,7 +554,8 @@ class JobAdapter(ABC):
             self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species_label, self.job_name)
         else:
             self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species[0].multi_species, self.job_name)
-        self.local_path_to_output_file = os.path.join(self.local_path, 'output.out')
+        self.local_path_to_output_file = os.path.join(self.local_path, settings['output_filenames'][self.job_adapter]) \
+            if self.job_adapter in settings['output_filenames'] else 'output.out'
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')
         self.local_path_to_check_file = os.path.join(self.local_path, 'check.chk')
         self.local_path_to_hess_file = os.path.join(self.local_path, 'input.hess')
