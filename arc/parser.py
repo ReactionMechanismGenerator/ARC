@@ -231,11 +231,9 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
         raise InputError(f'Could not find file {path}')
     if path.endswith('.yml'):
         content = read_yaml_file(path)
-        if isinstance(content, dict):
-            if 'xyz' in content.keys():
-                return content['xyz'] if isinstance(content['xyz'], dict) else str_to_xyz(content['xyz'])
-            elif 'opt_xyz' in content.keys():
-                return content['opt_xyz'] if isinstance(content['opt_xyz'], dict) else str_to_xyz(content['opt_xyz'])
+        for key in ['xyz', 'opt_xyz']:
+            if isinstance(content, dict) and key in content.keys():
+                return content[key] if isinstance(content[key], dict) else str_to_xyz(content[key])
     software = identify_ess(path)
     xyz_str = ''
     if software == 'xtb':
@@ -296,6 +294,10 @@ def parse_t1(path: str) -> Optional[float]:
     """
     if not os.path.isfile(path):
         raise InputError(f'Could not find file {path}')
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'T1' in content.keys():
+            return content['T1']
     log = ess_factory(fullpath=path, check_for_errors=False)
     try:
         t1 = log.get_T1_diagnostic()
@@ -355,6 +357,10 @@ def identify_ess(path: str) -> Optional[str]:
         Optional[str]: The ESS.
     """
     software = None
+    if path.endswith('.yml'):
+        content = read_yaml_file(path)
+        if isinstance(content, dict) and 'adapter' in content.keys():
+            return content['adapter']
     with open(path, 'r') as f:
         for _ in range(25):
             line = f.readline()
