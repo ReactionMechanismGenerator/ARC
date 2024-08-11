@@ -328,6 +328,7 @@
 <span class="sd">        ts_adapters (list, optional): Entries represent different TS adapters.</span>
 <span class="sd">        report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.</span>
 <span class="sd">        skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.</span>
+<span class="sd">        output (dict, optional): Output dictionary with status per job type and final QM file paths for all species.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        project (str): The project&#39;s name. Used for naming the working directory.</span>
@@ -421,6 +422,7 @@
                  <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">report_e_elect</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="n">skip_nmd</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">output</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">project</span> <span class="o">=</span> <span class="n">project</span>
@@ -451,7 +453,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="n">freq_scale_factor</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="n">ts_adapters</span> <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">default_ts_adapters</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span> <span class="o">=</span> <span class="p">[</span><span class="n">ts_adapter</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">ts_adapter</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="n">output</span> <span class="ow">or</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">output_multi_spc</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">report_e_elect</span> <span class="o">=</span> <span class="n">report_e_elect</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span> <span class="o">=</span> <span class="n">skip_nmd</span>
