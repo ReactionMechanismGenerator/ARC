@@ -44,6 +44,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3_xtb.out')
         yml_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
         vibspectrum_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'vibspectrum')
+        mock_path = os.path.join(ARC_PATH, 'arc', 'testing', 'mockter.yml')
 
         no3_freqs = parser.parse_frequencies(path=no3_path, software='QChem')
         c2h6_freqs = parser.parse_frequencies(path=c2h6_path, software='QChem')
@@ -58,6 +59,7 @@ class TestParser(unittest.TestCase):
         ts_xtb_freqs = parser.parse_frequencies(path=ts_xtb_freqs_path)
         yml_freqs = parser.parse_frequencies(path=yml_freqs_path)
         vibspectrum_freqs = parser.parse_frequencies(path=vibspectrum_path, software='xTB')
+        mock_freqs = parser.parse_frequencies(path=mock_path, software='Mockter')
 
         np.testing.assert_almost_equal(no3_freqs,
                                        np.array([-390.08, -389.96, 822.75, 1113.23, 1115.24, 1195.35], np.float64))
@@ -110,6 +112,8 @@ class TestParser(unittest.TestCase):
                                                  3230.936983192379, 3235.2332367908975, 3922.9230982968807],
                                                 np.float64))
         np.testing.assert_almost_equal(vibspectrum_freqs, np.array([4225.72], np.float64))
+
+        np.testing.assert_almost_equal(mock_freqs, np.array([-500.,  520.,  540.], np.float64))
 
     def test_parse_normal_mode_displacement(self):
         """Test parsing frequencies and normal mode displacements"""
@@ -373,6 +377,12 @@ H      -1.69381305    0.40788834    0.90078104"""
                                      (1.1691669229762556, -2.0726946137332924, -0.4703870247902347))}
         self.assertTrue(almost_equal_coords(xyz_3, expected_xyz_3))
 
+        path_4 = os.path.join(ARC_PATH, 'arc', 'testing', 'mockter.yml')
+        xyz_4 = parser.parse_geometry(path=path_4)
+        expected_xyz_4 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                          'coords': ((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0))}
+        self.assertTrue(almost_equal_coords(xyz_4, expected_xyz_4))
+
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
@@ -434,6 +444,10 @@ H      -1.69381305    0.40788834    0.90078104"""
         t1 = parser.parse_t1(path)
         self.assertEqual(t1, 0.0086766)
 
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'mockter.yml')
+        t1 = parser.parse_t1(path)
+        self.assertEqual(t1, 0.0002)
+
     def test_parse_e_elect(self):
         """Test parsing the electronic energy from a single-point job output file"""
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
@@ -464,10 +478,16 @@ H      -1.69381305    0.40788834    0.90078104"""
         e_elect = parser.parse_e_elect(path)
         self.assertAlmostEqual(e_elect, -40692.56663699465)
 
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'mockter.yml')
+        e_elect = parser.parse_e_elect(path)
+        self.assertAlmostEqual(e_elect, 50)
+
     def test_identify_ess(self):
         """Test the identify_ess() function."""
         ess = parser.identify_ess(os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'NCC_xTB.out'))
         self.assertEqual(ess, 'xtb')
+        ess = parser.identify_ess(os.path.join(ARC_PATH, 'arc', 'testing', 'mockter.yml'))
+        self.assertEqual(ess, 'mockter')
 
     def test_parse_zpe(self):
         """Test the parse_zpe() function for parsing zero point energies"""
