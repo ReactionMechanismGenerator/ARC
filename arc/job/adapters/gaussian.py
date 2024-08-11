@@ -274,6 +274,9 @@ class GaussianAdapter(JobAdapter):
                 # There are no analytical 2nd derivatives (FC) for this method.
                 keywords = ['ts', 'noeigentest', 'maxcycles=100'] if self.is_ts else []
             if self.fine:
+                # Check if maxcycles is already in the keywords
+                if 'maxcycles' not in keywords:
+                    keywords.append(f'maxcycles={max_c}')
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
                     input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
