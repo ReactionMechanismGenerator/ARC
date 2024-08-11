@@ -934,9 +934,9 @@ def determine_puckering(conformers, rings_indexes):
             conformer['puckering'] = dict()
             for i, ring in enumerate(rings_indexes):
                 # print(f'torsion:{ring}')
-                theta = vectors.calculate_plane_angles(coords=xyz['coords'], ring=ring, index=0)
+                theta = vectors.calculate_ring_dihedral_angles(coords=xyz['coords'], ring=ring, index=0)
                 print('line932, ring:',ring)
-                conformer['puckering'][tuple((ring[i], ring[(i + 1) % len(ring)]) for i in range(len(ring)))] = theta
+                conformer['puckering'][tuple((ring[i%len(ring)], ring[(i + 1)%len(ring)], ring[(i + 2)%len(ring)], ring[(i + 3)%len(ring)]) for i in range(len(ring)))] = theta
                 # z = vectors.calculate_puckering_coord(coords=xyz['coords'], ring=ring, index=0)
                 # conformer['puckering'][tuple(ring)] = z
     pprint.pprint(conformers)
