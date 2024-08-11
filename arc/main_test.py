@@ -92,6 +92,7 @@ class TestARC(unittest.TestCase):
                          'ess_settings': {'cfour': ['local'],
                                           'gaussian': ['local', 'server2'],
                                           'gcn': ['local'],
+                                          'mockter': ['local'],
                                           'molpro': ['local', 'server2'],
                                           'onedmin': ['server1'],
                                           'openbabel': ['local'],

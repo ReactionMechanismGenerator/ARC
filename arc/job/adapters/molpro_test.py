@@ -5,7 +5,6 @@
 This module contains unit tests of the arc.job.adapters.molpro module
 """
 
-import math
 import os
 import shutil
 import unittest

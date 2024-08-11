@@ -71,6 +71,7 @@ global_ess_settings = {
     'cfour': 'local',
     'gaussian': ['local', 'server2'],
     'gcn': 'local',
+    'mockter': 'local',
     'molpro': ['local', 'server2'],
     'onedmin': 'server1',
     'orca': 'local',
@@ -83,7 +84,7 @@ global_ess_settings = {
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']
@@ -107,6 +108,7 @@ default_job_types = {'conformers': True,      # defaults to True if not specifie
 levels_ess = {
     'cfour': ['casscf'],
     'gaussian': ['apfd', 'b3lyp', 'm062x'],
+    'mockter': ['mock'],
     'molpro': ['ccsd', 'cisd', 'vpz'],
     'qchem': ['m06-2x'],
     'orca': ['dlpno'],
@@ -154,6 +156,7 @@ t_max_format = {'OGE': 'hours',
 
 input_filenames = {'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
+                   'mockter': 'input.yml',
                    'molpro': 'input.in',
                    'onedmin': 'input.in',
                    'orca': 'input.in',
@@ -165,6 +168,7 @@ input_filenames = {'cfour': 'ZMAT',
 output_filenames = {'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
+                    'mockter': 'output.yml',
                     'molpro': 'input.out',
                     'onedmin': 'output.out',
                     'orca': 'input.log',

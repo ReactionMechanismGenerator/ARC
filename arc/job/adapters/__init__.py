@@ -1,5 +1,6 @@
 import arc.job.adapters.common
 import arc.job.adapters.gaussian
+import arc.job.adapters.mockter
 import arc.job.adapters.molpro
 import arc.job.adapters.orca
 import arc.job.adapters.obabel
