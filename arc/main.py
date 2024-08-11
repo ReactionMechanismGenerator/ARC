@@ -634,9 +634,11 @@ class ARC(object):
                                    ts_adapters=self.ts_adapters,
                                    report_e_elect=self.report_e_elect,
                                    skip_nmd=self.skip_nmd,
+                                   output=self.output,
                                    )
 
-        save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.scheduler.output)
+        self.output = self.scheduler.output
+        save_yaml_file(path=os.path.join(self.project_directory, 'output', 'status.yml'), content=self.output)
 
         if not self.keep_checks:
             delete_check_files(self.project_directory)
@@ -650,7 +652,7 @@ class ARC(object):
                             project_directory=self.project_directory,
                             species_dict=self.scheduler.species_dict,
                             reactions=self.scheduler.rxn_list,
-                            output_dict=self.scheduler.output,
+                            output_dict=self.output,
                             bac_type=self.bac_type,
                             freq_scale_factor=self.freq_scale_factor,
                             compute_thermo=self.compute_thermo,
@@ -708,7 +710,7 @@ class ARC(object):
         txt += '\nConsidered the following species and TSs:\n'
         for species in self.species:
             descriptor = 'TS' if species.is_ts else 'Species'
-            failed = '' if self.scheduler.output[species.label]['convergence'] else ' (Failed!)'
+            failed = '' if self.output[species.label]['convergence'] else ' (Failed!)'
             txt += f'{descriptor} {species.label}{failed} (run time: {species.run_time})\n'
         if self.reactions:
             for rxn in self.reactions:
@@ -730,14 +732,14 @@ class ARC(object):
             if not species.is_ts:
                 spc_dict = dict()
                 spc_dict['label'] = species.label
-                spc_dict['success'] = self.scheduler.output[species.label]['convergence']
+                spc_dict['success'] = self.output[species.label]['convergence']
                 spc_dict['smiles'] = species.mol.copy(deep=True).to_smiles() if species.mol is not None else None
                 spc_dict['adj'] = species.mol.copy(deep=True).to_adjacency_list() if species.mol is not None else None
                 content['species'].append(spc_dict)
         for reaction in self.reactions:
             rxn_dict = dict()
             rxn_dict['label'] = reaction.label
-            rxn_dict['success'] = self.scheduler.output[reaction.ts_species.label]['convergence']
+            rxn_dict['success'] = self.output[reaction.ts_species.label]['convergence']
             content['reactions'].append(rxn_dict)
         save_yaml_file(path=path, content=content)
 
@@ -750,7 +752,7 @@ class ARC(object):
         """
         status_dict = {}
         logger.info(f'\n\n\nAll jobs terminated. Summary for project {self.project}:\n')
-        for label, output in self.scheduler.output.items():
+        for label, output in self.output.items():
             if output['convergence']:
                 status_dict[label] = True
                 logger.info(f'Species {label} converged successfully\n')

@@ -164,6 +164,7 @@ class Scheduler(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        output (dict, optional): Output dictionary with status per job type and final QM file paths for all species.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -257,6 +258,7 @@ class Scheduler(object):
                  ts_adapters: List[str] = None,
                  report_e_elect: Optional[bool] = False,
                  skip_nmd: Optional[bool] = False,
+                 output: Optional[dict] = None,
                  ) -> None:
 
         self.project = project
@@ -287,7 +289,7 @@ class Scheduler(object):
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
         self.ts_adapters = [ts_adapter.lower() for ts_adapter in self.ts_adapters]
-        self.output = dict()
+        self.output = output or dict()
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
