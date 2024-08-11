@@ -40,6 +40,8 @@ class ReactionFamily(object):
                  label: str,
                  consider_arc_families: bool = True,
                  ):
+        if label is None:
+            raise ValueError('Cannot initialize a ReactionFamily object without a label')
         self.label = label
         self.groups_as_lines = self.get_groups_file_as_lines(consider_arc_families=consider_arc_families)
         self.reversible = is_reversible(self.groups_as_lines)
@@ -370,7 +372,7 @@ class ReactionFamily(object):
 
 
 def get_reaction_family_products(rxn: 'ARCReaction',
-                                 rmg_family_set: str = 'default',  # todo: consider giving a particular set of families
+                                 rmg_family_set: Optional[Union[List[str], str]] = None,
                                  consider_rmg_families: bool = True,
                                  consider_arc_families: bool = True,
                                  discover_own_reverse_rxns_in_reverse: bool = False,
@@ -380,8 +382,11 @@ def get_reaction_family_products(rxn: 'ARCReaction',
 
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
-        rmg_family_set (str, optional): The RMG family set to use from RMG-database/input/kinetics/families/recommended.py.
-                                        Note that surface families are excluded if 'all' is used.
+        rmg_family_set (Union[List[str], str], optional): The RMG family set to use from
+                                                          RMG-database/input/kinetics/families/recommended.py.
+                                                          Can be a name of a defined set, or a list
+                                                          of explicit family lables to consider.
+                                                          Note that surface families are excluded if 'all' is used.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
         discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover reactions belonging to a family
@@ -395,7 +400,7 @@ def get_reaction_family_products(rxn: 'ARCReaction',
         List[dict]: The list of product dictionaries with the reaction family label.
                     Keys are: 'family', 'group_labels', 'products', 'own_reverse', 'discovered_in_reverse', 'actions'.
     """
-    family_labels = get_all_families(rmg_family_set=rmg_family_set,
+    family_labels = get_all_families(rmg_family_set=rmg_family_set or rxn.rmg_family_set,
                                      consider_rmg_families=consider_rmg_families,
                                      consider_arc_families=consider_arc_families)
     product_dicts = list()
@@ -536,7 +541,7 @@ def check_product_isomorphism(products: List['Molecule'],
 #     return all_reactions
 
 
-def get_all_families(rmg_family_set: str = 'default',
+def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
                      consider_rmg_families: bool = True,
                      consider_arc_families: bool = True,
                      ) -> List[str]:
@@ -544,8 +549,7 @@ def get_all_families(rmg_family_set: str = 'default',
     Get all available RMG and ARC families.
 
     Args:
-        rmg_family_set (str, optional): The RMG family set to use from RMG-database/input/kinetics/families/recommended.py.
-                                        Note that surface families are excluded if 'all' is used.
+        rmg_family_set (Union[List[str], str], optional): The RMG family set to use.
         consider_rmg_families (bool, optional): Whether to consider RMG's families.
         consider_arc_families (bool, optional): Whether to consider ARC's custom families.
 
@@ -555,14 +559,15 @@ def get_all_families(rmg_family_set: str = 'default',
     rmg_families, arc_families = list(), list()
     if consider_rmg_families:
         family_sets = get_rmg_recommended_family_sets()
-        if rmg_family_set not in list(family_sets.keys()) + ['all']:
+        if not isinstance(rmg_families, list) and rmg_family_set not in list(family_sets) + ['all']:
             raise ValueError(f'Invalid RMG family set: {rmg_family_set}')
         if rmg_family_set == 'all':
             for family_set_label, families in family_sets.items():
                 if 'surface' not in family_set_label:
                     rmg_families.extend(list(families))
         else:
-            rmg_families = list(family_sets[rmg_family_set])
+            rmg_families = list(family_sets[rmg_family_set]) \
+                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else rmg_family_set
     if consider_arc_families:
         arc_families = [os.path.splitext(family)[0] for family in os.listdir(ARC_FAMILIES_PATH)]
     return rmg_families + arc_families

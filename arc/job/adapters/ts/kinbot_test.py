@@ -6,16 +6,13 @@ This module contains unit tests of the arc.job.adapters.ts.autotst module
 """
 
 import os
-import pytest
 import shutil
 import unittest
-
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
 
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.kinbot_ts import KinBotAdapter, HAS_KINBOT
 from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 
 
 class TestKinBotAdapter(unittest.TestCase):
@@ -34,10 +31,8 @@ class TestKinBotAdapter(unittest.TestCase):
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""
         if HAS_KINBOT:
-            rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
-            rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
-                                         products=[Species().from_smiles('[CH2]CO')])
-            rxn1.arc_species_from_rmg_reaction()
+            rxn1 = ARCReaction(r_species=[ARCSpecies(label='R1', smiles='CC[O]')],
+                               p_species=[ARCSpecies(label='P1', smiles='[CH2]CO')])
             self.assertEqual(rxn1.family, 'intra_H_migration')
             kinbot1 = KinBotAdapter(job_type='tsg',
                                     reactions=[rxn1],

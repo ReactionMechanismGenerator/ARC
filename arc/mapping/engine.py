@@ -1098,7 +1098,7 @@ def make_bond_changes(rxn: 'ARCReaction',
         r_cuts: the cut products
         r_label_dict: the dictionary object the find the relevant location.
     """
-    for action in rxn.family.forward_recipe.actions:
+    for action in ReactionFamily(label=rxn.family).actions:
         if action[0].lower() == "CHANGE_BOND".lower():
             indicies = r_label_dict[action[1]],r_label_dict[action[3]]
             for r_cut in r_cuts:
@@ -1130,7 +1130,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                     r_cut.mol.update()
 
 
-def get_p_label_dict(rxn: 'ARCReaction'):
+def get_label_dict(rxn: 'ARCReaction') -> Optional[Dict[str, int]]:
     """
     A function that returns the labels of the products.
 
@@ -1151,19 +1151,28 @@ def assign_labels_to_products(rxn: 'ARCReaction'):
     Add the indices to the reactants and products.
 
     Args:
-        rxn: ARCReaction object to be mapped
-        Consider changing in rmgpy.
+        rxn ('ARCReaction'): The reaction to be mapped.
 
     Returns:
         Adding labels to the atoms of the reactants and products, to be identified later.
     """
-    p_label_dict = get_p_label_dict(rxn)
-    print(p_label_dict)
+    label_dict = get_label_dict(rxn)
+    print(f'\n\nlabel_dict: {label_dict}\n\n')
+    atom_index = 0
+    for r in rxn.r_species:
+        for atom in r.mol.atoms:
+            if atom_index in label_dict.values():
+                atom.label = key_by_val(label_dict, atom_index)
+            atom_index += 1
+
+
+
+
     atom_index = 0
     for product in rxn.p_species:
         for atom in product.mol.atoms:
-            if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
-                atom.label = key_by_val(p_label_dict, atom_index)
+            if atom_index in label_dict.values() and (atom.label is str or atom.label is None):
+                atom.label = key_by_val(label_dict, atom_index)
             atom_index += 1
 
 
@@ -1206,7 +1215,7 @@ def r_cut_p_cut_isomorphic(reactant, product):
 
 def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
                                                p_cuts: List[ARCSpecies]
-                                               )-> List[Tuple[ARCSpecies,ARCSpecies]]:
+                                               ) -> List[Tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
 
@@ -1222,7 +1231,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
         for product_cut in p_cuts:
             if r_cut_p_cut_isomorphic(reactant_cut, product_cut):
                 pairs.append((reactant_cut, product_cut))
-                p_cuts.remove(product_cut) # Just in case there are two of the same species in the list, matching them by order.
+                p_cuts.remove(product_cut)  # Just in case there are two of the same species in the list, matching them by order.
                 break
     return pairs
 
@@ -1361,18 +1370,24 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
     return copies
 
 
-def find_all_bdes(rxn: "ARCReaction", label_dict: dict, is_reactants: bool) -> List[Tuple[int, int]]:
+def find_all_bdes(rxn: "ARCReaction",
+                  is_reactants: bool,
+                  ) -> List[Tuple[int, int]]:
     """
     A function for finding all the broken(/formed) bonds during a chemical reaction, based on the atom indices.
+
     Args:
         rxn (ARCReaction): The reaction in question.
-        label_dict (dict): A dictionary of the atom indices to the atom labels.
         is_reactants (bool): Whether the species list represents reactants or products.
+
     Returns:
-        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond. Note that these represent the atom indicies to be cut, and not final BDEs.
+        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond.
+                               Note that these represent the atom indices to be cut, and not final BDEs.
     """
+    label_dict = get_label_dict(rxn)
     bdes = list()
-    for action in ReactionFamily(rxn.family).actions:
-        if action[0].lower() == ("break_bond" if is_reactants else "form_bond"):
-            bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
+    if rxn.family is not None:
+        for action in ReactionFamily(rxn.family).actions:
+            if action[0].lower() == ("break_bond" if is_reactants else "form_bond"):
+                bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
     return bdes

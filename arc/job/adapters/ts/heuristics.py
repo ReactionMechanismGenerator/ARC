@@ -254,7 +254,6 @@ class HeuristicsAdapter(JobAdapter):
                                             charge=rxn.charge,
                                             multiplicity=rxn.multiplicity,
                                             )
-            rxn.arc_species_from_rmg_reaction()
             reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=True)
             reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
             product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
