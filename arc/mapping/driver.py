@@ -224,12 +224,12 @@ def map_rxn(rxn: 'ARCReaction',
     """
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction=rxn)
 
-    assign_labels_to_products(rxn, p_label_dict)
+    assign_labels_to_products(rxn)
 
     reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
     label_species_atoms(reactants), label_species_atoms(products)
     
-    r_bdes, p_bdes = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+    r_bdes, p_bdes = find_all_bdes(rxn, True), find_all_bdes(rxn, False)
 
     r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
     p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
@@ -242,6 +242,8 @@ def map_rxn(rxn: 'ARCReaction',
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+    for p_tup in pairs_of_reactant_and_products:
+        print(f'\npairs_of_reactant_and_products: {[s.mol for s in p_tup]}\n\n\n')
     if len(p_cuts):
         logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
         return None
