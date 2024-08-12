@@ -224,7 +224,7 @@ def map_rxn(rxn: 'ARCReaction',
     """
     r_label_dict, p_label_dict = get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction=rxn)
 
-    assign_labels_to_products(rxn)
+    assign_labels_to_products(rxn=rxn, products=rxn.get_family_products())
 
     reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
     label_species_atoms(reactants), label_species_atoms(products)

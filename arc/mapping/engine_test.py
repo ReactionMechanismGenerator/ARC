@@ -10,7 +10,6 @@ import numpy as np
 from random import shuffle
 import itertools
 
-from arc.common import _check_r_n_p_symbols_between_rmg_and_arc_rxns
 from arc.mapping.engine import *
 from arc.reaction import ARCReaction
 
@@ -512,16 +511,11 @@ class TestMappingEngine(unittest.TestCase):
     def test_assign_labels_to_products(self):
         """Test assigning labels to products based on the atom map of the reaction"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        assign_labels_to_products(rxn_1_test)
-        print([atom.label for atom in rxn_1_test.p_species[0].mol.atoms])
-        index = 0
-        for product in rxn_1_test.p_species:
-            print(product.label, index)
-            for atom in product.mol.atoms:
-                if not isinstance(atom.label, str) or atom.label != "":
-                    print(atom.label, index)
-                    self.assertEqual(self.p_label_dict_rxn_1[atom.label], index)
-                index += 1
+        assign_labels_to_products(rxn_1_test, rxn_1_test.get_family_products())
+        self.assertEqual([atom.label for atom in rxn_1_test.r_species[0].mol.atoms], ['*3', '', ''])
+        self.assertEqual([atom.label for atom in rxn_1_test.r_species[1].mol.atoms], ['*1', '', '*2'])
+        self.assertEqual([atom.label for atom in rxn_1_test.p_species[0].mol.atoms], ['*3', '', '*1', ''])
+        self.assertEqual([atom.label for atom in rxn_1_test.p_species[1].mol.atoms], ['', '*2'])
 
     def test_inc_vals(self):
         """Test creating an atom map via map_two_species() and incrementing all values"""
@@ -550,19 +544,22 @@ class TestMappingEngine(unittest.TestCase):
     def test_cut_species_based_on_atom_indices(self):
         """test the cut_species_for_mapping function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2],
-                                 rmg_family_set=['F_Abstraction'])
-        reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
+                                 rmg_family_set=['H_Abstraction'])
+        reactants = copy_species_list_for_mapping(rxn_1_test.r_species)
+        products = copy_species_list_for_mapping(rxn_1_test.p_species)
         label_species_atoms(reactants), label_species_atoms(products)
         r_bdes, p_bdes = find_all_bdes(rxn_1_test, True), find_all_bdes(rxn_1_test, False)
+        print(r_bdes, p_bdes)
         r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
         p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+        print([a.mol for a in r_cuts], [a.mol for a in p_cuts])
 
-        self.assertIn("C[CH]C", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
-        self.assertIn("[F]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
-        self.assertIn("[CH3]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
-        self.assertIn("C[CH]C", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
-        self.assertIn("[F]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
-        self.assertIn("[CH3]", [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
+        self.assertIn('[C]#CF', [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
+        self.assertIn('[C]#N', [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
+        self.assertIn('[H]', [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
+        self.assertIn('[C]#CF', [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
+        self.assertIn('[C]#N', [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
+        self.assertIn('[H]', [p_cut.mol.copy(deep=True).smiles for p_cut in p_cuts])
 
         spc = ARCSpecies(label="test", smiles="CNC", bdes=[(1, 2), (2, 3)])
         for i, a in enumerate(spc.mol.atoms):
