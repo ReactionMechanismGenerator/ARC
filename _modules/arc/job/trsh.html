@@ -255,8 +255,17 @@
             <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reverse_lines</span><span class="p">):</span>
                 <span class="k">if</span> <span class="s1">&#39;termination&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="k">if</span> <span class="s1">&#39;l9999.exe&#39;</span> <span class="ow">in</span> <span class="n">line</span> <span class="ow">or</span> <span class="s1">&#39;link 9999&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
-                        <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Unconverged&#39;</span><span class="p">,</span> <span class="s1">&#39;GL9999&#39;</span><span class="p">]</span>  <span class="c1"># GL stand for Gaussian Link</span>
-                        <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Unconverged&#39;</span>
+                        <span class="n">cycle_issue</span> <span class="o">=</span> <span class="kc">False</span>
+                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">reverse_lines</span><span class="p">)):</span>
+                            <span class="k">if</span> <span class="s1">&#39;Number of steps exceeded&#39;</span> <span class="ow">in</span> <span class="n">reverse_lines</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
+                                <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;MaxOptCycles&#39;</span><span class="p">,</span> <span class="s1">&#39;GL9999&#39;</span><span class="p">,</span> <span class="s1">&#39;SCF&#39;</span><span class="p">]</span>
+                                <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Maximum optimization cycles reached.&#39;</span>
+                                <span class="n">cycle_issue</span> <span class="o">=</span> <span class="kc">True</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;Number of steps exceeded&#39;</span>
+                                <span class="k">break</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">cycle_issue</span><span class="p">:</span>
+                            <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Unconverged&#39;</span><span class="p">,</span> <span class="s1">&#39;GL9999&#39;</span><span class="p">]</span>  <span class="c1"># GL stand for Gaussian Link</span>
+                            <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Unconverged&#39;</span>
                     <span class="k">elif</span> <span class="s1">&#39;l101.exe&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                         <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;InputError&#39;</span><span class="p">,</span> <span class="s1">&#39;GL101&#39;</span><span class="p">]</span>
                         <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;The blank line after the coordinate section is missing, &#39;</span> \
@@ -277,8 +286,18 @@
                     <span class="k">elif</span> <span class="s1">&#39;l401.exe&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                         <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;GL401&#39;</span><span class="p">]</span>
                     <span class="k">elif</span> <span class="s1">&#39;l502.exe&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
-                        <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SCF&#39;</span><span class="p">,</span> <span class="s1">&#39;GL502&#39;</span><span class="p">,</span> <span class="s1">&#39;NoSymm&#39;</span><span class="p">]</span>
-                        <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Unconverged SCF&#39;</span>
+                        <span class="c1"># Check if Inaccurate quadrature in CalDSu</span>
+                        <span class="n">inacc_quad</span> <span class="o">=</span> <span class="kc">False</span>
+                        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">300</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+                            <span class="k">if</span> <span class="s1">&#39;Inaccurate quadrature in CalDSu&#39;</span> <span class="ow">in</span> <span class="n">reverse_lines</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
+                                <span class="n">inacc_quad</span> <span class="o">=</span> <span class="kc">True</span>
+                                <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;InaccurateQuadrature&#39;</span><span class="p">,</span> <span class="s1">&#39;GL502&#39;</span><span class="p">]</span>
+                                <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Inaccurate quadrature in CalDSu&#39;</span>
+                                <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;Inaccurate quadrature in CalDSu&#39;</span>
+                                <span class="k">break</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">inacc_quad</span><span class="p">:</span>
+                            <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SCF&#39;</span><span class="p">,</span> <span class="s1">&#39;GL502&#39;</span><span class="p">,</span> <span class="s1">&#39;NoSymm&#39;</span><span class="p">]</span>
+                            <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Unconverged SCF&#39;</span>
                     <span class="k">elif</span> <span class="s1">&#39;l508.exe&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                         <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;no_xqc&#39;</span><span class="p">,</span> <span class="s1">&#39;GL508&#39;</span><span class="p">]</span>
                         <span class="n">error</span> <span class="o">=</span> <span class="s1">&#39;Unconverged&#39;</span>
@@ -1042,12 +1061,17 @@
 
         <span class="c1"># Check if SCF is in the keyword</span>
         <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="n">trsh_keyword_scf</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;scf=(maxcycle=512)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+            <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using scf=(maxcycle=512)&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="s1">&#39;scf=(NDamp=30)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
             <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using scf=(NDamp=30)&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="s1">&#39;scf=(qc)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
             <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using scf=(qc)&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="s1">&#39;scf=(NoDIIS)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
             <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using scf=(NoDIIS)&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Check if InaccurateQuadrature in the keyword</span>
+        <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="n">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span>
 
         <span class="c1"># Check if NoSymm</span>
         <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="n">trsh_keyword_nosymm</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span>
@@ -1058,6 +1082,13 @@
         <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">fine</span><span class="p">,</span> <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="n">trsh_keyword_unconverged</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">,</span> <span class="n">fine</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">fine</span><span class="p">:</span>
             <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using a fine grid&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Troubleshoot by increasing opt max cycles</span>
+        <span class="c1">#P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)</span>
+        <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="n">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">&#39;opt=(maxcycle=200)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+            <span class="n">logger_info</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;using opt=(maxcycle=200)&#39;</span><span class="p">)</span>
+        
 
 
         <span class="c1"># Check if memory is in the keyword</span>
@@ -1922,12 +1953,23 @@
         <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(NDamp=30)&#39;</span><span class="p">)</span>
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">elif</span> <span class="s1">&#39;SCF&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoDIIS)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="c1"># DIIS is the default method for speeding up the SCF convergence, but sometimes it make SCF not converge. </span>
         <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(NoDIIS)&#39;</span><span class="p">)</span>
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="k">elif</span> <span class="s1">&#39;SCF&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;guess=INDO&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
         <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;guess=INDO&#39;</span><span class="p">)</span>
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;guess=INDO&#39;</span><span class="p">)</span>
+    <span class="c1"># If we have attempted all scf methods above, then we will try last resort methods</span>
+    <span class="k">if</span> <span class="s1">&#39;SCF&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;scf=(maxcycle=128)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(qc)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NDamp=30)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoDIIS)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;guess=INDO&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> \
+        <span class="ow">and</span> <span class="s1">&#39;scf=(Fermi)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(Noincfock)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoVarAcc)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="c1"># Uses Fermi broadening to help SCF convergence</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(Fermi)&#39;</span><span class="p">)</span>
+        <span class="c1"># Gaussian uses Incremental Fock by default to construct the Fock matrix in an approximate manner to significantly save time at each step of the iterative process, but may thus hinder convergence</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(Noincfock)&#39;</span><span class="p">)</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(NoVarAcc)&#39;</span><span class="p">)</span>
+        <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+
     <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="s1">&#39;scf&#39;</span> <span class="ow">in</span> <span class="n">keyword</span> <span class="k">for</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">):</span>
         <span class="n">scf_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">match</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">scf_pattern</span><span class="p">,</span> <span class="n">element</span><span class="p">)]</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">scf_pattern</span><span class="p">,</span> <span class="n">element</span><span class="p">)</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
         <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(&#39;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">scf_list</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span><span class="p">)</span>
@@ -1960,6 +2002,62 @@
         <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;nosymm&#39;</span><span class="p">)</span>
         <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
 
+    <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
+
+<div class="viewcode-block" id="trsh_keyword_opt_maxcycles"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_opt_maxcycles">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if the job requires change of opt(maxcycle=200)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">if</span> <span class="s1">&#39;MaxOptCycles&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;opt=(maxcycles=200)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;opt=(maxcycle=200)&#39;</span><span class="p">)</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;opt=(maxcycle=200)&#39;</span><span class="p">)</span>
+        <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+    
+    <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
+
+<div class="viewcode-block" id="trsh_keyword_inaccurate_quadrature"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_inaccurate_quadrature">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if the job requires change of inaccurate quadrature</span>
+<span class="sd">    </span>
+<span class="sd">    Explanation</span>
+
+<span class="sd">        The integral not enough, under DFT calculations with some basis sets.</span>
+
+<span class="sd">    Fixing</span>
+
+<span class="sd">        Check the input file, whether there was some miss in basis set or unreasonable structure. If not, use one of following keywords:</span>
+
+<span class="sd">            1. int=ultrafine (default in Gaussian 16), or int=grid=300590.</span>
+<span class="sd">            2. SCF=novaracc.</span>
+<span class="sd">            3. guess=INDO.</span>
+<span class="sd">        If not work, use (1)~(3) at same time.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="s1">&#39;InaccurateQuadrature&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;int=grid=300590&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;int=grid=300590&#39;</span><span class="p">)</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;int=grid=300590&#39;</span><span class="p">)</span>
+        <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="s1">&#39;InaccurateQuadrature&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;int=grid=300590&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoVarAcc)&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="c1"># Gaussian automatically reduces the integration grid at the beginning of the calculation to speed it up, but there is a risk that SCF may not converged. For the calculations using diffuse functions with SCF not converged error use NoVarAcc</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(NoVarAcc)&#39;</span><span class="p">)</span>
+        <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="s1">&#39;InaccurateQuadrature&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;int=grid=300590&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoVarAcc)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;guess=INDO&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="c1"># Change the convergence method to INDO</span>
+        <span class="n">ess_trsh_methods</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;guess=INDO&#39;</span><span class="p">)</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;guess=INDO&#39;</span><span class="p">)</span>
+        <span class="n">couldnt_trsh</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="s1">&#39;InaccurateQuadrature&#39;</span> <span class="ow">in</span> <span class="n">job_status</span><span class="p">[</span><span class="s1">&#39;keywords&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="s1">&#39;int=grid=300590&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;scf=(NoVarAcc)&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;guess=INDO&#39;</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="ow">and</span> <span class="s1">&#39;int=ultrafine&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">:</span>
+        <span class="c1"># Try all methods above</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;int=grid=300590&#39;</span><span class="p">)</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;guess=INDO&#39;</span><span class="p">)</span>
+        <span class="c1"># NoVarAcc is not included in trsh_keyword, because it will be in ess_trsh_methods</span>
+        
+    <span class="n">scf_pattern</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;scf=\((.*?)\)&quot;</span> <span class="c1"># e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="s1">&#39;scf&#39;</span> <span class="ow">in</span> <span class="n">keyword</span> <span class="k">for</span> <span class="n">keyword</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">):</span>
+        <span class="n">scf_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">match</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span> <span class="k">for</span> <span class="n">match</span> <span class="ow">in</span> <span class="n">re</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">scf_pattern</span><span class="p">,</span> <span class="n">element</span><span class="p">)]</span> <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">scf_pattern</span><span class="p">,</span> <span class="n">element</span><span class="p">)</span> <span class="k">for</span> <span class="n">element</span> <span class="ow">in</span> <span class="n">ess_trsh_methods</span><span class="p">)</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="n">trsh_keyword</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;scf=(&#39;</span> <span class="o">+</span> <span class="s1">&#39;,&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">scf_list</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span><span class="p">)</span>
+    
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 </pre></div>
 

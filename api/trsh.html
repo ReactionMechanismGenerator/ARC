@@ -422,6 +422,28 @@ as generated using the <cite>determine_ess_status</cite> function.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_inaccurate_quadrature">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_inaccurate_quadrature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_inaccurate_quadrature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_inaccurate_quadrature" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the job requires change of inaccurate quadrature</p>
+<p>Explanation</p>
+<blockquote>
+<div><p>The integral not enough, under DFT calculations with some basis sets.</p>
+</div></blockquote>
+<p>Fixing</p>
+<blockquote>
+<div><p>Check the input file, whether there was some miss in basis set or unreasonable structure. If not, use one of following keywords:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>int=ultrafine (default in Gaussian 16), or int=grid=300590.</p></li>
+<li><p>SCF=novaracc.</p></li>
+<li><p>guess=INDO.</p></li>
+</ol>
+</div></blockquote>
+<p>If not work, use (1)~(3) at same time.</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_intaccuracy">
 <span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_intaccuracy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_intaccuracy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_intaccuracy" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check if the job requires change of 2 electron integral accuracy</p>
@@ -431,6 +453,12 @@ as generated using the <cite>determine_ess_status</cite> function.</p></li>
 <dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_nosymm">
 <span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_nosymm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_nosymm"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_nosymm" title="Permalink to this definition">¶</a></dt>
 <dd><p>Check if the job requires change of nosymm</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_opt_maxcycles">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_opt_maxcycles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_opt_maxcycles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_opt_maxcycles" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the job requires change of opt(maxcycle=200)</p>
 </dd></dl>
 
 <dl class="py function">
