@@ -1,0 +1,32 @@
+# This example is meant for developers (not for actual computations by users)
+# It describes a use case of the Mockter job adaper to be used to quickly debug and/or test ARC.
+
+
+project: mock
+
+level_of_theory: CCSD(T)-Mock12/cc-pVMockZ-F12//B2PLYPDMock/Def2TZMockP
+conformer_level: mockDT/cc-pvmock
+arkane_level_of_theory: CCSD(T)-F12/cc-pVTZ-F12
+freq_scale_factor: 0.995
+compute_thermo: false
+ts_adapters: []
+
+job_types:
+  rotors: false
+
+species:
+  - label: C2H6
+    smiles: 'CC'
+      
+  - label: OH
+    smiles: '[OH]'
+      
+  - label: C2H5
+    smiles: 'C[CH2]'
+      
+  - label: H2O
+    smiles: 'O'
+     
+reactions:
+  - label: 'C2H6 + OH <=> C2H5 + H2O'
+
