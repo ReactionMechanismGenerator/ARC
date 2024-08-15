@@ -91,8 +91,17 @@ def determine_ess_status(output_path: str,
             for i, line in enumerate(reverse_lines):
                 if 'termination' in line:
                     if 'l9999.exe' in line or 'link 9999' in line:
-                        keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
-                        error = 'Unconverged'
+                        cycle_issue = False
+                        for j in range(i,len(reverse_lines)):
+                            if 'Number of steps exceeded' in reverse_lines[j]:
+                                keywords = ['MaxOptCycles', 'GL9999', 'SCF']
+                                error = 'Maximum optimization cycles reached.'
+                                cycle_issue = True
+                                line = 'Number of steps exceeded'
+                                break
+                        if not cycle_issue:
+                            keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
+                            error = 'Unconverged'
                     elif 'l101.exe' in line:
                         keywords = ['InputError', 'GL101']
                         error = 'The blank line after the coordinate section is missing, ' \
@@ -113,8 +122,18 @@ def determine_ess_status(output_path: str,
                     elif 'l401.exe' in line:
                         keywords = ['GL401']
                     elif 'l502.exe' in line:
-                        keywords = ['SCF', 'GL502', 'NoSymm']
-                        error = 'Unconverged SCF'
+                        # Check if Inaccurate quadrature in CalDSu
+                        inacc_quad = False
+                        for j in range(i + 300, i, -1):
+                            if 'Inaccurate quadrature in CalDSu' in reverse_lines[j]:
+                                inacc_quad = True
+                                keywords = ['InaccurateQuadrature', 'GL502']
+                                error = 'Inaccurate quadrature in CalDSu'
+                                line = 'Inaccurate quadrature in CalDSu'
+                                break
+                        if not inacc_quad:
+                            keywords = ['SCF', 'GL502', 'NoSymm']
+                            error = 'Unconverged SCF'
                     elif 'l508.exe' in line:
                         keywords = ['no_xqc', 'GL508']
                         error = 'Unconverged'
@@ -878,12 +897,17 @@ def trsh_ess_job(label: str,
 
         # Check if SCF is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'scf=(maxcycle=512)' in ess_trsh_methods:
+            logger_info.append('using scf=(maxcycle=512)')
         if 'scf=(NDamp=30)' in ess_trsh_methods:
             logger_info.append('using scf=(NDamp=30)')
         if 'scf=(qc)' in ess_trsh_methods:
             logger_info.append('using scf=(qc)')
         if 'scf=(NoDIIS)' in ess_trsh_methods:
             logger_info.append('using scf=(NoDIIS)')
+        
+        # Check if InaccurateQuadrature in the keyword
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
 
         # Check if NoSymm
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
@@ -894,6 +918,13 @@ def trsh_ess_job(label: str,
         ess_trsh_methods, trsh_keyword, fine, couldnt_trsh = trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine)
         if fine:
             logger_info.append('using a fine grid')
+
+        # Troubleshoot by increasing opt max cycles
+        #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'opt=(maxcycle=200)' in ess_trsh_methods:
+            logger_info.append('using opt=(maxcycle=200)')
+        
 
 
         # Check if memory is in the keyword
@@ -1758,12 +1789,23 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         ess_trsh_methods.append('scf=(NDamp=30)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'scf=(NoDIIS)' not in ess_trsh_methods:
+        # DIIS is the default method for speeding up the SCF convergence, but sometimes it make SCF not converge. 
         ess_trsh_methods.append('scf=(NoDIIS)')
         couldnt_trsh = False
     elif 'SCF' in job_status['keywords'] and 'guess=INDO' not in ess_trsh_methods:
         ess_trsh_methods.append('guess=INDO')
         couldnt_trsh = False
         trsh_keyword.append('guess=INDO')
+    # If we have attempted all scf methods above, then we will try last resort methods
+    if 'SCF' in job_status['keywords'] and 'scf=(maxcycle=128)' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
+        and 'scf=(Fermi)' not in ess_trsh_methods and 'scf=(Noincfock)' not in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
+        # Uses Fermi broadening to help SCF convergence
+        ess_trsh_methods.append('scf=(Fermi)')
+        # Gaussian uses Incremental Fock by default to construct the Fock matrix in an approximate manner to significantly save time at each step of the iterative process, but may thus hinder convergence
+        ess_trsh_methods.append('scf=(Noincfock)')
+        ess_trsh_methods.append('scf=(NoVarAcc)')
+        couldnt_trsh = False
+
     if any('scf' in keyword for keyword in ess_trsh_methods):
         scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
         trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
@@ -1796,4 +1838,60 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
         trsh_keyword.append('nosymm')
         couldnt_trsh = False
 
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Check if the job requires change of opt(maxcycle=200)
+    """
+    
+    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycles=200)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(maxcycle=200)')
+        trsh_keyword.append('opt=(maxcycle=200)')
+        couldnt_trsh = False
+    
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Check if the job requires change of inaccurate quadrature
+    
+    Explanation
+
+        The integral not enough, under DFT calculations with some basis sets.
+
+    Fixing
+
+        Check the input file, whether there was some miss in basis set or unreasonable structure. If not, use one of following keywords:
+
+            1. int=ultrafine (default in Gaussian 16), or int=grid=300590.
+            2. SCF=novaracc.
+            3. guess=INDO.
+        If not work, use (1)~(3) at same time.
+
+    """
+    if 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' not in ess_trsh_methods:
+        ess_trsh_methods.append('int=grid=300590')
+        trsh_keyword.append('int=grid=300590')
+        couldnt_trsh = False
+    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
+        # Gaussian automatically reduces the integration grid at the beginning of the calculation to speed it up, but there is a risk that SCF may not converged. For the calculations using diffuse functions with SCF not converged error use NoVarAcc
+        ess_trsh_methods.append('scf=(NoVarAcc)')
+        couldnt_trsh = False
+    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' in ess_trsh_methods and 'guess=INDO' not in ess_trsh_methods:
+        # Change the convergence method to INDO
+        ess_trsh_methods.append('guess=INDO')
+        trsh_keyword.append('guess=INDO')
+        couldnt_trsh = False
+    elif 'InaccurateQuadrature' in job_status['keywords'] and 'int=grid=300590' in ess_trsh_methods and 'scf=(NoVarAcc)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods and 'int=ultrafine' not in ess_trsh_methods:
+        # Try all methods above
+        trsh_keyword.append('int=grid=300590')
+        trsh_keyword.append('guess=INDO')
+        # NoVarAcc is not included in trsh_keyword, because it will be in ess_trsh_methods
+        
+    scf_pattern = r"scf=\((.*?)\)" # e.g., scf=(xqc,MaxCycle=1000), will match xqc,MaxCycle=1000
+    if any('scf' in keyword for keyword in ess_trsh_methods):
+        scf_list = [match for element in ess_trsh_methods for match in re.findall(scf_pattern, element)] if any(re.search(scf_pattern, element) for element in ess_trsh_methods) else []
+        trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
+    
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
