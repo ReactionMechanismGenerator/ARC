@@ -1537,8 +1537,9 @@ def scan_quality_check(label: str,
             # Find the dihedrals in degrees of the lowest conformer:
             min_index = np.argmin(energies)
             conf_xyzs = parse_1d_scan_coords(log_file)
-            actions = {'change conformer': conf_xyzs[min_index]}
-            return invalidate, invalidation_reason, message, actions
+            if len(conf_xyzs) > min_index:
+                actions = {'change conformer': conf_xyzs[min_index]}
+                return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
