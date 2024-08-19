@@ -1024,14 +1024,22 @@ def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
 
             new_angles = []
             for angle in torsion_scan:
+                termination = False
                 test_angle = (angle + 60) % 360
                 if any((test_angle - 5) % 360 <= existing_angle <= (test_angle + 5) % 360 for existing_angle in torsion_scan):
+                    termination = True
                     for angle_tba in torsion_scan:
-                        new_angle = (angle_tba + 60) % 360  # Calculate new angle and ensure it wraps around at 360
-                        # Check if the new angle, adjusted by ±30 degrees, overlaps with any existing angles
-                        if not any((new_angle - 30) % 360 <= existing_angle <= (new_angle + 30) % 360 for existing_angle in torsion_scan + new_angles):
+                        new_angle = (angle_tba + 60) % 360  # Calculate new angle and ensure it wraps around at 36                        
+                        sorted_total_angles = sorted(set(torsion_scan + new_angles))
+                        # Calculate indices to pick seven uniformly spaced angles
+                        step = max(1, len(sorted_total_angles) // 7)
+                        sampled_angles = [sorted_total_angles[i] for i in range(0, len(sorted_total_angles), step)]
+
+                        # Check if the new angle, adjusted by ±30 degrees, overlaps with any of the sampled angles
+                        if not any((new_angle - 30) % 360 <= sampled_angle <= (new_angle + 30) % 360 for sampled_angle in sampled_angles):
                             new_angles.append(new_angle)
-                            break
+                if termination:
+                    break
     
             # Extend the original list with non-overlapping new angles
             torsion_scan.extend(new_angles)
