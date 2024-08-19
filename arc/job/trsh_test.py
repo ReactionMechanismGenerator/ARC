@@ -181,6 +181,14 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, list())
         self.assertEqual(error, "")
         self.assertEqual(line, "")
+        path = os.path.join(self.base_path["orca"], "O2_MRCI.log")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "done")
+        self.assertEqual(keywords, list())
+        self.assertEqual(error, "")
+        self.assertEqual(line, "")
 
         # test detection of a successful job
         # notice that the log file in this example has a different format under the line
