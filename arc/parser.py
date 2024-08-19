@@ -4,7 +4,7 @@ A module for parsing information from various files.
 
 import os
 import re
-from typing import Dict, List, Match, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Match, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,8 @@ from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import hartree_to_si, str_to_xyz, xyz_from_data
 
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 logger = get_logger()
 
@@ -1262,3 +1264,43 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
         if not red_ind.empty:
             scan_conformers.drop(red_ind, inplace=True)
     return scan_conformers
+
+
+def parse_active_space(sp_path: str, species: 'ARCSpecies') -> Tuple[int, int]:
+    """
+    Parse the active space (electrons and orbitals) from a Molpro CCSD(T) output file.
+    The number of active electrons is determined by the total number of electrons minus the number of core electrons.
+    The number of active orbitals is determined by the number of closed-shell orbitals plus the number of active orbitals
+    as reported by Molpro.
+
+    Args:
+        sp_path (str): The path to the sp job output file.
+        species ('ARCSpecies'): The species to consider.
+
+    Returns:
+        Tuple[int, int]: The number of active electrons and orbitals.
+    """
+    if not os.path.isfile(sp_path):
+        raise InputError(f'Could not find file {sp_path}')
+    num_heavy_atoms = sum([1 for symbol in species.get_xyz()['symbols'] if symbol not in ['H', 'D', 'T']])
+    nuclear_charge, closed_shell_orbitals, active_orbitals = None, None, None
+    with open(sp_path, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        if 'NUCLEAR CHARGE:' in line:
+            #  NUCLEAR CHARGE:                   32
+            nuclear_charge = int(line.split()[-1])
+        if 'Number of closed-shell orbitals:' in line:
+            #  Number of closed-shell orbitals:  11 (   9   2 )
+            #  Number of closed-shell orbitals:   8 (   8 )
+            closed_shell_orbitals = int(line.split('(')[0].split()[-1])
+        if 'Number of active' in line and 'orbitals' in line:
+            #  Number of active  orbitals:        2 (   1   1 )
+            #  Number of active  orbitals:        2 (   2 )
+            active_orbitals = int(line.split('(')[0].split()[-1])
+        if None not in [nuclear_charge, closed_shell_orbitals, active_orbitals]:
+            break
+    active_space_electrons = nuclear_charge - species.charge - 2 * num_heavy_atoms
+    num_active_space_orbitals = closed_shell_orbitals + active_orbitals \
+        if active_orbitals is not None else closed_shell_orbitals
+    return active_space_electrons, num_active_space_orbitals
