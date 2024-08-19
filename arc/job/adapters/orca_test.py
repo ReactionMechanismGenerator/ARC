@@ -69,6 +69,20 @@ class TestOrcaAdapter(unittest.TestCase):
                                                            H      -0.53338088   -0.77135867   -0.54806440""")],
                                 testing=True,
                                 )
+        cls.job_4 = OrcaAdapter(execution_type='queue',
+                                job_type='sp',
+                                level=Level(method='MP2_CASSCF_MRCI', basis='aug-cc-pVTZ'),
+                                project='test4',
+                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                species=[ARCSpecies(label='CH3O',
+                                                    active=(14, 7),
+                                                    xyz="""C       0.03807240    0.00035621   -0.00484242
+                                                           O       1.35198769    0.01264937   -0.17195885
+                                                           H      -0.33965241   -0.14992727    1.02079480
+                                                           H      -0.51702680    0.90828035   -0.29592912
+                                                           H      -0.53338088   -0.77135867   -0.54806440""")],
+                                testing=True,
+                                )
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         self.job_1.input_file_memory = None
@@ -90,13 +104,7 @@ class TestOrcaAdapter(unittest.TestCase):
 !sp 
 
 %maxcore 1792
-%pal # job parallelization settings
-nprocs 8
-end
-%scf # recommended SCF settings
-MaxIter 500
-end
-
+%pal nprocs 8 end
 
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
@@ -105,6 +113,11 @@ H      -0.33965241   -0.14992727    1.02079480
 H      -0.51702680    0.90828035   -0.29592912
 H      -0.53338088   -0.77135867   -0.54806440
 *
+
+%scf
+MaxIter 999
+end
+
 """
         self.assertEqual(content_1, job_1_expected_input_file)
 
@@ -117,19 +130,7 @@ H      -0.53338088   -0.77135867   -0.54806440
 !sp 
 
 %maxcore 1792
-%pal # job parallelization settings
-nprocs 8
-end
-%scf # recommended SCF settings
-MaxIter 500
-end
-
-
-
-%cpcm SMD true
-      SMDsolvent "dmso"
-end
-            
+%pal nprocs 8 end
 
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
@@ -138,6 +139,17 @@ H      -0.33965241   -0.14992727    1.02079480
 H      -0.51702680    0.90828035   -0.29592912
 H      -0.53338088   -0.77135867   -0.54806440
 *
+
+%scf
+MaxIter 999
+end
+
+
+
+%cpcm SMD true
+      SMDsolvent "dmso"
+end
+
 """
         self.assertEqual(content_2, job_2_expected_input_file)
 
@@ -151,17 +163,7 @@ H      -0.53338088   -0.77135867   -0.54806440
 !sp 
 
 %maxcore 1792
-%pal # job parallelization settings
-nprocs 8
-end
-%scf # recommended SCF settings
-MaxIter 500
-end
-
-
-
-!CPCM(water)
-            
+%pal nprocs 8 end
 
 * xyz 0 2
 C       0.03807240    0.00035621   -0.00484242
@@ -170,8 +172,61 @@ H      -0.33965241   -0.14992727    1.02079480
 H      -0.51702680    0.90828035   -0.29592912
 H      -0.53338088   -0.77135867   -0.54806440
 *
+
+%scf
+MaxIter 999
+end
+
+
+
+!CPCM(water)
+
 """
         self.assertEqual(content_3, job_3_expected_input_file)
+
+    def test_write_input_file_mrci(self):
+        """Test writing Orca input files"""
+        self.job_4.write_input_file()
+        with open(os.path.join(self.job_4.local_path, input_filenames[self.job_4.job_adapter]), 'r') as f:
+            content_4 = f.read()
+        job_4_expected_input_file = """!uHF  aug-cc-pvtz  tightscf
+!sp 
+
+%maxcore 1792
+%pal nprocs 8 end
+
+* xyz 0 2
+C       0.03807240    0.00035621   -0.00484242
+O       1.35198769    0.01264937   -0.17195885
+H      -0.33965241   -0.14992727    1.02079480
+H      -0.51702680    0.90828035   -0.29592912
+H      -0.53338088   -0.77135867   -0.54806440
+*
+
+%scf
+MaxIter 999
+end
+
+
+%mp2
+    RI true
+end
+
+%casscf
+    nel 14
+    norb 7
+    nroots 1
+    maxiter 999
+end
+
+%mrci
+    citype MRCI
+    davidsonopt true
+    maxiter 999
+end
+
+"""
+        self.assertEqual(content_4, job_4_expected_input_file)
 
     def test_set_files(self):
         """Test setting files"""
