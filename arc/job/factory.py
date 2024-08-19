@@ -141,7 +141,6 @@ def job_factory(job_adapter: str,
 
         # shift (str, optional): A string representation alpha- and beta-spin orbitals shifts (molpro only).  # use args
         # is_ts (bool): Whether this species represents a transition structure. Default: ``False``.  # use species
-        # occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
         # number_of_radicals (int, optional): The number of radicals (inputted by the user, ARC won't attempt to
         #                                     determine it). Defaults to None. Important, e.g., if a Species is a bi-rad
         #                                     singlet, in which case the job should be unrestricted with
