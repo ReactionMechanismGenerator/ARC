@@ -184,7 +184,11 @@ class ARCSpecies(object):
         fragments (Optional[List[List[int]]]):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
-        occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        active (Tuple[int, int], optional): The number of active electrons and orbitals, usually from a molpro CCSD sp calc.
+                                            The first value is the number of active electrons, determined by the total
+                                            number of electrons minus the core electrons (2 e's per heavy atom).
+                                            The second value is the number of active orbitals, determined by the number
+                                            of closed-shell orbitals and active orbitals (w/o core orbitals).
         irc_label (str, optional): The label of an original ``ARCSpecies`` object (a TS) for which an IRC job was spawned.
                                    The present species object instance represents a geometry optimization job of the IRC
                                    result in one direction.
@@ -286,7 +290,7 @@ class ARCSpecies(object):
         fragments (Optional[List[List[int]]]):
             Fragments represented by this species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
-        occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.
+        active (Tuple[int, int], optional): The number of active electrons and orbitals, usually from a molpro CCSD sp calc.
         irc_label (str): The label of an original ``ARCSpecies`` object (a TS)  for which an IRC job was spawned.
                          The present species object instance represents a geometry optimization job of the IRC
                          result in one direction. If a species is a transition state, then this attribute contains the
@@ -318,7 +322,7 @@ class ARCSpecies(object):
                  multiplicity: Optional[int] = None,
                  multi_species: Optional[str] = None,
                  number_of_radicals: Optional[int] = None,
-                 occ: Optional[int] = None,
+                 active: Optional[Tuple[int, int]] = None,
                  optical_isomers: Optional[int] = None,
                  preserve_param_in_scan: Optional[list] = None,
                  rmg_species: Optional[Species] = None,
@@ -357,7 +361,7 @@ class ARCSpecies(object):
         self.number_of_radicals = number_of_radicals
         self.external_symmetry = external_symmetry
         self.irc_label = irc_label
-        self.occ = occ
+        self.active = active
         self.optical_isomers = optical_isomers
         self.charge = charge
         self.run_time = run_time
@@ -734,8 +738,8 @@ class ARCSpecies(object):
             species_dict['zmat'] = self.zmat
         if self.checkfile is not None:
             species_dict['checkfile'] = self.checkfile
-        if self.occ is not None:
-            species_dict['occ'] = self.occ
+        if self.active is not None:
+            species_dict['active'] = self.active
         if self.most_stable_conformer is not None:
             species_dict['most_stable_conformer'] = self.most_stable_conformer
         if self.cheap_conformer is not None:
@@ -793,7 +797,7 @@ class ARCSpecies(object):
         self.e_elect = species_dict['e_elect'] if 'e_elect' in species_dict else None
         self.e0 = species_dict['e0'] if 'e0' in species_dict else None
         self.tsg_spawned = species_dict['tsg_spawned'] if 'tsg_spawned' in species_dict else False
-        self.occ = species_dict['occ'] if 'occ' in species_dict else None
+        self.active = species_dict['active'] if 'active' in species_dict else None
         self.arkane_file = species_dict['arkane_file'] if 'arkane_file' in species_dict else None
         self.yml_path = species_dict['yml_path'] if 'yml_path' in species_dict else None
         self.rxn_label = species_dict['rxn_label'] if 'rxn_label' in species_dict else None
@@ -2333,20 +2337,6 @@ class TSGuess(object):
         """
         if self.t0 is not None:
             self.execution_time = datetime.datetime.now() - self.t0
-
-
-def determine_occ(xyz, charge):
-    """
-    Determines the number of occupied orbitals for an MRCI calculation.
-
-    Todo
-    """
-    electrons = 0
-    for line in xyz.split('\n'):
-        if line:
-            atom = Atom(element=str(line.split()[0]))
-            electrons += atom.number
-    electrons -= charge
 
 
 def determine_rotor_symmetry(label: str,
