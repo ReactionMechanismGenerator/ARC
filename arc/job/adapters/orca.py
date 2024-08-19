@@ -50,17 +50,16 @@ input_template = """!${restricted}${method_class} ${method} ${basis} ${auxiliary
 !${job_type_1} 
 ${job_type_2}
 %%maxcore ${memory}
-%%pal # job parallelization settings
-nprocs ${cpus}
-end
-%%scf # recommended SCF settings
-MaxIter 500
-end${scan}
-${block}
+%%pal nprocs ${cpus} end
 
 * xyz ${charge} ${multiplicity}
 ${xyz}
 *
+
+%%scf
+MaxIter 999
+end${scan}
+${block}
 """
 
 
@@ -225,7 +224,7 @@ class OrcaAdapter(JobAdapter):
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
         input_dict['memory'] = self.input_file_memory
-        input_dict['method'] = self.level.method
+        input_dict['method'] = self.level.method if 'mrci' not in self.level.method else ''
         input_dict['multiplicity'] = self.multiplicity
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
@@ -295,6 +294,19 @@ end
 
         elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = 'sp'
+            if 'mrci' in self.level.method and self.species[0].active is not None:
+                if '_' in self.level.method:
+                    methods = self.level.method.split('_')
+                    block = ''
+                    for method in methods:
+                        if method == 'mp2':
+                            block += '\n\n%mp2\n    RI true\nend'
+                        elif method == 'casscf':
+                            block += (f'\n\n%casscf\n    nel {self.species[0].active[0]}'
+                                      f'\n    norb {self.species[0].active[1]}\n    nroots 1\n    maxiter 999\nend')
+                        elif method == 'mrci':
+                            block += f'\n\n%mrci\n    citype MRCI\n    davidsonopt true\n    maxiter 999\nend\n'
+                    input_dict['block'] += block
 
         elif self.job_type == 'scan':
             scans, torsion_strings = list(), list()
@@ -322,12 +334,12 @@ end
 %cpcm SMD true
       SMDsolvent "{self.level.solvent}"
 end
-            """,
+""",
                                 key1='block')
             elif self.level.solvation_method.lower() in ['pcm', 'cpcm']:
                 self.add_to_args(val=f"""
 !CPCM({self.level.solvent})
-            """,
+""",
                                 key1='block')
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
