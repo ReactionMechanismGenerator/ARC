@@ -4,11 +4,11 @@ The ARC troubleshooting ("trsh") module
 
 import math
 import os
+import re
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import re
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
@@ -18,25 +18,25 @@ from arc.common import (check_torsion_change,
                         get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float
+                        is_str_float,
                         )
 from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
-from arc.level import Level
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
+from arc.level import Level
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
-from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
+from arc.species.converter import displace_xyz, ics_to_scan_constraints
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
+
 from arc.parser import (parse_1d_scan_coords,
                         parse_normal_mode_displacement,
                         parse_scan_args,
                         parse_scan_conformers,
                         parse_xyz_from_file,
                         )
-
 
 logger = get_logger()
 
@@ -1537,8 +1537,9 @@ def scan_quality_check(label: str,
             # Find the dihedrals in degrees of the lowest conformer:
             min_index = np.argmin(energies)
             conf_xyzs = parse_1d_scan_coords(log_file)
-            actions = {'change conformer': conf_xyzs[min_index]}
-            return invalidate, invalidation_reason, message, actions
+            if len(conf_xyzs) > min_index:
+                actions = {'change conformer': conf_xyzs[min_index]}
+                return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
