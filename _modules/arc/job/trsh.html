@@ -168,11 +168,11 @@
 
 <span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">re</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">import</span> <span class="nn">re</span>
 
 <span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">check_torsion_change</span><span class="p">,</span>
                         <span class="n">convert_to_hours</span><span class="p">,</span>
@@ -182,25 +182,25 @@
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
                         <span class="n">is_same_pivot</span><span class="p">,</span>
                         <span class="n">is_same_sequence_sublist</span><span class="p">,</span>
-                        <span class="n">is_str_float</span>
+                        <span class="n">is_str_float</span><span class="p">,</span>
                         <span class="p">)</span>
 <span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SpeciesError</span><span class="p">,</span> <span class="n">TrshError</span>
 <span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
-<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
 <span class="kn">from</span> <span class="nn">arc.job.local</span> <span class="kn">import</span> <span class="n">execute_command</span>
 <span class="kn">from</span> <span class="nn">arc.job.ssh</span> <span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
 <span class="kn">from</span> <span class="nn">arc.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
 <span class="kn">from</span> <span class="nn">arc.species.conformers</span> <span class="kn">import</span> <span class="n">determine_smallest_atom_index_in_scan</span>
-<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="p">(</span><span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span>
 <span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">determine_rotor_symmetry</span>
 <span class="kn">from</span> <span class="nn">arc.species.vectors</span> <span class="kn">import</span> <span class="n">calculate_dihedral_angle</span><span class="p">,</span> <span class="n">calculate_distance</span>
+
 <span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="p">(</span><span class="n">parse_1d_scan_coords</span><span class="p">,</span>
                         <span class="n">parse_normal_mode_displacement</span><span class="p">,</span>
                         <span class="n">parse_scan_args</span><span class="p">,</span>
                         <span class="n">parse_scan_conformers</span><span class="p">,</span>
                         <span class="n">parse_xyz_from_file</span><span class="p">,</span>
                         <span class="p">)</span>
-
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
@@ -1701,8 +1701,9 @@
             <span class="c1"># Find the dihedrals in degrees of the lowest conformer:</span>
             <span class="n">min_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
             <span class="n">conf_xyzs</span> <span class="o">=</span> <span class="n">parse_1d_scan_coords</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
-            <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;change conformer&#39;</span><span class="p">:</span> <span class="n">conf_xyzs</span><span class="p">[</span><span class="n">min_index</span><span class="p">]}</span>
-            <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">conf_xyzs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">min_index</span><span class="p">:</span>
+                <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;change conformer&#39;</span><span class="p">:</span> <span class="n">conf_xyzs</span><span class="p">[</span><span class="n">min_index</span><span class="p">]}</span>
+                <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
         <span class="c1"># 1.3 Check consistency</span>
         <span class="k">if</span> <span class="mi">0</span> <span class="ow">in</span> <span class="n">changed_ic_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">changed_ic_dict</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
