@@ -1268,8 +1268,8 @@ class Scheduler(object):
                    conformer: Optional[int] = None,
                    ):
         """
-        Spawn a single point job using 'final_xyz' for species ot TS 'label'.
-        If the method is MRCI, first spawn a simple CCSD job, and use orbital determination to run the MRCI job.
+        Spawn a single point job using 'final_xyz' for species or a TS represented by 'label'.
+        If the method is MRCI, first spawn a simple CCSD(T) job, and use orbital determination to run the MRCI job.
 
         Args:
             label (str): The species label.
@@ -1277,7 +1277,6 @@ class Scheduler(object):
             conformer (int): The conformer number.
         """
         level = level or self.sp_level
-
         if self.job_types['conf_sp'] and conformer is not None and self.conformer_sp_level != self.conformer_opt_level:
             self.run_job(label=label,
                          xyz=self.species_dict[label].conformers[conformer],
@@ -1285,7 +1284,6 @@ class Scheduler(object):
                          job_type='conf_sp',
                          conformer=conformer)
             return
-        # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
                 and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
                 and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
@@ -1303,57 +1301,33 @@ class Scheduler(object):
                                      sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
                                      level=level,
                                      )
-
             # If opt is not in the job dictionary, the likely explanation is this job has been restarted
             elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
                 self.post_sp_actions(label=label,
                                      sp_path=self.output[label]['paths']['geo'],
                                      level=level,
                                      )
-
             else:
                 raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
-
             return
-        if 'sp' not in self.job_dict[label].keys():  # Check whether single-point energy jobs have been spawned yet.
-            # We're spawning the first sp job for this species.
+
+        if 'sp' not in self.job_dict[label].keys():
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
             raise SchedulerError(f'run_sp_job() was called for {label} which has a composite method level of theory')
         if 'mrci' in level.method:
             if self.job_dict[label]['sp']:
-                # Parse orbital information from the CCSD job, then run MRCI
-                job0 = None
-                job_name_0 = 0
-                for job_name, job in self.job_dict[label]['sp'].items():
-                    if int(job_name.split('_a')[-1]) > job_name_0:
-                        job_name_0 = int(job_name.split('_a')[-1])
-                        job0 = job
-                with open(job0.local_path_to_output_file, 'r') as f:
-                    lines = f.readlines()
-                    core = val = 0
-                    for line in lines:
-                        if 'NUMBER OF CORE ORBITALS' in line:
-                            core = int(line.split()[4])
-                        elif 'NUMBER OF VALENCE ORBITALS' in line:
-                            val = int(line.split()[4])
-                        if val * core:
-                            break
-                    else:
-                        raise SchedulerError(f'Could not determine number of core and valence orbitals from CCSD '
-                                             f'sp calculation for {label}')
-                self.species_dict[label].occ = val + core  # the occupied orbitals are the core and valence orbitals
-                self.run_job(label=label,
-                             xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz',
-                             job_type='sp')
+                if self.species_dict[label].active is None:
+                    self.species_dict[label].active = parser.parse_active_space(
+                        sp_path=self.output[label]['paths']['sp'],
+                        species=self.species_dict[label])
             else:
-                # MRCI was requested but no sp job ran for this species, run CCSD first
-                logger.info(f'running a CCSD job for {label} before MRCI')
+                logger.info(f'Running a CCSD/cc-pVDZ job for {label} before the MRCI job')
                 self.run_job(label=label,
                              xyz=self.species_dict[label].get_xyz(generate=False),
-                             level_of_theory='ccsd/vdz',
+                             level_of_theory='ccsd/cc-pvdz',
                              job_type='sp')
+                return
         mol = self.species_dict[label].mol
         if mol is not None and len(mol.atoms) == 1 and mol.atoms[0].element.symbol == 'H' and 'DLPNO' in level.method:
             # Run only CCSD for an H atom instead of DLPNO-CCSD(T) / etc.
@@ -2670,7 +2644,7 @@ class Scheduler(object):
             job (JobAdapter): The single point job object.
         """
         if 'mrci' in self.sp_level.method and job.level is not None and 'mrci' not in job.level.method:
-            # This is a CCSD job ran before MRCI. Spawn MRCI
+            self.output[label]['paths']['sp'] = job.local_path_to_output_file
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
             self.post_sp_actions(label,
@@ -2706,6 +2680,9 @@ class Scheduler(object):
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
+        if level is not None and level.method_type == 'wavefunction':
+            self.species_dict[label].active = parser.parse_active_space(sp_path=self.output[label]['paths']['sp'],
+                                                                        species=self.species_dict[label])
         if self.species_dict[label].t1 is not None:
             txt = ''
             if self.species_dict[label].t1 > 0.02:
@@ -2726,7 +2703,6 @@ class Scheduler(object):
                 self.run_sp_job(label=label, level=solvation_sp_level)
                 self.run_sp_job(label=label, level=self.sp_level.solvation_scheme_level)
             else:
-                # this is one of the additional sp jobs spawned by the above previously
                 if level is not None and level.solvation_method is not None:
                     self.output[label]['paths']['sp_sol'] = sp_path
                 else:
