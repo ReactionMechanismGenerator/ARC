@@ -4,7 +4,7 @@ A module for parsing information from various files.
 
 import os
 import re
-from typing import Dict, List, Match, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Match, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,8 @@ from arc.common import determine_ess, get_close_tuple, get_logger, is_same_pivot
 from arc.exceptions import InputError, ParserError
 from arc.species.converter import hartree_to_si, str_to_xyz, xyz_from_data
 
+if TYPE_CHECKING:
+    from arc.species.species import ARCSpecies
 
 logger = get_logger()
 
@@ -1263,3 +1265,74 @@ def parse_scan_conformers(file_path: str) -> pd.DataFrame:
         if not red_ind.empty:
             scan_conformers.drop(red_ind, inplace=True)
     return scan_conformers
+
+
+def parse_active_space(sp_path: str, species: 'ARCSpecies') -> Dict[str, Union[List[int], Tuple[int, int]]]:
+    """
+    Parse the active space (electrons and orbitals) from a Molpro CCSD output file.
+
+    Args:
+        sp_path (str): The path to the sp job output file.
+        species ('ARCSpecies'): The species to consider.
+
+    Returns:
+        Dict[str, Union[List[int], Tuple[int, int]]]:
+            The active orbitals. Possible keys are:
+                 'occ' (List[int]): The occupied orbitals.
+                 'closed' (List[int]): The closed-shell orbitals.
+                 'frozen' (List[int]): The frozen orbitals.
+                 'core' (List[int]): The core orbitals.
+                 'e_o' (Tuple[int, int]): The number of active electrons, determined by the total number
+                 of electrons minus the core electrons (2 e's per heavy atom), and the number of active
+                 orbitals, determined by the number of closed-shell orbitals and active orbitals
+                 (w/o core orbitals).
+    """
+    if not os.path.isfile(sp_path):
+        raise InputError(f'Could not find file {sp_path}')
+    active = dict()
+    num_heavy_atoms = sum([1 for symbol in species.get_xyz()['symbols'] if symbol not in ['H', 'D', 'T']])
+    nuclear_charge, total_closed_shell_orbitals, total_active_orbitals = None, None, None
+    core_orbitals, closed_shell_orbitals, active_orbitals = None, None, None
+    with open(sp_path, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        if 'NUCLEAR CHARGE:' in line:
+            #  NUCLEAR CHARGE:                   32
+            nuclear_charge = int(line.split()[-1])
+        if 'Number of core orbitals:' in line:
+            # Number of core orbitals:           1 (   1   0   0   0   0   0   0   0 )
+            # Number of core orbitals:           3 (   3 )
+            core_orbitals = line.split('(')[-1].split(')')[0].split()
+        if 'Number of closed-shell orbitals:' in line:
+            #  Number of closed-shell orbitals:  11 (   9   2 )
+            #  Number of closed-shell orbitals:   8 (   8 )
+            closed_shell_orbitals = line.split('(')[-1].split(')')[0].split()
+            total_closed_shell_orbitals = int(line.split('(')[0].split()[-1])
+        if 'Number of active' in line and 'orbitals' in line:
+            #  Number of active  orbitals:        2 (   1   1 )
+            #  Number of active  orbitals:        2 (   2 )
+            active_orbitals = line.split('(')[-1].split(')')[0].split()
+            total_active_orbitals = int(line.split('(')[0].split()[-1])
+        if None not in [nuclear_charge, total_closed_shell_orbitals, total_active_orbitals,
+                        core_orbitals, closed_shell_orbitals, active_orbitals]:
+            break
+    active_space_electrons = nuclear_charge - species.charge - 2 * num_heavy_atoms
+    if (total_closed_shell_orbitals is None) ^ (total_active_orbitals is None):
+        num_active_space_orbitals = total_closed_shell_orbitals or total_active_orbitals
+    else:
+        num_active_space_orbitals = total_closed_shell_orbitals + total_active_orbitals
+    active['e_o'] = (active_space_electrons, num_active_space_orbitals)
+    if core_orbitals is not None:
+        active['occ'] = [int(c) for c in core_orbitals]
+        if closed_shell_orbitals is not None:
+            active['closed'] = [int(c) for c in closed_shell_orbitals]
+            for i in range(len(closed_shell_orbitals)):
+                active['occ'][i] += int(closed_shell_orbitals[i])
+                if active_orbitals is not None:
+                    active['occ'][i] += int(active_orbitals[i])
+        if active_orbitals is not None and int(active_orbitals[0]) == 0:
+            # No 1st irrep is suggested to be active.
+            # We should therefore add another active orbital to the 1st irrep.
+            active['occ'][0] += 1
+
+    return active
