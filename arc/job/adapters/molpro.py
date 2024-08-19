@@ -8,12 +8,10 @@ import datetime
 import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
-import socket
 
 from mako.template import Template
 
 from arc.common import get_logger
-from arc.exceptions import JobError
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (_initialize_adapter,
@@ -37,7 +35,7 @@ default_job_settings, global_ess_settings, input_filenames, output_filenames, se
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
 
 input_template = """***,${label}
-memory,${memory},m;
+memory,Total=${memory},m;
 
 geometry={angstrom;
 ${xyz}}
@@ -48,8 +46,8 @@ ${auxiliary_basis}
 ${cabs}
 int;
 {hf;${shift}
-maxit,1000;
-wf,spin=${spin},charge=${charge};}
+ maxit,999;
+ wf,spin=${spin},charge=${charge};}
 
 ${restricted}${method};
 
@@ -252,20 +250,26 @@ class MolproAdapter(JobAdapter):
             keywords.append('ORBITAL,IGNORE_ERROR')
 
         if 'mrci' in self.level.method:
-            if self.species[0].occ > 16:
-                raise JobError(f'Will not execute an MRCI calculation with more than 16 occupied orbitals '
-                               f'(got {self.species[0].occ}).\n'
-                               f'Selective occ, closed, core, frozen keyword still not implemented.')
             input_dict['orbitals'] = '\ngprint,orbitals;\n'
+            input_dict['restricted'] = ''
+            if '_' in self.level.method:
+                methods = self.level.method.split('_')
+                input_dict['method'] = ''
+                for method in methods:
+                    input_dict['method'] += '\n\n{' + method.lower() + ';\n'
+                    if 'mp2' not in method.lower():
+                        input_dict['method'] += ' maxit,999;\n'
+                    input_dict['method'] += f' wf,spin={input_dict["spin"]},charge={input_dict["charge"]};' + '}'
+            else:
+                input_dict['method'] = f"""{{casscf;
+ maxit,999;
+ wf,spin={input_dict['spin']},charge={input_dict['charge']};}}
+ 
+{{mrci{"-f12" if "f12" in self.level.method.lower() else ""};
+ maxit,999;
+ wf,spin={input_dict['spin']},charge={input_dict['charge']};}}"""
+
             input_dict['block'] += '\n\nE_mrci=energy;\nE_mrci_Davidson=energd;\n\ntable,E_mrci,E_mrci_Davidson;'
-            input_dict['method'] = input_dict['rerstricted'] = ''
-            input_dict['shift'] = 'shift,-1.0,-0.5;'
-            input_dict['job_type_1'] = f"""{{multi;
-{self.species[0].occ}noextra,failsafe,config,csf;
-wf,spin={input_dict['spin']},charge={input_dict['charge']};
-natorb,print,ci;}}"""
-            input_dict['job_type_2'] = f"""{{mrci;
-${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge']};}}"""
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
@@ -325,19 +329,12 @@ ${self.species[0].occ}wf,spin=${input_dict['spin']},charge=${input_dict['charge'
         """
         Set the input_file_memory attribute.
         """
-        # Molpro's memory is per cpu core and in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
-        # The conversion from mW to GB was done using this (https://deviceanalytics.com/words-to-bytes-converter/)
-        # specifying a 64-bit architecture.
-        #
-        # See also:
-        # https://www.molpro.net/pipermail/molpro-user/2010-April/003723.html
-        # In the link, they describe the conversion of 100,000,000 Words (100Mword) is equivalent to
-        # 800,000,000 bytes (800 mb).
-        # Formula - (100,000,000 [Words]/( 800,000,000 [Bytes] / (job mem in gb * 1000,000,000 [Bytes])))/ 1000,000 [Words -> MegaWords]
-        # The division by 1E6 is for converting into MWords
-                # Due to Zeus's configuration, there is only 1 nproc so the memory should not be divided by cpu_cores. 
-        self.input_file_memory = math.ceil(self.job_memory_gb / (7.45e-3 * self.cpu_cores)) if 'zeus' not in socket.gethostname() else math.ceil(self.job_memory_gb / (7.45e-3))
-        
+        # Molpro's memory is per cpu core, but here we ask for Total memory.
+        # Molpro measures memory in MW (mega word; 1000 MW = 7.45 GB on a 64-bit machine)
+        # The conversion from mW to GB was done using https://www.molpro.net/manual/doku.php?id=general_program_structure#memory_option_in_command_line
+        # 3.2 GB = 100 mw (case sensitive) total (as in this implimentation) -> 31.25 mw/GB is the conversion rate
+        self.input_file_memory = math.ceil(self.job_memory_gb * 31.25)
+
     def execute_incore(self):
         """
         Execute a job incore.
