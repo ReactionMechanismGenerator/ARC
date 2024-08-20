@@ -2053,6 +2053,9 @@ def compare_confs(xyz1: dict,
                   rtol: float = 0.01,
                   atol: float = 0.1,
                   rmsd_score: bool = False,
+                  skip_conversion: bool = False,
+                  dmat1: Optional[np.ndarray] = None,
+                  dmat2: Optional[np.ndarray] = None,
                   ) -> Union[float, bool]:
     """
     Compare two Cartesian coordinates representing conformers using distance matrices.
@@ -2066,6 +2069,9 @@ def compare_confs(xyz1: dict,
         rtol (float): The relative tolerance parameter (see Notes).
         atol (float): The absolute tolerance parameter (see Notes).
         rmsd_score (bool): Whether to output a root-mean-square deviation score of the two distance matrices.
+        skip_conversion (bool): Whether to skip converting xyz to distance matrices.
+        dmat1 (np.ndarray, optional): The distance matrix of conformer 1.
+        dmat2 (np.ndarray, optional): The distance matrix of conformer 2.
 
     Returns:
         Union[float, bool]:
@@ -2073,8 +2079,9 @@ def compare_confs(xyz1: dict,
               ``True`` if they do.
             - If ``rmsd_score`` is ``True``: The RMSD score of two distance matrices.
     """
-    xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
-    dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
+    if not skip_conversion:
+        xyz1, xyz2 = check_xyz_dict(xyz1), check_xyz_dict(xyz2)
+        dmat1, dmat2 = xyz_to_dmat(xyz1), xyz_to_dmat(xyz2)
     if rmsd_score:
         # Distance matrix is symmetric, only need the upper triangular part to compute rmsd.
         rmsd = calc_rmsd(np.triu(dmat1), np.triu(dmat2))
