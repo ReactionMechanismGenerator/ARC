@@ -4,11 +4,11 @@ The ARC troubleshooting ("trsh") module
 
 import math
 import os
-import re
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import re
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
@@ -18,25 +18,25 @@ from arc.common import (check_torsion_change,
                         get_number_with_ordinal_indicator,
                         is_same_pivot,
                         is_same_sequence_sublist,
-                        is_str_float,
+                        is_str_float
                         )
 from arc.exceptions import InputError, SpeciesError, TrshError
 from arc.imports import settings
+from arc.level import Level
 from arc.job.local import execute_command
 from arc.job.ssh import SSHClient
-from arc.level import Level
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_smallest_atom_index_in_scan
-from arc.species.converter import displace_xyz, ics_to_scan_constraints
+from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-
 from arc.parser import (parse_1d_scan_coords,
                         parse_normal_mode_displacement,
                         parse_scan_args,
                         parse_scan_conformers,
                         parse_xyz_from_file,
                         )
+
 
 logger = get_logger()
 
@@ -92,14 +92,21 @@ def determine_ess_status(output_path: str,
                 if 'termination' in line:
                     if 'l9999.exe' in line or 'link 9999' in line:
                         cycle_issue = False
+                        neg_eigenvalues = False
                         for j in range(i,len(reverse_lines)):
                             if 'Number of steps exceeded' in reverse_lines[j]:
-                                keywords = ['MaxOptCycles', 'GL9999', 'SCF']
+                                keywords = ['MaxOptCycles', 'GL9999']
                                 error = 'Maximum optimization cycles reached.'
                                 cycle_issue = True
                                 line = 'Number of steps exceeded'
                                 break
-                        if not cycle_issue:
+                            elif "Wrong number of Negative eigenvalues" in reverse_lines[j]:
+                                keywords = ['NegEigenvalues', 'GL9999']
+                                error = 'Wrong number of Negative eigenvalues'
+                                neg_eigenvalues = True
+                                line = 'Wrong number of Negative eigenvalues'
+                                break
+                        if not cycle_issue and not neg_eigenvalues:
                             keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                             error = 'Unconverged'
                     elif 'l101.exe' in line:
@@ -148,6 +155,22 @@ def determine_ess_status(output_path: str,
                     elif 'l913.exe' in line:
                         keywords = ['MaxOptCycles', 'GL913']
                         error = 'Maximum optimization cycles reached.'
+                    elif 'l123.exe' in line:
+                        delta_x = False
+                        gs2_opt = False
+                        for j in range(i + 1, len(reverse_lines)):
+                            if 'Delta-x Convergence NOT Met' in reverse_lines[j]:
+                                delta_x = True
+                                keywords = ['DeltaX', 'GL123']
+                                error = 'Delta-x Convergence NOT Met'
+                                line = 'Delta-x Convergence NOT Met'
+                                break
+                            elif 'GS2 Optimization Failure' in reverse_lines[j]:
+                                gs2_opt = True
+                                keywords = ['GS2Opt', 'GL123']
+                                error = 'GS2 Optimization Failure'
+                                line = 'GS2 Optimization Failure'
+                                break
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
                         additional_info = forward_lines[len(forward_lines) - i - 2]
                         if 'No data on chk file' in additional_info \
@@ -877,7 +900,7 @@ def trsh_ess_job(label: str,
         logger_phrase = f'Troubleshooting {job_type} job in {software} for {label}'
         logger_info = []
         couldnt_trsh = True
-        fine = False
+        fine = fine
         attempted_ess_trsh_methods = ess_trsh_methods.copy() if ess_trsh_methods else None
         # Check if Checkfile removal is in the keywords. Removal occurs when:
         # - Basis Set Mismatch
@@ -897,14 +920,12 @@ def trsh_ess_job(label: str,
 
         # Check if SCF is in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'scf=(maxcycle=512)' in ess_trsh_methods:
-            logger_info.append('using scf=(maxcycle=512)')
-        if 'scf=(NDamp=30)' in ess_trsh_methods:
-            logger_info.append('using scf=(NDamp=30)')
-        if 'scf=(qc)' in ess_trsh_methods:
-            logger_info.append('using scf=(qc)')
-        if 'scf=(NoDIIS)' in ess_trsh_methods:
-            logger_info.append('using scf=(NoDIIS)')
+        scf_list = [i for i in ess_trsh_methods if i.startswith('scf=')]
+        if scf_list:
+            formatted_string = f'using {scf_list[0]}'
+            for i in scf_list[1:]:
+                formatted_string += f', {i}'
+            logger_info.append(formatted_string)
         
         # Check if InaccurateQuadrature in the keyword
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
@@ -918,14 +939,32 @@ def trsh_ess_job(label: str,
         ess_trsh_methods, trsh_keyword, fine, couldnt_trsh = trsh_keyword_unconverged(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh, fine)
         if fine:
             logger_info.append('using a fine grid')
+            
+        # Check if NegEigenvalues is in the keyword
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
 
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        if 'opt=(maxcycle=200)' in ess_trsh_methods:
-            logger_info.append('using opt=(maxcycle=200)')
+        # print out any words that beging with 'opt='
+        opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
+        if opt_list:
+            formatted_string = f'using {opt_list[0]}'
+            for i in opt_list[1:]:
+                formatted_string += f', {i}'
+            logger_info.append(formatted_string)
         
+        # Check for L123 errors
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        irc_list = [i for i in ess_trsh_methods if i.startswith('irc=')]
+        if irc_list:
+            formatted_string = f'using {irc_list[0]}'
+            for i in irc_list[1:]:
+                formatted_string += f', {i}'
+            logger_info.append(formatted_string)
+            
 
+        
 
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
@@ -941,6 +980,7 @@ def trsh_ess_job(label: str,
         if attempted_ess_trsh_methods:
             if attempted_ess_trsh_methods == ess_trsh_methods:
                 logger.info(f'{logger_phrase} was not successful. Already attempted all possible troubleshooting methods. Will not troubleshoot again.')
+                ess_trsh_methods.append("all_attempted")
                 couldnt_trsh = True
             else:
                 if logger_info:
@@ -1537,9 +1577,8 @@ def scan_quality_check(label: str,
             # Find the dihedrals in degrees of the lowest conformer:
             min_index = np.argmin(energies)
             conf_xyzs = parse_1d_scan_coords(log_file)
-            if len(conf_xyzs) > min_index:
-                actions = {'change conformer': conf_xyzs[min_index]}
-                return invalidate, invalidation_reason, message, actions
+            actions = {'change conformer': conf_xyzs[min_index]}
+            return invalidate, invalidation_reason, message, actions
 
         # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
@@ -1798,7 +1837,7 @@ def trsh_keyword_scf(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -
         couldnt_trsh = False
         trsh_keyword.append('guess=INDO')
     # If we have attempted all scf methods above, then we will try last resort methods
-    if 'SCF' in job_status['keywords'] and 'scf=(maxcycle=128)' in ess_trsh_methods and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
+    if 'SCF' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods and 'scf=(NDamp=30)' in ess_trsh_methods and 'scf=(NoDIIS)' in ess_trsh_methods and 'guess=INDO' in ess_trsh_methods \
         and 'scf=(Fermi)' not in ess_trsh_methods and 'scf=(Noincfock)' not in ess_trsh_methods and 'scf=(NoVarAcc)' not in ess_trsh_methods:
         # Uses Fermi broadening to help SCF convergence
         ess_trsh_methods.append('scf=(Fermi)')
@@ -1845,11 +1884,34 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
     """
     Check if the job requires change of opt(maxcycle=200)
     """
-    
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycles=200)' not in ess_trsh_methods:
+    opt_pattern = r"opt=\((.*?)\)"
+    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(maxcycle=200)')
         trsh_keyword.append('opt=(maxcycle=200)')
         couldnt_trsh = False
+    elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(RFO)')
+        trsh_keyword.append('opt=(RFO)')
+        couldnt_trsh = False
+    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(GDIIS)')
+        trsh_keyword.append('opt=(GDIIS)')
+        couldnt_trsh = False
+    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(GEDIIS)')
+        trsh_keyword.append('opt=(GEDIIS)')
+        couldnt_trsh = False
+    
+    if any('opt' in keyword for keyword in ess_trsh_methods):
+        opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
+
+        if opt_list:
+
+            filtered_methods = prioritize_opt_methods(opt_list)
+
+            new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
+
+            trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
@@ -1896,3 +1958,56 @@ def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keywor
         trsh_keyword.append('scf=(' + ','.join(scf_list) + ')')
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_l123(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    When a job fails with l123.exe error, there are two possible solutions based upon the error message:
+    1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.
+    2. GS2 Optimization failed, then try to change the algorithm to LQA.
+    """
+    irc_pattern = r"irc=\((.*?)\)"
+    if 'DeltaX' in job_status['keywords'] and 'irc=(maxcycle=200)' not in ess_trsh_methods:
+        ess_trsh_methods.append('irc=(maxcycle=200)')
+        trsh_keyword.append('irc=(maxcycle=200)')
+        couldnt_trsh = False
+    elif 'DeltaX' in job_status['keywords'] and 'irc=(LQA)' not in ess_trsh_methods:
+        ess_trsh_methods.append('irc=(LQA)')
+        trsh_keyword.append('irc=(LQA)')
+        couldnt_trsh = False
+    elif 'GS2Opt' in job_status['keywords'] and 'irc=(LQA)' not in ess_trsh_methods:
+        ess_trsh_methods.append('irc=(LQA)')
+        trsh_keyword.append('irc=(LQA)')
+        couldnt_trsh = False
+
+    if any('irc' in keyword for keyword in ess_trsh_methods):
+        scf_list = [match for element in ess_trsh_methods for match in re.findall(irc_pattern, element)] if any(re.search(irc_pattern, element) for element in ess_trsh_methods) else []
+        trsh_keyword.append('irc=(' + ','.join(scf_list) + ')')
+
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    Gaussian will check the number of negative frequency after finishing the TS optimization. 
+    If there is more than one negative frequency, Gaussian will stop the calculation.
+    """
+    if 'NegEigenvalues' in job_status['keywords'] and 'opt=(noeigen)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(noeigen)')
+        trsh_keyword.append('opt=(noeigen)')
+        couldnt_trsh = False
+    
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+def prioritize_opt_methods(opt_methods):
+
+    preferred_order = ['GEDIIS', 'GDIIS', 'RFO']
+    selected_method = None
+    
+    for method in preferred_order:
+        if method in opt_methods:
+            selected_method = method
+            break
+    
+    filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
+
+    return filtered_methods
+
