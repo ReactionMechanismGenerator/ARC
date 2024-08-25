@@ -267,17 +267,25 @@ class GaussianAdapter(JobAdapter):
             self.level.method = 'cbs-qb3'
 
         # Job type specific options
-        max_c = self.args['trsh'].split()[1] if 'max_cycles' in self.args['trsh'] else 100
+        max_c = 100
+        if 'trsh' in self.args and 'trsh' in self.args['trsh']:
+            for item in self.args['trsh']['trsh']:
+                match = re.search(r'maxcycle=(\d+)', item)
+                if match:
+                    max_c = int(match.group(1))
+                    break
+
+
         if self.job_type in ['opt', 'conformers', 'optfreq', 'composite']:
-            keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycles={max_c}'] if self.is_ts else ['calcfc']
+            keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else ['calcfc']
             if self.level.method in ['rocbs-qb3']:
                 # There are no analytical 2nd derivatives (FC) for this method.
-                keywords = ['ts', 'noeigentest', 'maxcycles=100'] if self.is_ts else []
+                keywords = ['ts', 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else []
             if self.fine:
                 if self.level.method_type in ['dft', 'composite']:
                     # Note that the Acc2E argument is not available in Gaussian03
                     input_dict['fine'] = f'integral=(grid=ultrafine, {integral_algorithm})'
-                    # input_dict['trsh'] may have scf=(...) in it, so we need to  add the tight and direct keywords to it
+                    # input_dict['trsh'] may have scf=(...) in it, so we need to add the tight and direct keywords to it
                     scf_start = input_dict['trsh'].find('scf=(')
                     scf_end = input_dict['trsh'].find(')', scf_start)
                     scf_fine_content = 'tight,direct'
@@ -295,7 +303,7 @@ class GaussianAdapter(JobAdapter):
                 if self.is_ts:
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
-                    keywords.extend(['tight', 'maxstep=5'])
+                    keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 
@@ -390,11 +398,18 @@ class GaussianAdapter(JobAdapter):
 
         #Fix SCF
         # This may be redundant due to additional fixes in the above code
-        terms = ['scf=\((.*?)\)', 'scf=(\w+)']
+        terms = [r'scf=\((.*?)\)', r'scf=(\w+)']
         input_dict, parameters = combine_parameters(input_dict, terms)
         if parameters:
             input_dict['trsh'] += f" scf=({','.join(parameters)})"
 
+        # Fix IRC
+        terms_irc = [r'irc=\((.*?)\)', r'irc=(\w+)']
+        input_dict, parameters_irc = combine_parameters(input_dict, terms_irc)
+        if parameters_irc:
+            input_dict['job_type_1'] = f"irc=({','.join(parameters_irc)}) {input_dict['job_type_1']}"
+            
+        
         # Remove double spaces
         input_dict['job_type_1'] = input_dict['job_type_1'].replace('  ', ' ')
         
