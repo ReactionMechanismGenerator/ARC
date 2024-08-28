@@ -1804,7 +1804,7 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
     Check if the job requires change of cartesian coordinate
     """
     if 'InternalCoordinateError' in job_status['keywords'] \
-                and 'cartesian' not in ess_trsh_methods and job_type == 'opt':
+                and 'cartesian' not in ess_trsh_methods:
         ess_trsh_methods.append('cartesian')
         trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
