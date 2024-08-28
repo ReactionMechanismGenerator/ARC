@@ -695,7 +695,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000)   
+#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  wb97xd/def2tzvp   IOp(2/9=2000)   
 
 IRC
 
@@ -775,12 +775,21 @@ O       0.00000000    0.00000000    1.00000000
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
-        1. Test with getting Acc2E14 as the trsh method and thus changing the input file integral algorithm, and is also 'fine' thus it will have direct and tight SCF (but not xqc)
-        2. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods, thus it will have both changes in the input file
-        3. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first SCF error thus it will have all three changes in the input file
-        4. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first and second SCF error and also the input file already has the integral algorithm change thus it will have all four changes in the input file
-        5. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first, second and third SCF error and also the input file already has the integral algorithm change and also the input file already has the scf algorithm change thus it will have all five changes in the input file
-        6. Test with all previous errors but now include an internal coordinate error thus it will have all six changes in the input file
+        10. Create an input file for a job with int=(Acc2E=14) included
+        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
+        13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
+        14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
+        15. Create an input file for an opt job that has an internal coordinate error and so includes 'cartesian' in the input file and also includes all previous passes of SCF error troubleshooting 
+        16. Create an input file for a job with all SCF troubleshooting methods included
+        17. Create an input file for a job with MaxOptCycles error and SCF error
+        18. Create an input file for a job with L502 error and InaccurateQuadrature
+        19. Create an input file for a job with L502 error but had already been troubleshooted with L502 error
+        20. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
+        21. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
+        22. Create an input file for a job with MaxOptCycles error - changes maxcycle to 200 from 100
+        23. Create an input file for a job with MaxOptCycles error - Add RFO to the input file
+        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file
         """
         self.job_10.write_input_file()
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
