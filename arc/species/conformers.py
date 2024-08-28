@@ -519,15 +519,23 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
             newest_conformers_dict[tor] = list()  # Keys are torsions for plotting.
             for xyz, energy, dihedral in zip(xyzs, energies, sampling_points):
                 exists = False
-                if any([converter.compare_confs(xyz, conf['xyz']) for conf in new_conformers + newest_conformer_list]):
-                    exists = True
+                dmat1, fl_distance1 = None, None
+                for conf in new_conformers + newest_conformer_list:
+                    fl_distance1, dmat1, conf, simliar = converter.compare_confs_fl(xyz,conf)
+                    if not simliar:
+                        break
+                    if converter.compare_confs(xyz, conf['xyz'], skip_conversion=True, dmat1=dmat1, dmat2=conf['dmat']):
+                        exists = True
+                        break
                 if xyz is not None and energy is not None:
                     conformer = {'index': len_conformers + len(new_conformers) + len(newest_conformer_list),
                                  'xyz': xyz,
                                  'FF energy': round(energy, 3),
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
-                                 'dihedral': round(dihedral, 2)}
+                                 'dihedral': round(dihedral, 2),
+                                 'dmat': dmat1 if dmat1 is not None else None,
+                                 'fl_distance': fl_distance1 if fl_distance1 is not None else None}
                     newest_conformers_dict[tor].append(conformer)
                     if not exists:
                         newest_conformer_list.append(conformer)
@@ -541,7 +549,9 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                          'FF energy': None,
                          'source': f'Changing dihedrals on most stable conformer, iteration {i}, but FF energy is None',
                          'torsion': tor,
-                         'dihedral': round(dihedral, 2)})
+                         'dihedral': round(dihedral, 2),
+                         'dmat': dmat1 if dmat1 is not None else None,
+                         'fl_distance': fl_distance1 if fl_distance1 is not None else None})
         new_conformers.extend(newest_conformer_list)
         if not newest_conformer_list:
             newest_conformer_list = [lowest_conf_i]
@@ -1113,9 +1123,17 @@ def get_lowest_confs(label: str,
     for index in range(len(conformer_list)):
         if (e is not None and conformer_list[index][energy] > min_e + e) or (n is not None and len(lowest_confs) >= n):
             break
-        if index > 0 and not any([converter.compare_confs(lowest_conf['xyz'], conformer_list[index]['xyz'])
-                                  for lowest_conf in lowest_confs]):
-            lowest_confs.append(conformer_list[index])
+        if index>0:
+            for lowest_conf in lowest_confs:
+                _, dmat1, lowest_conf, simliar = converter.compare_confs_fl(conformer_list[index]['xyz'],lowest_conf)
+                if not simliar:
+                    lowest_confs.append(conformer_list[index])
+                    break
+                if converter.compare_confs(conformer_list[index]['xyz'], lowest_conf['xyz'],
+                                           skip_conversion=True,
+                                           dmat1=dmat1,dmat2=lowest_conf['dmat']):
+                    break
+                lowest_confs.append(conformer_list[index]) if lowest_conf==lowest_confs[-1] else None
     return lowest_confs
 
 
