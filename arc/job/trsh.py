@@ -962,9 +962,11 @@ def trsh_ess_job(label: str,
             for i in irc_list[1:]:
                 formatted_string += f', {i}'
             logger_info.append(formatted_string)
-            
-
         
+        # Remove qc from ess_trsh_methods if 'no_qc' is in the keywords
+        ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
+        if 'no_qc' in ess_trsh_methods:
+            logger_info.append('removed QC')
 
         # Check if memory is in the keyword
         if 'Memory' in job_status['keywords'] and 'too high' not in job_status['error'] and server is not None:
@@ -2011,3 +2013,16 @@ def prioritize_opt_methods(opt_methods):
 
     return filtered_methods
 
+def trsh_keyword_no_qc(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
+    """
+    When a job fails with no qc, there are two possible solutions based upon the error message:
+    1. If SCF fails, then try to change the algorithm to LQA.
+    2. If SCF fails, then try to change the algorithm to LQA.
+    """
+    if 'no_xqc' in job_status['keywords'] and 'scf=(qc)' in ess_trsh_methods:
+        ess_trsh_methods.remove('scf=(qc)')
+        ess_trsh_methods.append('no_xqc')
+        couldnt_trsh = False
+
+
+    return ess_trsh_methods, trsh_keyword, couldnt_trsh
