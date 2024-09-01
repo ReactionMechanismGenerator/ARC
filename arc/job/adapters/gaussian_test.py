@@ -439,6 +439,76 @@ class TestGaussianAdapter(unittest.TestCase):
                                             args=args
                                             )
         
+        # Gaussian MaxOptCycles error - Part 1
+        # Intend to troubleshoot a MaxOptCycles error by adding opt=(maxcycle=200) to the input file
+        job_status = {'keywords': ['MaxOptCycles']}
+        ess_trsh_methods = ['']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                            job_type, software, fine, memory_gb,
+                                                                            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_22 = GaussianAdapter(execution_type='local',
+                                            job_type='opt',
+                                            level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+        
+        # Gaussian MaxOptCycles error - Part 2
+        # Intend to troubleshoot a MaxOptCycles error by adding opt=(RFO) to the input file
+        job_status = {'keywords': ['MaxOptCycles']}
+        ess_trsh_methods = ['opt=(maxcycle=200)']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                            job_type, software, fine, memory_gb,
+                                                                            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_23 = GaussianAdapter(execution_type='local',
+                                            job_type='opt',
+                                            level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+        
+        # Gaussian MaxOptCycles error - Part 3
+        # Intend to troubleshoot a MaxOptCycles error by adding opt=(GDIIS) and removing opt=(RFO) to the input file
+        job_status = {'keywords': ['MaxOptCycles']}
+        ess_trsh_methods = ['opt=(maxcycle=200)', 'opt=(RFO)']
+        output_errors, ess_trsh_methods, remove_checkfile, level_of_theory, software, job_type, fine, trsh_keyword, \
+            memory, shift, cpu_cores, couldnt_trsh = trsh.trsh_ess_job(label, level_of_theory, server, job_status,
+                                                                            job_type, software, fine, memory_gb,
+                                                                            num_heavy_atoms, cpu_cores, ess_trsh_methods)
+            
+        args = {'keyword': {}, 'block': {}}
+        if trsh_keyword:
+            args['trsh'] = {'trsh': trsh_keyword}
+        cls.job_24 = GaussianAdapter(execution_type='local',
+                                            job_type='opt',
+                                            level=Level(method='wb97xd'),
+                                            fine=True,
+                                            ess_trsh_methods=ess_trsh_methods,
+                                            project='test',
+                                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                            species=[spc_11],
+                                            testing=True,
+                                            args=args
+                                            )
+        
 
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
@@ -625,7 +695,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll, reverse, maxpoints=50, stepsize=7) wb97xd/def2tzvp   IOp(2/9=2000)   
+#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  wb97xd/def2tzvp   IOp(2/9=2000)   
 
 IRC
 
@@ -705,12 +775,21 @@ O       0.00000000    0.00000000    1.00000000
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
-        1. Test with getting Acc2E14 as the trsh method and thus changing the input file integral algorithm, and is also 'fine' thus it will have direct and tight SCF (but not xqc)
-        2. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods, thus it will have both changes in the input file
-        3. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first SCF error thus it will have all three changes in the input file
-        4. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first and second SCF error and also the input file already has the integral algorithm change thus it will have all four changes in the input file
-        5. Test with getting Acc2E14 as the trsh method but also checkfile=None in ess_trsh_methods and first, second and third SCF error and also the input file already has the integral algorithm change and also the input file already has the scf algorithm change thus it will have all five changes in the input file
-        6. Test with all previous errors but now include an internal coordinate error thus it will have all six changes in the input file
+        10. Create an input file for a job with int=(Acc2E=14) included
+        11. Create an input file for a job with guess=mix included (removal of Checkfile via ess_trsh_methods)
+        12. Create an input file for a job with nosymm included, and also the first pass of SCF error troubleshooting
+        13. Create an input file for a job with NDamp=30 included, and also the previous pass of SCF error troubleshooting
+        14. Create an input file for a job with NoDIIS included, and also previous passes of SCF error troubleshooting
+        15. Create an input file for an opt job that has an internal coordinate error and so includes 'cartesian' in the input file and also includes all previous passes of SCF error troubleshooting 
+        16. Create an input file for a job with all SCF troubleshooting methods included
+        17. Create an input file for a job with MaxOptCycles error and SCF error
+        18. Create an input file for a job with L502 error and InaccurateQuadrature
+        19. Create an input file for a job with L502 error but had already been troubleshooted with L502 error
+        20. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
+        21. Create an input file for a job with L502 error but had already been troubleshooted with L502 error and InaccurateQuadrature
+        22. Create an input file for a job with MaxOptCycles error - changes maxcycle to 200 from 100
+        23. Create an input file for a job with MaxOptCycles error - Add RFO to the input file
+        24. Create an input file for a job with MaxOptCycles error - Add GDIIS and remove RFO from the input file
         """
         self.job_10.write_input_file()
         with open(os.path.join(self.job_10.local_path, input_filenames[self.job_10.job_adapter]), 'r') as f:
@@ -719,7 +798,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  uwb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 anion
 
@@ -737,7 +816,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    scf=(direct,tight)
 
 ethanol
 
@@ -763,7 +842,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(direct,tight,xqc)
 
 ethanol
 
@@ -789,7 +868,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,direct,tight,xqc)
 
 ethanol
 
@@ -815,7 +894,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -841,7 +920,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,cartesian,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,cartesian,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)       nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
 
 ethanol
 
@@ -868,7 +947,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)        nosymm  scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(cartesian) integral=(grid=ultrafine, Acc2E=14) guess=INDO wb97xd   IOp(2/9=2000)        nosymm  scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -921,7 +1000,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)    int=grid=300590  scf=(direct,tight)
 
 ethanol
 
@@ -947,7 +1026,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(NDamp=30,NoDIIS,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      nosymm scf=(Fermi,NDamp=30,NoDIIS,NoVarAcc,Noincfock,direct,tight,xqc)
 
 ethanol
 
@@ -973,7 +1052,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1000,7 +1079,7 @@ H       0.04768200    1.19305700   -0.88359100
 %mem=14336mb
 %NProcShared=8
 
-#P opt=(calcfc,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
+#P opt=(calcfc,maxcycle=100,maxstep=5,tight) guess=INDO wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)     int=grid=300590   scf=(NDamp=30,NoDIIS,NoVarAcc,direct,tight,xqc)
 
 ethanol
 
@@ -1019,6 +1098,87 @@ H       0.04768200    1.19305700   -0.88359100
 """
 
         self.assertEqual(content_21, job_21_expected_input_file)
+
+        self.job_22.write_input_file()
+        with open(os.path.join(self.job_22.local_path, input_filenames[self.job_22.job_adapter]), 'r') as f:
+            content_22 = f.read()
+        job_22_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+
+        self.assertEqual(content_22, job_22_expected_input_file)
+
+        self.job_23.write_input_file()
+        with open(os.path.join(self.job_23.local_path, input_filenames[self.job_23.job_adapter]), 'r') as f:
+            content_23 = f.read()
+        job_23_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(RFO,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+
+        self.assertEqual(content_23, job_23_expected_input_file)
+        
+        self.job_24.write_input_file()
+        with open(os.path.join(self.job_24.local_path, input_filenames[self.job_24.job_adapter]), 'r') as f:
+            content_24 = f.read()
+        job_24_expected_input_file = """%chk=check.chk
+%mem=14336mb
+%NProcShared=8
+
+#P opt=(GDIIS,calcfc,maxcycle=200,maxstep=5,tight)  guess=mix wb97xd  integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000)      scf=(direct,tight)
+
+ethanol
+
+0 1
+C       1.16582100   -0.40435500    0.00000000
+C       0.00000000    0.55180500    0.00000000
+O      -1.18946000   -0.21419400    0.00000000
+H      -1.94125800    0.37518500    0.00000000
+H       2.10540200    0.14511600    0.00000000
+H       1.13062400   -1.03878500    0.88303200
+H       1.13062400   -1.03878500   -0.88303200
+H       0.04768200    1.19305700    0.88359100
+H       0.04768200    1.19305700   -0.88359100
+
+
+"""
+
+        self.assertEqual(content_24, job_24_expected_input_file)
 
 
     @classmethod
