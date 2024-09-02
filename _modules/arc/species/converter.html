@@ -2175,11 +2175,51 @@
                           <span class="n">symmetric_torsions</span><span class="o">=</span><span class="n">symmetric_torsions</span><span class="p">)</span></div>
 
 
+<div class="viewcode-block" id="compare_confs_fl"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.compare_confs_fl">[docs]</a><span class="k">def</span> <span class="nf">compare_confs_fl</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                     <span class="n">conf2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                     <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span><span class="p">,</span>
+                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compare two Cartesian coordinates representing conformers using first and last atom distances. If the distances are the same,</span>
+<span class="sd">    the distance matrices are computed and returned.</span>
+
+<span class="sd">    The relative difference (``rtol`` * fl_distance1) is compared against the absolute difference abs(fl_distance1 - fl_distance2).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        xyz1 (dict): Conformer 1.</span>
+<span class="sd">        conf2 (dict): Conformer 2.</span>
+<span class="sd">        rtol (float): The relative tolerance parameter (see Notes).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tuple containing distances and matrices:</span>
+<span class="sd">        - (fl_distance1, dmat1, conf2, similar): The first and last atom distance of conformer 1, its distance matrix,</span>
+<span class="sd">                                                 conformer 2, and whether the two conformers have almost equal atom distances.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">similar</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">conf2</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">)</span>
+    <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">conf2</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;dmat&#39;</span><span class="p">)</span>
+    <span class="n">xyz1</span><span class="p">,</span> <span class="n">xyz2</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
+    <span class="n">dmat1</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">fl_distance1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz2</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz2</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">fl_distance1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;fl_distance&#39;</span><span class="p">],</span> <span class="n">rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">fl_distance1</span><span class="p">,</span> <span class="n">dmat1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">,</span> <span class="n">similar</span>
+    <span class="n">similar</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">dmat1</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">conf2</span><span class="p">[</span><span class="s1">&#39;dmat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fl_distance1</span><span class="p">,</span> <span class="n">dmat1</span><span class="p">,</span> <span class="n">conf2</span><span class="p">,</span> <span class="n">similar</span></div>
+
+
 <div class="viewcode-block" id="compare_confs"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.compare_confs">[docs]</a><span class="k">def</span> <span class="nf">compare_confs</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                   <span class="n">xyz2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                   <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span><span class="p">,</span>
                   <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span>
                   <span class="n">rmsd_score</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                  <span class="n">skip_conversion</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                  <span class="n">dmat1</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                  <span class="n">dmat2</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                   <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Compare two Cartesian coordinates representing conformers using distance matrices.</span>
@@ -2193,6 +2233,9 @@
 <span class="sd">        rtol (float): The relative tolerance parameter (see Notes).</span>
 <span class="sd">        atol (float): The absolute tolerance parameter (see Notes).</span>
 <span class="sd">        rmsd_score (bool): Whether to output a root-mean-square deviation score of the two distance matrices.</span>
+<span class="sd">        skip_conversion (bool): Whether to skip converting xyz to distance matrices.</span>
+<span class="sd">        dmat1 (np.ndarray, optional): The distance matrix of conformer 1.</span>
+<span class="sd">        dmat2 (np.ndarray, optional): The distance matrix of conformer 2.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        Union[float, bool]:</span>
@@ -2200,8 +2243,9 @@
 <span class="sd">              ``True`` if they do.</span>
 <span class="sd">            - If ``rmsd_score`` is ``True``: The RMSD score of two distance matrices.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">xyz1</span><span class="p">,</span> <span class="n">xyz2</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
-    <span class="n">dmat1</span><span class="p">,</span> <span class="n">dmat2</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">skip_conversion</span><span class="p">:</span>
+        <span class="n">xyz1</span><span class="p">,</span> <span class="n">xyz2</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
+        <span class="n">dmat1</span><span class="p">,</span> <span class="n">dmat2</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">rmsd_score</span><span class="p">:</span>
         <span class="c1"># Distance matrix is symmetric, only need the upper triangular part to compute rmsd.</span>
         <span class="n">rmsd</span> <span class="o">=</span> <span class="n">calc_rmsd</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">dmat1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">dmat2</span><span class="p">))</span>
