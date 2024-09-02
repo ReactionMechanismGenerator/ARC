@@ -981,6 +981,24 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
         c = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=h1)
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
+        
+        #                        
+        #                          
+        #             X           D -- J
+        #             |         /
+        #     A -- H1 - H2 -- B
+        #   /
+        # C
+        # |
+        # E
+        # 
+        #  |--- mol1 --|-- mol2 ---|
+
+        e = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=c)
+        j = find_distant_neighbor(rmg_mol=rmg_product_mol, start=d)
+        # What if one exists but the other doesnt. vice versa. or neither exists.
+
+
 
         # d2 describes the B-H-A-C dihedral, populate d2_values if C exists and the B-H-A angle (a2) is not linear.
         d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 \
