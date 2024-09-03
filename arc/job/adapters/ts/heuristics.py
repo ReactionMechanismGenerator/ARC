@@ -915,6 +915,34 @@ def find_distant_neighbor(rmg_mol: 'Molecule',
                     return distant_neighbor_index
     return distant_neighbor_h_index
 
+def find_close_neighbor(rmg_mol: 'Molecule',
+                        start: int,
+                        ) -> Optional[int]:
+    """
+    Find the 0-index of a close neighbor (1 step away) if possible from the starting atom.
+    Preferably, a heavy atom will be returned.
+    
+    Args:
+        rmg_mol ('Molecule'): The RMG molecule object instance to explore.
+        start (int): The 0-index of the start atom.
+        
+    Returns:
+        Optional[int]: The 0-index of the close neighbor.
+    """
+    if len(rmg_mol.atoms) <= 1:
+        return None
+    
+    hydrogen_index = None
+    
+    for neighbor in rmg_mol.atoms[start].edges.keys():
+        neighbor_index = rmg_mol.atoms.index(neighbor)
+        if neighbor_index != start:
+            if neighbor.is_hydrogen():
+                hydrogen_index = neighbor_index
+            else:
+                return neighbor_index
+    return hydrogen_index
+    
 
 # Family-specific heuristics functions:
 
@@ -994,11 +1022,14 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         # 
         #  |--- mol1 --|-- mol2 ---|
 
-        e = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=c)
-        j = find_distant_neighbor(rmg_mol=rmg_product_mol, start=d)
+        e = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=find_close_neighbor(rmg_mol=rmg_reactant_mol, start=h1))
+        j = find_distant_neighbor(rmg_mol=rmg_product_mol, start=find_close_neighbor(rmg_mol=rmg_product_mol, start=h2))
         # What if one exists but the other doesnt. vice versa. or neither exists.
 
-
+        
+        # d1 describes J-D-B-H dihedral, populate d1_values if J exists and the D-B-H angle (a2) is not linear.
+        # d1_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 \
+        #     and not is_angle_linear(a2) else list()
 
         # d2 describes the B-H-A-C dihedral, populate d2_values if C exists and the B-H-A angle (a2) is not linear.
         d2_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 2 \
@@ -1006,6 +1037,8 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
         d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 else list()
+
+        
 
         if len(d2_values) and len(d3_values):
             d2_d3_product = list(itertools.product(d2_values, d3_values))
