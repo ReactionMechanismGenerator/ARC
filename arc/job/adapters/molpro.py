@@ -249,7 +249,7 @@ class MolproAdapter(JobAdapter):
         if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh'].keys():
             keywords.append('ORBITAL,IGNORE_ERROR')
 
-        if 'mrci' in self.level.method:
+        if 'mrci' in self.level.method or 'rs2' in self.level.method:
             input_dict['orbitals'] = '\ngprint,orbitals;\n'
             input_dict['restricted'] = ''
             if '_' in self.level.method:
@@ -268,8 +268,8 @@ class MolproAdapter(JobAdapter):
 {{mrci{"-f12" if "f12" in self.level.method.lower() else ""};
  maxit,999;
  wf,spin={input_dict['spin']},charge={input_dict['charge']};}}"""
-
-            input_dict['block'] += '\n\nE_mrci=energy;\nE_mrci_Davidson=energd;\n\ntable,E_mrci,E_mrci_Davidson;'
+            if 'mrci' in self.level.method:
+                input_dict['block'] += '\n\nE_mrci=energy;\nE_mrci_Davidson=energd;\n\ntable,E_mrci,E_mrci_Davidson;'
 
         input_dict = update_input_dict_with_args(args=self.args, input_dict=input_dict)
 
