@@ -1308,14 +1308,14 @@ class Scheduler(object):
             self.job_dict[label]['sp'] = dict()
         if self.composite_method:
             raise SchedulerError(f'run_sp_job() was called for {label} which has a composite method level of theory')
-        if 'mrci' in level.method:
+        if 'mrci' in level.method or 'rs2' in level.method:
             if self.job_dict[label]['sp']:
                 if self.species_dict[label].active is None:
                     self.species_dict[label].active = parser.parse_active_space(
                         sp_path=self.output[label]['paths']['sp'],
                         species=self.species_dict[label])
             else:
-                logger.info(f'Running a CCSD/cc-pVDZ job for {label} before the MRCI job')
+                logger.info(f'Running a CCSD/cc-pVDZ job for {label} before the multireference job')
                 self.run_job(label=label,
                              xyz=self.species_dict[label].get_xyz(generate=False),
                              level_of_theory='ccsd/cc-pvdz',
@@ -2648,7 +2648,8 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The single point job object.
         """
-        if 'mrci' in self.sp_level.method and job.level is not None and 'mrci' not in job.level.method:
+        if ('mrci' in self.sp_level.method or 'rs2' in self.sp_level.method) and job.level is not None \
+                and 'mrci' not in job.level.method and 'rs2' not in job.level.method:
             self.output[label]['paths']['sp'] = job.local_path_to_output_file
             self.run_sp_job(label)
         elif job.job_status[1]['status'] == 'done':
