@@ -211,7 +211,6 @@ class MolproAdapter(JobAdapter):
                     'keywords',
                     'memory',
                     'method',
-                    'orbitals',
                     'restricted',
                     ]:
             input_dict[key] = ''
@@ -226,6 +225,7 @@ class MolproAdapter(JobAdapter):
         input_dict['shift'] = self.args['trsh']['shift'] if 'shift' in self.args['trsh'].keys() else ''
         input_dict['spin'] = self.multiplicity - 1
         input_dict['xyz'] = xyz_to_str(self.xyz)
+        input_dict['orbitals'] = '\ngprint,orbitals;\n'
 
         if not is_restricted(self):
             input_dict['restricted'] = 'u'
@@ -250,7 +250,6 @@ class MolproAdapter(JobAdapter):
             keywords.append('ORBITAL,IGNORE_ERROR')
 
         if 'mrci' in self.level.method or 'rs2' in self.level.method:
-            input_dict['orbitals'] = '\ngprint,orbitals;\n'
             input_dict['restricted'] = ''
             if '_' in self.level.method:
                 methods = self.level.method.split('_')
