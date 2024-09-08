@@ -1036,18 +1036,47 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             and not is_angle_linear(a2) else list()
 
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
-        d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 else list()
+        d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 and d is not None else list()
 
+        d4_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 3  and e is not None else list()
+        
+        d5_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 3 and j is not None else list()
+        
         
 
-        if len(d2_values) and len(d3_values):
-            d2_d3_product = list(itertools.product(d2_values, d3_values))
+        # Combine d2, d3, d4, and d5 values if they exist
+        if len(d2_values) and len(d3_values) and len(d4_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, d3_values, d4_values, d5_values))
+        elif len(d2_values) and len(d3_values) and len(d4_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, d3_values, d4_values, [None]))
+        elif len(d2_values) and len(d3_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, d3_values, [None], d5_values))
+        elif len(d2_values) and len(d4_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, [None], d4_values, d5_values))
+        elif len(d3_values) and len(d4_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product([None], d3_values, d4_values, d5_values))
+        elif len(d2_values) and len(d3_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, d3_values, [None], [None]))
+        elif len(d2_values) and len(d4_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, [None], d4_values, [None]))
+        elif len(d2_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product(d2_values, [None], [None], d5_values))
+        elif len(d3_values) and len(d4_values):
+            d2_d3_d4_d5_product = list(itertools.product([None], d3_values, d4_values, [None]))
+        elif len(d3_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product([None], d3_values, [None], d5_values))
+        elif len(d4_values) and len(d5_values):
+            d2_d3_d4_d5_product = list(itertools.product([None], [None], d4_values, d5_values))
         elif len(d2_values):
-            d2_d3_product = [(d2, None) for d2 in d2_values]
+            d2_d3_d4_d5_product = [(d2, None, None, None) for d2 in d2_values]
         elif len(d3_values):
-            d2_d3_product = [(None, d3) for d3 in d3_values]
+            d2_d3_d4_d5_product = [(None, d3, None, None) for d3 in d3_values]
+        elif len(d4_values):
+            d2_d3_d4_d5_product = [(None, None, d4, None) for d4 in d4_values]
+        elif len(d5_values):
+            d2_d3_d4_d5_product = [(None, None, None, d5) for d5 in d5_values]
         else:
-            d2_d3_product = [(None, None)]
+            d2_d3_d4_d5_product = []
 
         zmats = list()
         for d2, d3 in d2_d3_product:
