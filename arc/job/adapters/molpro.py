@@ -45,11 +45,13 @@ ${keywords}
 ${auxiliary_basis}
 ${cabs}
 int;
+
 {hf;${shift}
  maxit,999;
- wf,spin=${spin},charge=${charge};}
+ wf,spin=${spin},charge=${charge};
+}
 
-${restricted}${method};
+${restricted}${method}
 
 ${job_type_1}
 ${job_type_2}${block}
@@ -221,7 +223,7 @@ class MolproAdapter(JobAdapter):
         input_dict['charge'] = self.charge
         input_dict['label'] = self.species_label
         input_dict['memory'] = self.input_file_memory
-        input_dict['method'] = self.level.method
+        input_dict['method'] = f'{self.level.method};'
         input_dict['shift'] = self.args['trsh']['shift'] if 'shift' in self.args['trsh'].keys() else ''
         input_dict['spin'] = self.multiplicity - 1
         input_dict['xyz'] = xyz_to_str(self.xyz)
@@ -247,26 +249,42 @@ class MolproAdapter(JobAdapter):
             pass
 
         if 'IGNORE_ERROR in the ORBITAL directive' in self.args['trsh'].keys():
-            keywords.append('ORBITAL,IGNORE_ERROR')
+            keywords.append(' ORBITAL,IGNORE_ERROR;')
 
         if 'mrci' in self.level.method or 'rs2' in self.level.method:
+            active = self.species[0].active
             input_dict['restricted'] = ''
             if '_' in self.level.method:
                 methods = self.level.method.split('_')
                 input_dict['method'] = ''
                 for method in methods:
-                    input_dict['method'] += '\n\n{' + method.lower() + ';\n'
+                    input_dict['method'] += '\n{' + method.lower() + ';\n'
                     if 'mp2' not in method.lower():
                         input_dict['method'] += ' maxit,999;\n'
-                    input_dict['method'] += f' wf,spin={input_dict["spin"]},charge={input_dict["charge"]};' + '}'
+                    input_dict['method'] += f' wf,spin={input_dict["spin"]},charge={input_dict["charge"]};\n'
+                    if 'casscf' in method.lower() and active is not None:
+                        if 'occ' in active:
+                            input_dict['method'] += f' occ,{",".join([str(i) for i in active["occ"]])};\n'
+                        if 'closed' in active:
+                            input_dict['method'] += f' closed,{",".join([str(i) for i in active["closed"]])};\n'
+                        input_dict['method'] += ' state,1;\n'  # ground state
+                    input_dict['method'] += '}\n'
             else:
                 input_dict['method'] = f"""{{casscf;
  maxit,999;
- wf,spin={input_dict['spin']},charge={input_dict['charge']};}}
- 
-{{mrci{"-f12" if "f12" in self.level.method.lower() else ""};
+ wf,spin={input_dict['spin']},charge={input_dict['charge']};
+"""
+                if active is not None:
+                    if 'occ' in active:
+                        input_dict['method'] += f' occ,{",".join([str(i) for i in active["occ"]])};\n'
+                    if 'closed' in active:
+                        input_dict['method'] += f' closed,{",".join([str(i) for i in active["closed"]])};\n'
+                    input_dict['method'] += ' state,1;\n'  # ground state
+                input_dict['method'] += '}\n\n'
+                input_dict['method'] += f"""{{mrci{"-f12" if "f12" in self.level.method.lower() else ""};
  maxit,999;
- wf,spin={input_dict['spin']},charge={input_dict['charge']};}}"""
+ wf,spin={input_dict['spin']},charge={input_dict['charge']};
+}}"""
             if 'mrci' in self.level.method:
                 input_dict['block'] += '\n\nE_mrci=energy;\nE_mrci_Davidson=energd;\n\ntable,E_mrci,E_mrci_Davidson;'
 
