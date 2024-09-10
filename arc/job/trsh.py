@@ -93,19 +93,33 @@ def determine_ess_status(output_path: str,
                     if 'l9999.exe' in line or 'link 9999' in line:
                         cycle_issue = False
                         neg_eigenvalues = False
+                        num_steps_in_run = None
+                        max_steps_allowed = None
                         for j in range(i,len(reverse_lines)):
                             if 'Number of steps exceeded' in reverse_lines[j]:
                                 keywords = ['MaxOptCycles', 'GL9999']
                                 error = 'Maximum optimization cycles reached.'
                                 cycle_issue = True
                                 line = 'Number of steps exceeded'
-                                break
                             elif "Wrong number of Negative eigenvalues" in reverse_lines[j]:
                                 keywords = ['NegEigenvalues', 'GL9999']
                                 error = 'Wrong number of Negative eigenvalues'
                                 neg_eigenvalues = True
                                 line = 'Wrong number of Negative eigenvalues'
                                 break
+                            # Check if Number of steps allowed is equal to Maximum number of steps
+                            if 'MaxOptCycles' in keywords and 'Number of steps allowed' in reverse_lines[j] and 'maximum allowed number of steps=' in reverse_lines[j]:
+                                num_steps_in_run = int(line.split('=')[1].split()[0])
+                                print(num_steps_in_run)
+                                max_steps_allowed = int(line.split('=')[2].split()[0])
+                                print(max_steps_allowed)
+                                if num_steps_in_run == max_steps_allowed:
+                                    keywords.append('MaxStepAlg')
+                                    error = error + 'And Number of Steps is equal to Maximum number of steps'
+                                    line = 'Number of Steps is equal to Maximum number of steps'
+                                    break
+                                else:
+                                    break
                         if not cycle_issue and not neg_eigenvalues:
                             keywords = ['Unconverged', 'GL9999']  # GL stand for Gaussian Link
                             error = 'Unconverged'
@@ -1889,7 +1903,7 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
     Check if the job requires change of opt(maxcycle=200)
     """
     opt_pattern = r"opt=\((.*?)\)"
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
+    if 'MaxOptCycles' in job_status['keywords'] and 'MaxStepAlg' not in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(maxcycle=200)')
         trsh_keyword.append('opt=(maxcycle=200)')
         couldnt_trsh = False
@@ -1904,6 +1918,11 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
     elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(GEDIIS)')
         trsh_keyword.append('opt=(GEDIIS)')
+        couldnt_trsh = False
+    
+    if 'MaxStepAlg' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(maxcycle=200)')
+        trsh_keyword.append('opt=(maxcycle=200)')
         couldnt_trsh = False
     
     if any('opt' in keyword for keyword in ess_trsh_methods):

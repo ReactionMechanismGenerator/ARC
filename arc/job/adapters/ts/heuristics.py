@@ -17,6 +17,7 @@ Todo:
 
 import datetime
 import itertools
+from operator import concat
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -340,11 +341,15 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
                                              h2: int,
                                              c: Optional[int] = None,
                                              d: Optional[int] = None,
+                                             e: Optional[int] = None,
+                                             j: Optional[int] = None,
                                              r1_stretch: float = 1.2,
                                              r2_stretch: float = 1.2,
                                              a2: float = 180,
                                              d2: Optional[float] = None,
                                              d3: Optional[float] = None,
+                                             d4: Optional[float] = None,
+                                             d5: Optional[float] = None,
                                              keep_dummy: bool = False,
                                              reactants_reversed: bool = False,
                                              ) -> dict:
@@ -447,6 +452,10 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
         raise ValueError(f'The value for c ({c}) is invalid (it represents atom A, not atom C)')
     if d == b:
         raise ValueError(f'The value for d ({d}) is invalid (it represents atom B, not atom D)')
+    if j == b:
+        raise ValueError(f'The value for j ({j}) is invalid (it represents atom B, not atom J)')
+    if e == a:
+        raise ValueError(f'The value for e ({e}) is invalid (it represents atom A, not atom E)')
 
     zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1, xyz_2, mol_1, mol_2, h1, h2, a, b, c, d)
 
@@ -495,6 +504,8 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
                                        b: int,
                                        c: Optional[int],
                                        d: Optional[int],
+                                       e: Optional[int] = None,
+                                       j: Optional[int] = None,
                                        ) -> Tuple[dict, dict]:
     """
     Generate the two constrained zmats required for combining coordinates with a redundant atom.
@@ -514,16 +525,34 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
     Returns:
         Tuple[dict, dict]: The two zmats.
     """
+    constraints_1 = {}
+    if c is not None:
+        constraints_1['A_group'] = [(h1, a, c)]
+        if e is not None:
+            # Add the dihedral constraint for E: H-A-C-E
+            constraints_1['D_group'] = [(h1, a, c, e)]
+    else:
+        constraints_1['R_atom'] = [(h1, a)]
+    
+    constraints_2 = {}
+    if d is not None:
+        constraints_2['A_group'] = [(d, b, h2)]
+        if j is not None:
+            # Add the dihedral constraint for J: J-B-H-A
+            constraints_2['D_group'] = [(j, d, b, h2)]
+    else:
+        constraints_2['R_group'] = [(b, h2)]
+    
     zmat1 = zmat_from_xyz(xyz=xyz_1,
                           mol=mol_1,
                           is_ts=True,
-                          constraints={'A_group': [(h1, a, c)]} if c is not None else {'R_atom': [(h1, a)]},
+                          constraints=constraints_1,
                           consolidate=False,
                           )
     zmat2 = zmat_from_xyz(xyz=xyz_2,
                           mol=mol_2,
                           is_ts=True,
-                          constraints={'A_group': [(d, b, h2)]} if d is not None else {'R_group': [(b, h2)]},
+                          constraints=constraints_2,
                           consolidate=False,
                           )
     return zmat1, zmat2
@@ -607,6 +636,8 @@ def get_modified_params_from_zmat_2(zmat_1: dict,
                                     a2: float,
                                     d2: Optional[float],
                                     d3: Optional[float],
+                                    d4: Optional[float] = None,
+                                    d5: Optional[float] = None,
                                     reactants_reversed: bool = False,
                                     ) -> Tuple[tuple, tuple, dict, dict]:
     """
@@ -1038,8 +1069,10 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
         d3_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 2 and d is not None else list()
 
+        # d4 describes the H-A-C-E dihedral, populate d4_values if E exists.
         d4_values = list(range(0, 360, dihedral_increment)) if len(rmg_reactant_mol.atoms) > 3  and e is not None else list()
         
+        # d5 describes the J-D-B-H dihedral, populate d5_values if J exists.
         d5_values = list(range(0, 360, dihedral_increment)) if len(rmg_product_mol.atoms) > 3 and j is not None else list()
         
         
@@ -1079,7 +1112,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             d2_d3_d4_d5_product = []
 
         zmats = list()
-        for d2, d3 in d2_d3_product:
+        for d2, d3, d4, d5 in d2_d3_d4_d5_product:
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -1092,11 +1125,15 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                     h2=h2,
                     c=c,
                     d=d,
+                    e=e,
+                    j=j,
                     r1_stretch=r1_stretch,
                     r2_stretch=r2_stretch,
                     a2=a2,
                     d2=d2,
                     d3=d3,
+                    d4=d4,
+                    d5=d5,
                     reactants_reversed=reactants_reversed,
                 )
             except ValueError as e:

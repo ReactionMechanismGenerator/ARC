@@ -508,7 +508,7 @@ class JobAdapter(ABC):
             "name": self.job_server_name,
             "un": servers[self.server]['un'],
             "queue": queue,
-            #"t_max": self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
+           "t_max": self.format_max_job_time(time_format=t_max_format[servers[self.server]['cluster_soft']]),
             "memory": int(self.submit_script_memory) if isinstance(self.submit_script_memory, (int, float)) else self.submit_script_memory,
             "cpus": self.cpu_cores,
             "architecture": architecture,
