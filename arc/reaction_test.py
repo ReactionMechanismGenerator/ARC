@@ -152,6 +152,9 @@ class TestARCReaction(unittest.TestCase):
                                                                 Species(label='NO', smiles='[N]=O')]))
         cls.rxn11 = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.ch3chch3_xyz)],
                                 p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.ch3ch2ch2_xyz)])
+        cls.rxn12 = ARCReaction(r_species=[ARCSpecies(label='CH3CH2NH2', smiles='CCN')],
+                                p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                           ARCSpecies(label='NH3', smiles='N')])
 
     def test_str(self):
         """Test the string representation of the object"""
@@ -371,6 +374,22 @@ class TestARCReaction(unittest.TestCase):
         self.assertFalse(self.rxn7.is_isomerization())
         self.assertFalse(self.rxn8.is_isomerization())
         self.assertFalse(self.rxn9.is_isomerization())
+        self.assertTrue(self.rxn11.is_isomerization())
+        self.assertFalse(self.rxn12.is_isomerization())
+
+    def test_is_unimolecular(self):
+        """Test the is_unimolecular() method"""
+        self.assertFalse(self.rxn1.is_unimolecular())
+        self.assertFalse(self.rxn2.is_unimolecular())
+        self.assertTrue(self.rxn3.is_unimolecular())
+        self.assertFalse(self.rxn4.is_unimolecular())
+        self.assertFalse(self.rxn5.is_unimolecular())
+        self.assertFalse(self.rxn6.is_unimolecular())
+        self.assertFalse(self.rxn7.is_unimolecular())
+        self.assertFalse(self.rxn8.is_unimolecular())
+        self.assertTrue(self.rxn9.is_unimolecular())
+        self.assertTrue(self.rxn11.is_unimolecular())
+        self.assertTrue(self.rxn12.is_unimolecular())
 
     def test_from_rmg_reaction(self):
         """Test setting up an ARCReaction from an RMG Reaction"""

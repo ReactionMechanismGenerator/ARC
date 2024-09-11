@@ -2147,3 +2147,22 @@ def ics_to_scan_constraints(ics: list,
         raise NotImplementedError(f'Given software {software} is not implemented '
                                   f'for ics_to_scan_constraints().')
     return scan_trsh
+
+
+def order_xyz_by_atom_map(xyz: dict,
+                          atom_map: list,
+                          ) -> dict:
+    """
+    Order xyz coordinates according to the atom map.
+
+    Args:
+        xyz (dict): The xyz coordinates.
+        atom_map (list): The atom map.
+
+    Returns:
+        dict: The ordered xyz coordinates.
+    """
+    symbols = [xyz['symbols'][i] for i in atom_map]
+    isotopes = [xyz['isotopes'][i] for i in atom_map] if 'isotopes' in xyz else None
+    coords = [xyz['coords'][i] for i in atom_map]
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
