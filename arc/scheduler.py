@@ -131,6 +131,7 @@ class Scheduler(object):
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
         conformer_opt_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
+        conformer_sp_level (Union[str, dict], optional): The level of theory to use for conformer sp jobs.
         opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
         freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
         sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
@@ -203,6 +204,7 @@ class Scheduler(object):
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
         conformer_opt_level (dict): The level of theory to use for conformer comparisons.
+        conformer_sp_level (dict): The level of theory to use for conformer sp jobs.
         opt_level (dict): The level of theory to use for geometry optimizations.
         freq_level (dict): The level of theory to use for frequency calculations.
         sp_level (dict): The level of theory to use for single point energy calculations.
@@ -231,6 +233,7 @@ class Scheduler(object):
                  project_directory: str,
                  composite_method: Optional[Level] = None,
                  conformer_opt_level: Optional[Level] = None,
+                 conformer_sp_level: Optional[Level] = None,
                  opt_level: Optional[Level] = None,
                  freq_level: Optional[Level] = None,
                  sp_level: Optional[Level] = None,
@@ -311,6 +314,7 @@ class Scheduler(object):
         self.servers = list()
         self.composite_method = composite_method
         self.conformer_opt_level = conformer_opt_level
+        self.conformer_sp_level = conformer_sp_level
         self.ts_guess_level = ts_guess_level
         self.opt_level = opt_level
         self.freq_level = freq_level
