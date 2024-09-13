@@ -80,6 +80,7 @@ class ARC(object):
                                          instead (e.g., ``opt_level``).
         composite_method (str, dict, Level, optional): Composite method.
         conformer_level (str, dict, Level, optional): Level of theory for conformer searches.
+        conformer_opt_level (str, dict, Level, optional): Level of theory for conformer searches, interchangable with `conformer_level`.
         opt_level (str, dict, Level, optional): Level of theory for geometry optimization.
         freq_level (str, dict, Level, optional): Level of theory for frequency calculations.
         sp_level (str, dict, Level, optional): Level of theory for single point calculations.
@@ -167,7 +168,7 @@ class ARC(object):
         reactions (list): A list of :ref:`ARCReaction <reaction>` objects.
         level_of_theory (str): A shortcut representing either sp//geometry levels or a composite method.
         composite_method (Level): Composite method.
-        conformer_level (Level): Level of theory for conformer searches.
+        conformer_opt_level (Level): Level of theory for conformer searches.
         opt_level (Level): Level of theory for geometry optimization.
         freq_level (Level): Level of theory for frequency calculations.
         sp_level (Level): Level of theory for single point calculations.
@@ -245,6 +246,7 @@ class ARC(object):
                  compute_thermo: bool = True,
                  compute_transport: bool = False,
                  conformer_level: Optional[Union[str, dict, Level]] = None,
+                 conformer_opt_level: Optional[Union[str, dict, Level]] = None,
                  dont_gen_confs: List[str] = None,
                  e_confs: float = 5.0,
                  ess_settings: Dict[str, Union[str, List[str]]] = None,
@@ -346,7 +348,7 @@ class ARC(object):
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
         self.composite_method = composite_method or None
-        self.conformer_level = conformer_level or None
+        self.conformer_opt_level = conformer_level or conformer_opt_level or None
         self.opt_level = opt_level or None
         self.freq_level = freq_level or None
         self.sp_level = sp_level or None
@@ -489,8 +491,8 @@ class ARC(object):
             restart_dict['compute_thermo'] = self.compute_thermo
         if self.compute_transport:
             restart_dict['compute_transport'] = self.compute_transport
-        if self.conformer_level is not None and str(self.conformer_level).split()[0] != default_levels_of_theory['conformer']:
-            restart_dict['conformer_level'] = self.conformer_level.as_dict()
+        if self.conformer_opt_level is not None:
+            restart_dict['conformer_opt_level'] = self.conformer_opt_level.as_dict()
         if self.dont_gen_confs:
             restart_dict['dont_gen_confs'] = self.dont_gen_confs
         if self.ts_adapters is not None:
@@ -608,7 +610,7 @@ class ARC(object):
                                    species_list=self.species,
                                    rxn_list=self.reactions,
                                    composite_method=self.composite_method,
-                                   conformer_level=self.conformer_level,
+                                   conformer_opt_level=self.conformer_opt_level,
                                    opt_level=self.opt_level,
                                    freq_level=self.freq_level,
                                    sp_level=self.sp_level,
@@ -689,7 +691,7 @@ class ARC(object):
         txt = ''
         txt += f'ARC v{self.__version__}\n'
         txt += f'ARC project {self.project}\n\nLevels of theory used:\n\n'
-        txt += f'Conformers:       {self.conformer_level}\n'
+        txt += f'Conformers:       {self.conformer_opt_level}\n'
         txt += f'TS guesses:       {self.ts_guess_level}\n'
         if self.composite_method is not None:
             txt += f'Composite method: {self.composite_method} {fine_txt}\n'
@@ -975,13 +977,13 @@ class ARC(object):
 
         logger.info('\n\nUsing the following levels of theory:\n')
 
-        if self.conformer_level is None:
-            self.conformer_level = default_levels_of_theory['conformer']
+        if self.conformer_opt_level is None:
+            self.conformer_opt_level = default_levels_of_theory['conformer']
             default_flag = ' (default)'
         else:
             default_flag = ''
-        self.conformer_level = Level(repr=self.conformer_level)
-        logger.info(f'Conformers:{default_flag} {self.conformer_level}')
+        self.conformer_opt_level = Level(repr=self.conformer_opt_level)
+        logger.info(f'Conformers opt:{default_flag} {self.conformer_opt_level}')
 
         if self.reactions or any([spc.is_ts for spc in self.species]):
             if not self.ts_guess_level:

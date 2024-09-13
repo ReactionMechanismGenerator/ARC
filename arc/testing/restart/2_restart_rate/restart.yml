@@ -3,7 +3,7 @@ calc_freq_factor: false
 compare_to_rmg: false
 composite_method: ''
 bac_type: null
-conformer_level:
+conformer_opt_level:
   auxiliary_basis: ''
   basis: def2svp
   dispersion: ''

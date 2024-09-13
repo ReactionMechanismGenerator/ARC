@@ -130,7 +130,7 @@ class Scheduler(object):
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
         composite_method (str, optional): A composite method to use.
-        conformer_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
+        conformer_opt_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
         opt_level (Union[str, dict], optional): The level of theory to use for geometry optimizations.
         freq_level (Union[str, dict], optional): The level of theory to use for frequency calculations.
         sp_level (Union[str, dict], optional): The level of theory to use for single point energy calculations.
@@ -202,7 +202,7 @@ class Scheduler(object):
         bath_gas (str): A bath gas. Currently used in OneDMin to calc L-J parameters.
                         Allowed values are He, Ne, Ar, Kr, H2, N2, O2.
         composite_method (str): A composite method to use.
-        conformer_level (dict): The level of theory to use for conformer comparisons.
+        conformer_opt_level (dict): The level of theory to use for conformer comparisons.
         opt_level (dict): The level of theory to use for geometry optimizations.
         freq_level (dict): The level of theory to use for frequency calculations.
         sp_level (dict): The level of theory to use for single point energy calculations.
@@ -230,7 +230,7 @@ class Scheduler(object):
                  species_list: list,
                  project_directory: str,
                  composite_method: Optional[Level] = None,
-                 conformer_level: Optional[Level] = None,
+                 conformer_opt_level: Optional[Level] = None,
                  opt_level: Optional[Level] = None,
                  freq_level: Optional[Level] = None,
                  sp_level: Optional[Level] = None,
@@ -310,7 +310,7 @@ class Scheduler(object):
         self.report_time = time.time()  # init time for reporting status every 1 hr
         self.servers = list()
         self.composite_method = composite_method
-        self.conformer_level = conformer_level
+        self.conformer_opt_level = conformer_opt_level
         self.ts_guess_level = ts_guess_level
         self.opt_level = opt_level
         self.freq_level = freq_level
@@ -1840,8 +1840,8 @@ class Scheduler(object):
 
     def process_conformers(self, label):
         """
-        Process the generated conformers and spawn DFT jobs at the conformer_level.
-        If more than one conformer is available, they will be optimized at the DFT conformer_level.
+        Process the generated conformers and spawn DFT jobs at the conformer_opt_level.
+        If more than one conformer is available, they will be optimized at the DFT conformer_opt_level.
 
         Args:
             label (str): The species label.
@@ -1849,7 +1849,7 @@ class Scheduler(object):
         plotter.save_conformers_file(project_directory=self.project_directory,
                                      label=label,
                                      xyzs=self.species_dict[label].conformers,
-                                     level_of_theory=self.conformer_level,
+                                     level_of_theory=self.conformer_opt_level,
                                      multiplicity=self.species_dict[label].multiplicity,
                                      charge=self.species_dict[label].charge,
                                      is_ts=False,
@@ -1864,7 +1864,7 @@ class Scheduler(object):
                 for i, xyz in enumerate(self.species_dict[label].conformers):
                     self.run_job(label=label,
                                  xyz=xyz,
-                                 level_of_theory=self.conformer_level,
+                                 level_of_theory=self.conformer_opt_level,
                                  job_type='conformers',
                                  conformer=i,
                                  )
@@ -2027,7 +2027,7 @@ class Scheduler(object):
             plotter.save_conformers_file(project_directory=self.project_directory,
                                          label=label,
                                          xyzs=self.species_dict[label].conformers,
-                                         level_of_theory=self.conformer_level,
+                                         level_of_theory=self.conformer_opt_level,
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
@@ -2088,7 +2088,7 @@ class Scheduler(object):
                                 conformer_xyz = xyz
                             if 'Conformers optimized and compared' not in self.output[label]['conformers']:
                                 self.output[label]['conformers'] += \
-                                    f'Conformers optimized and compared at {self.conformer_level.simple()}; '
+                                    f'Conformers optimized and compared at {self.conformer_opt_level.simple()}; '
                             break
                         else:
                             if i == 0:
@@ -2127,11 +2127,11 @@ class Scheduler(object):
                     else:
                         # troubleshoot when all conformers of a species failed isomorphic test
                         logger.warning(f'Isomorphism check for all conformers of species {label} failed at '
-                                       f'{self.conformer_level.simple()}. '
+                                       f'{self.conformer_opt_level.simple()}. '
                                        f'Attempting to troubleshoot using a different level.')
                         self.output[label]['conformers'] += \
                             f'Error: No conformer was found to be isomorphic with the 2D graph representation at ' \
-                            f'{self.conformer_level.simple()}; '
+                            f'{self.conformer_opt_level.simple()}; '
                         self.troubleshoot_conformer_isomorphism(label=label)
             else:
                 logger.warning(f'Could not run isomorphism check for species {label} due to missing 2D graph '
@@ -3171,7 +3171,7 @@ class Scheduler(object):
             for i, xyz in enumerate(self.species_dict[label].conformers):
                 self.run_job(label=label,
                              xyz=xyz,
-                             level_of_theory=self.conformer_level,
+                             level_of_theory=self.conformer_opt_level,
                              job_type='conformers',
                              conformer=i,
                              )

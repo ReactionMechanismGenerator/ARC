@@ -4,7 +4,7 @@ arkane_level_of_theory:
   method: ccsd(t)-f12
   method_type: wavefunction
   software: molpro
-conformer_level:
+conformer_opt_level:
   basis: def2tzvp
   compatible_ess:
   - gaussian
