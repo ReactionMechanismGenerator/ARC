@@ -1118,11 +1118,11 @@ class Scheduler(object):
                 else:
                     # Run the combinatorial method w/o fitting a force field.
                     n_confs = self.n_confs if self.species_dict[label].multi_species is None else 1
-                    self.species_dict[label].generate_conformers(
-                        n_confs=n_confs,
-                        e_confs=self.e_confs,
-                        plot_path=os.path.join(self.project_directory, 'output', 'Species',
-                                               label, 'geometry', 'conformers'))
+                    self.species_dict[label].generate_conformers(n_confs=n_confs,
+                                                                 e_confs=self.e_confs,
+                                                                 plot_path=os.path.join(self.project_directory, 'output', 'Species',
+                                                                                        label, 'geometry', 'conformers'),
+                                                                 )
                 self.process_conformers(label)
             # TSs:
             elif self.species_dict[label].is_ts \
