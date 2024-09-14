@@ -532,6 +532,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
+        conformer_jobs_done = False if self.job_types['conformers'] else True
         while self.running_jobs != {}:
             self.timer = True
             for label in self.unique_species_labels:
@@ -547,24 +548,37 @@ class Scheduler(object):
                     continue
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
-                    if 'conformer' in job_name:
-                        i = get_i_from_job_name(job_name)
-                        job = self.job_dict[label]['conformers'][i]
+                    if ('conformer' in job_name or 'sp' in job_name) and not conformer_jobs_done:
+                        i = get_i_from_job_name(job_name) if 'conformer' in job_name else None
+                        job = self.job_dict[label]['conformers'][i] if 'conformer' in job_name else self.job_dict[label]['sp'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
+                                if i is None:
+                                    xyz = parser.parse_xyz_from_file(path=job.local_path_to_input_file)
+                                    for index, conformer in enumerate(self.species_dict[label].conformers):
+                                        if conformer == xyz:
+                                            i = index
+                                            break
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
+                                if self.conformer_sp_level is not None and 'conformer' in job_name:
+                                    self.run_job(label=label,
+                                                 xyz=self.species_dict[label].conformers[i],
+                                                 level_of_theory=self.conformer_sp_level,
+                                                 job_type='sp',
+                                                 )
                                 if troubleshooting_conformer:
                                     break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
-                                if 'conformer' in spec_jobs and spec_jobs != job_name:
+                                if ('conformer' in spec_jobs or 'sp' in spec_jobs) and spec_jobs != job_name:
                                     break
                             else:
                                 # All conformer jobs terminated.
                                 # Check isomorphism and run opt on most stable conformer geometry.
+                                conformer_jobs_done = True
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
@@ -2031,12 +2045,13 @@ class Scheduler(object):
             plotter.save_conformers_file(project_directory=self.project_directory,
                                          label=label,
                                          xyzs=self.species_dict[label].conformers,
-                                         level_of_theory=self.conformer_opt_level,
+                                         level_of_theory=self.conformer_opt_level if self.conformer_sp_level is None else self.conformer_sp_level,
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
                                          energies=self.species_dict[label].conformer_energies,
                                          before_optimization=False,
+                                         conf_sp=False if self.conformer_sp_level is None else True,
                                          )  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
