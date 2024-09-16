@@ -551,8 +551,12 @@ class Scheduler(object):
                     if ('conformer' in job_name or 'sp' in job_name) and not conformer_jobs_done:
                         i = get_i_from_job_name(job_name) if 'conformer' in job_name else None
                         job = self.job_dict[label]['conformers'][i] if 'conformer' in job_name else self.job_dict[label]['sp'][job_name]
+                        logger.info('During confomer job type %s:\nself.job_dict: %s\nself.running_jobs: %s', job.job_type, self.job_dict, self.running_jobs)
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # this is a completed conformer job
+                            logger.info('job.local_path_to_output_file: {0}'.format(job.local_path_to_output_file))
+                            files = os.listdir(os.path.dirname(job.local_path_to_output_file))
+                            logger.info(files)
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 if i is None:
@@ -614,6 +618,7 @@ class Scheduler(object):
                     elif 'opt' in job_name:
                         # val is 'opt1', 'opt2', etc., or 'optfreq1', optfreq2', etc.
                         job = self.job_dict[label]['opt'][job_name]
+                        logger.info('During job type %s:\nself.job_dict: %s\nself.running_jobs: %s', job.job_type, self.job_dict, self.running_jobs)
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
@@ -645,7 +650,11 @@ class Scheduler(object):
                             break
                     elif 'sp' in job_name:
                         job = self.job_dict[label]['sp'][job_name]
+                        logger.info('During job_name %s:\nself.job_dict: %s\nself.running_jobs: %s', job_name, self.job_dict, self.running_jobs)
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            logger.info('job.local_path_to_output_file: {0}'.format(job.local_path_to_output_file))
+                            files = os.listdir(os.path.dirname(job.local_path_to_output_file))
+                            logger.info(files)
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 self.check_sp_job(label=label, job=job)
