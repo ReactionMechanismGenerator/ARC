@@ -37,6 +37,7 @@ from arc.common import (extremum_list,
                         rmg_mol_to_dict_repr,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
+                        almost_equal_lists,
                         )
 from arc.exceptions import InputError, SanitizationError
 from arc.level import Level
@@ -1111,6 +1112,90 @@ def plot_torsion_angles(torsion_angles,
             if 'conformer torsions' in file_:
                 i += 1
         image_path = os.path.join(plot_path, f'conformer torsions {i}.png')
+        try:
+            plt.savefig(image_path, bbox_inches='tight')
+        except FileNotFoundError:
+            pass
+    if is_notebook():
+        plt.show()
+    plt.close(fig)
+    return num_comb
+
+
+def plot_ring_torsion_angles(conformers, plot_path=None):
+    """
+    Plot the torsion angles of the generated conformers.
+
+    Args:
+        torsion_angles (dict): Keys are torsions, values are lists of corresponding angles.
+        torsions_sampling_points (dict, optional): Keys are torsions, values are sampling points.
+        wells_dict (dict, optional): Keys are torsions, values are lists of wells.
+                                     Each entry in such a list is a well dictionary with the following keys:
+                                     ``start_idx``, ``end_idx``, ``start_angle``, ``end_angle``, and ``angles``.
+        e_conformers (list, optional): Entries are conformers corresponding to the sampling points with FF energies.
+        de_threshold (float, optional): Energy threshold, plotted as a dashed horizontal line.
+        plot_path (str, optional): The path for saving the plot.
+    """
+    num_comb = None
+    if 'puckering' not in conformers[0]:
+        return
+    ring_num = len(conformers[0]['puckering'])
+    # fig, axs = plt.subplots(nrows=ring_num, ncols=1, sharex=True, sharey=True, gridspec_kw={'hspace': 0})
+    # fig.dpi = 120
+    num_comb = 1
+    for i in range(ring_num):
+        unique_angle_sets = {}
+        for conformer in conformers:
+            angles = conformer['puckering']
+            for ring, angle_set in angles.items():
+                # Round angles to the nearest integer
+                rounded_angle_set = tuple(round(angle) for angle in angle_set)
+                found = False
+                for existing_angle_set in unique_angle_sets.keys():
+                    if almost_equal_lists(existing_angle_set, rounded_angle_set):
+                        unique_angle_sets[existing_angle_set] += 1
+                        found = True
+                        break
+                if not found:
+                    unique_angle_sets[rounded_angle_set] = 1
+    angles = [list(angles) for angles in unique_angle_sets.keys()]
+    counts = list(unique_angle_sets.values())
+    
+    # Combine angles and counts into a single list of tuples for sorting
+    angles_counts = list(zip(angles, counts))
+    
+    # Sort by counts in descending order
+    angles_counts_sorted = sorted(angles_counts, key=lambda x: x[1], reverse=True)
+    
+    # Unzip the sorted tuples back into separate lists
+    angles_sorted, counts_sorted = zip(*angles_counts_sorted)
+    
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = np.arange(len(angles_sorted))  # the label locations
+    
+    ax.bar(x, counts_sorted, color='blue')
+    ax.set_xlabel('Base Angles Set (Rounded to Nearest Integer)')
+    ax.set_ylabel('Frequency')
+    ax.set_title('Frequency of Different Angle Sets Across Conformers')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'{angle}' for angle in angles_sorted], rotation=45, ha='right')
+    
+    # plt.tight_layout()
+    # plt.show()
+    # plt.setp(axs, xticks=ticks)  # set the x ticks of all subplots
+    # fig.set_size_inches(8, len(torsions) * 1.5)
+    if plot_path is not None:
+        if not os.path.isdir(plot_path):
+            os.makedirs(plot_path)
+        file_names = list()
+        for (_, _, files) in os.walk(plot_path):
+            file_names.extend(files)
+            break  # don't continue to explore subdirectories
+        i = 0
+        for file_ in file_names:
+            if 'conformer torsions' in file_:
+                i += 1
+        image_path = os.path.join(plot_path, f'conformer ring torsions {i}.png')
         try:
             plt.savefig(image_path, bbox_inches='tight')
         except FileNotFoundError:

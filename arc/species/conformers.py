@@ -361,6 +361,7 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
     if plot_path is not None:
         arc.plotter.plot_torsion_angles(torsion_angles, torsions_sampling_points, wells_dict=wells_dict,
                                         plot_path=plot_path)
+        arc.plotter.plot_ring_torsion_angles(conformers=conformers, plot_path=plot_path)
 
     hypothetical_num_comb = 1
     for points in torsions_sampling_points.values():
