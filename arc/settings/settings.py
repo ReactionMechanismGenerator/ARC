@@ -377,13 +377,13 @@ for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_pat
         # check if using micromamba, mambaforge, anaconda3, miniconda3, or .conda
         if 'micromamba' in crest_path:
             #         CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
-            CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && micromamba activate crest_env"
         elif 'mambaforge' in crest_path:
-            CREST_ENV_PATH = "source ~/mambaforge/etc/profile.d/mamba.sh && mamba activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && mamba activate crest_env"
         elif 'anaconda3' in crest_path:
-            CREST_ENV_PATH = "source ~/anaconda3/etc/profile.d/conda.sh && conda activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
         elif 'miniconda3' in crest_path:
-            CREST_ENV_PATH = "source ~/miniconda3/etc/profile.d/conda.sh && conda activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
         elif '.conda' in crest_path:
-            CREST_ENV_PATH = "source ~/.conda/etc/profile.d/conda.sh && conda activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
         break

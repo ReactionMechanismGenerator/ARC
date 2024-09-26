@@ -991,7 +991,8 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         rmg_product_mol = rmg_reaction.products[int(not products_reversed)].molecule[0]
         h1 = rmg_reactant_mol.atoms.index([atom for atom in rmg_reactant_mol.atoms if atom.label == '*2'][0])
         h2 = rmg_product_mol.atoms.index([atom for atom in rmg_product_mol.atoms if atom.label == '*2'][0])
-
+        a = rmg_reactant_mol.atoms.index(list(rmg_reactant_mol.atoms[h1].edges.keys())[0])
+        b = rmg_product_mol.atoms.index(list(rmg_product_mol.atoms[h2].edges.keys())[0])
         c = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=h1)
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
 
@@ -1052,18 +1053,11 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         # TODO: What happens if the result is decimal? For example, 1 + 4 = 2.5, round up
     
         # Get the first ATOM A - H - B for constraints
-        # The A atom will be the heavy atom closest to the H atom in the TS guess, so go reverse from H to find it and then see its index
-        a_atom = None
-        for i in range(h_atom - 1, -1, -1):
-            if not xyz_guesses[0]['symbols'][i] == 'H':
-                a_atom = int(i)
-                break
-        # Find B atom, the heavy atom closest to the H atom in the TS guess forward
-        b_atom = None
-        for i in range(h_atom + 1, len(xyz_guesses[0]['symbols'])):
-            if not xyz_guesses[0]['symbols'][i] == 'H':
-                b_atom = int(i)
-                break
+        # We know that the two atoms are being joined, so firstly for b atom, it will be the molecule first in the combined list
+        # So we take b
+        b_atom = b
+        # For A atom, we know its of mol 2 which is added onto mol 1, so we should get the total of mol 1 and then add onto a
+        a_atom = a + len(arc_reactant.get_xyz()['symbols'])
         xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a_atom, h_atom, b_atom, path=path)
         if xyz_guess is not None:
             logger.info('Successfully completed crest conformer search:'
@@ -1085,6 +1079,8 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     
     """
     path = os.path.join(path, 'crest')
+    if not os.path.exists(path):
+        os.makedirs(path)
 
     # Write coords to coords.ref file
     symbols = xyz_guess['symbols']
