@@ -32,7 +32,7 @@ fi
 
 # create the environment
 echo "Creating the Crest environment..."
-$COMMAND_PKG create -n crest_env -c conda-forge python=3.10 crest -y
+$COMMAND_PKG create -n crest_env -c conda-forge python=3.10 crest=2.12 -y
 # Activate the environment
 if [ "$COMMAND_PKG" == "micromamba" ]; then
     micromamba activate crest_env
