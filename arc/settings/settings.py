@@ -362,3 +362,28 @@ for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_p
     if os.path.isfile(arc_pypath):
         ARC_PYTHON = arc_pypath
         break
+
+crest_path1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                                'crest_env', 'bin', 'crest')
+crest_path2 = os.path.join(home, 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path3 = os.path.join(home, 'miniconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path4 = os.path.join(home, '.conda', 'envs', 'crest_env', 'bin', 'crest')
+crest_path5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path6 = os.path.join(home, 'mambaforge', 'envs', 'crest_env', 'bin', 'crest')
+crest_path7 = os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'crest')
+for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_path5, crest_path6, crest_path7]:
+    if os.path.isfile(crest_path):
+        CREST_PATH = crest_path
+        # check if using micromamba, mambaforge, anaconda3, miniconda3, or .conda
+        if 'micromamba' in crest_path:
+            #         CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
+            CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
+        elif 'mambaforge' in crest_path:
+            CREST_ENV_PATH = "source ~/mambaforge/etc/profile.d/mamba.sh && mamba activate crest_env"
+        elif 'anaconda3' in crest_path:
+            CREST_ENV_PATH = "source ~/anaconda3/etc/profile.d/conda.sh && conda activate crest_env"
+        elif 'miniconda3' in crest_path:
+            CREST_ENV_PATH = "source ~/miniconda3/etc/profile.d/conda.sh && conda activate crest_env"
+        elif '.conda' in crest_path:
+            CREST_ENV_PATH = "source ~/.conda/etc/profile.d/conda.sh && conda activate crest_env"
+        break
