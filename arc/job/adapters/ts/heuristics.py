@@ -17,6 +17,9 @@ Todo:
 
 import datetime
 import itertools
+import math
+import subprocess
+import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -28,11 +31,12 @@ from rmgpy.species import Species
 from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
-from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
+from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz, str_to_xyz, xyz_to_str
 from arc.mapping.engine import map_arc_rmg_species, map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
@@ -42,6 +46,13 @@ if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
 
+try:
+    CREST_PATH = settings['CREST_PATH']
+    CREST_ENV_PATH = settings['CREST_ENV_PATH']
+    HAS_CREST = True
+
+except KeyError:
+    HAS_CREST = False
 
 DIHEDRAL_INCREMENT = 30
 
@@ -285,6 +296,7 @@ class HeuristicsAdapter(JobAdapter):
                 xyzs = h_abstraction(arc_reaction=rxn,
                                      rmg_reactions=reaction_list,
                                      dihedral_increment=self.dihedral_increment,
+                                     path=self.local_path,
                                      )
                 tsg.tok()
 
@@ -925,6 +937,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                   r2_stretch: float = 1.2,
                   a2: float = 180,
                   dihedral_increment: Optional[int] = None,
+                  path: str = '',
                   ) -> List[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
@@ -1032,7 +1045,120 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                     zmats.append(zmat_guess)
                     xyz_guesses.append(xyz_guess)
 
+    if xyz_guesses:
+        # Take the first guess from the list of unique guesses.
+        xyz_guesses_crest = xyz_guesses[0]
+        h_atom = int(math.ceil((h2 + h1)/2))  # The atom index of the H atom in the TS guess
+        # TODO: What happens if the result is decimal? For example, 1 + 4 = 2.5, round up
+    
+        # Get the first ATOM A - H - B for constraints
+        # The A atom will be the heavy atom closest to the H atom in the TS guess, so go reverse from H to find it and then see its index
+        a_atom = None
+        for i in range(h_atom - 1, -1, -1):
+            if not xyz_guesses[0]['symbols'][i] == 'H':
+                a_atom = int(i)
+                break
+        # Find B atom, the heavy atom closest to the H atom in the TS guess forward
+        b_atom = None
+        for i in range(h_atom + 1, len(xyz_guesses[0]['symbols'])):
+            if not xyz_guesses[0]['symbols'][i] == 'H':
+                b_atom = int(i)
+                break
+        xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a_atom, h_atom, b_atom, path=path)
+        if xyz_guess is not None:
+            logger.info('Successfully completed crest conformer search:'
+                        f' {xyz_to_str(xyz_guess)}')
+            xyz_guesses.append(xyz_guess)
+
     return xyz_guesses
+
+
+def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom: int, path: str = ''
+                              ) -> None:
+    """
+    Perform a conformer search for the TS guess using CREST.
+    
+    
+    # TODO: Check if CREST is available
+    # TODO: Pass the first xyz guess from h_abstraction to CREST
+    # TODO: Pass the atom A - H - B for constraints
+    
+    """
+    path = os.path.join(path, 'crest')
+
+    # Write coords to coords.ref file
+    symbols = xyz_guess['symbols']
+    coords = xyz_guess['coords']
+    angstrom_to_bohr = 1.8897259886
+
+
+    with open(os.path.join(path, 'coords.ref'), 'w') as f:
+        # Format - XYZ in Bohr:
+        #
+        # $coord
+        # x y z atom1
+        # x y z atom2
+        # ...
+        # $end
+
+        f.write('$coord\n')
+        for i, (x, y, z) in enumerate(coords):
+            # Convert to Bohr from Angstrom
+            x_bohr = x * angstrom_to_bohr
+            y_bohr = y * angstrom_to_bohr
+            z_bohr = z * angstrom_to_bohr
+            f.write(f'    {x_bohr:>18.14f} {y_bohr:>18.14f} {z_bohr:>18.14f}   {symbols[i]}\n')
+        f.write('$end\n')
+    
+    # Get count of atoms - remember to add 1 to all atom numbers
+    num_atoms = len(symbols)
+    a_atom += 1
+    # h_atom += 1
+    # b_atom += 1
+
+    list_of_atoms_numbers_not_participating_in_reaction = [i for i in range(1, num_atoms + 1) if i not in [a_atom, h_atom, b_atom]]
+
+    with open(os.path.join(path, 'constraints.inp'), 'w') as f:
+        # Header
+        f.write('$constrain\n')
+        f.write(f'  atoms: {a_atom}, {h_atom}, {b_atom}\n')
+        f.write('  force constant: 0.5\n')
+        f.write('  reference=coords.ref\n')
+        
+        # Distance constraints
+        f.write(f'  distance: {a_atom}, {h_atom}, 1.5\n')
+        f.write(f'  distance: {h_atom}, {b_atom}, 1.5\n')
+        
+        # Metadynamics setup
+        f.write('$metadyn\n')
+        f.write(f'  atoms: {", ".join(map(str, list_of_atoms_numbers_not_participating_in_reaction))}\n')
+        f.write('$end\n')
+    # Run CREST
+    # Prepare the command
+    commands = [
+        f'{CREST_PATH}',
+        f'{path}/coords.ref',
+        f'--cinp {path}/constraints.inp',
+        '--noreftopo'
+    ]
+    command = ' '.join(commands)
+    command = f"{CREST_ENV_PATH} && {command}"
+    # Run the command using Popen
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=path, executable='/bin/bash')    
+    stdout, stderr = process.communicate()
+
+    if process.returncode == 0:
+        print("Command completed successfully.")
+        with open(os.path.join(path, 'crest_best.xyz'), 'r') as f:
+            content = f.read()
+        
+        xyz_guess = str_to_xyz(content)
+        return xyz_guess
+    else:
+        print(f"Command failed with return code {process.returncode}")
+        print(f"Standard Output: {stdout.decode()}")
+        print(f"Standard Error: {stderr.decode()}")
+        return None
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
