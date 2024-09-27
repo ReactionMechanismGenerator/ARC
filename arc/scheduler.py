@@ -532,7 +532,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
-        conformer_jobs_done = False if (self.conformer_sp_level is not None or self.conformer_opt_level is not None) else True
+        conformer_jobs_done = False if self.conformer_opt_level is not None else True
         while self.running_jobs != {}:
             self.timer = True
             for label in self.unique_species_labels:
