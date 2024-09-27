@@ -573,7 +573,7 @@ class Scheduler(object):
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
-                                if 'conformer' or 'sp' in spec_jobs and spec_jobs != job_name:
+                                if ('conformer' in spec_jobs or 'sp' in spec_jobs) and spec_jobs != job_name:
                                     break
                             else:
                                 # All conformer jobs terminated.
