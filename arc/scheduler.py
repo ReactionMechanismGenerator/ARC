@@ -2031,12 +2031,13 @@ class Scheduler(object):
             plotter.save_conformers_file(project_directory=self.project_directory,
                                          label=label,
                                          xyzs=self.species_dict[label].conformers,
-                                         level_of_theory=self.conformer_opt_level,
+                                         level_of_theory=self.conformer_opt_level if self.conformer_sp_level is None else self.conformer_sp_level,
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
                                          energies=self.species_dict[label].conformer_energies,
                                          before_optimization=False,
+                                         conf_sp=False if self.conformer_sp_level is None else True,
                                          )  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
