@@ -548,7 +548,7 @@ class Scheduler(object):
                     continue
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
-                    if 'conformer' in job_name:
+                    if ('conformer' in job_name or 'sp' in job_name) and not conformer_jobs_done:
                         i = get_i_from_job_name(job_name) if 'conformer' in job_name else None
                         job = self.job_dict[label]['conformers'][i] if 'conformer' in job_name else self.job_dict[label]['sp'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
