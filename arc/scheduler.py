@@ -549,8 +549,8 @@ class Scheduler(object):
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
                     if 'conformer' in job_name:
-                        i = get_i_from_job_name(job_name)
-                        job = self.job_dict[label]['conformers'][i]
+                        i = get_i_from_job_name(job_name) if 'conformer' in job_name else None
+                        job = self.job_dict[label]['conformers'][i] if 'conformer' in job_name else self.job_dict[label]['sp'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
