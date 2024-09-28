@@ -555,6 +555,12 @@ class Scheduler(object):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
+                                if i is None:
+                                    xyz = parser.parse_xyz_from_file(path=job.local_path_to_input_file)
+                                    for index, conformer in enumerate(self.species_dict[label].conformers):
+                                        if conformer == xyz:
+                                            i = index
+                                            break
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
                                 if self.conformer_sp_level is not None and 'conformer' in job_name:
                                     self.run_job(label=label,
