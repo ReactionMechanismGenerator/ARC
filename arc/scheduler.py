@@ -532,6 +532,7 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
+        conformer_jobs_done = False if self.conformer_opt_level is not None else True
         while self.running_jobs != {}:
             self.timer = True
             for label in self.unique_species_labels:
@@ -565,6 +566,7 @@ class Scheduler(object):
                             else:
                                 # All conformer jobs terminated.
                                 # Check isomorphism and run opt on most stable conformer geometry.
+                                conformer_jobs_done = True
                                 logger.info(f'\nConformer jobs for {label} successfully terminated.\n')
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
