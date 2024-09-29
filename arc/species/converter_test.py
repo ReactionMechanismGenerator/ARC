@@ -4066,6 +4066,43 @@ H       1.36475837   -2.12581592    0.12433596
 H       2.16336803    0.09985803    0.03295192"""
         self.assertEqual(converter.xyz_to_str(new_xyz4), expected_xyz4)
 
+    def test_set_rdkit_ring_dihedrals(self):
+        """Test setting the dihedral angles of an RDKit ring molecule"""
+        xyz_original = """C       1.17528959    0.88689342   -0.09425887
+C      -0.23165323    1.40815606   -0.37444021
+C      -1.28915380    0.60789983    0.38119602
+C      -1.17528947   -0.88689346    0.09425817
+C       0.23165279   -1.40815571    0.37444068
+C       1.28915350   -0.60789979   -0.38119592
+H       1.90063595    1.43610053   -0.70501194
+H       1.43190556    1.07695419    0.95523181
+H      -0.29672067    2.46483469   -0.09164586
+H      -0.43309289    1.35229514   -1.45133707
+H      -2.28822258    0.96189799    0.10312701
+H      -1.17664390    0.78164432    1.45848873
+H      -1.43190253   -1.07695588   -0.95523291
+H      -1.90063264   -1.43610606    0.70501042
+H       0.29671416   -2.46483479    0.09164748
+H       0.43309139   -1.35229454    1.45133785
+H       1.17664469   -0.78164459   -1.45848883
+H       2.28822409   -0.96189136   -0.10312655"""
+        xyz_original = converter.str_to_xyz(xyz_original)
+        
+        ring_head = 0
+        ring_tail = 5
+        torsions = [(0, 1, 2, 3), (1, 2, 3, 4), (2, 3, 4, 5)]
+        dihedrals = [29.167577928701704, 299.8936870462789, 29.167577208303104]
+            
+        s_mol, b_mol = converter.molecules_from_xyz(xyz_original)
+        mol = b_mol if b_mol is not None else s_mol
+        _, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_original)
+            
+        xyz_final = converter.set_rdkit_ring_dihedrals(rd_mol, ring_head, ring_tail, torsions, dihedrals)
+        
+        self.assertAlmostEqual(calculate_dihedral_angle(xyz_final,[0,1,2,3]), 29.167577928701704, 2)
+        self.assertAlmostEqual(calculate_dihedral_angle(xyz_final,[1,2,3,4]), 299.8936870462789,  2)
+        self.assertAlmostEqual(calculate_dihedral_angle(xyz_final,[2,3,4,5]), 29.167577208303104, 2)
+
     def test_get_center_of_mass(self):
         """Test calculating the center of mass for coordinates"""
         xyz = """O       1.28706525    0.52121353    0.04219198

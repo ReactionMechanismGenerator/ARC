@@ -1852,6 +1852,49 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
+def set_rdkit_ring_dihedrals(rd_mol, ring_head, ring_tail, torsions, dihedrals):
+    """
+    A helper function for setting dihedral angles in a ring using RDKit.
+
+    Args:
+        rd_mol: The respective RDKit molecule.
+        ring_head: The first atom index of the ring(0-indexed).
+        ring_tail: The last atom index of the ring(0-indexed).
+        torsions: A list of torsions, each corresponding to a dihedral.
+        dihedrals: A list of dihedral angles in degrees, each corresponding to a torsion.
+
+    Example of a 6-membered ring:
+        ring_head = 0
+        ring_tail = 5
+        torsions = [(0, 1, 2, 3), (1, 2, 3, 4), (2, 3, 4, 5)]
+        dihedrals = [30, 300, 30]
+    
+    Returns:
+        dict: The xyz with the new dihedral, ordered according to the map.
+    """
+
+    rd_mol_mod = Chem.RWMol(rd_mol)
+    rd_mol_mod.RemoveBond(ring_head, ring_tail)
+    Chem.SanitizeMol(rd_mol_mod)
+    conf_mod = rd_mol_mod.GetConformer()
+    for torsion, dihedral in zip(torsions, dihedrals):
+        torsion_0_indexed = [tor - 0 for tor in torsion]
+        set_rdkit_dihedrals(conf_mod, rd_mol_mod, torsion_0_indexed, deg_abs=dihedral)
+    
+    rd_mol_mod.AddBond(ring_head, ring_tail, Chem.BondType.SINGLE)
+    Chem.SanitizeMol(rd_mol_mod)
+    Chem.AllChem.MMFFOptimizeMolecule(rd_mol_mod)
+    conf_mod = rd_mol_mod.GetConformer()
+    
+    coords = list()
+    symbols = list()
+    for i, atom in enumerate(list(rd_mol_mod.GetAtoms())):
+        coords.append([conf_mod.GetAtomPosition(i).x, conf_mod.GetAtomPosition(i).y, conf_mod.GetAtomPosition(i).z])
+        symbols.append(atom.GetSymbol())
+    new_xyz = xyz_from_data(coords=coords, symbols=symbols)
+    return new_xyz
+
+
 def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bonds=False):
     """
     Convert ``mol1`` and ``mol2`` to RMG Species objects, and generate resonance structures.
