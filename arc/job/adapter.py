@@ -554,6 +554,8 @@ class JobAdapter(ABC):
             self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species_label, self.job_name)
         else:
             self.local_path = os.path.join(self.project_directory, 'calcs', folder_name, self.species[0].multi_species, self.job_name)
+        self.local_path_to_input_file = os.path.join(self.local_path, settings['input_filenames'][self.job_adapter]) \
+            if self.job_adapter in settings['input_filenames'] else 'input.gjf'
         self.local_path_to_output_file = os.path.join(self.local_path, settings['output_filenames'][self.job_adapter]) \
             if self.job_adapter in settings['output_filenames'] else 'output.out'
         self.local_path_to_orbitals_file = os.path.join(self.local_path, 'orbitals.fchk')

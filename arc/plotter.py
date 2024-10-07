@@ -901,6 +901,7 @@ def save_conformers_file(project_directory: str,
                          im_freqs: Optional[List[List[float]]] = None,
                          log_content: bool = False,
                          before_optimization: bool = True,
+                         conf_sp: Optional[bool] = False,
                          ):
     """
     Save the conformers before or after optimization.
@@ -936,7 +937,10 @@ def save_conformers_file(project_directory: str,
             content += f'Conformers for {label}, computed using a force field:\n\n'
         else:
             level_of_theory = level_of_theory.simple() if isinstance(level_of_theory, Level) else level_of_theory
-            content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
+            if not conf_sp:
+                content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
+            else:
+                content += f'Conformers for {label}, sp at the {level_of_theory} level:\n\n'
         for i, xyz in enumerate(xyzs):
             content += f'conformer {i}:\n'
             if xyz is not None:

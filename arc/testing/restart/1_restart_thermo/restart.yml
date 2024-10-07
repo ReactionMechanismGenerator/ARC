@@ -9,7 +9,7 @@ arkane_level_of_theory:
   software: gaussian
 calc_freq_factor: true
 compute_transport: false
-conformer_level:
+conformer_opt_level:
   basis: 6-31g(d,p)
   dispersion: empiricaldispersion=gd3bj
   method: b3lyp

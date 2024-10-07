@@ -9,7 +9,7 @@ arkane_level_of_theory:
   software: gaussian
 compare_to_rmg: false
 compute_transport: false
-conformer_level:
+conformer_opt_level:
   basis: def2svp
   compatible_ess:
   - gaussian

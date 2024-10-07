@@ -84,7 +84,7 @@ class TestARC(unittest.TestCase):
                                                     'method': 'ccsd(t)-f12',
                                                     'method_type': 'wavefunction',
                                                     'software': 'molpro'},
-                         'conformer_level': {'basis': 'def2svp',
+                         'conformer_opt_level': {'basis': 'def2svp',
                                              'compatible_ess': ['gaussian', 'terachem'],
                                              'method': 'wb97xd',
                                              'method_type': 'dft',
@@ -152,7 +152,7 @@ class TestARC(unittest.TestCase):
     def test_from_dict(self):
         """Test the from_dict() method of ARC"""
         restart_dict = {'composite_method': '',
-                        'conformer_level': 'b97-d3/6-311+g(d,p)',
+                        'conformer_opt_level': 'b97-d3/6-311+g(d,p)',
                         'freq_level': 'wb97x-d3/6-311+g(d,p)',
                         'freq_scale_factor': 0.96,
                         'opt_level': 'wb97x-d3/6-311+g(d,p)',
