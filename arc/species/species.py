@@ -2019,6 +2019,19 @@ class ARCSpecies(object):
             self.ts_checks = {key: None for key in keys}
             self.ts_checks['warnings'] = ''
 
+    def get_bonds(self) -> List[tuple]:
+        """
+        Generate a list of length-2 tuples indicating the bonding atoms in the molecule.
+
+        Returns:
+            list: A list of length-2 tuples indicating the bonding atoms.
+        """
+        bonds = list()
+        for atom1 in self.mol.atoms:
+            for atom2, bond12 in atom1.edges.items():
+                bonds.append(tuple(sorted((self.mol.atoms.index(atom1), self.mol.atoms.index(atom2)))))
+        return list(set(bonds))
+
 
 class TSGuess(object):
     """
