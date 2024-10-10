@@ -1361,6 +1361,7 @@ def elementize(atom):
 def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                        multiplicity: Optional[int] = None,
                        charge: int = 0,
+                       original_molecule: Optional[Molecule] = None,
                        ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling.
@@ -1371,6 +1372,7 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         xyz (dict): The ARC dict format xyz coordinates of the species.
         multiplicity (int, optional): The species spin multiplicity.
         charge (int, optional): The species net charge.
+        original_molecule (Molecule, optional): An RMG Molecule object to use as a reference for atom order.
 
     Returns: Tuple[Optional[Molecule], Optional[Molecule]]
         - The respective Molecule object with only single bonds.
@@ -1440,6 +1442,10 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         if mol is not None and mol.multiplicity == 1:
             for atom in mol.atoms:
                 atom.radical_electrons = 0
+
+    if mol_bo is None and mol_s1_updated is not None and original_molecule is not None:
+        mol_bo = original_molecule.copy(deep=True)
+        order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
 
     return mol_s1_updated, mol_bo
 
