@@ -286,6 +286,14 @@ class HeuristicsAdapter(JobAdapter):
                                      )
                 tsg.tok()
 
+            if rxn.family == 'hydrolysis':
+                tsg = TSGuess(method='Heuristics')
+                tsg.tic()
+                xyzs = hydrolysis(arc_reaction=rxn,
+                                  rmg_reactions=reaction_list,
+                                  )
+                tsg.tok()
+
             for method_index, xyz in enumerate(xyzs):
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
