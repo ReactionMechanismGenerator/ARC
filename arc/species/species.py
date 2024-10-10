@@ -1385,7 +1385,12 @@ class ARCSpecies(object):
             return None
         mol = self.mol
         if mol is None:
-            mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mols = molecules_from_xyz(xyz,
+                                      multiplicity=self.multiplicity,
+                                      charge=self.charge,
+                                      original_molecule=mol,
+                                      numer_of_radicals=self.number_of_radicals,
+                                      )
             mol = mols[1] or mols[0]
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1595,7 +1600,10 @@ class ARCSpecies(object):
             # self.mol should have come from another source, e.g., SMILES or yml.
             mol_s, mol_b = molecules_from_xyz(xyz=xyz,
                                               multiplicity=self.multiplicity,
-                                              charge=self.charge)
+                                              charge=self.charge,
+                                              original_molecule=self.mol,
+                                              numer_of_radicals=self.number_of_radicals,
+                                              )
             perceived_mol = mol_b or mol_s
             if perceived_mol is not None:
                 allow_nonisomorphic_2d = self.charge \
@@ -1615,7 +1623,12 @@ class ARCSpecies(object):
                 if not self.keep_mol:
                     self.mol = perceived_mol
         else:
-            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mol_s, mol_b = molecules_from_xyz(xyz,
+                                              multiplicity=self.multiplicity,
+                                              charge=self.charge,
+                                              original_molecule=self.mol,
+                                              numer_of_radicals=self.number_of_radicals,
+                                              )
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
                 self.mol = mol_b
             elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
@@ -1788,7 +1801,12 @@ class ARCSpecies(object):
 
             # 1. Perceive
             try:
-                s_mol, b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+                s_mol, b_mol = molecules_from_xyz(xyz,
+                                                  multiplicity=self.multiplicity,
+                                                  charge=self.charge,
+                                                  original_molecule=mol,
+                                                  numer_of_radicals=self.number_of_radicals,
+                                                  )
             except Exception as e:
                 if verbose:
                     logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}. This '
