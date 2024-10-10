@@ -5,6 +5,14 @@ A generic bimolecular hydrolysis reaction: AB + H2O <=> AH + BOH
 
 R1(*1)[O/N](*3)R2(*2) + H(*4)O(*5)H <=> R1(*1)[O/N](*3)H(*4) + R2(*2)O(*5)H
 
+
+
+
+Make sure whether we need a double bond between R1 and O (/N)
+not only C, also P (phosphoesther)
+
+
+
 """
 
 template(reactants=["R1ONR2", "H2O"], products=["R1ONH", "R2OH"], ownReverse=False)
