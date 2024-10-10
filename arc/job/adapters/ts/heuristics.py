@@ -33,7 +33,7 @@ from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_fami
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
-from arc.mapping.engine import map_arc_rmg_species, map_two_species
+from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
 
@@ -239,9 +239,8 @@ class HeuristicsAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            family_label = rxn.family.label
-            if family_label not in supported_families:
-                logger.warning(f'The heuristics TS search adapter does not support the {family_label} reaction family.')
+            if rxn.family not in supported_families:
+                logger.warning(f'The heuristics TS search adapter does not support the {rxn.family} reaction family.')
                 continue
             if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
                 logger.warning(f'The heuristics TS search adapter cannot process a reaction if 3D coordinates of '
@@ -255,7 +254,6 @@ class HeuristicsAdapter(JobAdapter):
                                             charge=rxn.charge,
                                             multiplicity=rxn.multiplicity,
                                             )
-            rxn.arc_species_from_rmg_reaction()
             reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=True)
             reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
             product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
@@ -272,7 +270,7 @@ class HeuristicsAdapter(JobAdapter):
 
             xyzs = list()
             tsg = None
-            if family_label == 'H_Abstraction':
+            if rxn.family == 'H_Abstraction':
                 # Todo: train guess params
                 # r1_stretch_, r2_stretch_, a2_ = get_training_params(
                 #     family='H_Abstraction',
@@ -303,7 +301,7 @@ class HeuristicsAdapter(JobAdapter):
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,
                                        success=True,
-                                       family=family_label,
+                                       family=rxn.family,
                                        xyz=xyz,
                                        )
                     rxn.ts_species.ts_guesses.append(ts_guess)
@@ -311,7 +309,7 @@ class HeuristicsAdapter(JobAdapter):
                              path=self.local_path,
                              filename=f'Heuristics_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {family_label}',
+                             comment=f'Heuristics {method_index}, family: {rxn.family}',
                              )
 
             if len(self.reactions) < 5:
