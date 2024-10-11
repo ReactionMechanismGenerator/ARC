@@ -1926,6 +1926,36 @@ H       1.12853146   -0.86793870    0.06973060"""
         self.assertEqual(formed_bonds, [(0, 5)])
         self.assertEqual(broken_bonds, [(3, 5)])
 
+    def test_get_changed_bonds(self):
+        """Test the get_changed_bonds() function."""
+        rxn_7 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC',
+                                                  xyz=""" O                  0.62193295    1.59121319   -0.58381518
+                                                          N                  0.43574593    0.41740669    0.07732982
+                                                          O                  1.34135576   -0.35713755    0.18815532
+                                                          C                 -0.87783860    0.10001361    0.65582554
+                                                          C                 -1.73002357   -0.64880063   -0.38564362
+                                                          H                 -1.37248469    1.00642547    0.93625873
+                                                          H                 -0.74723653   -0.51714586    1.52009245
+                                                          H                 -1.23537748   -1.55521250   -0.66607681
+                                                          H                 -2.68617014   -0.87982825    0.03543830
+                                                          H                 -1.86062564   -0.03164117   -1.24991054""")],
+                            p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O',
+                                                  xyz=""" O                  0.17295033    0.86074746   -0.26735563
+                                                          N                  0.91672790   -0.24436868   -0.54142357
+                                                          O                  1.79483464   -0.57413163    0.20189010
+                                                          C                 -0.95986462    0.48910558    0.52227250
+                                                          C                 -1.81700256   -0.52654731   -0.25577875
+                                                          H                 -1.54504256    1.35857196    0.73789948
+                                                          H                 -0.62677356    0.04723842    1.43808021
+                                                          H                 -1.23182462   -1.39601368   -0.47140573
+                                                          H                 -2.66463333   -0.80462899    0.33506188
+                                                          H                 -2.15009363   -0.08468014   -1.17158646""")])
+        changed_bonds = rxn_7.get_changed_bonds()
+        self.assertEqual(changed_bonds, [(0, 1), (1, 2)])
+
+        changed_bonds = self.rxn_1_w_xyz.get_changed_bonds()
+        self.assertEqual(changed_bonds, [])
+
     def test_multi_reactants(self):
         """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
         with self.assertRaises(ReactionError):
