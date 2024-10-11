@@ -9,7 +9,7 @@ from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 import arc.rmgdb as rmgdb
-from arc.common import get_logger
+from arc.common import generate_resonance_structures, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
@@ -993,6 +993,51 @@ class ARCReaction(object):
         r_bonds, p_bonds = set(r_bonds), set(p_bonds)
         formed_bonds, broken_bonds = p_bonds - r_bonds, r_bonds - p_bonds
         return list(formed_bonds), list(broken_bonds)
+
+    def get_changed_bonds(self) -> List[Tuple[int, int]]:
+        """
+        Get all bonds that change their bond order in the reaction.
+
+        Returns:
+            List[Tuple[int, int]]: The bonds that change their bond order.
+        """
+        r_bonds, p_bonds = self.get_bonds()
+        r_bonds, p_bonds = set(r_bonds), set(p_bonds)
+        shared_bonds = p_bonds.intersection(r_bonds)
+        reactants, products = self.get_reactants_and_products(arc=True, return_copies=True)
+        changed_bonds = list()
+        for bond in shared_bonds:
+            r_bos, p_bos = list(), list()
+            len_atoms = 0
+            for reactant in reactants:
+                if bond[0] - len_atoms < len(reactant.mol.atoms) and bond[1] - len_atoms < len(reactant.mol.atoms):
+                    mol_list = generate_resonance_structures(reactant.mol,
+                                                             keep_isomorphic=True,
+                                                             filter_structures=True,
+                                                             save_order=True,
+                                                             )
+                    for mol in mol_list:
+                        atom1, atom2 = mol.atoms[bond[0] - len_atoms], mol.atoms[bond[1] - len_atoms]
+                        r_bos.append(mol.get_bond(atom1, atom2).order)
+                len_atoms += reactant.number_of_atoms
+                break
+            len_atoms = 0
+            for product in products:
+                mapped_bond = (self.atom_map[bond[0]], self.atom_map[bond[1]])
+                if mapped_bond[0] - len_atoms < len(product.mol.atoms) and mapped_bond[1] - len_atoms < len(product.mol.atoms):
+                    mol_list = generate_resonance_structures(product.mol,
+                                                             keep_isomorphic=True,
+                                                             filter_structures=True,
+                                                             save_order=True,
+                                                             )
+                    for mol in mol_list:
+                        atom1, atom2 = mol.atoms[mapped_bond[0] - len_atoms], mol.atoms[mapped_bond[1] - len_atoms]
+                        p_bos.append(mol.get_bond(atom1, atom2).order)
+                len_atoms += product.number_of_atoms
+                break
+            if len(r_bos) and len(p_bos) and sum(r_bos) / len(r_bos) != sum(p_bos) / len(p_bos):
+                changed_bonds.append(bond)
+        return changed_bonds
 
     def copy_e0_values(self, other_rxn: Optional['ARCReaction']):
         """
