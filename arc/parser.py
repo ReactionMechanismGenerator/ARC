@@ -254,13 +254,7 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
             if 'final structure:' in line:
                 final_structure = True
         return str_to_xyz(xyz_str)
-
-    log = ess_factory(fullpath=path, check_for_errors=False)
-    try:
-        coords, number, _ = log.load_geometry()
-    except LogError:
-        logger.debug(f'Could not parse xyz from {path}')
-
+    if software == 'gaussian':
         # Try parsing Gaussian standard orientation instead of the input orientation parsed by Arkane.
         lines = _get_lines_from_file(path)
         for i in range(len(lines)):
@@ -274,9 +268,14 @@ def parse_geometry(path: str) -> Optional[Dict[str, tuple]]:
                     xyz_str += f'{qcel.periodictable.to_E(int(splits[1]))}  {splits[3]}  {splits[4]}  {splits[5]}\n'
                     j += 1
                 break
-
         if xyz_str:
             return str_to_xyz(xyz_str)
+
+    log = ess_factory(fullpath=path, check_for_errors=False)
+    try:
+        coords, number, _ = log.load_geometry()
+    except LogError:
+        logger.debug(f'Could not parse xyz from {path}')
         return None
 
     return xyz_from_data(coords=coords, numbers=number)
@@ -366,6 +365,9 @@ def identify_ess(path: str) -> Optional[str]:
             line = f.readline()
             if 'x T B' in line:
                 software = 'xtb'
+                break
+            if 'Gaussian' in line:
+                software = 'gaussian'
                 break
     return software
 
