@@ -43,7 +43,7 @@ class TestARC(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.servers = servers.keys()
-        cls.job_types1 = {'conformers': True,
+        cls.job_types1 = {'conf_opt': True,
                           'opt': True,
                           'fine_grid': False,
                           'freq': True,
@@ -114,7 +114,7 @@ class TestARC(unittest.TestCase):
                                        'software': 'gaussian'},
                          'job_memory': 14,
                          'job_types': {'bde': True,
-                                       'conformers': True,
+                                       'conf_opt': True,
                                        'fine': False,
                                        'freq': True,
                                        'irc': True,
@@ -204,7 +204,7 @@ class TestARC(unittest.TestCase):
                         'project_directory': os.path.join(ARC_PATH, 'Projects', 'unit_test_specific_job'),
                         }
         arc1 = ARC(**restart_dict)
-        job_type_expected = {'conformers': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
+        job_type_expected = {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': False,
                              'orbitals': False, 'bde': True, 'onedmin': False, 'fine': True, 'irc': False}
         self.assertEqual(arc1.job_types, job_type_expected)
 

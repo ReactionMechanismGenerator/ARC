@@ -110,7 +110,7 @@ class JobTypeEnum(str, Enum):
     The available jon types are a finite set.
     """
     composite = 'composite'
-    conformers = 'conformers'  # conformer optimization (not generation)
+    conf_opt = 'conf_opt'  # conformer optimization (not generation)
     freq = 'freq'
     gen_confs = 'gen_confs'  # conformer generation
     irc = 'irc'
@@ -385,9 +385,9 @@ class JobAdapter(ABC):
             if self.species is not None:
                 if len(self.species) > 1:
                     self.iterate_by.append('species')
-                if job_type == 'conformers':
+                if job_type == 'conf_opt':
                     if self.species is not None and sum(len(species.conformers) for species in self.species) > 10:
-                        self.iterate_by.append('conformers')
+                        self.iterate_by.append('conf_opt')
                         self.number_of_processes += sum([len(species.conformers) for species in self.species])
                 for species in self.species:
                     if job_type in ['sp', 'opt', 'freq', 'optfreq', 'composite', 'ornitals', 'onedmin', 'irc']:
@@ -456,7 +456,7 @@ class JobAdapter(ABC):
             else:
                 for species in self.species:
                     data[species.label] = list()
-                    if 'conformers' in self.iterate_by:
+                    if 'conf_opt' in self.iterate_by:
                         for conformer in species.conformers:
                             data[species.label].append(DataPoint(charge=species.charge,
                                                                  job_types=['opt'],
@@ -693,10 +693,8 @@ class JobAdapter(ABC):
             self.job_num = job_num
         # 2. Set other related attributes job_name and job_server_name.
         self.job_server_name = self.job_server_name or 'a' + str(self.job_num)
-        if self.conformer is not None and (self.job_name is None or 'conformer_a' in self.job_name):
-            if self.job_name is not None:
-                logger.warning(f'Replacing job name {self.job_name} with conformer{self.conformer}')
-            self.job_name = f'conformer{self.conformer}'
+        if self.conformer is not None and self.job_name is None:
+            self.job_name = f'{self.job_type}_{self.conformer}_{self.job_server_name}'
         elif self.tsg is not None and (self.job_name is None or 'tsg_a' in self.job_name):
             if self.job_name is not None:
                 logger.warning(f'Replacing job name {self.job_name} with tsg{self.conformer}')
@@ -1097,7 +1095,7 @@ class JobAdapter(ABC):
                 local = 'local '
             else:
                 server = f' on {self.server}'
-        if 'conformer' in self.job_name or 'tsg' in self.job_name:
+        if 'conf_opt' in self.job_name or 'tsg' in self.job_name:
             job_server_name = f' ({self.job_server_name})'
         execution_type = {'incore': 'incore job', 'queue': 'queue job', 'pipe': 'job array (pipe)'}[self.execution_type]
         pivots = f' for pivots {[[tor[1] + 1, tor[2] + 1] for tor in self.torsions]}' if self.torsions is not None else ''

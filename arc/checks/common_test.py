@@ -36,9 +36,9 @@ class TestChecks(unittest.TestCase):
         """Test the get_i_from_job_name() function"""
         self.assertIsNone(common.get_i_from_job_name(''))
         self.assertIsNone(common.get_i_from_job_name('some_job_name'))
-        self.assertEqual(common.get_i_from_job_name('conformer3'), 3)
-        self.assertEqual(common.get_i_from_job_name('conformer33'), 33)
-        self.assertEqual(common.get_i_from_job_name('conformer3355'), 3355)
+        self.assertEqual(common.get_i_from_job_name('conf_opt_3'), 3)
+        self.assertEqual(common.get_i_from_job_name('conf_opt_33'), 33)
+        self.assertEqual(common.get_i_from_job_name('conf_opt_3355'), 3355)
         self.assertEqual(common.get_i_from_job_name('tsg2'), 2)
 
 

@@ -259,7 +259,7 @@ class OrcaAdapter(JobAdapter):
         input_dict['restricted'] = 'r' if is_restricted(self) else 'u'
 
         # Job type specific options
-        if self.job_type in ['opt', 'conformers', 'optfreq']:
+        if self.job_type in ['opt', 'conf_opt', 'optfreq']:
             opt_convergence_key = 'fine_opt_convergence' if self.fine else 'opt_convergence'
             opt_convergence = self.args['keyword'].get(opt_convergence_key, '').lower() or \
                 orca_default_options_dict['opt']['keyword'].get(opt_convergence_key, '').lower()

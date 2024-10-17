@@ -216,7 +216,7 @@ class xTBAdapter(JobAdapter):
         directives, block = '', ''
         uhf = self.species[0].number_of_radicals or self.multiplicity - 1
 
-        if self.job_type in ['opt', 'conformers', 'scan']:
+        if self.job_type in ['opt', 'conf_opt', 'scan']:
             directives += ' --opt'
             directives += self.add_accuracy()
             if self.constraints and self.job_type != 'scan':
@@ -291,7 +291,7 @@ class xTBAdapter(JobAdapter):
             bool: Whether this is a transition state geometry optimization job.
         """
         if self.species is not None and len(self.species) and self.species[0].is_ts \
-                and self.job_type in ['opt', 'conformers']:
+                and self.job_type in ['opt', 'conf_opt']:
             return True
         return False
 

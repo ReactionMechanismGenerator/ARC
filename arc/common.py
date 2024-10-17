@@ -92,7 +92,7 @@ def initialize_job_types(job_types: Optional[dict] = None,
         if 'fine_grid' in job_types:
             del job_types['fine_grid']
 
-    defaults_to_true = ['conformers', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
+    defaults_to_true = ['conf_opt', 'fine', 'freq', 'irc', 'opt', 'rotors', 'sp']
     defaults_to_false = ['bde', 'onedmin', 'orbitals']
     if job_types is None:
         job_types = default_job_types

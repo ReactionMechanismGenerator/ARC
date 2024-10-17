@@ -229,7 +229,7 @@ def determine_ess_status(output_path: str,
                     done = True
                     # If this is an opt job, we must also check that the max num of cycles hasn't been reached,
                     # so don't break yet.
-                    if 'opt' not in job_type and 'conformer' not in job_type and 'ts' not in job_type:
+                    if 'opt' not in job_type and 'conf_opt' not in job_type and 'ts' not in job_type:
                         break
                 elif 'SCF failed' in line:
                     keywords = ['SCF']
@@ -245,7 +245,7 @@ def determine_ess_status(output_path: str,
                 elif 'Invalid charge/multiplicity combination' in line:
                     raise SpeciesError(f'The multiplicity and charge combination for species '
                                        f'{species_label} are wrong.')
-                if 'opt' in job_type or 'conformer' in job_type or 'ts' in job_type:
+                if 'opt' in job_type or 'conf_opt' in job_type or 'ts' in job_type:
                     if 'MAXIMUM OPTIMIZATION CYCLES REACHED' in line:
                         keywords = ['MaxOptCycles']
                         error = 'Maximum optimization cycles reached.'
