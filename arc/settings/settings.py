@@ -90,7 +90,8 @@ supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'ter
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']
 
 # List here job types to execute by default
-default_job_types = {'conformers': True,      # defaults to True if not specified
+default_job_types = {'conf_opt': True,      # defaults to True if not specified
+                     'conf_sp': False,      # defaults to True if not specified
                      'opt': True,             # defaults to True if not specified
                      'fine_grid': True,       # defaults to True if not specified
                      'freq': True,            # defaults to True if not specified

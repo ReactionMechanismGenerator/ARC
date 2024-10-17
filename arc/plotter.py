@@ -901,6 +901,7 @@ def save_conformers_file(project_directory: str,
                          im_freqs: Optional[List[List[float]]] = None,
                          log_content: bool = False,
                          before_optimization: bool = True,
+                         sp_flag = False,
                          ):
     """
     Save the conformers before or after optimization.
@@ -920,6 +921,7 @@ def save_conformers_file(project_directory: str,
         im_freqs (list, optional): Entries lists of imaginary frequencies.
         log_content (bool): Whether to log the content of the conformers file. ``True`` to log, default is ``False``.
         before_optimization (bool): Whether the conformers are before DFT optimization. ``True`` for before, default is ``True``.
+        sp_flag (bool): Whether the conformers are single point calculations. ``True`` for single point, default is ``False``.
     """
     spc_dir = 'rxns' if is_ts else 'Species'
     geo_dir = os.path.join(project_directory, 'output', spc_dir, label, 'geometry', 'conformers')
@@ -936,7 +938,10 @@ def save_conformers_file(project_directory: str,
             content += f'Conformers for {label}, computed using a force field:\n\n'
         else:
             level_of_theory = level_of_theory.simple() if isinstance(level_of_theory, Level) else level_of_theory
-            content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
+            if not sp_flag:
+                content += f'Conformers for {label}, optimized at the {level_of_theory} level:\n\n'
+            else:
+                content += f'Conformers for {label}, single point calculation at the {level_of_theory} level:\n\n'
         for i, xyz in enumerate(xyzs):
             content += f'conformer {i}:\n'
             if xyz is not None:
