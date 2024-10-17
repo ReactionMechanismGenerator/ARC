@@ -547,20 +547,25 @@ class Scheduler(object):
                     continue
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
-                    if 'conformer' in job_name:
+                    if 'conf' in job_name:
                         i = get_i_from_job_name(job_name)
-                        job = self.job_dict[label]['conformers'][i]
+                        job = self.job_dict[label]['conf_opt'][i] if 'conf_opt' in job_name \
+                            else self.job_dict[label]['conf_sp'][i]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
+                                if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
+                                    self.run_sp_job(label=label,
+                                                    level=self.conformer_sp_level,
+                                                    conformer=i)
                                 if troubleshooting_conformer:
                                     break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
-                                if 'conformer' in spec_jobs and spec_jobs != job_name:
+                                if ('conf_opt' in spec_jobs or 'conf_sp' in spec_jobs) and spec_jobs != job_name:
                                     break
                             else:
                                 # All conformer jobs terminated.
@@ -1258,6 +1263,7 @@ class Scheduler(object):
     def run_sp_job(self,
                    label: str,
                    level: Optional[Level] = None,
+                   conformer: Optional[int] = None,
                    ):
         """
         Spawn a single point job using 'final_xyz' for species ot TS 'label'.
@@ -1266,9 +1272,17 @@ class Scheduler(object):
         Args:
             label (str): The species label.
             level (Level): An alternative level of theory to run at. If ``None``, self.sp_level will be used.
+            conformer (int): The conformer number.
         """
         level = level or self.sp_level
 
+        if self.job_types['conf_sp'] and conformer is not None and self.conformer_sp_level != self.conformer_opt_level:
+            self.run_job(label=label,
+                        xyz=self.species_dict[label].conformers[conformer],
+                        level_of_theory=self.conformer_sp_level,
+                        job_type='conf_sp',
+                        conformer=conformer)
+            return
         # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
                 and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
