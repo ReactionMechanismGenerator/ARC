@@ -36,6 +36,7 @@ class TestFunctional(unittest.TestCase):
                          'fine_grid': False,
                          'freq': True,
                          'sp': True,
+                         'conf_sp': False,
                          'rotors': False,
                          'irc': False,
                          }

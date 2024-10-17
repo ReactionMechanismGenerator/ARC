@@ -50,6 +50,7 @@ class TestCommon(unittest.TestCase):
                                  'sp': True,
                                  'rotors': True,
                                  'irc': True,
+                                 'conf_sp': False,
                                  'orbitals': False,
                                  'onedmin': False,
                                  'bde': False,

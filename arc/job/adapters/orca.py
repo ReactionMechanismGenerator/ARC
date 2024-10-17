@@ -293,7 +293,7 @@ end
                 logger.info('Using numerical frequencies calculation in Orca. Note: This job might therefore be '
                             'time-consuming.')
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = 'sp'
 
         elif self.job_type == 'scan':
