@@ -241,7 +241,7 @@ class MolproAdapter(JobAdapter):
         elif self.job_type in ['freq', 'optfreq']:
             input_dict['job_type_2'] = '{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             pass
 
         elif self.job_type == 'scan':

@@ -234,7 +234,7 @@ class xTBAdapter(JobAdapter):
         elif self.job_type in ['fukui']:
             directives += ' --vfukui'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             pass
 
         directives += f' --{self.level.method}' if self.level is not None and self.level.method != 'xtb' else ' --gfn2'

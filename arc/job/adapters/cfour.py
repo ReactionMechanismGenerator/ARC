@@ -217,7 +217,7 @@ class CFourAdapter(JobAdapter):
         elif self.job_type in ['freq', 'optfreq', 'scan']:
             raise NotImplementedError(f'CFour cannot execute frequency computations or scans, '
                                       f'got job type {self.job_type}')
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             pass
 
         input_dict['keywords'] = ','.join(key for key in keywords)

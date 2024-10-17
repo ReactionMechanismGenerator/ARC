@@ -699,6 +699,7 @@ class ARC(object):
         txt += f'ARC v{self.__version__}\n'
         txt += f'ARC project {self.project}\n\nLevels of theory used:\n\n'
         txt += f'Conformer optimization:       {self.conformer_opt_level}\n'
+        txt += f'Conformer single point:       {self.conformer_sp_level}\n'
         txt += f'TS guesses:       {self.ts_guess_level}\n'
         if self.composite_method is not None:
             txt += f'Composite method: {self.composite_method} {fine_txt}\n'

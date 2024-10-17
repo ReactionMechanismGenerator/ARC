@@ -238,7 +238,7 @@ class QChemAdapter(JobAdapter):
         elif self.job_type == 'freq':
             input_dict['job_type_1'] = 'freq'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = 'sp'
 
         elif self.job_type == 'orbitals':

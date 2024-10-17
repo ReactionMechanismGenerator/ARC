@@ -111,6 +111,7 @@ class JobTypeEnum(str, Enum):
     """
     composite = 'composite'
     conf_opt = 'conf_opt'  # conformer optimization (not generation)
+    conf_sp = 'conf_sp'  # conformer single point
     freq = 'freq'
     gen_confs = 'gen_confs'  # conformer generation
     irc = 'irc'

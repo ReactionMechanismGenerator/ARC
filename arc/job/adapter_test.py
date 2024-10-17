@@ -54,6 +54,7 @@ class TestEnumerationClasses(unittest.TestCase):
         """Test the JobTypeEnum class"""
         self.assertEqual(JobTypeEnum('composite').value, 'composite')
         self.assertEqual(JobTypeEnum('conf_opt').value, 'conf_opt')
+        self.assertEqual(JobTypeEnum('conf_sp').value, 'conf_sp')
         self.assertEqual(JobTypeEnum('freq').value, 'freq')
         self.assertEqual(JobTypeEnum('gen_confs').value, 'gen_confs')
         self.assertEqual(JobTypeEnum('irc').value, 'irc')

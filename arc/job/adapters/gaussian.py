@@ -312,7 +312,7 @@ class GaussianAdapter(JobAdapter):
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = f'integral=(grid=ultrafine, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
