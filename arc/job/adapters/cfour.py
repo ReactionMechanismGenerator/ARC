@@ -212,7 +212,7 @@ class CFourAdapter(JobAdapter):
         input_dict['keywords'] = ''
 
         keywords = list()
-        if self.job_type in ['opt', 'conformers']:
+        if self.job_type in ['opt', 'conf_opt']:
             keywords.append('METHOD=TS' if self.is_ts else 'METHOD=MANR')
         elif self.job_type in ['freq', 'optfreq', 'scan']:
             raise NotImplementedError(f'CFour cannot execute frequency computations or scans, '

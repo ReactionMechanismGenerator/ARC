@@ -275,7 +275,7 @@ class GaussianAdapter(JobAdapter):
                     max_c = int(match.group(1))
                     break
 
-        if self.job_type in ['opt', 'conformers', 'optfreq', 'composite']:
+        if self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite']:
             keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else ['calcfc']
             if self.level.method in ['rocbs-qb3']:
                 # There are no analytical 2nd derivatives (FC) for this method.

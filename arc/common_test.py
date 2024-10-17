@@ -43,7 +43,7 @@ class TestCommon(unittest.TestCase):
         cls.maxDiff = None
         cls.rmgdb = make_rmg_database_object()
         load_families_only(cls.rmgdb)
-        cls.default_job_types = {'conformers': True,
+        cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
                                  'fine': True,
                                  'freq': True,
@@ -388,7 +388,7 @@ class TestCommon(unittest.TestCase):
 
     def test_initialize_job_with_given_job_type(self):
         """Test the initialize_job_types() function"""
-        job_types = {'conformers': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False, 'irc': True}
+        job_types = {'conf_opt': False, 'opt': True, 'fine': True, 'freq': True, 'sp': False, 'rotors': False, 'irc': True}
         job_types_expected = copy.deepcopy(self.default_job_types)
         job_types_expected.update(job_types)
         job_types_initialized = common.initialize_job_types(job_types)

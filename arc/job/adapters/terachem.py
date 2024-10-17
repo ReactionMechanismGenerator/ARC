@@ -239,7 +239,7 @@ class TeraChemAdapter(JobAdapter):
             input_dict['dispersion'] = 'no'
 
         # Job type specific options
-        if self.job_type in ['conformer', 'opt', 'scan']:
+        if self.job_type in ['conf_opt', 'opt', 'scan']:
             input_dict['job_type_1'] = 'minimize\n' \
                                        'new_minimizer yes'
             if self.fine:
