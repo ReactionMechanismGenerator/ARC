@@ -43,7 +43,8 @@ irc_level:
 job_memory: 14
 job_types:
   bde: false
-  conformers: true
+  conf_opt: true
+  conf_sp: false
   fine: true
   freq: true
   irc: true
@@ -74,7 +75,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -99,7 +101,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: false
+      conf_opt: false
+      conf_sp: false
       fine: false
       freq: false
       irc: true
@@ -125,7 +128,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -151,7 +155,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
