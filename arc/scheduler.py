@@ -569,7 +569,7 @@ class Scheduler(object):
                                 if self.species_dict[label].is_ts:
                                     self.determine_most_likely_ts_conformer(label)
                                 else:
-                                    self.determine_most_stable_conformer(label)  # also checks isomorphism
+                                    self.determine_most_stable_conformer(label, sp_flag=True if self.job_types['conf_sp'] else False)  # also checks isomorphism
                                 if self.species_dict[label].initial_xyz is not None:
                                     # if initial_xyz is None, then we're probably troubleshooting conformers, don't opt
                                     if not self.composite_method:
@@ -2002,7 +2002,7 @@ class Scheduler(object):
                 return True
         return False
 
-    def determine_most_stable_conformer(self, label):
+    def determine_most_stable_conformer(self, label, sp_flag=False):
         """
         Determine the most stable conformer for a species (which is not a TS).
         Also run an isomorphism check.
@@ -2010,6 +2010,7 @@ class Scheduler(object):
 
         Args:
             label (str): The species label.
+            sp_flag (bool): Whether this is a single point calculation job.
         """
         if self.species_dict[label].is_ts:
             raise SchedulerError('The determine_most_stable_conformer() method does not deal with transition '
@@ -2031,12 +2032,13 @@ class Scheduler(object):
             plotter.save_conformers_file(project_directory=self.project_directory,
                                          label=label,
                                          xyzs=self.species_dict[label].conformers,
-                                         level_of_theory=self.conformer_opt_level,
+                                         level_of_theory=self.conformer_opt_level if not sp_flag else self.conformer_sp_level,
                                          multiplicity=self.species_dict[label].multiplicity,
                                          charge=self.species_dict[label].charge,
                                          is_ts=False,
                                          energies=self.species_dict[label].conformer_energies,
                                          before_optimization=False,
+                                         sp_flag=sp_flag,
                                          )  # after optimization
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
