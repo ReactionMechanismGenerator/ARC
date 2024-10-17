@@ -547,20 +547,27 @@ class Scheduler(object):
                     continue
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
-                    if 'conformer' in job_name:
+                    if 'conf' in job_name:
                         i = get_i_from_job_name(job_name)
-                        job = self.job_dict[label]['conformers'][i]
+                        job = self.job_dict[label]['conf_opt'][i] if 'conf_opt' in job_name \
+                            else self.job_dict[label]['conf_sp'][i]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             # this is a completed conformer job
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
+                                if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
+                                    self.run_job(label=label,
+                                                 xyz=self.species_dict[label].conformers[i],
+                                                 level_of_theory=self.conformer_sp_level,
+                                                 job_type='conf_sp',
+                                                 conformer=i)
                                 if troubleshooting_conformer:
                                     break
                             # Just terminated a conformer job.
                             # Are there additional conformer jobs currently running for this species?
                             for spec_jobs in job_list:
-                                if 'conformer' in spec_jobs and spec_jobs != job_name:
+                                if ('conf_opt' in spec_jobs or 'conf_sp' in spec_jobs) and spec_jobs != job_name:
                                     break
                             else:
                                 # All conformer jobs terminated.
