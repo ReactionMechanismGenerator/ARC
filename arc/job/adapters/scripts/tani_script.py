@@ -345,7 +345,7 @@ def main():
         forces = run_force(xyz=xyz, device=device, model=model)
         save_output_file(path = str(args.yml_path), key="force", val=forces)
 
-    elif job_type in ['opt', 'conformers', 'directed_scan', 'optfreq']:
+    elif job_type in ['opt', 'conf_opt', 'directed_scan', 'optfreq']:
         constraints = input_dict["constraints"] if "constraints" in input_dict.keys() else None
         opt_xyz = run_opt(xyz=xyz, constraints=constraints, fmax=input_dict["fmax"], model=model,
                           steps=input_dict["steps"] if "steps" in input_dict.keys() else None, engine=input_dict["engine"])

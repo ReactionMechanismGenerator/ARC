@@ -54,11 +54,11 @@ H       2.16904830    0.12689206   -0.07152274
 H      -1.82570782    0.42754384   -0.56130718"""
         cls.spc3 = ARCSpecies(label='CtripCO', smiles='C#CO', xyz=xyz3)
         cls.job1 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conformers',
+                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
                                conformer=0, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
                                project_directory=cls.project_directory, job_num=101)
         cls.job2 = job_factory(job_adapter='gaussian', project='project_test', ess_settings=cls.ess_settings,
-                               species=[cls.spc1], xyz=xyz1, job_type='conformers',
+                               species=[cls.spc1], xyz=xyz1, job_type='conf_opt',
                                conformer=1, level=Level(repr={'method': 'b97-d3', 'basis': '6-311+g(d,p)'}),
                                project_directory=cls.project_directory, job_num=102)
         cls.job3 = job_factory(job_adapter='qchem', project='project_test', ess_settings=cls.ess_settings,
@@ -70,7 +70,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
                                project_directory=cls.project_directory, job_num=104)
         cls.rmg_database = rmgdb.make_rmg_database_object()
-        cls.job_types1 = {'conformers': True,
+        cls.job_types1 = {'conf_opt': True,
+                          'conf_sp': False,
                           'opt': True,
                           'fine': False,
                           'freq': True,
@@ -79,7 +80,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           'orbitals': False,
                           'lennard_jones': False,
                           }
-        cls.job_types2 = {'conformers': True,
+        cls.job_types2 = {'conf_opt': True,
+                          'conf_sp': False,
                           'opt': True,
                           'fine': False,
                           'freq': True,
@@ -89,7 +91,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         cls.sched1 = Scheduler(project='project_test_1', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
                                composite_method=None,
-                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
                                opt_level=Level(repr=default_levels_of_theory['opt']),
                                freq_level=Level(repr=default_levels_of_theory['freq']),
                                sp_level=Level(repr=default_levels_of_theory['sp']),
@@ -105,7 +107,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         cls.sched2 = Scheduler(project='project_test_2', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1, cls.spc2, cls.spc3],
                                composite_method=None,
-                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
                                opt_level=Level(repr=default_levels_of_theory['opt']),
                                freq_level=Level(repr=default_levels_of_theory['freq']),
                                sp_level=Level(repr=default_levels_of_theory['sp']),
@@ -121,7 +123,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         cls.sched3 = Scheduler(project='project_test_4', ess_settings=cls.ess_settings,
                                species_list=[cls.spc1],
                                composite_method=Level(repr='CBS-QB3'),
-                               conformer_level=Level(repr=default_levels_of_theory['conformer']),
+                               conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
                                opt_level=Level(repr=default_levels_of_theory['freq_for_composite']),
                                freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
                                scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
@@ -140,9 +142,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.job2.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'methylamine_conformer_1.out')
         self.job2.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         self.sched1.job_dict[label] = dict()
-        self.sched1.job_dict[label]['conformers'] = dict()
-        self.sched1.job_dict[label]['conformers'][0] = self.job1
-        self.sched1.job_dict[label]['conformers'][1] = self.job2
+        self.sched1.job_dict[label]['conf_opt'] = dict()
+        self.sched1.job_dict[label]['conf_opt'][0] = self.job1
+        self.sched1.job_dict[label]['conf_opt'][1] = self.job2
         self.sched1.species_dict[label].conformer_energies = [None, None]
         self.sched1.species_dict[label].conformers = [None, None]
         self.sched1.parse_conformer(job=self.job1, label=label, i=0)
@@ -176,7 +178,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                       'warnings': '',
                                       'errors': '',
                                       'job_types': {'opt': False, 'composite': False, 'sp': False, 'fine': False,
-                                                    'freq': False, 'conformers': False},
+                                                    'freq': False, 'conf_opt': False, 'conf_sp': False},
                                       'convergence': False, 'conformers': '', 'restart': ''}
         self.sched1.run_conformer_jobs()
         save_conformers_file(project_directory=self.sched1.project_directory,
@@ -221,7 +223,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                            ess_settings=self.ess_settings,
                            species_list=[self.spc1, self.spc2],
                            composite_method=None,
-                           conformer_level=default_levels_of_theory['conformer'],
+                           conformer_opt_level=default_levels_of_theory['conformer'],
                            opt_level=default_levels_of_theory['opt'],
                            freq_level=default_levels_of_theory['freq'],
                            sp_level=default_levels_of_theory['sp'],
@@ -276,7 +278,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                               'isomorphism': '',
                               'job_types': {'rotors': True,
                                             'composite': False,
-                                            'conformers': False,
+                                            'conf_opt': False,
+                                            'conf_sp': False,
                                             'fine': False,
                                             'freq': False,
                                             'lennard_jones': False,
@@ -644,21 +647,21 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                       'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
                                       'composite': ''},
                             'restart': '', 'convergence': True,
-                            'job_types': {'conformers': True, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
+                            'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   'iC3H7': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
                                       'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
                                       'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
                                       'composite': ''},
                             'restart': '', 'convergence': True,
-                            'job_types': {'conformers': True, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
+                            'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   'TS0': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
                                     'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
                                     'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
                                     'composite': ''},
                           'restart': '', 'convergence': True,
-                          'job_types': {'conformers': True, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
+                          'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
                   }
         project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
@@ -717,7 +720,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           opt_level=Level(method='B3LYP', basis='6-31G(d,p)', software='gaussian'),
                           sp_level=Level(method='B3LYP', basis='6-31G(d,p)', software='gaussian'),
                           job_types={'opt': True, 'fine_grid': False, 'freq': False, 'sp': True, 'rotors': False,
-                                     'conformers': False, 'irc': False},
+                                     'conf_opt': False, 'conf_sp': False, 'irc': False},
                           report_e_elect=True,
                           testing=True,
                           )
