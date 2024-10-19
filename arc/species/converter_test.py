@@ -3370,6 +3370,7 @@ R1=1.0912"""
         self.assertEqual(b_mol.multiplicity, 1)
         self.assertFalse(any(atom.radical_electrons for atom in b_mol.atoms))
 
+    def test_ono_xyz(self):
         c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
                          N                  0.43574593    0.41740669    0.07732982
                          O                  1.34135576   -0.35713755    0.18815532
@@ -3388,9 +3389,10 @@ R1=1.0912"""
                                                     )
         self.assertEqual(s_mol.get_net_charge(), 0)
         self.assertEqual(b_mol.get_net_charge(), 0)
-        self.assertIn('[N+]', b_mol.to_smiles())
-        self.assertIn('[O-]', b_mol.to_smiles())
-        self.assertIn('=O', b_mol.to_smiles())
+        smiles = b_mol.to_smiles()
+        self.assertIn('[N+]', smiles)
+        self.assertIn('[O-]', smiles)
+        self.assertIn('=O', smiles)
 
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
