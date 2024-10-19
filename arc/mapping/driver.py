@@ -245,7 +245,7 @@ def map_rxn(rxn: 'ARCReaction',
     # step 2:
     assign_labels_to_products(rxn, p_label_dict)
     
-    #step 3:
+    # step 3:
     reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
     label_species_atoms(reactants), label_species_atoms(products)
     
@@ -261,7 +261,7 @@ def map_rxn(rxn: 'ARCReaction',
 
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
-    #step 4:
+    # step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
     if len(p_cuts):
         logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
@@ -269,5 +269,5 @@ def map_rxn(rxn: 'ARCReaction',
     # step 5:
     maps = map_pairs(pairs_of_reactant_and_products)
 
-    #step 6:
+    # step 6:
     return glue_maps(maps, pairs_of_reactant_and_products)
