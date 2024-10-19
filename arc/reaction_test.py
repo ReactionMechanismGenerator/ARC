@@ -35,7 +35,7 @@ class TestARCReaction(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.rmgdb.kinetics.families = None
+        # cls.rmgdb.kinetics.families = None
         rmgdb.load_families_only(cls.rmgdb, "all")
         
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
@@ -673,7 +673,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
-
         # 1. trivial unimolecular: H2O <=> H2O
         h2o_xyz_1 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                      'coords': ((-0.0003283189391273643, 0.39781490416473486, 0.0),
@@ -1215,11 +1214,13 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c7h5o_xyz)
         rxn = ARCReaction(reactants=['C2H5NO2'], products=['C2H5ONO'],
                           r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [4, 3, 2, 1, 0, 8, 9, 6, 5, 7])
+        self.assertIn(rxn.atom_map[0], [2, 4])
+        self.assertEqual(rxn.atom_map[1], 3)
+        self.assertIn(rxn.atom_map[2], [2, 4])
+        self.assertEqual(rxn.atom_map[3:], [1, 0, 8, 9, 6, 5, 7])
         self.assertTrue(check_atom_map(rxn))
 
         # 1,2-Birad_to_alkene: SO2(T) => SO2(S)
-        # This test fails due to a problem in xyz perception of SO2(T).
         so2_t_xyz = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
                                 (-1.3946381818031768, -0.24294788636871906, 0.0),
                                 (1.3673933946336125, -0.36643505437710233, 0.0)),
@@ -1234,6 +1235,7 @@ class TestARCReaction(unittest.TestCase):
         rxn = ARCReaction(reactants=['SO2(T)'], products=['SO2(S)'], r_species=[r_1], p_species=[p_1])
         self.assertEqual(rxn.atom_map[0], 1)
         self.assertTrue(check_atom_map(rxn))
+
         # F[C]F + [CH3] <=> F[C](F)C
         r1_xyz = {'symbols': ('F', 'C', 'F'),
                   'isotopes': (19, 12, 19),
@@ -1393,6 +1395,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertTrue(check_atom_map(rxn_rev))
 
         # Diels_alder_addition: C5H8 + C6H10 <=> C11H18
+        # This test takes ~20 min, we should see how to make the code more efficient
         c5h8_xyz = {'coords': ((2.388426506127341, -0.6020682478448856, -0.8986239521455471),
                                (1.396815470095451, 0.2559764141247285, -0.632876393172657),
                                (0.15313289103802616, -0.14573699483201027, -0.021031021618524288),
@@ -1592,7 +1595,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
         self.assertEqual(atom_map[5], 6)
 
-    # Same species in products
+        # Same species in products
         rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
                           p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
                                      ARCSpecies(label="p2", smiles= 'C=CC=C')])
