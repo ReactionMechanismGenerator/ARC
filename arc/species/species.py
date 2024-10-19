@@ -963,9 +963,9 @@ class ARCSpecies(object):
                 try:
                     self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
                                                               raise_atomtype_exception=False)
-                except ValueError:
+                except ValueError as e:
                     print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
-                    raise
+                    raise e
             elif arkane_spc.inchi is not None:
                 self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
             elif arkane_spc.smiles is not None:
@@ -1598,7 +1598,7 @@ class ARCSpecies(object):
                                               charge=self.charge)
             perceived_mol = mol_b or mol_s
             if perceived_mol is not None:
-                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                allow_nonisomorphic_2d = self.charge \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
                                          or (self.multiplicity is not None and self.multiplicity >= 3) \
                                          or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
@@ -1755,7 +1755,7 @@ class ARCSpecies(object):
             dipoleMoment=(dipole_moment, 'De'),
             polarizability=polar,
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
-            comment=comment
+            comment=comment,
         )
 
     def check_xyz_isomorphism(self,
