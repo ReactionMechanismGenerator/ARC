@@ -1444,9 +1444,29 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                 atom.radical_electrons = 0
 
     if mol_bo is None and mol_s1_updated is not None and original_molecule is not None:
-        mol_bo = original_molecule.copy(deep=True)
-        order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-
+        original_molecule = original_molecule.copy(deep=True)
+        try:
+            order_atoms(ref_mol=mol_s1_updated, mol=original_molecule)
+        except SanitizationError:
+            logger.debug(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
+            return mol_s1_updated, None
+        mol_bo = mol_s1_updated.copy(deep=True)
+        considered_bonds = list()
+        for atom in original_molecule.atoms:
+            if atom.charge:
+                mol_bo.atoms[original_molecule.atoms.index(atom)].charge = atom.charge
+                mol_bo.atoms[original_molecule.atoms.index(atom)].lone_pairs = atom.lone_pairs
+                mol_bo.atoms[original_molecule.atoms.index(atom)].radical_electrons = atom.radical_electrons
+            bonds = original_molecule.get_bonds(atom)
+            for bond in bonds.values():
+                if bond in considered_bonds:
+                    continue
+                if bond.order != 1:
+                    bond_bo = mol_bo.get_bond(atom1=mol_bo.atoms[original_molecule.atoms.index(bond.atom1)],
+                                              atom2=mol_bo.atoms[original_molecule.atoms.index(bond.atom2)])
+                    bond_bo.order = bond.order
+                    considered_bonds.append(bond)
+        mol_bo = update_molecule(mol_bo, to_single_bonds=False)
     return mol_s1_updated, mol_bo
 
 
@@ -1637,7 +1657,7 @@ def order_atoms(ref_mol, mol):
         TypeError: If ``mol`` has a wrong type.
     """
     if not isinstance(mol, Molecule):
-        raise TypeError(f'expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
+        raise TypeError(f'Expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
     if ref_mol is not None and mol is not None:
         ref_mol_is_iso_copy = ref_mol.copy(deep=True)
         mol_is_iso_copy = mol.copy(deep=True)
