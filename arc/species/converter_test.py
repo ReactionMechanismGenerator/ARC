@@ -3370,6 +3370,7 @@ R1=1.0912"""
         self.assertEqual(b_mol.multiplicity, 1)
         self.assertFalse(any(atom.radical_electrons for atom in b_mol.atoms))
 
+    def test_ono_xyz(self):
         c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
                          N                  0.43574593    0.41740669    0.07732982
                          O                  1.34135576   -0.35713755    0.18815532
@@ -3388,9 +3389,12 @@ R1=1.0912"""
                                                     )
         self.assertEqual(s_mol.get_net_charge(), 0)
         self.assertEqual(b_mol.get_net_charge(), 0)
-        self.assertIn('[N+]', b_mol.to_smiles())
-        self.assertIn('[O-]', b_mol.to_smiles())
-        self.assertIn('=O', b_mol.to_smiles())
+        smiles = b_mol.copy(deep=True).to_smiles()
+        self.assertIn('[N+]', smiles)
+        self.assertIn('[O-]', smiles)
+        self.assertIn('=O', smiles)
+        self.assertEqual([atom.element.symbol for atom in s_mol.atoms], ['O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual([atom.element.symbol for atom in b_mol.atoms], ['O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'])
 
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
@@ -3631,6 +3635,7 @@ H      -4.07566100   -0.52115800    0.00003300"""
         self.assertEqual(mol16.to_smiles(), '[O]N=C')
         self.assertEqual(mol17.to_smiles(), '[O-][S+](=O)(O)O')
         self.assertEqual(mol18.to_smiles(), 'O=S(=O)=O')
+        self.assertEqual([atom.element.symbol for atom in mol19.atoms], ['N', 'N', 'C', 'C', 'C', 'H', 'H', 'H'])
         self.assertEqual(mol19.to_adjacency_list(), """multiplicity 2
 1 N u1 p1 c0 {4,S} {5,S}
 2 N u0 p1 c0 {3,S} {5,D}
