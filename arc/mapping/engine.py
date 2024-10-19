@@ -1148,7 +1148,7 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
 
 def map_pairs(pairs):
     """
-    A function that maps the mached species together
+    A function that maps the matched species together
 
     Args:
         pairs: A list of the pairs of reactants and species
@@ -1156,38 +1156,36 @@ def map_pairs(pairs):
     Returns:
         A list of the mapped species
     """
-
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
-
     return maps
 
 
 def label_species_atoms(spcs):
     """
-    Adds the labels to the ``.mol.atoms`` properties of the species obect.
+    Adds the labels to the ``.mol.atoms`` properties of the species object instance.
     
     Args:
         spcs: ARCSpecies object to be labeled.
     """
-    index=0
+    index = 0
     for spc in spcs:
         for atom in spc.mol.atoms:
             atom.label = str(index)
-            index+=1
+            index += 1
 
 
-def glue_maps(maps, pairs_of_reactant_and_products):
+def glue_maps(maps, pairs_of_reactant_and_products) -> List[int]:
     """
     a function that joins together the maps from the parts of the reaction.
 
     Args:
-        rxn: ARCReaction that requires atom mapping
         maps: The list of all maps of the isomorphic cuts.
+        pairs_of_reactant_and_products: The pairs of the reactants and the products.
 
     Returns:
-        an Atom Map of the compleate reaction.
+        List[int]: An atom map of the complete reaction.
     """
     am_dict = dict()
     for _map, pair in zip(maps, pairs_of_reactant_and_products):
@@ -1200,16 +1198,15 @@ def glue_maps(maps, pairs_of_reactant_and_products):
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
     """
-    A function for determining whether or not the species in question containt the bond specified by the bond dissociation indices.
+    A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
     
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
         bde (Tuple[int, int]): The bde in question.
-        add_bdes (bool): Whether or not to add the bde to the species.
     
     Returns:
-        bool: Whether or not the bde is based on the atom labels.
+        bool: Whether the bde is based on the atom labels.
     """
     bde = convert_list_index_0_to_1(bde, direction=-1)
     index1, index2 = bde[0], bde[1]
