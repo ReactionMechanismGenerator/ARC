@@ -1138,7 +1138,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
         '--noreftopo'
     ]
     command = ' '.join(commands)
-    command = f"{CREST_ENV_PATH} && {command}"
+    command = f"{CREST_ENV_PATH} && {command}" if CREST_ENV_PATH else command
     # Run the command using Popen
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=path, executable='/bin/bash')    
     stdout, stderr = process.communicate()
