@@ -1678,6 +1678,34 @@ def order_atoms(ref_mol, mol):
             raise SanitizationError('Could not map non isomorphic molecules')
 
 
+def add_bond_order_to_s_mol(s_mol: Molecule,
+                            bo_mol: Molecule,
+                            ) -> Molecule:
+    """
+    Add bond orders to a molecule with only single bonds.
+
+    Args:
+        s_mol (Molecule): The RMG Molecule object with only single bonds.
+        bo_mol (Molecule): The RMG Molecule object with bond orders.
+
+    Returns:
+        Molecule: The respective Molecule object with atom order as in s)mol and with bond orders as in bo_mol.
+    """
+    s_mol_copy = s_mol.copy(deep=True)
+    order_atoms(ref_mol=s_mol_copy, mol=bo_mol)
+    for s_atom, b_atom in zip(s_mol_copy.atoms, bo_mol.atoms):
+        s_atom.radical_electrons = b_atom.radical_electrons
+        s_atom.lone_pairs = b_atom.lone_pairs
+        s_atom.charge = b_atom.charge
+        for b_bond in b_atom.bonds.values():
+            s_mol_copy.get_bond(s_mol_copy.atoms[bo_mol.atoms.index(b_bond.atom1)], s_mol_copy.atoms[bo_mol.atoms.index(b_bond.atom2)]).set_order_num(b_bond.get_order_num())
+    try:
+        s_mol_copy.update_atomtypes(raise_exception=False)
+    except KeyError:
+        logger.debug('Could not update atom types for the species')
+    return s_mol_copy
+
+
 def update_molecule(mol: Molecule,
                     to_single_bonds: bool=False,
                     ) -> Optional[Molecule]:
