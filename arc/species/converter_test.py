@@ -4240,6 +4240,16 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                     if index1 < index2:
                         self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
 
+    def test_add_bond_order_to_s_mol(self):
+        """Test the add_bond_order_to_s_mol function"""
+        c2h5no2_bo = ARCSpecies(label='C2H5NO2', smiles='CC[N+](=O)[O-]')
+        c2h5no2_s = converter.update_molecule(mol=c2h5no2_bo.mol, to_single_bonds=True)
+        c2h5no2_bo_from_s = converter.add_bond_order_to_s_mol(s_mol=c2h5no2_s, bo_mol=c2h5no2_bo.mol)
+        smiles = c2h5no2_bo_from_s.copy(deep=True).to_smiles()
+        self.assertIn('[N+]', smiles)
+        self.assertIn('[O-]', smiles)
+        self.assertIn('=O', smiles)
+
     def test_is_isomorphic(self):
         """Test the RMG is_isomorphic method"""
         mol1 = converter.s_bonds_mol_from_xyz(self.xyz1['dict'])
