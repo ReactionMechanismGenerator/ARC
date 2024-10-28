@@ -1852,43 +1852,34 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def set_rdkit_ring_dihedrals(xyz, ring_head, ring_tail, torsions, dihedrals):
+def set_rdkit_ring_dihedrals(rd_mol, ring_head, ring_tail, torsions, dihedrals):
     """
-    A helper function for setting dihedral angles using RDKit.
-    Either ``deg_increment`` or ``deg_abs`` must be specified.
+    A helper function for setting dihedral angles in a ring using RDKit.
 
     Args:
-        conf: The RDKit conformer with the current xyz information.
         rd_mol: The respective RDKit molecule.
-        torsion (list, tuple): The 0-indexed atom indices of the four atoms defining the torsion.
-        deg_increment (float, optional): The required dihedral increment in degrees.
-        deg_abs (float, optional): The required dihedral in degrees.
+        ring_head: The first atom index of the ring(0-indexed).
+        ring_tail: The last atom index of the ring(0-indexed).
+        torsions: A list of torsions, each corresponding to a dihedral.
+        dihedrals: A list of dihedral angles in degrees, each corresponding to a torsion.
 
+    Example of a 6-membered ring:
+        ring_head = 0
+        ring_tail = 5
+        torsions = [(0, 1, 2, 3), (1, 2, 3, 4), (2, 3, 4, 5)]
+        dihedrals = [30, 300, 30]
+    
     Returns:
         dict: The xyz with the new dihedral, ordered according to the map.
-
-    Raises:
-        ConverterError: If the dihedral cannot be set.
     """
-    
-    # xyz = conformers[22]['xyz']
-    s_mol, b_mol = molecules_from_xyz(xyz)
-    mol = b_mol if b_mol is not None else s_mol
-    conf, rd_mol = rdkit_conf_from_mol(mol, xyz)
-    
+
     rd_mol_mod = Chem.RWMol(rd_mol)
     rd_mol_mod.RemoveBond(ring_head, ring_tail)
-    
     Chem.SanitizeMol(rd_mol_mod)
-    
     conf_mod = rd_mol_mod.GetConformer()
-    # torsions = [(0, 1, 2, 3), (1, 2, 3, 4), (2, 3, 4, 5)]
-    # dihedrals = [305.736462037467,
-    #             54.263604783044116,
-    #             305.7364054482706]
     for torsion, dihedral in zip(torsions, dihedrals):
         torsion_0_indexed = [tor - 0 for tor in torsion]
-        xyz_dihedrals = set_rdkit_dihedrals(conf_mod, rd_mol_mod, torsion_0_indexed, deg_abs=dihedral)
+        set_rdkit_dihedrals(conf_mod, rd_mol_mod, torsion_0_indexed, deg_abs=dihedral)
     
     rd_mol_mod.AddBond(ring_head, ring_tail, Chem.BondType.SINGLE)
     Chem.SanitizeMol(rd_mol_mod)
@@ -1901,16 +1892,6 @@ def set_rdkit_ring_dihedrals(xyz, ring_head, ring_tail, torsions, dihedrals):
         coords.append([conf_mod.GetAtomPosition(i).x, conf_mod.GetAtomPosition(i).y, conf_mod.GetAtomPosition(i).z])
         symbols.append(atom.GetSymbol())
     new_xyz = xyz_from_data(coords=coords, symbols=symbols)
-    
-    
-    
-    # rdMT.SetDihedralDeg(conf, torsion[0], torsion[1], torsion[2], torsion[3], deg_abs)
-    # coords = list()
-    # symbols = list()
-    # for i, atom in enumerate(list(rd_mol.GetAtoms())):
-    #     coords.append([conf.GetAtomPosition(i).x, conf.GetAtomPosition(i).y, conf.GetAtomPosition(i).z])
-    #     symbols.append(atom.GetSymbol())
-    # new_xyz = xyz_from_data(coords=coords, symbols=symbols)
     return new_xyz
 
 
