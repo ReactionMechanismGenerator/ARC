@@ -455,6 +455,9 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
 
     a = mol_1.atoms.index(list(mol_1.atoms[h1].edges.keys())[0])
     b = mol_2.atoms.index(list(mol_2.atoms[h2].edges.keys())[0])
+    
+    #log if a and b are different from prev step
+    logger.info(f'Combining coordinates with redundant atoms for atoms A ({a}) and B ({b})')
     if c == a:
         raise ValueError(f'The value for c ({c}) is invalid (it represents atom A, not atom C)')
     if d == b:
@@ -1054,7 +1057,14 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
         val_inc = - 1 if h2 < b else 0
         
-        b_atom = len(arc_reactant.get_xyz()['symbols']) + b + val_inc
+        b_atom = len(arc_product.get_xyz()['symbols']) + b + val_inc
+        
+        # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
+        logger.info(f'a: {a}, b: {b}, h1: {h1}, h2: {h2}, b_atom: {b_atom}, a_atom: {a_atom}, h_atom: {h_atom}, val_inc: {val_inc}')
+        # log len of arc_product.get_xyz()['symbols'] 
+        logger.info(f"len of arc_product.get_xyz()[\'symbols\']: {len(arc_product.get_xyz()['symbols'])}")
+        # log len of arc_reactant.get_xyz()['symbols']
+        logger.info(f"len of arc_reactant.get_xyz()[\'symbols\']: {len(arc_reactant.get_xyz()['symbols'])}")
 
         xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a_atom, h_atom, b_atom, path=path)
         if xyz_guess is not None:
