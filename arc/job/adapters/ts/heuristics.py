@@ -1049,15 +1049,13 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     if xyz_guesses:
         # Take the first guess from the list of unique guesses.
         xyz_guesses_crest = xyz_guesses[0]
-        h_atom = int(math.ceil((h2 + h1)/2))  # The atom index of the H atom in the TS guess
-        # TODO: What happens if the result is decimal? For example, 1 + 4 = 2.5, round up
-    
-        # Get the first ATOM A - H - B for constraints
-        # We know that the two atoms are being joined, so firstly for b atom, it will be the molecule first in the combined list
-        # So we take b
-        b_atom = b
-        # For A atom, we know its of mol 2 which is added onto mol 1, so we should get the total of mol 1 and then add onto a
-        a_atom = a + len(arc_reactant.get_xyz()['symbols'])
+        h_atom = h1
+        a_atom = a
+
+        val_inc = - 1 if h2 < b else 0
+        
+        b_atom = len(arc_reactant.get_xyz()['symbols']) + b + val_inc
+
         xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a_atom, h_atom, b_atom, path=path)
         if xyz_guess is not None:
             logger.info('Successfully completed crest conformer search:'
@@ -1109,8 +1107,8 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     # Get count of atoms - remember to add 1 to all atom numbers
     num_atoms = len(symbols)
     a_atom += 1
-    # h_atom += 1
-    # b_atom += 1
+    h_atom += 1
+    b_atom += 1
 
     list_of_atoms_numbers_not_participating_in_reaction = [i for i in range(1, num_atoms + 1) if i not in [a_atom, h_atom, b_atom]]
 
