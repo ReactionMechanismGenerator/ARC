@@ -1134,8 +1134,8 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
         f.write('  reference=coords.ref\n')
         
         # Distance constraints
-        f.write(f'  distance: {a_atom}, {h_atom}, 1.5\n')
-        f.write(f'  distance: {h_atom}, {b_atom}, 1.5\n')
+        f.write(f'  distance: {a_atom}, {h_atom}, auto\n')
+        f.write(f'  distance: {h_atom}, {b_atom}, auto\n')
         
         # Metadynamics setup
         f.write('$metadyn\n')
@@ -1146,8 +1146,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     commands = [
         f'{CREST_PATH}',
         f'{path}/coords.ref',
-        f'--cinp {path}/constraints.inp',
-        '--noreftopo'
+        f'--cinp {path}/constraints.inp'
     ]
     command = ' '.join(commands)
     command = f"{CREST_ENV_PATH} && {command}" if CREST_ENV_PATH else command
