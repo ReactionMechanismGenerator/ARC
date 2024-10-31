@@ -981,8 +981,12 @@ def trsh_ess_job(label: str,
         elif 'Memory' in job_status['keywords'] and 'too high' in job_status['error'] and server is not None:
             # Reduce memory allocation by 80%, rounded to the nearest 5 GB increment
             couldnt_trsh = False
-            
-            reduced_memory = max(4, round(memory_gb * 0.8 / 5) * 5)  # Ensure reduction, rounded to nearest 5 GB, with 20 GB minimum
+            proposed_memory = round(memory_gb * 0.8 / 5) * 5  # Round to the nearest 5 GB increment
+            reduced_memory = max(2, proposed_memory)  # Ensure a minimum of 2 GB
+
+            # Ensure reduced_memory is strictly less than current memory_gb
+            if reduced_memory >= memory_gb:
+                reduced_memory = max(2, memory_gb - 1)
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using less memory: {reduced_memory} GB '
                         f'instead of {memory_gb} GB')
 

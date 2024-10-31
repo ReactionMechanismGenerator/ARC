@@ -1052,12 +1052,16 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     if xyz_guesses:
         # Take the first guess from the list of unique guesses.
         xyz_guesses_crest = xyz_guesses[0]
-        h_atom = h1
+        # h_atom = h1
+        h_atom = h1 + h2
+        
         a_atom = a
 
         val_inc = - 1 if h2 < b else 0
         
-        b_atom = len(arc_product.get_xyz()['symbols']) + b + val_inc
+        # Minusing by 1 because, I think, the atom H is now later in the bonding - so we need to account for that
+        # But the question is whether this is a specific case or a general one
+        b_atom = len(arc_product.get_xyz()['symbols']) + b + val_inc - 1
         
         # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
         logger.info(f'a: {a}, b: {b}, h1: {h1}, h2: {h2}, b_atom: {b_atom}, a_atom: {a_atom}, h_atom: {h_atom}, val_inc: {val_inc}')
