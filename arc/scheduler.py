@@ -1879,7 +1879,10 @@ class Scheduler(object):
                 try:
                     b_mol = molecules_from_xyz(self.species_dict[label].initial_xyz,
                                                multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
+                                               charge=self.species_dict[label].charge,
+                                               original_molecule=self.species_dict[label].mol,
+                                               numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                               )[1]
                 except SanitizationError:
                     b_mol = None
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
@@ -2040,9 +2043,12 @@ class Scheduler(object):
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
                     try:
-                        b_mol = molecules_from_xyz(xyz,
+                        b_mol = molecules_from_xyz(xyz=xyz,
                                                    multiplicity=self.species_dict[label].multiplicity,
-                                                   charge=self.species_dict[label].charge)[1]
+                                                   charge=self.species_dict[label].charge,
+                                                   original_molecule=self.species_dict[label].mol,
+                                                   numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                   )[1]
                     except SanitizationError:
                         b_mol = None
                     if b_mol is not None:
@@ -2073,9 +2079,12 @@ class Scheduler(object):
                                 self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
-                                    mol = molecules_from_xyz(xyzs[0],
+                                    mol = molecules_from_xyz(xyz=xyzs[0],
                                                              multiplicity=self.species_dict[label].multiplicity,
-                                                             charge=self.species_dict[label].charge)[1]
+                                                             charge=self.species_dict[label].charge,
+                                                             original_molecule=self.species_dict[label].mol,
+                                                             numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                             )[1]
                                     smiles_1 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
                                         if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                     smiles_2 = mol.copy(deep=True).to_smiles() \
@@ -2112,7 +2121,10 @@ class Scheduler(object):
                         try:
                             b_mol = molecules_from_xyz(xyz,
                                                        multiplicity=self.species_dict[label].multiplicity,
-                                                       charge=self.species_dict[label].charge)[1]
+                                                       charge=self.species_dict[label].charge,
+                                                       original_molecule=self.species_dict[label].mol,
+                                                       numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                       )[1]
                             smiles_list.append(b_mol.copy(deep=True).to_smiles())
                         except (SanitizationError, AttributeError):
                             smiles_list.append('Could not perceive molecule')
@@ -2488,7 +2500,7 @@ class Scheduler(object):
                     if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
-                                 checks=['freq'],
+                                 checks=['NMD'],
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
@@ -2589,9 +2601,7 @@ class Scheduler(object):
                     before_optimization=False,
                 )
                 if not self.testing:
-                    # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                # Set the ts_checks attribute of the TS species:
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
