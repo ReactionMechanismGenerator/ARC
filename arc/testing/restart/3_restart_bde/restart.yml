@@ -9,7 +9,7 @@ arkane_level_of_theory:
   software: gaussian
 compare_to_rmg: false
 compute_transport: false
-conformer_level:
+conformer_opt_level:
   basis: def2svp
   compatible_ess:
   - gaussian
@@ -43,7 +43,8 @@ irc_level:
 job_memory: 14
 job_types:
   bde: true
-  conformers: true
+  conf_opt: true
+  conf_sp: false
   fine: true
   freq: true
   irc: true
@@ -78,7 +79,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: false
+      conf_opt: false
+      conf_sp: false
       fine: false
       freq: false
       irc: true
@@ -105,7 +107,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -131,7 +134,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -156,7 +160,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -181,7 +186,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -206,7 +212,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -231,7 +238,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true
@@ -256,7 +264,8 @@ output:
     job_types:
       bde: true
       composite: false
-      conformers: true
+      conf_opt: true
+      conf_sp: false
       fine: true
       freq: true
       irc: true

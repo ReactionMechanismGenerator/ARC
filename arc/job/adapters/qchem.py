@@ -224,7 +224,7 @@ class QChemAdapter(JobAdapter):
         input_dict['unrestricted'] = 'True' if not is_restricted(self) else 'False'
 
         # Job type specific options
-        if self.job_type in ['opt', 'conformers', 'optfreq', 'orbitals', 'scan']:
+        if self.job_type in ['opt', 'conf_opt', 'optfreq', 'orbitals', 'scan']:
             input_dict['job_type_1'] = 'ts' if self.is_ts else 'opt'
             if self.fine:
                 input_dict['fine'] = '\n   GEOM_OPT_TOL_GRADIENT 15' \
@@ -238,7 +238,7 @@ class QChemAdapter(JobAdapter):
         elif self.job_type == 'freq':
             input_dict['job_type_1'] = 'freq'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             input_dict['job_type_1'] = 'sp'
 
         elif self.job_type == 'orbitals':

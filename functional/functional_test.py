@@ -31,11 +31,12 @@ class TestFunctional(unittest.TestCase):
         cls.maxDiff = None
         cls.has_settings = False
         
-        cls.job_types = {'conformers': True,
+        cls.job_types = {'conf_opt': True,
                          'opt': True,
                          'fine_grid': False,
                          'freq': True,
                          'sp': True,
+                         'conf_sp': False,
                          'rotors': False,
                          'irc': False,
                          }

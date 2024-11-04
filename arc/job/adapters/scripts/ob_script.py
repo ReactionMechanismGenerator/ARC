@@ -176,7 +176,7 @@ def main():
         sp = run_sp(mol=mol, ff_method=ff_method)
         save_output_file(path = str(args.yml_path), key="sp", val=sp)
 
-    if job_type in ['opt', 'conformers', 'directed_scan']:
+    if job_type in ['opt', 'conf_opt', 'directed_scan']:
         constraints = input_dict["constraints"] if "constraints" in input_dict.keys() else None
         opt_xyz, sp = constraint_opt(mol=mol, constraints_dict=constraints, ff_method=ff_method)
         save_output_file(path = str(args.yml_path), content_dict = {"opt_xyz" : opt_xyz, "sp" : sp})

@@ -566,12 +566,13 @@ which could be read as an input in ARC::
 
     input_dict['project'] = 'Demo_project_input_file_from_API'
 
-    input_dict['job_types'] = {'conformers': True,
+    input_dict['job_types'] = {'conf_opt': True,
                                'opt': True,
                                'fine': True,
                                'freq': True,
                                'sp': True,
                                'rotors': True,
+                               'conf_sp': False,
                                'orbitals': False,
                                'lennard_jones': False,
                               }

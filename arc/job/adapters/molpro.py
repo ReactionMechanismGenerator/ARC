@@ -233,7 +233,7 @@ class MolproAdapter(JobAdapter):
             input_dict['restricted'] = 'u'
 
         # Job type specific options
-        if self.job_type in ['opt', 'optfreq', 'conformers']:
+        if self.job_type in ['opt', 'optfreq', 'conf_opt']:
             keywords = ['optg', 'root=2', 'method=qsd', 'readhess', "savexyz='geometry.xyz'"] if self.is_ts \
                 else ['optg', "savexyz='geometry.xyz'"]
             input_dict['job_type_1'] = ', '.join(key for key in keywords)
@@ -241,7 +241,7 @@ class MolproAdapter(JobAdapter):
         elif self.job_type in ['freq', 'optfreq']:
             input_dict['job_type_2'] = '{frequencies;\nthermo;\nprint,HESSIAN,thermo;}'
 
-        elif self.job_type == 'sp':
+        elif self.job_type in ['sp', 'conf_sp']:
             pass
 
         elif self.job_type == 'scan':

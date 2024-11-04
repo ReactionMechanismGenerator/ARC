@@ -53,7 +53,8 @@ class TestEnumerationClasses(unittest.TestCase):
     def test_job_type_enum(self):
         """Test the JobTypeEnum class"""
         self.assertEqual(JobTypeEnum('composite').value, 'composite')
-        self.assertEqual(JobTypeEnum('conformers').value, 'conformers')
+        self.assertEqual(JobTypeEnum('conf_opt').value, 'conf_opt')
+        self.assertEqual(JobTypeEnum('conf_sp').value, 'conf_sp')
         self.assertEqual(JobTypeEnum('freq').value, 'freq')
         self.assertEqual(JobTypeEnum('gen_confs').value, 'gen_confs')
         self.assertEqual(JobTypeEnum('irc').value, 'irc')
@@ -123,7 +124,7 @@ class TestJobAdapter(unittest.TestCase):
         """
         cls.maxDiff = None
         cls.job_1 = GaussianAdapter(execution_type='queue',
-                                    job_type='conformers',
+                                    job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
@@ -224,7 +225,7 @@ class TestJobAdapter(unittest.TestCase):
 
     def test_determine_job_array_parameters(self):
         """Test determining job array parameters"""
-        self.assertEqual(self.job_1.iterate_by, ['species', 'conformers'])
+        self.assertEqual(self.job_1.iterate_by, ['species', 'conf_opt'])
         self.assertEqual(self.job_1.number_of_processes, 3 * 6)
         self.assertEqual(self.job_1.workers, 4)
 
