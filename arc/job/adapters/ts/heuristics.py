@@ -1041,4 +1041,42 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     return xyz_guesses
 
 
+
+def is_water(spc):
+    O_counter,H_counter=0,0
+    for atom in spc.mol.atoms:
+        if atom.is_oxygen():
+            O_counter+=1
+        if atom.is_hydrogen():
+            H_counter+=1
+    return (O_counter==1 and H_counter==2)
+
+"""
+def hydrolysis(arc_reaction: 'ARCReaction'):
+    
+        #Generate TS guesses for reactions of the RMG ``hydrolysis`` family.
+
+    #identify reactants and label reacting atoms
+    arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
+    arc_reactant,water=None,None
+    for mol in arc_reactants:
+        if not is_water(mol):
+            arc_reactant=mol
+            break
+        else water=mol
+    for atom in arc_reactant.atoms:
+        if atom.label=='*1':
+            a=atom
+            a_i=atom.atoms.index
+        elif atom.label=='*2':
+            b=atom
+            b_i=atom.atoms.index
+
+    #identify 
+"""
+
+
 register_job_adapter('heuristics', HeuristicsAdapter)
+        
+
+

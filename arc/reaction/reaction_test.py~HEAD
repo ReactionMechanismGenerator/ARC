@@ -1,0 +1,1939 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+
+"""
+This module contains unit tests of the arc.reaction.reaction module
+"""
+
+from itertools import permutations
+import os
+import shutil
+import unittest
+
+from rmgpy.reaction import Reaction
+from rmgpy.species import Species
+
+from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
+from arc.exceptions import ReactionError
+from arc.main import ARC
+from arc.reaction.reaction import ARCReaction, remove_dup_species
+from arc.scheduler import Scheduler
+from arc.species import ARCSpecies
+from arc.mapping.engine import check_atom_map, label_species_atoms
+
+
+class TestARCReaction(unittest.TestCase):
+    """
+    Contains unit tests for the ARCSpecies class
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        """
+        A method that is run before all unit tests in this class.
+        """
+        cls.maxDiff = None
+
+        cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
+        cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
+        cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
+        cls.ho2_xyz = {'coords': ((0.0558910, -0.6204870, 0.0000000),
+                                  (0.0558910, 0.7272050, 0.0000000),
+                                  (-0.8942590, -0.8537420, 0.0000000)),
+                       'isotopes': (16, 16, 1), 'symbols': ('O', 'O', 'H')}
+        cls.ch2_xyz = {'coords': ((-1.3519460059345912e-10, -5.04203763365717e-10, 0.0),
+                                  (-1.064874800478917, -0.016329711355091817, 0.0),
+                                  (1.0648748006141107, 0.016329711859301474, 0.0)),
+                       'isotopes': (12, 1, 1), 'symbols': ('C', 'H', 'H')}
+        cls.nh_xyz = {'coords': ((0.509499983131626, 0.0, 0.0), (-0.509499983131626, 0.0, 0.0)),
+                      'isotopes': (14, 1), 'symbols': ('N', 'H')}
+        cls.ch2choh_xyz = """C      -0.80601307   -0.11773769    0.32792128
+                             C       0.23096883    0.47536513   -0.26437348
+                             O       1.44620485   -0.11266560   -0.46339257
+                             H      -1.74308628    0.41660480    0.45016601
+                             H      -0.75733964   -1.13345488    0.70278513
+                             H       0.21145717    1.48838416   -0.64841675
+                             H       1.41780836   -1.01649567   -0.10468897"""
+        cls.ch3cho_xyz = """C      -0.64851652   -0.03628781   -0.04007233
+                            C       0.84413281    0.04088405    0.05352862
+                            O       1.47323666   -0.23917853    1.06850992
+                            H      -1.06033881    0.94648764   -0.28238370
+                            H      -0.92134271   -0.74783968   -0.82281679
+                            H      -1.04996634   -0.37234114    0.91874740
+                            H       1.36260637    0.37153887   -0.86221771"""
+        cls.ch4_xyz = """C      -0.00000000    0.00000000    0.00000000
+                         H      -0.65055201   -0.77428020   -0.41251879
+                         H      -0.34927558    0.98159583   -0.32768232
+                         H      -0.02233792   -0.04887375    1.09087665
+                         H       1.02216551   -0.15844188   -0.35067554"""
+        cls.oh_xyz = """O       0.48890387    0.00000000    0.00000000
+                        H      -0.48890387    0.00000000    0.00000000"""
+        cls.ch3_xyz = """C       0.00000000    0.00000001   -0.00000000
+                         H       1.06690511   -0.17519582    0.05416493
+                         H      -0.68531716   -0.83753536   -0.02808565
+                         H      -0.38158795    1.01273118   -0.02607927"""
+        cls.h2o_xyz = """O      -0.00032832    0.39781490    0.00000000
+                         H      -0.76330345   -0.19953755    0.00000000
+                         H       0.76363177   -0.19827735    0.00000000"""
+        cls.ch3chch3_xyz = """C                  0.50180491   -0.93942231   -0.57086745
+                              C                  0.01278145    0.13148427    0.42191407
+                              C                 -0.86874485    1.29377369   -0.07163907
+                              H                  0.28549447    0.06799101    1.45462711
+                              H                  1.44553946   -1.32386345   -0.24456986
+                              H                  0.61096295   -0.50262210   -1.54153222
+                              H                 -0.24653265    2.11136864   -0.37045418
+                              H                 -0.21131163   -1.73585284   -0.61629002
+                              H                 -1.51770930    1.60958621    0.71830245
+                              H                 -1.45448167    0.96793094   -0.90568876"""
+        cls.ch3ch2ch2_xyz = """C                  0.48818717   -0.94549701   -0.55196729
+                               C                  0.35993708    0.29146456    0.35637075
+                               C                 -0.91834764    1.06777042   -0.01096751
+                               H                  0.30640232   -0.02058840    1.37845537
+                               H                  1.37634603   -1.48487836   -0.29673876
+                               H                  0.54172192   -0.63344406   -1.57405191
+                               H                  1.21252186    0.92358349    0.22063264
+                               H                 -0.36439762   -1.57761595   -0.41622918
+                               H                 -1.43807526    1.62776079    0.73816131
+                               H                 -1.28677889    1.04716138   -1.01532486"""
+        cls.rxn1 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
+                               p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
+        cls.rxn2 = ARCReaction(r_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'), ARCSpecies(label='OH', smiles='[OH]')],
+                               p_species=[ARCSpecies(label='C=C', smiles='C2H4'), ARCSpecies(label='H2O', smiles='O')])
+        cls.rxn3 = ARCReaction(r_species=[ARCSpecies(label='CC[NH]', smiles='CH3CH2NH')],
+                               p_species=[ARCSpecies(label='[CH2]CH', smiles='CH2CH2NH2')])
+        cls.rxn4 = ARCReaction(r_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='N[NH]', smiles='NH2NH')],
+                               p_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='N[N]', smiles='NH2N')])
+        cls.rxn5 = ARCReaction(reactants=['NH2', 'NH2'], products=['NH', 'NH3'],
+                               r_species=[ARCSpecies(label='NH2', smiles='[NH2]')],
+                               p_species=[ARCSpecies(label='NH', smiles='[NH]'),
+                                          ARCSpecies(label='NH3', smiles='N')])
+        cls.rxn6 = ARCReaction(reactants=['NH2', 'N2H3'], products=['NH3', 'H2NN(S)'],
+                               r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
+                                          ARCSpecies(label='N2H3', smiles='N[NH]')],
+                               p_species=[ARCSpecies(label='NH3', smiles='N'),
+                                          ARCSpecies(label='H2NN(S)', adjlist="""multiplicity 1
+                                                                                 1 N u0 p0 c+1 {2,D} {3,S} {4,S}
+                                                                                 2 N u0 p2 c-1 {1,D}
+                                                                                 3 H u0 p0 c0 {1,S}
+                                                                                 4 H u0 p0 c0 {1,S}""")])
+        cls.rxn7 = ARCReaction(reactants=['NH2', 'N2H3'], products=['NH3', 'H2NN(T)'],
+                               r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
+                                          ARCSpecies(label='N2H3', smiles='N[NH]')],
+                               p_species=[ARCSpecies(label='NH3', smiles='N'),
+                                          ARCSpecies(label='H2NN(T)', adjlist="""multiplicity 3
+                                                                                 1 N u0 p1 c0 {2,S} {3,S} {4,S}
+                                                                                 2 N u2 p1 c0 {1,S}
+                                                                                 3 H u0 p0 c0 {1,S}
+                                                                                 4 H u0 p0 c0 {1,S}""")])
+        cls.rxn8 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
+                                          ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
+                               p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
+                                          ARCSpecies(label='H2O', smiles='O', xyz=cls.h2o_xyz)])
+        cls.rxn9 = ARCReaction(r_species=[ARCSpecies(label='NCOO', smiles='NCO[O]')],
+                               p_species=[ARCSpecies(label='NHCH2', smiles='N=C'),
+                                          ARCSpecies(label='HO2', smiles='O[O]')])
+        cls.rxn10 = ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O'),
+                                           ARCSpecies(label='NO2', smiles='O=[N+][O-]')],
+                                p_species=[ARCSpecies(label='HNO2', smiles='[O-][NH+]=O'),
+                                           ARCSpecies(label='NO', smiles='[N]=O')])
+        cls.rxn11 = ARCReaction(r_species=[ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.ch3chch3_xyz)],
+                                p_species=[ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.ch3ch2ch2_xyz)])
+
+    def test_str(self):
+        """Test the string representation of the object"""
+        str_representation = str(self.rxn1)
+        self.assertEqual(self.rxn1.charge, 0)
+        expected_representation = 'ARCReaction(label="CH4 + OH <=> CH3 + H2O", ' \
+                                  'rmg_reaction="CH4 + OH <=> CH3 + H2O", ' \
+                                  'multiplicity=2, charge=0)'
+        self.assertEqual(str_representation, expected_representation)
+
+    def test_as_dict(self):
+        """Test ARCReaction.as_dict()"""
+        rxn_dict_1 = self.rxn1.as_dict()
+        # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
+        expected_dict_1 = {'family': 'H_Abstraction',
+                           'family_own_reverse': True,
+                           'label': 'CH4 + OH <=> CH3 + H2O',
+                           'multiplicity': 2,
+                           'p_species': [{'bond_corrections': {'C-H': 3},
+                                          'cheap_conformer': 'C       0.00000000    0.00000001   -0.00000000\n'
+                                                             'H       1.06690511   -0.17519582    0.05416493\n'
+                                                             'H      -0.68531716   -0.83753536   -0.02808565\n'
+                                                             'H      -0.38158795    1.01273118   -0.02607927',
+                                          'label': 'CH3',
+                                          'long_thermo_description': "Bond corrections: {'C-H': 3}\n",
+                                          'mol': {'atom_order': rxn_dict_1['p_species'][0]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_1['p_species'][0]['mol']['atoms'],
+                                                  'multiplicity': 2,
+                                                  'props': {}},
+                                          'multiplicity': 2,
+                                          'number_of_rotors': 0},
+                                         {'bond_corrections': {'H-O': 2},
+                                          'cheap_conformer': 'O      -0.00032832    0.39781490    0.00000000\n'
+                                                             'H      -0.76330345   -0.19953755    0.00000000\n'
+                                                             'H       0.76363177   -0.19827735    0.00000000',
+                                          'label': 'H2O',
+                                          'long_thermo_description': "Bond corrections: {'H-O': 2}\n",
+                                          'mol': {'atom_order': rxn_dict_1['p_species'][1]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_1['p_species'][1]['mol']['atoms'],
+                                                  'multiplicity': 1,
+                                                  'props': {}},
+                                          'multiplicity': 1,
+                                          'number_of_rotors': 0}],
+                           'products': ['CH3', 'H2O'],
+                           'r_species': [{'bond_corrections': {'C-H': 4},
+                                          'cheap_conformer': 'C      -0.00000000   -0.00000000    0.00000000\n'
+                                                             'H      -0.63306457   -0.78034118   -0.42801448\n'
+                                                             'H      -0.38919244    0.98049560   -0.28294367\n'
+                                                             'H       0.00329661   -0.09013273    1.08846898\n'
+                                                             'H       1.01896040   -0.11002169   -0.37751083',
+                                          'label': 'CH4',
+                                          'long_thermo_description': "Bond corrections: {'C-H': 4}\n",
+                                          'mol': {'atom_order': rxn_dict_1['r_species'][0]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_1['r_species'][0]['mol']['atoms'],
+                                                  'multiplicity': 1,
+                                                  'props': {}},
+                                          'multiplicity': 1,
+                                          'number_of_rotors': 0},
+                                         {'bond_corrections': {'H-O': 1},
+                                          'cheap_conformer': 'O       0.00000000    0.00000000    0.61310000\n'
+                                                             'H       0.00000000    0.00000000   -0.61310000',
+                                          'label': 'OH',
+                                          'long_thermo_description': "Bond corrections: {'H-O': 1}\n",
+                                          'mol': {'atom_order': rxn_dict_1['r_species'][1]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_1['r_species'][1]['mol']['atoms'],
+                                                  'multiplicity': 2,
+                                                  'props': {}},
+                                          'multiplicity': 2,
+                                          'number_of_rotors': 0}],
+                           'reactants': ['CH4', 'OH'],
+                           }
+        self.assertEqual(rxn_dict_1, expected_dict_1)
+
+        rxn_dict_6 = self.rxn6.as_dict()
+        # The ``long_thermo_description`` attribute isn't deterministic (order could change)
+        expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
+                           'family': 'Disproportionation',
+                           'multiplicity': 1,
+                           'p_species': [{'bond_corrections': {'H-N': 3},
+                                          'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
+                                                             'H      -0.41786606    0.84210396   -0.09477452\n'
+                                                             'H      -0.52039228   -0.78225292   -0.10002797\n'
+                                                             'H       0.93760911   -0.05885406   -0.10079043',
+                                          'label': 'NH3',
+                                          'long_thermo_description': "Bond corrections: {'H-N': 3}\n",
+                                          'mol': {'atom_order': rxn_dict_6['p_species'][0]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_6['p_species'][0]['mol']['atoms'],
+                                                  'multiplicity': 1,
+                                                  'props': {}},
+                                          'multiplicity': 1,
+                                          'number_of_rotors': 0},
+                                         {'adjlist': """multiplicity 1
+1 N u0 p0 c+1 {2,D} {3,S} {4,S}
+2 N u0 p2 c-1 {1,D}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}""",
+                                          'bond_corrections': {'H-N': 2, 'N=N': 1},
+                                          'cheap_conformer': 'N      -0.08201544    0.01567102    0.28740725\n'
+                                                             'N       1.12656450   -0.21525765   -0.48621674\n'
+                                                             'H      -0.50742562   -0.72901556    0.83982059\n'
+                                                             'H      -0.53712345    0.92860218    0.29862267',
+                                          'label': 'H2NN[S]',
+                                          'long_thermo_description': rxn_dict_6['p_species'][1]['long_thermo_description'],
+                                          'mol': {'atom_order': rxn_dict_6['p_species'][1]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_6['p_species'][1]['mol']['atoms'],
+                                                  'multiplicity': 1,
+                                                  'props': {}},
+                                          'multiplicity': 1,
+                                          'number_of_rotors': 0,
+                                          'original_label': 'H2NN(S)'}],
+                           'products': ['H2NN[S]', 'NH3'],
+                           'r_species': [{'bond_corrections': {'H-N': 2},
+                                          'cheap_conformer': 'N       0.00016375    0.40059499    0.00000000\n'
+                                                             'H      -0.83170922   -0.19995756    0.00000000\n'
+                                                             'H       0.83154548   -0.20063742    0.00000000',
+                                          'label': 'NH2',
+                                          'long_thermo_description': "Bond corrections: {'H-N': 2}\n",
+                                          'mol': {'atom_order': rxn_dict_6['r_species'][0]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_6['r_species'][0]['mol']['atoms'],
+                                                  'multiplicity': 2,
+                                                  'props': {}},
+                                          'multiplicity': 2,
+                                          'number_of_rotors': 0},
+                                         {'bond_corrections': {'H-N': 3, 'N-N': 1},
+                                          'cheap_conformer': 'N      -0.46751749    0.03795671    0.31180026\n'
+                                                             'N       0.79325823   -0.46038094   -0.24114357\n'
+                                                             'H      -1.19307188   -0.63034971    0.05027053\n'
+                                                             'H      -0.69753009    0.90231202   -0.17907452\n'
+                                                             'H       1.56486123    0.15046192    0.05814730',
+                                          'label': 'N2H3',
+                                          'long_thermo_description': rxn_dict_6['r_species'][1]['long_thermo_description'],
+                                          'mol': {'atom_order': rxn_dict_6['r_species'][1]['mol']['atom_order'],
+                                                  'atoms': rxn_dict_6['r_species'][1]['mol']['atoms'],
+                                                  'multiplicity': 2,
+                                                  'props': {}},
+                                          'multiplicity': 2,
+                                          'number_of_rotors': 0}],
+                           'reactants': ['N2H3', 'NH2'],
+                           }
+        self.assertEqual(rxn_dict_6, expected_dict_6)
+
+    def test_from_dict(self):
+        """Test ARCReaction.from_dict()"""
+        rxn_dict = self.rxn1.as_dict()
+        rxn = ARCReaction(reaction_dict=rxn_dict)
+        self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
+        self.assertEqual(rxn.multiplicity, 2)
+        self.assertEqual(rxn.charge, 0)
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertEqual(rxn.family_own_reverse, True)
+        self.assertEqual(rxn.reactants, ['CH4', 'OH'])
+        self.assertEqual(rxn.products, ['CH3', 'H2O'])
+        self.assertIsNone(rxn.index)
+
+    def test_copy(self):
+        """Test the copy() method."""
+        rxn_copy = self.rxn1.copy()
+        self.assertIsNot(self.rxn1, rxn_copy)
+        self.assertEqual(rxn_copy.multiplicity, self.rxn1.multiplicity)
+        self.assertEqual(rxn_copy.label, self.rxn1.label)
+
+        rxn_copy = self.rxn8.copy()
+        self.assertIsNot(self.rxn8, rxn_copy)
+        self.assertEqual(self.rxn8.label, rxn_copy.label)
+        self.assertEqual(self.rxn8.multiplicity, rxn_copy.multiplicity)
+        self.assertEqual(self.rxn8.charge, rxn_copy.charge)
+        self.assertTrue(check_atom_map(self.rxn8))
+        self.assertTrue(check_atom_map(rxn_copy))
+        self.assertEqual(self.rxn8.atom_map, rxn_copy.atom_map)
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.r_species),
+                         tuple(spc.label for spc in rxn_copy.r_species))
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.p_species),
+                         tuple(spc.label for spc in rxn_copy.p_species))
+        self.assertNotIn(self.rxn8.r_species[0].mol.atoms[0].id, [atom.id for atom in rxn_copy.r_species[0].mol.atoms
+                                                                  + rxn_copy.p_species[0].mol.atoms])
+
+    def test_flip_reaction(self):
+        """Test the flip_reaction() method."""
+        flipped_rxn = self.rxn1.flip_reaction()
+        self.assertIsNot(self.rxn1, flipped_rxn)
+        self.assertEqual(flipped_rxn.multiplicity, self.rxn1.multiplicity)
+        self.assertNotEqual(flipped_rxn.label, self.rxn1.label)
+        for s1, s2 in zip(self.rxn1.r_species, flipped_rxn.p_species):
+            self.assertEqual(s1.label, s2.label)
+            self.assertTrue(s1.mol.is_isomorphic(s2.mol))
+        for s1, s2 in zip(self.rxn1.p_species, flipped_rxn.r_species):
+            self.assertEqual(s1.label, s2.label)
+            self.assertTrue(s1.mol.is_isomorphic(s2.mol))
+
+        flipped_rxn = self.rxn8.flip_reaction()
+        self.assertIsNot(self.rxn8, flipped_rxn)
+        self.assertNotEqual(self.rxn8.label, flipped_rxn.label)
+        self.assertEqual(self.rxn8.label.split('<=>')[0].strip(), flipped_rxn.label.split('<=>')[1].strip())
+        self.assertEqual(self.rxn8.label.split('<=>')[1].strip(), flipped_rxn.label.split('<=>')[0].strip())
+        self.assertEqual(self.rxn8.multiplicity, flipped_rxn.multiplicity)
+        self.assertEqual(self.rxn8.charge, flipped_rxn.charge)
+        self.assertTrue(check_atom_map(flipped_rxn))
+        self.assertEqual(self.rxn8.atom_map[0], 0)
+        self.assertEqual(self.rxn8.atom_map[5], 4)
+        self.assertEqual(flipped_rxn.atom_map[0], 0)
+        self.assertEqual(flipped_rxn.atom_map[4], 5)
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.r_species),
+                         tuple(spc.label for spc in flipped_rxn.p_species))
+        self.assertEqual(tuple(spc.label for spc in self.rxn8.p_species),
+                         tuple(spc.label for spc in flipped_rxn.r_species))
+        self.assertNotIn(self.rxn8.r_species[0].mol.atoms[0].id, [atom.id for atom in flipped_rxn.r_species[0].mol.atoms
+                                                                  + flipped_rxn.p_species[0].mol.atoms])
+
+    def test_is_isomerization(self):
+        """Test the is_isomerization() method"""
+        self.assertFalse(self.rxn1.is_isomerization())
+        self.assertFalse(self.rxn2.is_isomerization())
+        self.assertTrue(self.rxn3.is_isomerization())
+        self.assertFalse(self.rxn4.is_isomerization())
+        self.assertFalse(self.rxn5.is_isomerization())
+        self.assertFalse(self.rxn6.is_isomerization())
+        self.assertFalse(self.rxn7.is_isomerization())
+        self.assertFalse(self.rxn8.is_isomerization())
+        self.assertFalse(self.rxn9.is_isomerization())
+
+    def test_rxn_family(self):
+        """Test that ARC gets the correct RMG family for different reactions"""
+        self.assertEqual(self.rxn1.family, 'H_Abstraction')
+        self.assertTrue(self.rxn1.family_own_reverse)
+        self.assertEqual(self.rxn2.family, 'Disproportionation')
+        self.assertFalse(self.rxn2.family_own_reverse)
+        self.assertEqual(self.rxn3.family, 'intra_H_migration')
+        self.assertTrue(self.rxn3.family_own_reverse)
+        self.assertEqual(self.rxn4.family, 'H_Abstraction')
+        self.rxn5.rmg_reaction_from_arc_species()
+        self.rxn5.check_attributes()
+        self.assertEqual(self.rxn5.family, 'H_Abstraction')
+        self.rxn9.rmg_reaction_from_arc_species()
+        self.rxn9.check_attributes()
+        self.assertEqual(self.rxn9.family, 'HO2_Elimination_from_PeroxyRadical')
+        rxn_9_flipped = self.rxn9.flip_reaction()
+        rxn_9_flipped.rmg_reaction_from_arc_species()
+        rxn_9_flipped.check_attributes()
+        self.assertEqual(rxn_9_flipped.family, 'HO2_Elimination_from_PeroxyRadical')
+        self.assertEqual(self.rxn10.family, 'H_Abstraction')
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                       ARCSpecies(label='CCOOj', smiles='CCO[O]')],
+                            p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
+                                       ARCSpecies(label='C2H5', smiles='C[CH2]')])
+        rxn_1.check_attributes()
+        self.assertEqual(rxn_1.family, 'H_Abstraction')
+
+        # Test identifying the reaction family for with zwitterions read from Arkane YAML files
+        base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'HNNO+NH3O=H2NO+NH2NO')
+        rxn2 = ARCReaction(r_species=[ARCSpecies(label='HNNO', smiles='[O-][N+]=N', yml_path=os.path.join(base_path, 'HNNO.yml')),
+                                      ARCSpecies(label='NH3O', smiles='[O-][NH3+]', yml_path=os.path.join(base_path, 'NH3O.yml'))],
+                           p_species=[ARCSpecies(label='H2NO', smiles='N[O]', yml_path=os.path.join(base_path, 'H2NO.yml')),
+                                      ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
+        self.assertEqual(rxn2.family, 'H_Abstraction')
+
+    def test_charge_property(self):
+        """Test determining charge"""
+        self.assertEqual(self.rxn1.charge, 0)
+
+    def test_multiplicity_property(self):
+        """Test determining multiplicity"""
+        self.assertEqual(self.rxn1.multiplicity, 2)
+        self.assertEqual(self.rxn2.multiplicity, 1)
+        self.assertEqual(self.rxn3.multiplicity, 2)
+        self.assertEqual(self.rxn4.multiplicity, 3)
+        self.assertEqual(self.rxn5.multiplicity, 3)
+        self.assertEqual(self.rxn6.multiplicity, 1)
+        self.assertEqual(self.rxn7.multiplicity, 3)
+
+        # isomerization
+        rxn_1 = ARCReaction(reactants=['nC3H7'], products=['iC3H7'],
+                            r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
+                            p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
+        self.assertEqual(rxn_1.multiplicity, 2)
+        rxn_2 = ARCReaction(reactants=['CC=O'], products=['C=COH'],
+                            r_species=[ARCSpecies(label='CC=O', smiles='CC=O')],
+                            p_species=[ARCSpecies(label='C=COH', smiles='C=CO')])
+        self.assertEqual(rxn_2.multiplicity, 1)
+
+        # unimolecular
+        rxn_3 = ARCReaction(reactants=['H', 'OH'], products=['H2O'],
+                            r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='OH', smiles='[OH]')],
+                            p_species=[ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn_3.multiplicity, 1)
+
+        # Reactions for which the multiplicity was wrongly determined before code fixes:
+        rxn_4 = ARCReaction(reactants=['H', 'HO2'], products=['OH', 'OH'],
+                            r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='HO2', smiles='O[O]')],
+                            p_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='OH', smiles='[OH]')])
+        self.assertEqual(rxn_4.multiplicity, 1)
+
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
+                                       ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='N', smiles='[N]'), ARCSpecies(label='HNO', smiles='N=O')],
+                            p_species=[ARCSpecies(label='NO', smiles='[N]=O'), ARCSpecies(label='NH', smiles='[NH]')])
+        self.assertEqual(rxn_5.multiplicity, 4)
+
+    def test_check_atom_balance(self):
+        """Test the Reaction check_atom_balance method"""
+
+        # A normal reaction
+        rxn1 = ARCReaction(reactants=['CH4', 'OH'], products=['CH3', 'H2O'],
+                           r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                      ARCSpecies(label='OH', smiles='[OH]')],
+                           p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                      ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn1.check_atom_balance())
+
+        # A reaction with the same species twice on one side
+        rxn3 = ARCReaction(reactants=['CH4', 'OH', 'H2O'], products=['CH3', 'H2O', 'H2O'],
+                           r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                      ARCSpecies(label='OH', smiles='[OH]'),
+                                      ARCSpecies(label='H2O', smiles='O')],
+                           p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                      ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn3.check_atom_balance())
+
+        # Another reaction with the same species twice on one side
+        rxn4 = ARCReaction(reactants=['OH', 'OH'], products=['O', 'H2O'],
+                           r_species=[ARCSpecies(label='OH', smiles='[OH]')],
+                           p_species=[ARCSpecies(label='O', smiles='[O]'),
+                                      ARCSpecies(label='H2O', smiles='O')])
+        self.assertTrue(rxn4.check_atom_balance())
+
+        # Another reaction with the same species twice on one side, reading from the reaction label
+        nh2 = ARCSpecies(label='NH2', smiles='[NH2]')
+        h = ARCSpecies(label='H', smiles='[H]')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn_label = 'NH2 + NH2 <=> H + N2H3'
+        rxn5 = ARCReaction(reaction_dict={'label': rxn_label}, species_list=[nh2, h, n2h3])
+        self.assertTrue(rxn5.check_atom_balance())
+        rxn5_flipped = rxn5.flip_reaction()
+        self.assertTrue(rxn5_flipped.check_atom_balance())
+
+        # Legitimate reactions that previously failed in the atom balance test
+        rxn6 = ARCReaction(reactants=['NH', '[O-][N+](=N)N'], products=['NH2', '[N-]=[N+]([O])N'],
+                           r_species=[ARCSpecies(label='NH', smiles='[NH]'),
+                                      ARCSpecies(label='[O-][N+](=N)N', smiles='[O-][N+](=N)N')],
+                           p_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
+                                      ARCSpecies(label='[N-]=[N+]([O])N', smiles='[N-]=[N+]([O])N')])
+        self.assertTrue(rxn6.check_atom_balance())
+
+        rxn7 = ARCReaction(reactants=['N3O2', 'HON'], products=['NO', 'HN3O2'],
+                           r_species=[ARCSpecies(label='N3O2', smiles='[N-]=[N+](N=O)[O]'),
+                                      ARCSpecies(label='HON', smiles='[OH+]=[N-]')],
+                           p_species=[ARCSpecies(label='NO', smiles='[N]=O'),
+                                      ARCSpecies(label='HN3O2', smiles='[O-][N+](=N)N=O')])
+        self.assertTrue(rxn7.check_atom_balance())
+
+        # A reaction that involves charged species
+        rxn8 = ARCReaction(reactants=['C6CNC3', 'OH'], products=['C6COH', 'NC3'],
+                           r_species=[ARCSpecies(label='C6CNC3', smiles='c1ccccc1C[N+](C)(C)C', charge=1, multiplicity=1),
+                                      ARCSpecies(label='OH', smiles='[OH-]', charge=-1, multiplicity=1)],
+                           p_species=[ARCSpecies(label='C6COH', smiles='c1ccccc1CO'),
+                                      ARCSpecies(label='NC3', smiles='CN(C)C')])
+        self.assertTrue(rxn8.check_atom_balance())
+
+        # A *non*-balanced reaction
+        with self.assertRaises(ReactionError):
+            ARCReaction(reactants=['CH4', 'OH'], products=['CH4', 'H2O'],
+                        r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                   ARCSpecies(label='OH', smiles='[OH]')],
+                        p_species=[ARCSpecies(label='CH4', smiles='C'),
+                                   ARCSpecies(label='H2O', smiles='O')])
+
+    def test_get_species_count(self):
+        """Test the get_species_count() method"""
+        rxn1 = ARCReaction(reactants=['CH4', 'OH', 'H2O'], products=['CH3', 'H2O', 'H2O'])
+        spc1 = ARCSpecies(label='OH', smiles='[OH]')
+        spc2 = ARCSpecies(label='H2O', smiles='O')
+        # check by species
+        self.assertEqual(rxn1.get_species_count(species=spc1, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(species=spc1, well=1), 0)
+        self.assertEqual(rxn1.get_species_count(species=spc2, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(species=spc2, well=1), 2)
+        # check by label
+        self.assertEqual(rxn1.get_species_count(label=spc1.label, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(label=spc1.label, well=1), 0)
+        self.assertEqual(rxn1.get_species_count(label=spc2.label, well=0), 1)
+        self.assertEqual(rxn1.get_species_count(label=spc2.label, well=1), 2)
+
+        h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
+        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn2 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        self.assertEqual(rxn2.get_species_count(label=n2h3.label, well=1), 2)
+
+    def test_get_reactants_and_products(self):
+        """Test getting reactants and products"""
+        self.rxn1.remove_dup_species()
+        reactants, products = self.rxn1.get_reactants_and_products(arc=True)
+        for spc in reactants + products:
+            self.assertIsInstance(spc, ARCSpecies)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+
+        reactants, products = self.rxn1.get_reactants_and_products(arc=False)
+        for spc in reactants + products:
+            self.assertIsInstance(spc, Species)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+
+        reactants, products = self.rxn5.get_reactants_and_products(arc=True)
+        for spc in reactants + products:
+            self.assertIsInstance(spc, ARCSpecies)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertEqual(reactants[0].label, reactants[1].label)
+
+        reactants, products = self.rxn5.get_reactants_and_products(arc=False)
+        for spc in reactants + products:
+            self.assertIsInstance(spc, Species)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertNotEqual(products[0].label, products[1].label)
+
+        h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
+        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
+        rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=False)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertIs(products[0], products[1])
+        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=True)
+        self.assertEqual(len(reactants), 2)
+        self.assertEqual(len(products), 2)
+        self.assertIsNot(products[0], products[1])
+
+    def test_get_expected_changing_bonds(self):
+        """Test the get_expected_changing_bonds() method."""
+        expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
+            r_label_dict={'*1': 1, '*2': 2, '*3': 6})
+        self.assertEqual(expected_breaking_bonds, [(2, 6)])
+        self.assertEqual(expected_forming_bonds, [(1, 6)])
+
+    def test_get_number_of_atoms_in_reaction_zone(self):
+        """Test the get_number_of_atoms_in_reaction_zone() method."""
+        self.assertEqual(self.rxn1.get_number_of_atoms_in_reaction_zone(), 3)  # H_Abstraction
+        self.assertEqual(self.rxn2.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
+        self.assertEqual(self.rxn3.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn4.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn5.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn6.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
+        self.assertEqual(self.rxn7.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn8.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn9.get_number_of_atoms_in_reaction_zone(), 5)  # HO2_Elimination_from_PeroxyRadical
+        self.assertEqual(self.rxn10.get_number_of_atoms_in_reaction_zone(), 3)
+        self.assertEqual(self.rxn11.get_number_of_atoms_in_reaction_zone(), 3)
+
+    def test_get_atom_map(self):
+        """Test getting an atom map for a reaction"""
+
+        # 1. trivial unimolecular: H2O <=> H2O
+        h2o_xyz_1 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                     'coords': ((-0.0003283189391273643, 0.39781490416473486, 0.0),
+                                (-0.7633034507689803, -0.19953755103743254, 0.0),
+                                (0.7636317697081081, -0.19827735312730177, 0.0))}
+        r_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)
+        p_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)
+        rxn_1 = ARCReaction(reactants=['H2O'], products=['H2O'], r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn_1.atom_map, [0, 1, 2])
+        self.assertTrue(check_atom_map(rxn_1))
+
+        # 2. trivial unimolecular with an intentional mixed atom order: H2O <=> H2O
+        h2o_xyz_2 = {'symbols': ('H', 'H', 'O'), 'isotopes': (1, 1, 16),
+                     'coords': ((-0.7633034507689803, -0.19953755103743254, 0.0),
+                                (0.7636317697081081, -0.19827735312730177, 0.0),
+                                (-0.0003283189391273643, 0.39781490416473486, 0.0))}
+        p_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)
+        rxn_2 = ARCReaction(reactants=['H2O'], products=['H2O'], r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn_2.atom_map, [2, 0, 1])
+        self.assertTrue(check_atom_map(rxn_2))
+
+        # 3. trivial bimolecular: H + CH3NH2 <=> H2 + CH2NH2
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,), 'symbols': ('H',)})
+        r_2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_3 = ARCReaction(reactants=['H', 'CH3NH2'], products=['H2', 'CH2NH2'],
+                            r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn_3.family, "H_Abstraction")
+        self.assertIn(rxn_3.atom_map[0], [0, 1])
+        self.assertEqual(rxn_3.atom_map[1:3], [2, 5])
+        for index in [3, 4, 5]:
+            self.assertIn(rxn_3.atom_map[index], [0, 1, 3, 4])
+        self.assertIn(rxn_3.atom_map[6:], [[7, 6], [6, 7]])
+        self.assertTrue(check_atom_map(rxn_3))
+
+        # 4. trivial bimolecular in reverse order: H + CH3NH2 <=> CH2NH2 + H2
+        rxn_4 = ARCReaction(reactants=['H', 'CH3NH2'], products=['CH2NH2', 'H2'],
+                            r_species=[r_1, r_2], p_species=[p_2, p_1])
+        self.assertIn(rxn_4.atom_map[0], [6, 7])
+        self.assertEqual(rxn_4.atom_map[1:3], [0, 3])
+        for index in [3, 4, 5]:
+            self.assertIn(rxn_4.atom_map[index], [1, 2, 6, 7])
+        self.assertIn(rxn_4.atom_map[6:], [[5, 4], [4, 5]])
+        self.assertTrue(check_atom_map(rxn_4))
+
+        # H_Abstraction: C3H6O + C4H9O <=> C3H5O + C4H10O
+        c3h6o_xyz = {'coords': ((-1.0614352911982476, -0.35086070951203013, 0.3314546936475969),
+                                (0.08232694092180896, 0.5949821397504677, 0.020767511136565348),
+                                (1.319643623472743, -0.1238222051358961, -0.4579284002686819),
+                                (1.4145501246584122, -1.339374145335546, -0.5896335370976351),
+                                (-0.7813545474862899, -1.0625754884160945, 1.1151404910689675),
+                                (-1.3481804813952152, -0.9258389945508673, -0.5552942813558058),
+                                (-1.9370566523150816, 0.2087367432207233, 0.6743848589525232),
+                                (-0.2162279757671984, 1.3021306884228383, -0.7596873819624604),
+                                (0.35220978385921775, 1.1650050778348893, 0.9154971248602527),
+                                (2.1755244752498673, 0.5316168937214946, -0.6947010789813145)),
+                     'isotopes': (12, 12, 12, 16, 1, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c4h9o_xyz = {'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
+                                (-0.2501237905589279, 2.283276320160058, 0.6795778782867752),
+                                (0.21710649528235348, 1.7701501165266882, -1.0518607878262018),
+                                (-0.1296127183749531, 0.05931626777072968, 0.3829802045651552),
+                                (-1.5215969202773243, -0.4341372833972907, -0.0024458040153687616),
+                                (0.954275466146204, -0.8261822387409435, -0.2512878552942834),
+                                (2.238645869558612, -0.5229077195628998, 0.2868843893740711),
+                                (-0.022719509344805086, 0.012299638536749403, 1.47391586262432),
+                                (-1.6734988982808552, -1.4656213151526711, 0.3333615031669381),
+                                (-1.6708084550075688, -0.40804497485420527, -1.0879383468423085),
+                                (-2.3005261427143897, 0.18308085969254126, 0.45923715033920876),
+                                (0.7583076310662862, -1.882720433150506, -0.04089782108496264),
+                                (0.9972006722528377, -0.7025586995487184, -1.3391950754631268),
+                                (2.377638769033351, 0.43380253822255727, 0.17647842348371048)),
+                     'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c3h5o_xyz = {'coords': ((-1.1339526749599567, -0.11366348271898848, -0.17361178233231772),
+                                (0.1315989608873882, 0.19315012600914244, 0.5375291058021542),
+                                (0.12186476447223683, 0.5479023323381329, 1.5587521800625246),
+                                (1.435623589506148, 0.026762256080503182, -0.11697684942586563),
+                                (1.5559845484585495, -0.3678359306766861, -1.2677014903374604),
+                                (-1.6836994309836657, -0.8907558916446712, 0.3657463577153353),
+                                (-1.7622426221647125, 0.7810307051429465, -0.21575166529131876),
+                                (-0.9704526962734873, -0.4619573344933834, -1.1970278328709658),
+                                (2.3052755610575106, 0.2853672199629854, 0.5090419766779545)),
+                     'isotopes': (12, 12, 1, 12, 16, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'H', 'C', 'O', 'H', 'H', 'H', 'H')}
+        c4h10o_xyz = {'coords': ((-1.0599869990613344, -1.2397714287161459, 0.010871360821665921),
+                                 (-0.15570197396874313, -0.0399426912154684, -0.2627503141760959),
+                                 (-0.8357120092418682, 1.2531917172190083, 0.1920887922885465),
+                                 (1.2013757682054618, -0.22681093996845836, 0.42106399857821075),
+                                 (2.0757871909243337, 0.8339710961541049, 0.05934908325727899),
+                                 (-1.2566363886319676, -1.3536924078596617, 1.082401336123387),
+                                 (-0.5978887839926055, -2.1649950925769703, -0.3492714363488459),
+                                 (-2.0220571570609596, -1.1266512469159389, -0.4999630281827645),
+                                 (0.0068492778433242255, 0.03845056912064928, -1.3453078463310726),
+                                 (-0.22527545723287978, 2.1284779433126504, -0.05264318253022085),
+                                 (-1.804297837475001, 1.3767516368254167, -0.30411519687565475),
+                                 (-1.0079707678533625, 1.2514371624519658, 1.2738106811073706),
+                                 (1.0967232048111195, -0.23572903005857432, 1.511374071529777),
+                                 (1.6637048773271081, -1.1686406202494035, 0.10718319440789557),
+                                 (2.9210870554073614, 0.6739533324768243, 0.512528859867013)),
+                      'isotopes': (12, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C3H6O', smiles='CCC=O', xyz=c3h6o_xyz)
+        r_2 = ARCSpecies(label='C4H9O', smiles='[CH2]C(C)CO', xyz=c4h9o_xyz)
+        p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=c3h5o_xyz)
+        p_2 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=c4h10o_xyz)
+        rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
+        self.assertIn(atom_map[4], [5,6, 7])
+        self.assertIn(atom_map[5], [5,6, 7])
+        self.assertIn(atom_map[6], [5,6, 7])
+        self.assertIn(atom_map[7], [2, 14, 15, 16, 18, 19, 20])
+        self.assertIn(atom_map[8], [2, 14, 15, 16, 18, 19, 20])
+        self.assertTrue(any(entry == 2 for entry in [atom_map[7], atom_map[8]]))
+        self.assertEqual(atom_map[9], 8)
+        self.assertIn(atom_map[10], [9,11])
+        self.assertIn(atom_map[11], [14, 15, 16,18,19,20])
+        self.assertIn(atom_map[12], [14, 15, 16,18,19,20])
+        self.assertEqual(atom_map[13],10)
+        self.assertIn(atom_map[14], [9,11])
+        self.assertEqual(atom_map[15:17], [12,13])
+        self.assertEqual(atom_map[17],17)
+        self.assertIn(atom_map[18], [14, 15, 16,18,19,20])
+        self.assertIn(atom_map[19], [14, 15, 16,18,19,20])
+        self.assertIn(atom_map[20], [14, 15, 16,18,19,20])
+        self.assertIn(atom_map[21], [21,22])
+        self.assertIn(atom_map[22], [21,22])
+        self.assertEqual(atom_map[23],23)
+        self.assertTrue(check_atom_map(rxn))
+
+        # H_Abstraction: NH + N2H3 <=> NH2 + N2H2(T)
+        n2h3_xyz = {'coords': ((-0.470579649119187, 0.04999660847282449, 0.3054306465848634),
+                               (0.7822241718336367, -0.48270144244781193, -0.23341826421899858),
+                               (1.5677258653370059, 0.10203349472372605, 0.08145841384293159),
+                               (-0.6670140616222734, 0.9245291856920813, -0.1819911659528955),
+                               (-1.212356326429186, -0.5938578464408176, 0.028520369744099196)),
+                    'isotopes': (14, 14, 1, 1, 1),
+                    'symbols': ('N', 'N', 'H', 'H', 'H')}
+        nh2_xyz = {'coords': ((0.0001637451536497341, 0.4005949879135532, 0.0),
+                              (-0.8317092208339203, -0.19995756341639623, 0.0),
+                              (0.8315454756802706, -0.20063742449715688, 0.0)),
+                   'isotopes': (14, 1, 1),
+                   'symbols': ('N', 'H', 'H')}
+        n2h2_t_xyz = {'coords': ((0.5974274138372041, -0.41113104979405946, 0.08609839663782763),
+                                 (1.421955422639823, 0.19737093442024492, 0.02508578507394823),
+                                 (-0.5974274348582206, 0.41113108883884353, -0.08609846602622732),
+                                 (-1.4219554016188147, -0.19737097346502322, -0.02508571568554942)),
+                      'isotopes': (14, 1, 14, 1),
+                      'symbols': ('N', 'H', 'N', 'H')}
+        r_1 = ARCSpecies(label='NH', smiles='[NH]', xyz=self.nh_xyz)
+        r_2 = ARCSpecies(label='N2H3', smiles='N[NH]', xyz=n2h3_xyz)
+        p_1 = ARCSpecies(label='NH2', smiles='[NH2]', xyz=nh2_xyz)
+        p_2 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=n2h2_t_xyz)
+        rxn = ARCReaction(reactants=['NH', 'N2H3'], products=['NH2', 'N2H2(T)'],
+                          r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.atom_map[0], 0)
+        self.assertIn(rxn.atom_map[1], [1, 2])
+        self.assertIn(rxn.atom_map[2], [3, 5])
+        self.assertIn(rxn.atom_map[3], [3, 5])
+        self.assertIn(rxn.atom_map[4], [4, 6])
+        self.assertIn(rxn.atom_map[5], [1, 2, 4, 6])
+        self.assertIn(rxn.atom_map[6], [1, 2, 4, 6])
+        self.assertTrue(any(rxn.atom_map[index] in [1, 2] for index in [5, 6]))
+        self.assertTrue(check_atom_map(rxn))
+
+        # Cyclopentadiene_scission: C6H6 <=> C6H6_2
+        c6h6_a_xyz = {'coords': ((1.465264096022479, 0.3555098886638667, 0.15268159347190322),
+                                 (0.4583546746026421, 1.1352991023740606, -0.26555553330413073),
+                                 (-0.7550043760214846, 0.35970165318809594, -0.5698935045151712),
+                                 (-1.485327813119871, -0.35660657095915016, 0.46119177830578917),
+                                 (-0.3414477960946828, -1.060779229397218, -0.11686056681841692),
+                                 (0.9879417277856641, -1.006839916409751, 0.12489717473407935),
+                                 (2.4630837864551887, 0.6629994259328668, 0.4197578798464181),
+                                 (0.5110882588097015, 2.2100951208919897, -0.3734820378556644),
+                                 (-1.1192886361027838, 0.384286081689225, -1.5897813181530946),
+                                 (-2.453224961870327, -0.7758708758357847, 0.2158838729688473),
+                                 (-1.3859013659398718, -0.054382091828296085, 1.4971154213962072),
+                                 (1.6544624054733257, -1.8534125883098933, 0.0440452399232336)),
+                      'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c6h6_b_xyz = {'coords': ((-1.474267041853848, 0.27665693719971857, -0.31815898666696507),
+                                 (-0.25527025747758825, 1.1936776717612125, -0.2432148642540069),
+                                 (0.9917471212521393, 0.7578589393970138, 0.059037260524552534),
+                                 (1.2911962562420976, -0.6524103892231805, 0.34598643264742923),
+                                 (0.321535921890914, -1.5867102018006056, 0.32000545365633654),
+                                 (-0.9417407846918554, -1.043897260224426, -0.002820356559266387),
+                                 (-2.2262364004658077, 0.5956762298613206, 0.40890113659975075),
+                                 (-1.90597332290244, 0.31143075666839354, -1.3222845692785703),
+                                 (-0.4221153027089989, 2.2469871640348815, -0.4470234892644997),
+                                 (1.824518548011024, 1.4543788790156666, 0.0987362566117616),
+                                 (2.3174577767359237, -0.9162726684959432, 0.5791638390925197),
+                                 (0.4791474859684761, -2.637376058194065, 0.5216718868909702)),
+                      'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C6H6_1', smiles='C1=CC2CC2=C1', xyz=c6h6_a_xyz)
+        p_1 = ARCSpecies(label='C6H6_b', xyz=c6h6_b_xyz, adjlist="""multiplicity 1
+                                                                    1  C u0 p0 c0 {2,S} {6,S} {7,S} {8,S}
+                                                                    2  C u0 p0 c0 {1,S} {3,D} {9,S}
+                                                                    3  C u0 p0 c0 {2,D} {4,S} {10,S}
+                                                                    4  C u0 p0 c0 {3,S} {5,D} {11,S}
+                                                                    5  C u0 p0 c0 {4,D} {6,S} {12,S}
+                                                                    6  C u0 p1 c0 {1,S} {5,S}
+                                                                    7  H u0 p0 c0 {1,S}
+                                                                    8  H u0 p0 c0 {1,S}
+                                                                    9  H u0 p0 c0 {2,S}
+                                                                    10 H u0 p0 c0 {3,S}
+                                                                    11 H u0 p0 c0 {4,S}
+                                                                    12 H u0 p0 c0 {5,S}""")
+        rxn = ARCReaction(reactants=['C6H6_1'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [1, 4, 2, 0, 5, 3, 10, 9, 8, 7, 6, 11])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Disproportionation: HO2 + NHOH <=> NH2OH + O2
+        nhoh_xyz = {'coords': ((0.5055094877826753, 0.03248552573561613, -0.443416250587286),
+                               (1.392367115364475, -0.021750569314658803, 0.07321920788090872),
+                               (-0.570163178752975, -0.035696714715839996, 0.48914535186936214),
+                               (-1.3277134243941644, 0.024961758294888944, -0.11894830916297996)),
+                    'isotopes': (14, 1, 16, 1), 'symbols': ('N', 'H', 'O', 'H')}
+        nh2oh_xyz = {'coords': ((-0.442357984214193, 0.12755746178283767, -0.283450834226086),
+                                (0.8066044298181865, -0.19499391813986608, 0.38695057103192726),
+                                (-0.9953709942529645, -0.7170738803381369, -0.11579136415085267),
+                                (-0.8349557675364339, 0.8418549600381088, 0.33540420712720587),
+                                (1.4660803161854115, -0.05734462334294334, -0.32311257978218827)),
+                     'isotopes': (14, 16, 1, 1, 1), 'symbols': ('N', 'O', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='NHOH', smiles='[NH]O', xyz=nhoh_xyz)
+        r_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)
+        p_1 = ARCSpecies(label='O2', smiles='[O][O]', xyz=self.o2_xyz)
+        p_2 = ARCSpecies(label='NH2OH', smiles='NO', xyz=nh2oh_xyz)
+        rxn = ARCReaction(reactants=['NHOH', 'HO2'], products=['O2', 'NH2OH'],
+                          r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.atom_map[0], 2)
+        for index in [1, 6]:
+            self.assertIn(rxn.atom_map[index], [4, 5])
+        self.assertEqual(rxn.atom_map[2], 3)
+        self.assertEqual(rxn.atom_map[3], 6)
+        for index in [4, 5]:
+            self.assertIn(rxn.atom_map[index], [0, 1])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Intra_Disproportionation: C10H10_a <=> C10H10_b
+        c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
+                                   (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
+                                   (0.9737380560194014, 0.5278617594060281, -1.1526858375270472),
+                                   (1.2607098516126556, 1.1809007875206383, -1.9621017164412065),
+                                   (-0.36396095305912823, -0.13214785064139675, -1.0200667625809143),
+                                   (-1.5172464644867296, 0.8364138939810618, -1.0669384323486588),
+                                   (-2.4922101649968655, 0.8316551483126366, -0.14124720277902958),
+                                   (-2.462598061982958, -0.09755474191953761, 0.9703503187569243),
+                                   (-1.4080417204047313, -0.8976377310686736, 1.1927020968566089),
+                                   (-0.27981087345916755, -0.8670643393461046, 0.29587765657632165),
+                                   (1.1395623815572733, -0.9147118621123697, 0.771368745020215),
+                                   (3.7901243915692864, -0.006544237180536178, 0.7580206603561134),
+                                   (3.6186251824572455, 1.0920401631166292, -0.725695658374561),
+                                   (-0.4799044636709365, -0.8577283498506146, -1.8345168113636874),
+                                   (-1.5704890060131314, 1.527002009812866, -1.902575985299536),
+                                   (-3.3260277144990296, 1.5238536460491903, -0.20338465526703625),
+                                   (-3.311126364299293, -0.09969554359088921, 1.6478137927333953),
+                                   (-1.3707042898204835, -1.549541647625315, 2.0589774409040964),
+                                   (1.5338362221707007, -1.9310023570889727, 0.6663504223502944),
+                                   (1.2246749300961473, -0.5970975942012858, 1.816181327157103)),
+                        'isotopes': (12, 12, 12, 1, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c10h10_b_xyz = {'coords': ((3.247237794328524, -0.13719671162966918, 0.19555833918937052),
+                                   (1.9094861712282774, -0.08067655688828143, 0.14898941432495702),
+                                   (0.9973729357914858, -1.2703386896415134, -0.09322848415119056),
+                                   (-0.37904449715218924, -0.6747166782032148, -0.049044448345326556),
+                                   (-0.32906812544096026, 0.704634441388649, 0.189424753183012),
+                                   (-1.4900181263846768, 1.4572613706024167, 0.2695747550348709),
+                                   (-2.715200996994148, 0.8069241052920498, 0.10660938013945513),
+                                   (-2.765284083663716, -0.5753713833636181, -0.13236922431004927),
+                                   (-1.5909002849280705, -1.3270914347507115, -0.21179882275795825),
+                                   (1.0862366144301145, 1.1823049698313937, 0.33079658088902575),
+                                   (3.8424769924852367, 0.7530758608805569, 0.37314678191170336),
+                                   (3.7762437608797406, -1.0749685445597326, 0.05710603017340202),
+                                   (1.1128196175313243, -2.0170485762246773, 0.6986324476157837),
+                                   (1.187449599052061, -1.7129398667445945, -1.0760419644685346),
+                                   (-1.453108430051206, 2.525963604437891, 0.45426129138400156),
+                                   (-3.639988653002051, 1.3756767310587803, 0.16518163487425436),
+                                   (-3.7283956370857467, -1.0643593255501977, -0.2566648708585298),
+                                   (-1.631427244782937, -2.3956407728893367, -0.3966116183664473),
+                                   (1.3188711462571718, 1.9143096670969255, -0.4489453399950017),
+                                   (1.2442414475018486, 1.6101977898569013, 1.3257284397785851)),
+                        'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C10H10_a', smiles='C=C1[CH]C2C=CC=C[C]2C1', xyz=c10h10_a_xyz, multiplicity=3)
+        p_1 = ARCSpecies(label='C10H10_b', smiles='C=C1CC2=C(C=CC=C2)C1', xyz=c10h10_b_xyz)
+        rxn = ARCReaction(reactants=['C10H10_a'], products=['C10H10_b'],
+                          r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [0, 1, 8, 13, 3, 2, 7, 6, 5, 4, 9, 10, 17, 12, 11, 16, 15, 14, 19, 18])
+        self.assertTrue(check_atom_map(rxn))
+
+        # intra_NO2_ONO_conversion: C2H5NO2 <=> C2H5ONO
+        c6h5_xyz = {'coords': ((1.8953828083622057, 0.8695975650550358, 0.6461465212661076),
+                               (1.3601473931706598, -0.04212583715410005, 0.0034200061443233247),
+                               (1.8529583069008781, -0.6310931351538215, -0.9666668585141432),
+                               (-0.010154355673379136, -0.4652844276756663, 0.43320585211058743),
+                               (-1.0281604639422022, 0.36855062612122236, -0.3158851121891869),
+                               (-0.11071296591935365, -1.5314728469286516, 0.20909234121344752),
+                               (-0.07635985361458197, -0.31625218083177237, 1.5151037167736001),
+                               (-2.042322710601489, 0.08102183703582924, -0.021667016484293297),
+                               (-0.9033569412063314, 1.436005790671757, -0.10388682333330314),
+                               (-0.937421217476434, 0.23105260886017234, -1.3988626269871478)),
+                    'isotopes': (16, 14, 16, 12, 12, 1, 1, 1, 1, 1),
+                    'symbols': ('O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        c7h5o_xyz = {'coords': ((-1.3334725178745668, 0.2849178019354427, 0.4149005134933577),
+                                (-0.08765353373275289, 0.24941420749682627, -0.4497882845360618),
+                                (1.0488580188184402, 0.3986394744609146, 0.39515448276833964),
+                                (2.2292240798482883, 0.36629637181188207, -0.4124684043339001),
+                                (3.2413605054484185, 0.4928521621538312, 0.283008378837631),
+                                (-1.3088339518827734, -0.5173661350567303, 1.1597967522753032),
+                                (-2.23462275856269, 0.17332354052924734, -0.19455307765792382),
+                                (-1.393828440234405, 1.2294860794610234, 0.9656140588162426),
+                                (-0.12370667081323389, 1.0672740524773998, -1.1795070012935482),
+                                (-0.037324731014725374, -0.7080479312151163, -0.9821574183694773)),
+                     'isotopes': (12, 12, 16, 14, 16, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=c6h5_xyz)
+        p_1 = ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c7h5o_xyz)
+        rxn = ARCReaction(reactants=['C2H5NO2'], products=['C2H5ONO'],
+                          r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [4, 3, 2, 1, 0, 8, 9, 6, 5, 7])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Disproportionation: C4H7 + O2 <=> HO2 + C4H6
+        c4h7_xyz = {'coords': ((-2.040921404503424, -0.12903384637698798, 0.1559892045303822),
+                               (-0.7546540332943176, -0.4098957103161423, -0.07681407943731554),
+                               (0.3137517227573887, 0.47379064315829633, 0.303025839828397),
+                               (0.09502978026667419, 1.3942096052269417, 0.834199535314798),
+                               (1.734012668678617, 0.08135386277553083, 0.0906583073064836),
+                               (-2.352694765027891, 0.7875623110661275, 0.6465408489803196),
+                               (-2.8196259554078997, -0.8225020395029484, -0.14562281062524043),
+                               (-0.49241522029670126, -1.3423933663677394, -0.5719234920796793),
+                               (2.1384679029944533, -0.37774268314938586, 0.9976275308860051),
+                               (2.3331746195641365, 0.9677350359207318, -0.13953736233285224),
+                               (1.8458746842689961, -0.623083812434417, -0.7393520512375593)),
+                    'isotopes': (12, 12, 12, 1, 12, 1, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'H', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c4h6_xyz = {'coords': ((-1.1313721520581368, 0.4375787725187425, 1.3741095482244203),
+                               (-0.5236696446754213, -0.27046339876338915, 0.4152401808417905),
+                               (0.5236696150303143, 0.2704633473040529, -0.41524017130113694),
+                               (1.1313721685204072, -0.4375787650279751, -1.3741095524658273),
+                               (-0.8696512779281117, 1.4694838181320669, 1.5851480041034802),
+                               (-1.915706463982211, -0.010750118295295768, 1.9758596362701513),
+                               (-0.8263303869083625, -1.301920739528746, 0.24674332317151054),
+                               (0.8263303006084768, 1.3019207019374226, -0.24674330995607902),
+                               (1.9157064555415753, 0.010750214228214268, -1.9758596165946158),
+                               (0.8696513858514865, -1.469483832503432, -1.5851480422945032)),
+                    'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C4H7', smiles='C=C[CH]C', xyz=c4h7_xyz)
+        r_2 = ARCSpecies(label='O2', smiles='[O][O]', xyz=self.o2_xyz)
+        p_1 = ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)
+        p_2 = ARCSpecies(label='C4H6', smiles='C=CC=C', xyz=c4h6_xyz)
+        rxn = ARCReaction(reactants=['C4H7', 'O2'], products=['HO2', 'C4H6'],
+                          r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.atom_map[:5], [3, 4, 5, 10, 6])
+        self.assertIn(rxn.atom_map[5:7], [[8, 7], [7, 8]])
+        self.assertEqual(rxn.atom_map[7], 9)
+        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([2, 11, 12]))
+        self.assertIn(tuple(rxn.atom_map[11:]), permutations([0, 1]))
+
+        # Disproportionation: HO2 + NHOH <=> NH2OH + O2
+        nhoh_xyz = {'coords': ((0.5055094877826753, 0.03248552573561613, -0.443416250587286),
+                               (1.392367115364475, -0.021750569314658803, 0.07321920788090872),
+                               (-0.570163178752975, -0.035696714715839996, 0.48914535186936214),
+                               (-1.3277134243941644, 0.024961758294888944, -0.11894830916297996)),
+                    'isotopes': (14, 1, 16, 1), 'symbols': ('N', 'H', 'O', 'H')}
+        nh2oh_xyz = {'coords': ((-0.442357984214193, 0.12755746178283767, -0.283450834226086),
+                                (0.8066044298181865, -0.19499391813986608, 0.38695057103192726),
+                                (-0.9953709942529645, -0.7170738803381369, -0.11579136415085267),
+                                (-0.8349557675364339, 0.8418549600381088, 0.33540420712720587),
+                                (1.4660803161854115, -0.05734462334294334, -0.32311257978218827)),
+                     'isotopes': (14, 16, 1, 1, 1), 'symbols': ('N', 'O', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='NHOH', smiles='[NH]O', xyz=nhoh_xyz)
+        r_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)
+        p_1 = ARCSpecies(label='O2', smiles='[O][O]', xyz=self.o2_xyz)
+        p_2 = ARCSpecies(label='NH2OH', smiles='NO', xyz=nh2oh_xyz)
+        rxn = ARCReaction(reactants=['NHOH', 'HO2'], products=['O2', 'NH2OH'],
+                          r_species=[r_1, r_2], p_species=[p_1, p_2])
+        self.assertEqual(rxn.atom_map[0], 2)
+        for index in [1, 6]:
+            self.assertIn(rxn.atom_map[index], [4, 5])
+        self.assertEqual(rxn.atom_map[2], 3)
+        self.assertEqual(rxn.atom_map[3], 6)
+        for index in [4, 5]:
+            self.assertIn(rxn.atom_map[index], [0, 1])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Intra_Disproportionation: C10H10_a <=> C10H10_b
+        c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
+                                   (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
+                                   (0.9737380560194014, 0.5278617594060281, -1.1526858375270472),
+                                   (1.2607098516126556, 1.1809007875206383, -1.9621017164412065),
+                                   (-0.36396095305912823, -0.13214785064139675, -1.0200667625809143),
+                                   (-1.5172464644867296, 0.8364138939810618, -1.0669384323486588),
+                                   (-2.4922101649968655, 0.8316551483126366, -0.14124720277902958),
+                                   (-2.462598061982958, -0.09755474191953761, 0.9703503187569243),
+                                   (-1.4080417204047313, -0.8976377310686736, 1.1927020968566089),
+                                   (-0.27981087345916755, -0.8670643393461046, 0.29587765657632165),
+                                   (1.1395623815572733, -0.9147118621123697, 0.771368745020215),
+                                   (3.7901243915692864, -0.006544237180536178, 0.7580206603561134),
+                                   (3.6186251824572455, 1.0920401631166292, -0.725695658374561),
+                                   (-0.4799044636709365, -0.8577283498506146, -1.8345168113636874),
+                                   (-1.5704890060131314, 1.527002009812866, -1.902575985299536),
+                                   (-3.3260277144990296, 1.5238536460491903, -0.20338465526703625),
+                                   (-3.311126364299293, -0.09969554359088921, 1.6478137927333953),
+                                   (-1.3707042898204835, -1.549541647625315, 2.0589774409040964),
+                                   (1.5338362221707007, -1.9310023570889727, 0.6663504223502944),
+                                   (1.2246749300961473, -0.5970975942012858, 1.816181327157103)),
+                        'isotopes': (12, 12, 12, 1, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c10h10_b_xyz = {'coords': ((3.247237794328524, -0.13719671162966918, 0.19555833918937052),
+                                   (1.9094861712282774, -0.08067655688828143, 0.14898941432495702),
+                                   (0.9973729357914858, -1.2703386896415134, -0.09322848415119056),
+                                   (-0.37904449715218924, -0.6747166782032148, -0.049044448345326556),
+                                   (-0.32906812544096026, 0.704634441388649, 0.189424753183012),
+                                   (-1.4900181263846768, 1.4572613706024167, 0.2695747550348709),
+                                   (-2.715200996994148, 0.8069241052920498, 0.10660938013945513),
+                                   (-2.765284083663716, -0.5753713833636181, -0.13236922431004927),
+                                   (-1.5909002849280705, -1.3270914347507115, -0.21179882275795825),
+                                   (1.0862366144301145, 1.1823049698313937, 0.33079658088902575),
+                                   (3.8424769924852367, 0.7530758608805569, 0.37314678191170336),
+                                   (3.7762437608797406, -1.0749685445597326, 0.05710603017340202),
+                                   (1.1128196175313243, -2.0170485762246773, 0.6986324476157837),
+                                   (1.187449599052061, -1.7129398667445945, -1.0760419644685346),
+                                   (-1.453108430051206, 2.525963604437891, 0.45426129138400156),
+                                   (-3.639988653002051, 1.3756767310587803, 0.16518163487425436),
+                                   (-3.7283956370857467, -1.0643593255501977, -0.2566648708585298),
+                                   (-1.631427244782937, -2.3956407728893367, -0.3966116183664473),
+                                   (1.3188711462571718, 1.9143096670969255, -0.4489453399950017),
+                                   (1.2442414475018486, 1.6101977898569013, 1.3257284397785851)),
+                        'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C10H10_a', smiles='C=C1[CH]C2C=CC=C[C]2C1', xyz=c10h10_a_xyz, multiplicity=3)
+        p_1 = ARCSpecies(label='C10H10_b', smiles='C=C1CC2=C(C=CC=C2)C1', xyz=c10h10_b_xyz)
+        rxn = ARCReaction(reactants=['C10H10_a'], products=['C10H10_b'],
+                          r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [0, 1, 8, 13, 3, 2, 7, 6, 5, 4, 9, 10, 17, 12, 11, 16, 15, 14, 19, 18])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Cyclopentadiene_scission: C6H6 <=> C6H6_2
+        c6h6_a_xyz = {'coords': ((1.465264096022479, 0.3555098886638667, 0.15268159347190322),
+                                 (0.4583546746026421, 1.1352991023740606, -0.26555553330413073),
+                                 (-0.7550043760214846, 0.35970165318809594, -0.5698935045151712),
+                                 (-1.485327813119871, -0.35660657095915016, 0.46119177830578917),
+                                 (-0.3414477960946828, -1.060779229397218, -0.11686056681841692),
+                                 (0.9879417277856641, -1.006839916409751, 0.12489717473407935),
+                                 (2.4630837864551887, 0.6629994259328668, 0.4197578798464181),
+                                 (0.5110882588097015, 2.2100951208919897, -0.3734820378556644),
+                                 (-1.1192886361027838, 0.384286081689225, -1.5897813181530946),
+                                 (-2.453224961870327, -0.7758708758357847, 0.2158838729688473),
+                                 (-1.3859013659398718, -0.054382091828296085, 1.4971154213962072),
+                                 (1.6544624054733257, -1.8534125883098933, 0.0440452399232336)),
+                      'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c6h6_b_xyz = {'coords': ((-1.474267041853848, 0.27665693719971857, -0.31815898666696507),
+                                 (-0.25527025747758825, 1.1936776717612125, -0.2432148642540069),
+                                 (0.9917471212521393, 0.7578589393970138, 0.059037260524552534),
+                                 (1.2911962562420976, -0.6524103892231805, 0.34598643264742923),
+                                 (0.321535921890914, -1.5867102018006056, 0.32000545365633654),
+                                 (-0.9417407846918554, -1.043897260224426, -0.002820356559266387),
+                                 (-2.2262364004658077, 0.5956762298613206, 0.40890113659975075),
+                                 (-1.90597332290244, 0.31143075666839354, -1.3222845692785703),
+                                 (-0.4221153027089989, 2.2469871640348815, -0.4470234892644997),
+                                 (1.824518548011024, 1.4543788790156666, 0.0987362566117616),
+                                 (2.3174577767359237, -0.9162726684959432, 0.5791638390925197),
+                                 (0.4791474859684761, -2.637376058194065, 0.5216718868909702)),
+                      'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C6H6_1', smiles='C1=CC2CC2=C1', xyz=c6h6_a_xyz)
+        p_1 = ARCSpecies(label='C6H6_b', xyz=c6h6_b_xyz, adjlist="""multiplicity 1
+                                                                    1  C u0 p0 c0 {2,S} {6,S} {7,S} {8,S}
+                                                                    2  C u0 p0 c0 {1,S} {3,D} {9,S}
+                                                                    3  C u0 p0 c0 {2,D} {4,S} {10,S}
+                                                                    4  C u0 p0 c0 {3,S} {5,D} {11,S}
+                                                                    5  C u0 p0 c0 {4,D} {6,S} {12,S}
+                                                                    6  C u0 p1 c0 {1,S} {5,S}
+                                                                    7  H u0 p0 c0 {1,S}
+                                                                    8  H u0 p0 c0 {1,S}
+                                                                    9  H u0 p0 c0 {2,S}
+                                                                    10 H u0 p0 c0 {3,S}
+                                                                    11 H u0 p0 c0 {4,S}
+                                                                    12 H u0 p0 c0 {5,S}""")
+        rxn = ARCReaction(reactants=['C6H6_1'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [1, 4, 2, 0, 5, 3, 10, 9, 8, 7, 6, 11])
+        self.assertTrue(check_atom_map(rxn))
+
+        # intra_NO2_ONO_conversion: C2H5NO2 <=> C2H5ONO
+        c6h5_xyz = {'coords': ((1.8953828083622057, 0.8695975650550358, 0.6461465212661076),
+                               (1.3601473931706598, -0.04212583715410005, 0.0034200061443233247),
+                               (1.8529583069008781, -0.6310931351538215, -0.9666668585141432),
+                               (-0.010154355673379136, -0.4652844276756663, 0.43320585211058743),
+                               (-1.0281604639422022, 0.36855062612122236, -0.3158851121891869),
+                               (-0.11071296591935365, -1.5314728469286516, 0.20909234121344752),
+                               (-0.07635985361458197, -0.31625218083177237, 1.5151037167736001),
+                               (-2.042322710601489, 0.08102183703582924, -0.021667016484293297),
+                               (-0.9033569412063314, 1.436005790671757, -0.10388682333330314),
+                               (-0.937421217476434, 0.23105260886017234, -1.3988626269871478)),
+                    'isotopes': (16, 14, 16, 12, 12, 1, 1, 1, 1, 1),
+                    'symbols': ('O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        c7h5o_xyz = {'coords': ((-1.3334725178745668, 0.2849178019354427, 0.4149005134933577),
+                                (-0.08765353373275289, 0.24941420749682627, -0.4497882845360618),
+                                (1.0488580188184402, 0.3986394744609146, 0.39515448276833964),
+                                (2.2292240798482883, 0.36629637181188207, -0.4124684043339001),
+                                (3.2413605054484185, 0.4928521621538312, 0.283008378837631),
+                                (-1.3088339518827734, -0.5173661350567303, 1.1597967522753032),
+                                (-2.23462275856269, 0.17332354052924734, -0.19455307765792382),
+                                (-1.393828440234405, 1.2294860794610234, 0.9656140588162426),
+                                (-0.12370667081323389, 1.0672740524773998, -1.1795070012935482),
+                                (-0.037324731014725374, -0.7080479312151163, -0.9821574183694773)),
+                     'isotopes': (12, 12, 16, 14, 16, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=c6h5_xyz)
+        p_1 = ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c7h5o_xyz)
+        rxn = ARCReaction(reactants=['C2H5NO2'], products=['C2H5ONO'],
+                          r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [4, 3, 2, 1, 0, 8, 9, 6, 5, 7])
+        self.assertTrue(check_atom_map(rxn))
+
+        # 1,2-Birad_to_alkene: SO2(T) => SO2(S)
+        # This test fails due to a problem in xyz perception of SO2(T).
+        so2_t_xyz = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                (1.3673933946336125, -0.36643505437710233, 0.0)),
+                     'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        so2_s_xyz = {'coords': ((-1.3554230894998571, -0.4084942756329785, 0.0),
+                                (-0.04605352293144468, 0.6082507106551855, 0.0),
+                                (1.4014766124312934, -0.19975643502220325, 0.0)),
+                     'isotopes': (16, 32, 16), 'symbols': ('O', 'S', 'O')}
+
+        r_1 = ARCSpecies(label='SO2(T)', smiles='O=[S][O]', multiplicity=3, xyz=so2_t_xyz)
+        p_1 = ARCSpecies(label='SO2(S)', smiles='O=S=O', multiplicity=1, xyz=so2_s_xyz)
+        rxn = ARCReaction(reactants=['SO2(T)'], products=['SO2(S)'], r_species=[r_1], p_species=[p_1])
+        self.assertEqual(rxn.atom_map[0], 1)
+        self.assertTrue(check_atom_map(rxn))
+        # F[C]F + [CH3] <=> F[C](F)C
+        r1_xyz = {'symbols': ('F', 'C', 'F'),
+                  'isotopes': (19, 12, 19),
+                  'coords': ((-1.304203748543047, 0.3204330512721478, 0.0),
+                             (-1.9140293120972295e-09, -6.455569423898419e-09, 0.0),
+                             (1.304203750457077, -0.32043304481658, 0.0))}
+        r2_xyz = {'symbols': ('C', 'H', 'H', 'H'),
+                  'isotopes': (12, 1, 1, 1),
+                  'coords': ((3.3746019998564553e-09, 5.828827384106545e-09, -4.859105107686622e-09),
+                             (1.0669051052331406, -0.17519582095514982, 0.05416492980439295),
+                             (-0.6853171627400634, -0.8375353626879753, -0.028085652887100996),
+                             (-0.3815879458676787, 1.0127311778142964, -0.026079272058187608))}
+        p1_xyz = {'symbols': ('F', 'C', 'F', 'C', 'H', 'H', 'H'),
+                  'isotopes': (19, 12, 19, 12, 1, 1, 1),
+                  'coords': ((1.119619553527753, 1.4683016995266238, -0.4256355476700406),
+                             (0.7853078782246593, 0.21618941405118694, -0.04988462642839442),
+                             (1.7521918404307653, -0.6690180410121276, 0.2699297634217041),
+                             (-0.6404114764644544, -0.17821988481768988, 0.034782780206236624),
+                             (-0.7526348686344194, -1.2468644821661592, -0.16730131057453498),
+                             (-1.2335484316315908, 0.3780341245687702, -0.6961093474225755),
+                             (-1.0305244954526513, 0.03157716984946183, 1.0342182884675877))}
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r1", smiles="F[C]F", xyz=r1_xyz),
+                                     ARCSpecies(label="r2", smiles="[CH3]", xyz=r2_xyz)],
+                          p_species=[ARCSpecies(label="p1", smiles="F[C](F)C", xyz=p1_xyz)])
+        self.assertIn(rxn.atom_map[:2], [[0, 1], [1, 0]])
+        self.assertEqual(rxn.atom_map[2], 2)
+        self.assertEqual(rxn.atom_map[3], 3)
+        self.assertIn(tuple(rxn.atom_map[4:]), list(permutations([4, 5, 6])))
+        self.assertTrue(check_atom_map(rxn))
+
+        # 1,2_NH3_elimination: NCC <=> C2H4 + NH3
+        ncc_xyz = {'coords': ((1.1517341397735719, -0.37601689454792764, -0.5230788502681245),
+                              (0.2893395715754821, 0.449973844025586, 0.3114935868175311),
+                              (-1.1415136758153028, -0.05605900830417449, 0.25915656466172177),
+                              (1.1385906595862103, -1.3375972344465683, -0.18540144244632334),
+                              (2.115146540825731, -0.05549033543399281, -0.4352422172888292),
+                              (0.6517228987651973, 0.4341829477365257, 1.3446618712379401),
+                              (0.32794656354609036, 1.4855039198343405, -0.04141588729000556),
+                              (-1.2132836539673237, -1.083868352883045, 0.6307611987658565),
+                              (-1.7869541982465666, 0.5726121409749625, 0.8809463351815471),
+                              (-1.5327288460430881, -0.03324102695569548, -0.763616120234416)),
+                   'isotopes': (14, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+                   'symbols': ('N', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c2h4_xyz = {'coords': ((0.6664040429179742, 0.044298334171779405, -0.0050238049104911735),
+                               (-0.6664040438461246, -0.04429833352898575, 0.00502380522486473),
+                               (1.1686968388986039, 0.8743086488169786, -0.4919298928897832),
+                               (1.2813853343929593, -0.7114426553520238, 0.4734595111827543),
+                               (-1.2813853352424778, 0.7114426574294024, -0.4734595076873365),
+                               (-1.1686968371212578, -0.8743086515369692, 0.49192988907998186)),
+                    'isotopes': (12, 12, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'H', 'H', 'H', 'H')}
+        nh3_xyz = {'coords': ((0.0006492354002636227, -0.0009969784288894215, 0.2955929244020652),
+                              (-0.4178660616416419, 0.842103963871788, -0.09477452075659776),
+                              (-0.5203922802597125, -0.7822529247012627, -0.10002797449860866),
+                              (0.9376091065010891, -0.05885406074163403, -0.10079042914685925)),
+                   'isotopes': (14, 1, 1, 1),
+                   'symbols': ('N', 'H', 'H', 'H')}
+
+        r_1 = ARCSpecies(label='NCC', smiles='NCC', xyz=ncc_xyz)
+        p_1 = ARCSpecies(label='C2H4', smiles='C=C', xyz=c2h4_xyz)
+        p_2 = ARCSpecies(label='NH3', smiles='N', xyz=nh3_xyz)
+        rxn = ARCReaction(reactants=['NCC'], products=['C2H4', 'NH3'], r_species=[r_1], p_species=[p_1, p_2])
+        self.assertEqual(rxn.atom_map[0], 6)
+        self.assertIn(rxn.atom_map[1:3], [[1, 0], [0, 1]])
+        self.assertIn(tuple(rxn.atom_map[3:5]+[rxn.atom_map[7]]), permutations([7, 8, 9]))
+        self.assertIn(tuple(rxn.atom_map[5:7]+rxn.atom_map[8:]), permutations([2, 3, 4, 5]))
+        self.assertTrue(check_atom_map(rxn))
+
+        # 1+2_Cycloaddition: CH2 + C2H4 <=> C3H6
+        c2h4_xyz = {'coords': ((0.6664040429179742, 0.044298334171779405, -0.0050238049104911735),
+                               (-0.6664040438461246, -0.04429833352898575, 0.00502380522486473),
+                               (1.1686968388986039, 0.8743086488169786, -0.4919298928897832),
+                               (1.2813853343929593, -0.7114426553520238, 0.4734595111827543),
+                               (-1.2813853352424778, 0.7114426574294024, -0.4734595076873365),
+                               (-1.1686968371212578, -0.8743086515369692, 0.49192988907998186)),
+                    'isotopes': (12, 12, 1, 1, 1, 1), 'symbols': ('C', 'C', 'H', 'H', 'H', 'H')}
+        c_c3h6_xyz = {'coords': ((0.7868661913782324, -0.3644249639827158, -0.016337299842911886),
+                                 (-0.07793785747147405, 0.8603229755261934, 0.07746513362297117),
+                                 (-0.708928275400647, -0.4958980792223481, -0.06112784358024908),
+                                 (1.339749295484817, -0.5278616711993785, -0.9341881111902739),
+                                 (1.3001119953298585, -0.6947493102195698, 0.8793780279658545),
+                                 (-0.15055582331881673, 1.3597070015370083, 1.0367271647162946),
+                                 (-0.11091839380255, 1.5265948517709569, -0.7768389650606503),
+                                 (-1.1693748373792934, -0.7484015319217499, -1.0093221066790388),
+                                 (-1.2090122948201234, -0.9152892722884018, 0.8042440000480116)),
+                      'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1), 'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+
+        r_1 = ARCSpecies(label='CH2', xyz=self.ch2_xyz, adjlist="""1 C u0 p1 c0 {2,S} {3,S}
+                                                                   2 H u0 p0 c0 {1,S}
+                                                                   3 H u0 p0 c0 {1,S}""")
+        r_2 = ARCSpecies(label='C2H4', smiles='C=C', xyz=c2h4_xyz)
+        p_1 = ARCSpecies(label='cC3H6', smiles='C1CC1', xyz=c_c3h6_xyz)
+        rxn = ARCReaction(reactants=['CH2', 'C2H4'], products=['cC3H6'], r_species=[r_1, r_2], p_species=[p_1])
+        for index in [0, 3, 4]:
+            self.assertIn(rxn.atom_map[index], [0, 1, 2])
+        for index in [1, 2, 5, 6, 7, 8]:
+            self.assertIn(rxn.atom_map[index], [3, 4, 5, 6, 7, 8])
+        self.assertTrue(check_atom_map(rxn))
+
+        # 1,2_Insertion_CO: C4H10 + CO <=> C5H10O
+        c4h10_xyz = {'coords': ((-0.5828455298013108, 1.3281531294599287, -0.04960015063595639),
+                                (0.20452033859928953, 0.05503751610159247, -0.351590668388836),
+                                (1.2187217734495472, -0.22435034939324036, 0.7553438935018645),
+                                (-0.7402757883531311, -1.131897259046642, -0.526270047908048),
+                                (-1.149632334529979, 1.2345299096044358, 0.8830543278319224),
+                                (-1.2910247691071444, 1.5474495198220646, -0.8556442099189145),
+                                (0.08958996004802251, 2.187049294072444, 0.047578963870699015),
+                                (0.7510696374695547, 0.20211678856476709, -1.2911649516059494),
+                                (1.9161788635733445, 0.6129834282608764, 0.8637033961259424),
+                                (0.723393227383255, -0.37955365746174813, 1.7199258030015812),
+                                (1.8052293751859985, -1.1207509229675587, 0.5277678765569422),
+                                (-1.4506401201091412, -0.9467671747910582, -1.3389353480864132),
+                                (-1.31330819789714, -1.3230974306153704, 0.3874767468986707),
+                                (-0.18097643591114793, -2.04090279161046, -0.7716456312435797)),
+                     'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c5h10o_xyz = {'coords': ((1.4311352287218408, -0.1713595727440808, -0.4215888483848517),
+                                 (-0.007186117613478591, 0.06984820110647515, 0.04712543561838732),
+                                 (-0.9581449869575146, 0.0768516496023853, -1.153820345745391),
+                                 (-0.42459441572492335, -1.0196556708425513, 1.0398144790596706),
+                                 (-0.06395445555126768, 1.4459669990683603, 0.6988370467311186),
+                                 (-0.39842691952831133, 1.6544415349370807, 1.860895997103657),
+                                 (1.7538538399565853, 0.5988164487250668, -1.1317944597170102),
+                                 (1.5308761668570723, -1.1450780226312873, -0.9137377478255552),
+                                 (2.130467943093651, -0.145756780679422, 0.4221764324976206),
+                                 (-1.9882342251557934, 0.2821166362714845, -0.8400630940054319),
+                                 (-0.6807867076715277, 0.8517398665867646, -1.8779276281234922),
+                                 (-0.9490513003000888, -0.8874499123119038, -1.6737493906621435),
+                                 (0.23329847490706446, -1.0315570674753483, 1.9164599735169805),
+                                 (-0.3863240121264062, -2.0126378831961222, 0.578337115559457),
+                                 (-1.4463966539332702, -0.8570614833514035, 1.4016914821743647),
+                                 (0.22346814102625032, 2.2907750569345855, 0.04734355220249537)),
+                      'isotopes': (12, 12, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C4H10', smiles='CC(C)C', xyz=c4h10_xyz)
+        r_2 = ARCSpecies(label='CO', smiles='[C-]#[O+]', xyz=self.co_xyz)
+        p_1 = ARCSpecies(label='C5H10O', smiles='CC(C)(C)C=O', xyz=c5h10o_xyz)
+        rxn = ARCReaction(reactants=['C4H10', 'CO'], products=['C5H10O'],
+                          r_species=[r_1, r_2], p_species=[p_1])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[:4], [0, 1, 2, 3])
+        self.assertIn(tuple(rxn.atom_map[4:7]), permutations([6, 7, 8]))
+        self.assertEqual(atom_map[7], 15)
+        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([9, 10, 11]))
+        self.assertIn(tuple(rxn.atom_map[11:14]), permutations([12, 13, 14]))
+        self.assertEqual(atom_map[14:], [4, 5])
+        self.assertTrue(check_atom_map(rxn))
+        # same reaction in reverse:
+        rxn_rev = ARCReaction(r_species=[p_1], p_species=[r_1, r_2])
+        atom_map = rxn_rev.atom_map
+        for index in [0, 2, 3]:
+            self.assertIn(atom_map[index], [0, 2, 3])
+        self.assertEqual(atom_map[1], 1)
+        self.assertEqual(atom_map[4], 14)
+        self.assertEqual(atom_map[5], 15)
+        self.assertEqual(atom_map[15], 7)
+        self.assertTrue(check_atom_map(rxn_rev))
+
+        # Diels_alder_addition: C5H8 + C6H10 <=> C11H18
+        c5h8_xyz = {'coords': ((2.388426506127341, -0.6020682478448856, -0.8986239521455471),
+                               (1.396815470095451, 0.2559764141247285, -0.632876393172657),
+                               (0.15313289103802616, -0.14573699483201027, -0.021031021618524288),
+                               (-0.8389550397179193, 0.7169723970589436, 0.24404493146763848),
+                               (-2.134416163598417, 0.3239681447826502, 0.876570575233924),
+                               (2.3152942675091053, -1.659966892807757, -0.6677097540505594),
+                               (3.307483005086718, -0.2549641760041707, -1.3602353900805908),
+                               (1.5244650427331894, 1.3064325129702357, -0.885889345476673),
+                               (0.03466763777311284, -1.1983886005211812, 0.22843510909849465),
+                               (-0.7292165776910954, 1.7707854265126919, -0.0018778749819206306),
+                               (-2.2727957408233483, 0.8723614467877541, 1.8133393569164875),
+                               (-2.964923876317021, 0.5697550629604972, 0.20779128725191479),
+                               (-2.179977422215191, -0.7469982986693162, 1.0980624715582143)),
+                    'isotopes': (12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c6h10_xyz = {'coords': ((-3.1580683741393027, 0.12435732050743648, 0.062246914825226686),
+                                (-1.7707067002277326, -0.16620360178113405, 0.5349691635238483),
+                                (-0.6661431116320429, 0.14509293595419076, -0.15922278773395507),
+                                (0.6661430871150528, -0.14509454337155672, 0.31675535258860427),
+                                (1.7707067221399997, 0.1662031310249801, -0.37743578397831457),
+                                (3.158068300764984, -0.1243566042028104, 0.0952878105284522),
+                                (-3.168673040679144, 0.6195109523415628, -0.9138744940397917),
+                                (-3.725598607890039, -0.8074661408951581, -0.02161915764945937),
+                                (-3.667502866324593, 0.7743593207314634, 0.7801554985274884),
+                                (-1.689979340654408, -0.658941962521633, 1.5012451075034898),
+                                (-0.7566435422183935, 0.638020444531764, -1.1251628620848497),
+                                (0.7566435677358615, -0.6380221416323665, 1.2826952112274577),
+                                (1.6899798722782449, 0.6589420540549689, -1.3437113386443575),
+                                (3.667504053415929, -0.7743586338884942, -0.6226199722740314),
+                                (3.168672421569792, -0.6195094502282033, 1.0714098656973499),
+                                (3.7255975587458146, 0.8074669193750107, 0.17915450597834431)),
+                     'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c11h18_xyz = {'coords': ((-2.703705731925332, -1.6725650155987697, -0.8086740370494231),
+                                 (-1.5787486719767332, -0.9567028627407828, -0.9374280026568313),
+                                 (-1.0380952176862677, -0.018956959638684944, 0.13044184610143217),
+                                 (-0.9559942521379576, 1.4339345435700377, -0.4211901270741127),
+                                 (-1.0332585693389826, 2.4699679588763424, 0.7057994083773913),
+                                 (0.29330767863777807, 1.6799654965887798, -1.231863983890581),
+                                 (1.3587533124739988, 0.8659977820300574, -1.2254134762392683),
+                                 (1.4646089005142253, -0.38325835216422677, -0.38135979446817597),
+                                 (2.8541328762948206, -0.44094297285873296, 0.26496359509221906),
+                                 (0.34006414566475085, -0.47702332337899384, 0.6874327625078416),
+                                 (0.25971352010871435, -1.877767868723041, 1.3110012371667645),
+                                 (-3.0417827308140666, -2.322041441265777, -1.6103599735778764),
+                                 (-3.3090907216942607, -1.6304164329807997, 0.09119562710875757),
+                                 (-1.0140304257321437, -1.0355853116087828, -1.8648599111730466),
+                                 (-1.7519605248870382, -0.02119386222025415, 0.9668436940879309),
+                                 (-1.81873965484405, 1.6086866163315763, -1.078721360123664),
+                                 (-1.0435582627465962, 3.4878991458476953, 0.2994048809648787),
+                                 (-1.951192645793586, 2.339835712359188, 1.2889715104672264),
+                                 (-0.1829564138869207, 2.3964873273832725, 1.392011686068868),
+                                 (0.30323343644376083, 2.563802985828772, -1.8662760923115096),
+                                 (2.19957127963344, 1.1019579368769516, -1.875167073357893),
+                                 (1.38566629304311, -1.2380356901050797, -1.0661633096552972),
+                                 (3.643719857910847, -0.3537387754651392, -0.49036436481236706),
+                                 (2.9928305557668415, 0.3709281222195243, 0.9878133651866298),
+                                 (3.0131256633168944, -1.3901032201204848, 0.7853911163504533),
+                                 (0.5952865875235361, 0.20718050090958492, 1.5092530947735325),
+                                 (-0.5854224393429074, -1.9456691543733, 2.004496412992174),
+                                 (1.163930543826011, -2.107144483058995, 1.883011771518183),
+                                 (0.1405916116476466, -2.6554984025201795, 0.5498094976254133)),
+                      'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+                                   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H',
+                                  'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C5H8', smiles='C=CC=CC', xyz=c5h8_xyz)
+        r_2 = ARCSpecies(label='C6H10', smiles='CC=CC=CC', xyz=c6h10_xyz)
+        p_1 = ARCSpecies(label='C11H18', smiles='C=CC1C(C)C=CC(C)C1C', xyz=c11h18_xyz)
+        rxn = ARCReaction(reactants=['C5H8', 'C6H10'], products=['C11H18'], r_species=[r_1, r_2], p_species=[p_1])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[:5], [0, 1, 2, 9, 10])
+        self.assertEqual(atom_map[:5], [0, 1, 2, 9, 10])
+        self.assertIn(atom_map[5:7], [[11, 12], [12, 11]])
+        self.assertEqual(atom_map[7:10], [13, 14, 25])
+        self.assertIn(tuple(rxn.atom_map[10:13]), permutations([26, 27, 28]))
+        self.assertEqual(atom_map[13:19], [8, 7, 6, 5, 3, 4])
+        self.assertIn(tuple(rxn.atom_map[19:22]), permutations([24, 23, 22]))
+        self.assertEqual(atom_map[22:26], [21, 20, 19, 15])
+        self.assertIn(tuple(rxn.atom_map[26:]), permutations([16, 17, 18]))
+        self.assertTrue(check_atom_map(rxn))
+
+        # Intra_R_Add_Endocyclic: C9H15_a <=> C9H15_b
+        c9h15_a_xyz = {'coords': ((3.2994642637411093, -0.9763218631003405, -0.6681519125224107),
+                                  (2.092867397835492, -0.585345209944081, -1.094234941414971),
+                                  (1.1613654936979811, 0.23706312530825574, -0.350374400298155),
+                                  (1.4994958941811034, 0.8089206946686178, 0.9907635052181555),
+                                  (-0.2167854131709981, 0.47662057541684727, -0.9114032766325476),
+                                  (-1.2860618884154418, -0.32193095884739475, -0.1923953058559322),
+                                  (-1.2894939032313453, -1.8000285883092857, -0.4999462913608906),
+                                  (-2.2130886752718024, 0.1935684936507141, 0.6410238159619941),
+                                  (-2.383413365750594, 1.6157044776486373, 1.0712910920067213),
+                                  (3.696965023185511, -0.7025114561770845, 0.3028336703297904),
+                                  (3.9271105560154953, -1.5992344159626835, -1.2980759074189403),
+                                  (1.7682570069194234, -0.916244398055435, -2.0798789408635727),
+                                  (2.487309562171708, 1.280610628494466, 0.9837303428781683),
+                                  (1.4864744914143402, 0.025765724669991667, 1.7553223060895524),
+                                  (0.7820729499500115, 1.5805317186266579, 1.2867175051786177),
+                                  (-0.4230089341260823, 1.5513883408081797, -0.8834461827090913),
+                                  (-0.2525088519499385, 0.22261243999961292, -1.9790204993055305),
+                                  (-1.3684387790718693, -1.963416003052446, -1.5797964159431177),
+                                  (-2.1302956103647683, -2.3198259338415648, -0.028168861405248807),
+                                  (-0.3695265066561803, -2.2717068331186607, -0.14091188769329688),
+                                  (-2.9423489352590817, -0.48429745146049047, 1.0846035398328122),
+                                  (-1.6122780147641311, 2.2876041556921556, 0.691039744143378),
+                                  (-3.355397325714956, 1.9889012668068031, 0.7341417908661508),
+                                  (-2.358736435364993, 1.6715714700786672, 2.1643375109183345)),
+                       'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                       'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
+                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c9h15_b_xyz = {'coords': ((-2.5844283571790947, -1.0321735590817163, 0.6979015062994665),
+                                  (-1.7475791961733325, -0.06626031223098465, 1.0969062210689708),
+                                  (-0.6595890997866395, 0.44535980204779074, 0.19328352629720955),
+                                  (-1.2282980470691727, 1.3553131311426074, -0.9035809147486576),
+                                  (0.5116680348286848, 1.1207407424824027, 0.9673543663680071),
+                                  (1.4515588336620284, 0.3272984970368279, 0.15908291396837426),
+                                  (2.790359263734144, -0.07794911282678396, 0.6402051576162312),
+                                  (0.39868762752392606, -0.6378444769932384, -0.22420607008722174),
+                                  (0.4638588895257082, -1.0921494216349954, -1.67271225417489),
+                                  (-3.3702037268621954, -1.3885510696474426, 1.3571613514582264),
+                                  (-2.514756820219243, -1.4880585713706647, -0.2847299130808078),
+                                  (-1.8525509876151718, 0.37468306283449787, 2.084629086686036),
+                                  (-1.799839887685193, 2.183429924439949, -0.4685383552676342),
+                                  (-0.4353196261713602, 1.7968012774608193, -1.5175814720438623),
+                                  (-1.8935148835851774, 0.8013551257352, -1.5751801294655083),
+                                  (0.5782060423798034, 0.8980837541669382, 2.0389365697505366),
+                                  (0.6148811498579635, 2.2012663914014428, 0.8270631269396428),
+                                  (3.3879992933324807, 0.8037689675842231, 0.889705284982396),
+                                  (2.714060940989492, -0.70739197884347, 1.5320182978132968),
+                                  (3.3202001915969395, -0.6394149338748517, -0.13488149851161066),
+                                  (0.41364799755952236, -1.5167424973440258, 0.43811504056239386),
+                                  (0.5615949640204292, -0.25426187677410833, -2.3707422632792787),
+                                  (-0.44004933907211424, -1.649313877420301, -1.9393981990380054),
+                                  (1.3194067424075275, -1.7579889882901385, -1.8308113801134083)),
+                       'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                       'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H',
+                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C9H15_a', smiles='C=C[C](C)CC(C)=CC', xyz=c9h15_a_xyz)
+        p_1 = ARCSpecies(label='C9H15_b', smiles='C=CC1(C)C[C](C)C1C', xyz=c9h15_b_xyz)
+        rxn = ARCReaction(reactants=['C9H15_a'], products=['C9H15_b'],
+                          r_species=[r_1], p_species=[p_1])
+        atom_map = rxn.atom_map
+        self.assertEqual(atom_map[0:9], list(range(9)))
+        self.assertIn(atom_map[9:11], [[9, 10], [10, 9]])
+        self.assertEqual(atom_map[11], 11)
+        self.assertIn(tuple(rxn.atom_map[12:15]), permutations([13, 14, 12]))
+        self.assertIn(atom_map[15:17], [[15, 16], [16, 15]])
+        self.assertIn(tuple(rxn.atom_map[17:20]), permutations([18, 17, 19]))
+        self.assertEqual(atom_map[20], 20)
+        self.assertIn(tuple(rxn.atom_map[21:]), permutations([23, 21, 22]))
+        self.assertTrue(check_atom_map(rxn))
+
+        # R_Addition_COm: C6H5 + CO <=> C7H5O
+        c6h5_xyz = {'coords': ((0.1817676212163122, -1.6072341699404684, -0.014610043584505971),
+                               (1.3027386938520413, -0.7802649159703986, -0.0076490984025043415),
+                               (1.1475642728457944, 0.6058877336062989, 0.0049505291900821605),
+                               (-0.13153090866637432, 1.1630287566213553, 0.010572132054881396),
+                               (-1.2538945539777469, 0.33431084106618875, 0.0035960198829159064),
+                               (-1.0955796250821246, -1.0514866492107922, -0.009001872474708414),
+                               (2.2945290976411314, -1.222259069017827, -0.0120983109779029),
+                               (2.0221784174097133, 1.2509576921755168, 0.010380274196135802),
+                               (-0.25367929671488426, 2.243094989267151, 0.020390170037011494),
+                               (-2.250483228275848, 0.767769623706613, 0.007970374795096042),
+                               (-1.9636104902480103, -1.7038048323036503, -0.014500174716503693)),
+                    'isotopes': (12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        c7h5o_xyz = {'coords': ((3.6046073677554133, -0.5344883784336433, -0.4686416595112313),
+                                (2.450376918247941, -0.36333993603429526, -0.3185783842705891),
+                                (1.0452654391924683, -0.1549911825981301, -0.13589722616572933),
+                                (0.17928460434727675, -1.2499432760163112, -0.05142261213479038),
+                                (-1.1903765403115871, -1.0453466445053263, 0.1266843926255701),
+                                (-1.6956393825954146, 0.2514281313346147, 0.22045344560169716),
+                                (-0.83456152850501, 1.3456029168509482, 0.13658183163326776),
+                                (0.5355376113902255, 1.1439499192771787, -0.04151298496012599),
+                                (0.5636535723209614, -2.2654604192056556, -0.12342236998627074),
+                                (-1.863668502126327, -1.8967496276402949, 0.19236058875963039),
+                                (-2.762672022813616, 0.4096470069241553, 0.3591803505729345),
+                                (-1.2308445290855283, 2.355601612430931, 0.2099632744051463),
+                                (1.1990369921831652, 2.0040898776158196, -0.1057486465694942)),
+                     'isotopes': (16, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1),
+                     'symbols': ('O', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C6H5', smiles='[c]1ccccc1', xyz=c6h5_xyz)
+        r_2 = ARCSpecies(label='CO', smiles='[C-]#[O+]', xyz=self.co_xyz)
+        p_1 = ARCSpecies(label='C7H5O', smiles='O=[C]c1ccccc1', xyz=c7h5o_xyz)
+        rxn = ARCReaction(reactants=['C6H5', 'CO'], products=['C7H5O'],
+                          r_species=[r_1, r_2], p_species=[p_1])
+        self.assertEqual(rxn.atom_map, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 0])
+        self.assertTrue(check_atom_map(rxn))
+
+        # Keto-enol isomerization: ch2choh <=> ch3cho
+        r_1 = ARCSpecies(label='CH2CHOH', smiles='C=CO', xyz=self.ch2choh_xyz)
+        p_1 = ARCSpecies(label='CH3CHO', smiles='CC=O', xyz=self.ch3cho_xyz)
+        rxn = ARCReaction(r_species=[r_1], p_species=[p_1])
+        atom_map = rxn.atom_map
+        self.assertTrue(check_atom_map(rxn))
+        self.assertTrue(atom_map[:3], [0, 1, 2])
+        self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
+        self.assertEqual(atom_map[5], 6)
+
+    # Same species in products
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
+                          p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
+                                     ARCSpecies(label="p2", smiles= 'C=CC=C')])
+        c_symmetry_h_1 = [1, 2, 11, 12]            # symmetry of carbons with one hydrogen
+        c_symmetry_h_2 = [0, 3, 10, 13]            # symmetry of carbons with two hydrogens
+        h_symmetry1 = [6, 7, 16, 17]               # symmetry of hydrogens with one other hydrogen second order neighbor
+        h_symmetry2 = [4, 5, 8, 9, 14 ,15, 18, 19] # symmetry of hydrogens with two other hydrogen second order neighbor
+        
+        label_species_atoms(rxn.r_species)
+        atom_map = rxn.atom_map
+        for atom in rxn.r_species[0].mol.copy(deep=True).atoms:
+            if atom.symbol == "C":
+                relevant_atom = atom
+            else:
+                relevant_atom = list(atom.bonds.keys())[0]
+            number_of_hydrogens = 0
+            for neighbor in relevant_atom.bonds.keys():
+                if neighbor.symbol=="H":
+                    number_of_hydrogens+=1
+            if number_of_hydrogens == 1:
+                self.assertIn(atom_map[int(atom.label)], c_symmetry_h_1 if atom.symbol == "C" else h_symmetry1)
+            else:
+                self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
+        self.assertTrue(check_atom_map(rxn=rxn))
+
+    def test_mapping_XY_elimination_hydroxyl(self):
+        """Test mapping of a reaction family XY_elimination_hydroxyl"""    
+        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'O=C(O)CCF')],
+                          p_species=[ARCSpecies(label="p1", smiles='C=C'),
+                                     ARCSpecies(label="p2", smiles="F"),
+                                     ARCSpecies(label="p3", smiles="O=C=O")])
+        # if not rxn.family:  # reaction family not found for some reason.
+        #     rxn.family = "XY_elimination_hydroxyl"
+        atom_map = rxn.atom_map
+        self.assertIsNotNone(rxn.family)
+        self.assertTrue(check_atom_map(rxn=rxn))
+        self.assertIn(atom_map[:3], [[8, 9, 10], [10, 9, 8]])
+        self.assertIn(atom_map[3:5], [[0, 1], [1, 0]])
+        self.assertEqual(atom_map[5:7], [6, 7])
+        self.assertIn(atom_map[7:9], [[4, 5], [5, 4]])
+        self.assertIn(atom_map[9:], [[2, 3], [3, 2]])
+
+    def test_get_reactants_xyz(self):
+        """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,), 'symbols': ('H',)})
+        r_2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_1 = ARCReaction(reactants=['H', 'CH3NH2'], products=['H2', 'CH2NH2'],
+                            r_species=[r_1, r_2], p_species=[p_1, p_2])
+        reactants_xyz_str = rxn_1.get_reactants_xyz()
+        reactants_xyz_dict = rxn_1.get_reactants_xyz(return_format='dict')
+        expected_reactants_xyz_str = """H      -0.33027713    0.00000000    0.00000000
+C      -0.69896689    0.01307198    0.19065646
+N       0.68500384   -0.00710516   -0.24800345
+H      -1.24901071   -0.81966953   -0.25630769
+H      -0.75877776   -0.07109755    1.27946778
+H      -1.17875666    0.94667056   -0.11590328
+H       1.19308649    0.75511100    0.19874554
+H       1.12853146   -0.86793870    0.06973060"""
+        expected_reactants_xyz_dict = {'symbols': ('H', 'C', 'N', 'H', 'H', 'H', 'H', 'H'),
+                                       'isotopes': (1, 12, 14, 1, 1, 1, 1, 1),
+                                       'coords': ((-0.33027712709756146, 0.0, 0.0),
+                                                  (-0.6989668914012913, 0.013071980537625375, 0.19065646408548476),
+                                                  (0.6850038432076193, -0.007105162794622051, -0.24800345098357532),
+                                                  (-1.2490107127575472, -0.8196695284205939, -0.25630768631260914),
+                                                  (-0.7587777580627403, -0.07109754601418727, 1.2794677831251846),
+                                                  (-1.1787566580846358, 0.9466705618857946, -0.11590327771764654),
+                                                  (1.1930864935379735, 0.7551110006183172, 0.19874554339341918),
+                                                  (1.1285314617115254, -0.8679387002982916, 0.06973059764419955))}
+        self.assertEqual(reactants_xyz_str, expected_reactants_xyz_str)
+        self.assertEqual(reactants_xyz_dict, expected_reactants_xyz_dict)
+
+        c2h5o3_xyz = {'coords': ((-1.3476727508427788, -0.49923624257482285, -0.3366372557370102),
+                                 (-0.11626816111736853, 0.3110915299407186, 0.018860985632263887),
+                                 (0.7531175607750088, 0.3366822240291409, -1.1050387236863213),
+                                 (0.5228736844989644, -0.3049881931104616, 1.1366016759286774),
+                                 (1.8270658637404131, 0.34102014147584997, 1.2684162942337813),
+                                 (-2.039181700362481, -0.5535509846570477, 0.5100031541057821),
+                                 (-1.865025875161301, -0.06806929272376178, -1.1994046923960628),
+                                 (-1.0711960095793496, -1.5264629385419055, -0.6002175107608478),
+                                 (-0.40133538695862053, 1.3357900487643664, 0.28224155088545305),
+                                 (1.3942569570346546, 1.035594500292526, -0.8890721851777293)),
+                      'isotopes': (12, 12, 16, 16, 16, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'C', 'O', 'O', 'O', 'H', 'H', 'H', 'H', 'H')}
+        c2h4o_xyz = {'coords': ((-0.6485165220711699, -0.036287809639473964, -0.040072327958319325),
+                                (0.8441328059817381, 0.04088405476411104, 0.05352861712992162),
+                                (1.4799812732494606, 1.0748679945888888, -0.1224478071645769),
+                                (-1.0603388058764294, 0.9464876376852732, -0.28238370478893315),
+                                (-0.9213427138232859, -0.7478396768473443, -0.8228167900899559),
+                                (-1.0499663443190728, -0.37234114306362315, 0.9187474043028493),
+                                (1.3560503068587568, -0.9057710574878411, 0.29544460856901716)),
+                     'isotopes': (12, 12, 16, 1, 1, 1, 1),
+                     'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H')}
+        ho2_xyz = {'coords': ((0.0558910, -0.6204870, 0.0000000),
+                              (0.0558910, 0.7272050, 0.0000000),
+                              (-0.8942590, -0.8537420, 0.0000000)),
+                   'isotopes': (16, 16, 1),
+                   'symbols': ('O', 'O', 'H')}
+        r_1 = ARCSpecies(label='C2H5O3', smiles='CC(O)O[O]', xyz=c2h5o3_xyz)
+        p_1 = ARCSpecies(label='C2H4O', smiles='CC=O', xyz=c2h4o_xyz)
+        p_2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)
+        rxn = ARCReaction(r_species=[r_1], p_species=[p_1, p_2])
+        self.assertIn(rxn.atom_map[0:5], [[0, 1, 2, 8, 7], [0, 1, 2, 7, 8]])
+        for index in [5, 6, 7]:
+            self.assertIn(rxn.atom_map[index], [3, 4, 5])
+        self.assertEqual(rxn.atom_map[8], 6)
+        self.assertEqual(rxn.atom_map[9], 9)
+        self.assertTrue(check_atom_map(rxn))
+
+    def test_get_single_mapped_product_xyz(self):
+        """Test the Reaction get_single_mapped_product_xyz() method"""
+        # Trivial unimolecular with an intentional mixed atom order: H2O <=> H2O
+        h2o_xyz_1 = """O      -0.00032832    0.39781490    0.00000000
+                       H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000"""
+        r_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_1)
+        h2o_xyz_2 = """H      -0.76330345   -0.19953755    0.00000000
+                       H       0.76363177   -0.19827735    0.00000000
+                       O      -0.00032832    0.39781490    0.00000000"""
+        p_1 = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz_2)
+        rxn_1 = ARCReaction(reactants=['H2O'], products=['H2O'],
+                            r_species=[r_1], p_species=[p_1])
+        mapped_product = rxn_1.get_single_mapped_product_xyz()
+        self.assertEqual(rxn_1.atom_map, [2, 0, 1])
+        self.assertTrue(check_atom_map(rxn_1))
+        expected_xyz = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                        'coords': ((-0.00032832, 0.3978149, 0.0), (-0.76330345, -0.19953755, 0.0),
+                                   (0.76363177, -0.19827735, 0.0))}
+        self.assertEqual(mapped_product.get_xyz(), expected_xyz)
+
+        reactant_xyz = """C  -1.3087    0.0068    0.0318
+                          C   0.1715   -0.0344    0.0210
+                          N   0.9054   -0.9001    0.6395
+                          O   2.1683   -0.5483    0.3437
+                          N   2.1499    0.5449   -0.4631
+                          N   0.9613    0.8655   -0.6660
+                          H  -1.6558    0.9505    0.4530
+                          H  -1.6934   -0.0680   -0.9854
+                          H  -1.6986   -0.8169    0.6255"""
+        reactant = ARCSpecies(label='reactant', smiles='C([C]1=[N]O[N]=[N]1)', xyz=reactant_xyz)
+        product_xyz = """C  -1.0108   -0.0114   -0.0610
+                         C   0.4780    0.0191    0.0139
+                         N   1.2974   -0.9930    0.4693
+                         O   0.6928   -1.9845    0.8337
+                         N   1.7456    1.9701   -0.6976
+                         N   1.1642    1.0763   -0.3716
+                         H  -1.4020    0.9134   -0.4821
+                         H  -1.3327   -0.8499   -0.6803
+                         H  -1.4329   -0.1554    0.9349"""
+        product = ARCSpecies(label='product', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
+        rxn_2 = ARCReaction(r_species=[reactant], p_species=[product])
+        self.assertTrue(check_atom_map(rxn_2))
+        mapped_product = rxn_2.get_single_mapped_product_xyz()
+        self.assertEqual(rxn_2.atom_map[:6], [0, 1, 2, 3, 4, 5])
+        self.assertIn(rxn_2.atom_map[6], [6, 8])
+        self.assertIn(rxn_2.atom_map[7], [6, 7])
+        self.assertIn(rxn_2.atom_map[8], [7, 8])
+        expected_xyz = {'symbols': ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'),
+                        'isotopes': (12, 12, 14, 16, 14, 14, 1, 1, 1),
+                        'coords': ((-1.0108, -0.0114, -0.061), (0.478, 0.0191, 0.0139), (1.2974, -0.993, 0.4693),
+                                   (0.6928, -1.9845, 0.8337), (1.7456, 1.9701, -0.6976), (1.1642, 1.0763, -0.3716),
+                                   (-1.4329, -0.1554, 0.9349), (-1.402, 0.9134, -0.4821), (-1.3327, -0.8499, -0.6803))}
+        self.assertEqual(mapped_product.get_xyz(), expected_xyz)
+
+        reactant_xyz = """C  -1.3087    0.0068    0.0318
+                          C   0.1715   -0.0344    0.0210
+                          N   0.9054   -0.9001    0.6395
+                          O   2.1683   -0.5483    0.3437
+                          N   2.1499    0.5449   -0.4631
+                          N   0.9613    0.8655   -0.6660
+                          H  -1.6558    0.9505    0.4530
+                          H  -1.6934   -0.0680   -0.9854
+                          H  -1.6986   -0.8169    0.6255"""
+        reactant = ARCSpecies(label='reactant', smiles='C([C]1=[N]O[N]=[N]1)', xyz=reactant_xyz)
+        product_xyz = """C  -1.0108   -0.0114   -0.0610
+                         C   0.4780    0.0191    0.0139
+                         N   1.2974   -0.9930    0.4693
+                         O   0.6928   -1.9845    0.8337
+                         N   1.7456    1.9701   -0.6976
+                         N   1.1642    1.0763   -0.3716
+                         H  -1.4020    0.9134   -0.4821
+                         H  -1.3327   -0.8499   -0.6803
+                         H  -1.4329   -0.1554    0.9349"""
+        product = ARCSpecies(label='product', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
+        rxn_2 = ARCReaction(r_species=[reactant], p_species=[product])
+        self.assertTrue(check_atom_map(rxn_2))
+        mapped_product = rxn_2.get_single_mapped_product_xyz()
+        self.assertEqual(rxn_2.atom_map[:6], [0, 1, 2, 3, 4, 5])
+        self.assertIn(rxn_2.atom_map[6], [6, 8])
+        self.assertIn(rxn_2.atom_map[7], [6, 7])
+        self.assertIn(rxn_2.atom_map[8], [7, 8])
+        expected_xyz = {'symbols': ('C', 'C', 'N', 'O', 'N', 'N', 'H', 'H', 'H'),
+                        'isotopes': (12, 12, 14, 16, 14, 14, 1, 1, 1),
+                        'coords': ((-1.0108, -0.0114, -0.061), (0.478, 0.0191, 0.0139), (1.2974, -0.993, 0.4693),
+                                   (0.6928, -1.9845, 0.8337), (1.7456, 1.9701, -0.6976), (1.1642, 1.0763, -0.3716),
+                                   (-1.4329, -0.1554, 0.9349), (-1.402, 0.9134, -0.4821), (-1.3327, -0.8499, -0.6803))}
+        self.assertEqual(mapped_product.get_xyz(), expected_xyz)
+
+    def test_check_attributes(self):
+        """Test checking the reaction attributes"""
+        rxn_1 = ARCReaction(label='H + [O-][N+](=N)N=O <=> [N-]=[N+](N=O)[O] + H2',
+                            r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                       ARCSpecies(label='[O-][N+](=N)N=O', smiles='[O-][N+](=N)N=O')],
+                            p_species=[ARCSpecies(label='H2', smiles='[H][H]'),
+                                       ARCSpecies(label='[N-]=[N+](N=O)[O]', smiles='[N-]=[N+](N=O)[O]')],
+                            )
+        rxn_1.check_attributes()
+        self.assertEqual(rxn_1.reactants, ['H', '[O-][Np][=N]N=O'])
+        self.assertEqual(rxn_1.products, ['H2', '[N-]=[Np][N=O][O]'])
+        self.assertEqual(rxn_1.r_species[1].label, '[O-][Np][=N]N=O')
+
+    def test_remove_dup_species(self):
+        """Test the remove_dup_species function"""
+        species_list = [ARCSpecies(label='OH', smiles='[OH]'),
+                        ARCSpecies(label='OH', smiles='[OH]'),
+                        ARCSpecies(label='H', smiles='[H]'),
+                        ARCSpecies(label='H', smiles='[H]'),
+                        ARCSpecies(label='H2O', smiles='O'),
+                        ]
+        new_species_list = remove_dup_species(species_list=species_list)
+        self.assertEqual(len(new_species_list), 3)
+
+    def test_check_done_opt_r_n_p(self):
+        """Test the check_done_opt_r_n_p() method"""
+        c3_1_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_1.yml')  # 1-propyl
+        c3_2_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'C3_2.yml')  # 2-propyl
+        c3_1_spc = ARCSpecies(yml_path=c3_1_path)
+        c3_2_spc = ARCSpecies(yml_path=c3_2_path)
+        rxn_1 = ARCReaction(r_species=[c3_1_spc], p_species=[c3_2_spc])
+        self.assertIsNone(rxn_1.done_opt_r_n_p)
+        rxn_1.check_done_opt_r_n_p()
+        self.assertEqual(rxn_1.done_opt_r_n_p, True)
+
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='C1_3', smiles='[CH2]CC')],
+                            p_species=[ARCSpecies(label='C3_2', smiles='C[CH]C')])
+        rxn_2.check_done_opt_r_n_p()
+        self.assertEqual(rxn_2.done_opt_r_n_p, False)
+
+    def tests_white_space_in_reaction_label(self):
+        """Test that an extra white space in the reaction label does not confuse ARC."""
+        hno = ARCSpecies(label='HNO', smiles='N=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        no = ARCSpecies(label='NO', smiles='[N]=O')
+        nh2oh = ARCSpecies(label='NH2OH', smiles='NO')
+        rxn_1 = ARCReaction(label='HNO + H2NO <=> NO + NH2OH ',
+                            r_species=[hno, h2no], p_species=[no, nh2oh],
+                            )
+        self.assertEqual(rxn_1.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_1.products, ['NH2OH', 'NO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'HNO + H2NO <=> NO + NH2OH '},
+                            species_list=[hno, h2no, no, nh2oh],
+                            )
+        self.assertEqual(rxn_2.reactants, ['H2NO', 'HNO'])
+        self.assertEqual(rxn_2.products, ['NH2OH', 'NO'])
+
+    def tests_special_characters_in_reaction_label(self):
+        """Test that the respective species objects can be identified from a reaction label with a special character."""
+        no2 = ARCSpecies(label='NO2', smiles='[O]N=O')
+        nh3o = ARCSpecies(label='[O-][NH3+]', smiles='[O-][NH3+]')
+        hono = ARCSpecies(label='HONO', smiles='ON=O')
+        h2no = ARCSpecies(label='H2NO', smiles='N[O]')
+        rxn_1 = ARCReaction(label='NO2 + [O-][NH3+] <=> HONO + H2NO',
+                            r_species=[no2, nh3o], p_species=[hono, h2no],
+                            )
+        self.assertEqual(rxn_1.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_1.products, ['H2NO', 'HONO'])
+
+        rxn_2 = ARCReaction(reaction_dict={'label': 'NO2 + [O-][NH3+] <=> HONO + H2NO'},
+                            species_list=[no2, nh3o, hono, h2no],
+                            )
+        self.assertEqual(rxn_2.reactants, ['NO2', '[O-][NH3p]'])
+        self.assertEqual(rxn_2.products, ['H2NO', 'HONO'])
+
+    def test_get_element_masses(self):
+        """Test the get_element_masses() method."""
+        self.assertTrue(almost_equal_lists(self.rxn1.get_element_mass(),
+                                           [12.0, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn2.get_element_mass(),
+                                           [12.0, 12.0, 1.00782503224, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 15.99491461957, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn3.get_element_mass(),
+                                           [12.0, 12.0, 14.00307400443, 1.00782503224, 1.00782503224, 1.00782503224,
+                                            1.00782503224, 1.00782503224, 1.00782503224]))
+        self.assertTrue(almost_equal_lists(self.rxn5.get_element_mass(),
+                                           [14.00307400443, 1.00782503224, 1.00782503224,
+                                            14.00307400443, 1.00782503224, 1.00782503224]))
+
+    def test_get_bonds(self):
+        """Test the get_bonds() method."""
+        r_bonds, p_bonds = self.rxn1.get_bonds()
+        self.assertEqual(r_bonds, [(0, 1), (0, 2), (0, 3), (0, 4), (5, 6)])  # CH4 + OH
+        self.assertEqual(p_bonds, [(0, 1), (0, 2), (0, 3), (4, 5), (4, 6)])  # CH3 + H2O
+
+    def test_multi_reactants(self):
+        """Test that a reaction can be defined with many (>3) reactants or products given ts_xyz_guess."""
+        with self.assertRaises(ReactionError):
+            ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                                   ARCSpecies(label='OH', smiles='[OH]'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O')],
+                        p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O'),
+                                   ARCSpecies(label='H2O', smiles='O')])
+
+        ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
+                               ARCSpecies(label='OH', smiles='[OH]'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O')],
+                    p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O'),
+                               ARCSpecies(label='H2O', smiles='O')],
+                    ts_xyz_guess=["""C      -3.61598200   -0.14868700   -0.24629000
+                                    C      -2.87249000   -0.46501800   -1.37357200
+                                    H      -1.49356900   -0.33047800   -1.35181200
+                                    H      -0.84385200    0.11582900   -0.20370300
+                                    H      -1.59912100    0.44823500    0.91958000
+                                    H      -2.97672300    0.31399300    0.89602200
+                                    H      -4.69390100   -0.24965500   -0.26210800
+                                    H      -3.36776700   -0.80869200   -2.27293600
+                                    O      -0.91216500   -0.55783000   -2.23774700
+                                    H      -1.09587000    0.85059200    1.79098900
+                                    O      -3.55685000    0.58245300    1.76982000
+                                    H       0.61957500    0.23804900   -0.17583200
+                                    H       1.21746400   -1.55405900    0.34558600
+                                    O       2.65817800   -1.34488900    0.51012400
+                                    H       3.16323600   -2.29177100    0.72530400
+                                    H       3.06938800   -0.89699200   -0.39503300"""])
+
+    def test_load_ts_xyz_user_guess_from_files(self):
+        """Test various loading a reaction and populating the TS ARCSpecies with user xyz guesses from files"""
+        project_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'reactions', 'methanoate_hydrolysis')
+        input_dict = read_yaml_file(path=os.path.join(project_directory, 'input_1.yml'))
+        input_dict['project_directory'] = project_directory
+        arc_object = ARC(**input_dict)
+        Scheduler(project=arc_object.project,
+                  species_list=arc_object.species,
+                  rxn_list=arc_object.reactions,
+                  conformer_level=arc_object.conformer_level,
+                  opt_level=arc_object.opt_level,
+                  freq_level=arc_object.freq_level,
+                  sp_level=arc_object.sp_level,
+                  scan_level=arc_object.scan_level,
+                  ts_guess_level=arc_object.ts_guess_level,
+                  ess_settings=arc_object.ess_settings,
+                  job_types=arc_object.job_types,
+                  rmg_database=arc_object.rmg_database,
+                  project_directory=arc_object.project_directory,
+                  ts_adapters=arc_object.ts_adapters,
+                  testing=True,
+                  )
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[0].initial_xyz['symbols']), 19)
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
+
+        input_dict = read_yaml_file(path=os.path.join(project_directory, 'input_2.yml'))
+        input_dict['project_directory'] = project_directory
+        arc_object = ARC(**input_dict)
+        Scheduler(project=arc_object.project,
+                  species_list=arc_object.species,
+                  rxn_list=arc_object.reactions,
+                  conformer_level=arc_object.conformer_level,
+                  opt_level=arc_object.opt_level,
+                  freq_level=arc_object.freq_level,
+                  sp_level=arc_object.sp_level,
+                  scan_level=arc_object.scan_level,
+                  ts_guess_level=arc_object.ts_guess_level,
+                  ess_settings=arc_object.ess_settings,
+                  job_types=arc_object.job_types,
+                  rmg_database=arc_object.rmg_database,
+                  project_directory=arc_object.project_directory,
+                  ts_adapters=arc_object.ts_adapters,
+                  testing=True,
+                  )
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses), 2)
+        self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
+
+    def test_get_rxn_smiles(self):
+        """Tests the get_rxn_smiles method"""
+        self.assertEqual(self.rxn1.get_rxn_smiles(), "C.[OH]>>[CH3].O")
+        self.assertEqual(self.rxn2.get_rxn_smiles(), "C[CH2].[OH]>>C=C.O")
+        self.assertEqual(self.rxn3.get_rxn_smiles(), "CC[NH]>>[CH2]CN")
+        self.assertEqual(self.rxn4.get_rxn_smiles(), "[NH2].[NH]N>>N.[N]N")
+        self.assertEqual(self.rxn5.get_rxn_smiles(), "[NH2].[NH2]>>[NH].N")
+        self.assertEqual(self.rxn6.get_rxn_smiles(), "[NH2].[NH]N>>N.[N-]=[NH2+]")
+        self.assertEqual(self.rxn7.get_rxn_smiles(), "[NH2].[NH]N>>N.[N]N")
+        self.assertEqual(self.rxn8.get_rxn_smiles(), "C.[OH]>>[CH3].O")
+        self.assertEqual(self.rxn9.get_rxn_smiles(), "NCO[O]>>C=N.[O]O")
+        self.assertEqual(self.rxn10.get_rxn_smiles(), "N=O.[O-][N+]=O>>[O-][NH+]=O.[N]=O")
+        self.assertEqual(self.rxn11.get_rxn_smiles(), "C[CH]C>>[CH2]CC")
+
+    @classmethod
+    def tearDownClass(cls):
+        """A function that is run ONCE after all unit tests in this class."""
+        project_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'reactions', 'methanoate_hydrolysis')
+        sub_folders = ['log_and_restart_archive', 'output']
+        files_to_remove = ['arc.log']
+        for sub_folder in sub_folders:
+            shutil.rmtree(os.path.join(project_directory, sub_folder), ignore_errors=True)
+        for file_path in files_to_remove:
+            full_file_path = os.path.join(project_directory, file_path)
+            if os.path.isfile(full_file_path):
+                os.remove(full_file_path)
+
+
+if __name__ == '__main__':
+    unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

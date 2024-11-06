@@ -1402,11 +1402,3 @@ def find_all_bdes(rxn: "ARCReaction",
                 print(f'appending {action[1]} and {action[3]}: {(label_dict[action[1]] + 1, label_dict[action[3]] + 1)}')
                 bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
     return bdes
-
-
-rxn_product, fam_product = rxn.p_species[product_index], products[product_pairs[product_index]]
-atom_map = map_two_species(spc_1=rxn_product, spc_2=fam_product, map_type='list')
-for i, atom in enumerate(fam_product.atoms):
-    if atom_index in label_dict.values():
-        rxn_product.mol.atoms[atom_map[i]].label = key_by_val(label_dict, atom_index)
-    atom_index += 1
