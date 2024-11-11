@@ -73,7 +73,7 @@ class ReactionFamily(object):
             List[str]: The groups file as a list of lines.
         """
         groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', self.label, 'groups.py')
-        if not os.path.isfile(groups_path):
+           print(f"Looking for groups.py in RMG database at: {groups_path}")  # Debug statement
             if consider_arc_families:
                 groups_path = os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')
             if not os.path.isfile(groups_path):
