@@ -300,9 +300,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
-        return lowest_confs, hypothetical_num_comb
+        return lowest_confs, hypothetical_num_comb, len(torsions)
     else:
-        return lowest_confs, new_conformers, hypothetical_num_comb
+        return lowest_confs, new_conformers, hypothetical_num_comb, len(torsions)
 
 
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
