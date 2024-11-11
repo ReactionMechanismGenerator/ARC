@@ -569,7 +569,10 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
             rmg_families = list(family_sets[rmg_family_set]) \
                 if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else rmg_family_set
     if consider_arc_families:
-        arc_families = [os.path.splitext(family)[0] for family in os.listdir(ARC_FAMILIES_PATH)]
+        for family in os.listdir(ARC_FAMILIES_PATH):
+            if family.startswith('.') or family.startswith('_'):
+                continue
+            arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families
 
 
