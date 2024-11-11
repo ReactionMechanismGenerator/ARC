@@ -270,6 +270,8 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
         num_confs=num_confs_to_generate, force_field=force_field)
 
+    number_of_heavy_atoms = len([atom for atom in mol_list[0].atoms if atom.is_non_hydrogen()])
+
     lowest_confs = list()
     if len(conformers):
         conformers = determine_dihedrals(conformers, torsions)
@@ -300,9 +302,9 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         lowest_confs, new_conformers = list(), list()
 
     if not return_all_conformers:
-        return lowest_confs, hypothetical_num_comb, len(torsions)
+        return lowest_confs, hypothetical_num_comb, len(torsions), number_of_heavy_atoms
     else:
-        return lowest_confs, new_conformers, hypothetical_num_comb, len(torsions)
+        return lowest_confs, new_conformers, hypothetical_num_comb, len(torsions), number_of_heavy_atoms
 
 
 def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_scan_res=None, plot_path=None,
