@@ -1506,6 +1506,14 @@ H      -1.69944700    0.93441600   -0.11271200"""
         self.assertEqual(mol_ids, res1_ids)
         self.assertEqual(mol_ids, res2_ids)
 
+    def test_perceiving_o2(self):
+        """Test that O2 is correctly perceived"""
+        o2_xyz = {'symbols': ('O', 'O'), 'isotopes': (16, 16), 'coords': ((0.0, 0.0, 0.6029), (0.0, 0.0, -0.6029))}
+        o2 = ARCSpecies(label='O2aa', xyz=o2_xyz, multiplicity=3)
+        self.assertEqual(o2.multiplicity, 3)
+        self.assertEqual(o2.mol.multiplicity, 3)
+        self.assertEqual(o2.mol.to_smiles(), '[O][O]')
+
     def test_preserving_multiplicity(self):
         """Test that multiplicity is being preserved, especially when it is guessed differently from xyz"""
         multiplicity_list = [2, 2, 1, 1, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1]

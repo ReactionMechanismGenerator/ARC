@@ -17,9 +17,9 @@ from qcelemental.models.molecule import Molecule as QCMolecule
 from rmgpy.molecule import Molecule
 from rmgpy.species import Species
 
-import arc.rmgdb as rmgdb
 from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
 from arc.exceptions import SpeciesError
+from arc.reaction.family import ReactionFamily, get_reaction_family_products
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
@@ -27,201 +27,268 @@ from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calcu
 from numpy import unique
 
 if TYPE_CHECKING:
-    from rmgpy.data.kinetics.family import TemplateReaction
-    from rmgpy.data.rmg import RMGDatabase
     from rmgpy.molecule.molecule import Atom
-    from rmgpy.reaction import Reaction
     from arc.reaction import ARCReaction
 
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
 
-def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReaction',
-                                                         rmg_reaction: 'TemplateReaction',
-                                                         ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
+def get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction: 'ARCReaction',
+                                                    ) -> Tuple[Dict[str, int], Dict[str, int]]:
     """
-    Get the RMG reaction atom labels and the corresponding 0-indexed atom indices
-    for all labeled atoms in a TemplateReaction.
+    Get the atom indices for all labeled atoms in an ARCReaction object instance.
 
     Args:
         arc_reaction (ARCReaction): An ARCReaction object instance.
-        rmg_reaction (TemplateReaction): A respective RMG family TemplateReaction object instance.
+
+    Todo:
+        - Currently only considering the first reaction for a single atom map,
+          should be extended to include all reactions and make atom_map a list of ARCReaction (call it .atom_maps ?).
 
     Returns:
-        Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
-            The tuple entries relate to reactants and products.
-            Keys are labels (e.g., '*1'), values are corresponding 0-indices atoms.
+        Tuple[Dict[str, int], Dict[str, int]]: Keys are labels (e.g., '*1'),
+                                               values are corresponding 0-indexed atom indices
+                                               in the reactants and in the products.
     """
-    if not hasattr(rmg_reaction, 'labeled_atoms') or not rmg_reaction.labeled_atoms:
-        return None, None
-
-    for spc in rmg_reaction.reactants + rmg_reaction.products:
-        generate_resonance_structures(object_=spc, save_order=True)
-
-    r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
-
-    reactant_index_dict, product_index_dict = dict(), dict()
-    reactant_atoms, product_atoms = list(), list()
-    rmg_reactant_order = [val for _, val in sorted(r_map.items(), key=lambda item: item[0])]
-    rmg_product_order = [val for _, val in sorted(p_map.items(), key=lambda item: item[0])]
-    for i in rmg_reactant_order:
-        reactant_atoms.extend([atom for atom in rmg_reaction.reactants[i].atoms])
-    for i in rmg_product_order:
-        product_atoms.extend([atom for atom in rmg_reaction.products[i].atoms])
-
-    for labeled_atom_dict, atom_list, index_dict in zip([rmg_reaction.labeled_atoms['reactants'],
-                                                         rmg_reaction.labeled_atoms['products']],
-                                                        [reactant_atoms, product_atoms],
-                                                        [reactant_index_dict, product_index_dict]):
-        for label, atom_1 in labeled_atom_dict.items():
-            for i, atom_2 in enumerate(atom_list):
-                if atom_1.id == atom_2.id:
-                    index_dict[label] = i
-                    break
+    product_dicts = get_reaction_family_products(arc_reaction)
+    product_dict = product_dicts[0]
+    reactant_index_dict, product_index_dict = product_dict['label_map'], dict()
+    pairs = pair_reaction_products(arc_reaction, product_dict['products'])
+    maps = dict()
+    for arc_rxn_idx, prod_idx in pairs.items():
+        maps[prod_idx] = map_two_species(arc_reaction.p_species[arc_rxn_idx],
+                                         ARCSpecies(label=f'P{prod_idx}', mol=product_dict['products'][prod_idx]),
+                                         map_type='dict',
+                                         consider_chirality=False,
+                                         )
+    fam_prods_map_to_rxn_prods = dict()
+    for i in range(len(maps.keys())):
+        for key, val in maps[i].items():
+            fam_prods_map_to_rxn_prods[key + sum([len(mol.atoms) for mol in product_dict['products'][:i]])] = (
+                    val + sum([len(spc.mol.atoms) for spc in arc_reaction.r_species[:i]]))
+    product_index_dict = {key: fam_prods_map_to_rxn_prods[val] for key, val in reactant_index_dict.items()}
     return reactant_index_dict, product_index_dict
 
 
-def map_arc_rmg_species(arc_reaction: 'ARCReaction',
-                        rmg_reaction: Union['Reaction', 'TemplateReaction'],
-                        concatenate: bool = True,
-                        ) -> Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
+def pair_reaction_products(reaction: 'ARCReaction',
+                           products: List['Molecule'],
+                           ) -> Dict[int, int]:
     """
-    Map the species pairs in an ARC reaction to those in a respective RMG reaction
-    which is defined in the same direction.
+    Map the species pairs in an ARC reaction to those in the given product list.
+    This function assumes that resonance structures (mol_list) were generated for the ARCReaction object instance.
 
     Args:
-        arc_reaction (ARCReaction): An ARCReaction object instance.
-        rmg_reaction (Union[Reaction, TemplateReaction]): A respective RMG family TemplateReaction object instance.
-        concatenate (bool, optional): Whether to return isomorphic species as a single list (``True``, default),
-                                      or to return isomorphic species separately (``False``).
+        reaction (ARCReaction): An ARCReaction object instance.
+        products (List[ARCSpecies]): Species that correspond to the ARCReaction products that require pairing.
 
     Returns:
-        Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
-            The first tuple entry refers to reactants, the second to products.
-            Keys are specie indices in the ARC reaction,
-            values are respective indices in the RMG reaction.
-            If ``concatenate`` is ``True``, values are lists of integers. Otherwise, values are integers.
+        Dict[int, int]: Keys are species indices in the ARC reaction, values are respective indices in the product list.
     """
-    if rmg_reaction.is_isomerization():
-        if concatenate:
-            return {0: [0]}, {0: [0]}
-        else:
-            return {0: 0}, {0: 0}
-    r_map, p_map = dict(), dict()
-    arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True)
-    for spc_map, rmg_species, arc_species in [(r_map, rmg_reaction.reactants, arc_reactants),
-                                              (p_map, rmg_reaction.products, arc_products)]:
-        for i, arc_spc in enumerate(arc_species):
-            for j, rmg_obj in enumerate(rmg_species):
-                rmg_spc = Species(molecule=[rmg_obj]) if isinstance(rmg_obj, Molecule) else rmg_obj
-                if not isinstance(rmg_spc, Species):
-                    raise ValueError(f'Expected an RMG object instances of Molecule or Species, '
-                                     f'got {rmg_obj} which is a {type(rmg_obj)}.')
-                generate_resonance_structures(object_=rmg_spc, save_order=True)
-                rmg_spc_based_on_arc_spc = Species(molecule=arc_spc.mol_list)
-                generate_resonance_structures(object_=rmg_spc_based_on_arc_spc, save_order=True)
-                if rmg_spc.is_isomorphic(rmg_spc_based_on_arc_spc, save_order=True):
-                    if i in spc_map.keys() and concatenate:
-                        spc_map[i].append(j)
-                    elif concatenate:
-                        spc_map[i] = [j]
-                    elif i not in spc_map.keys() and j not in spc_map.values():
-                        spc_map[i] = j
+    if reaction.is_isomerization():
+        return {0: 0}
+    product_pairs = dict()
+    arc_products = reaction.get_reactants_and_products(arc=True)[1]
+    for i, arc_product in enumerate(arc_products):
+        found = False
+        for j, prod in enumerate(products):
+            if j not in product_pairs.values():
+                for arc_mol in arc_product.mol_list:
+                    if arc_mol.is_isomorphic(prod):
+                        product_pairs[i] = j
+                        found = True
                         break
-    if not r_map or not p_map:
-        raise ValueError(f'Could not match some of the RMG Reaction {rmg_reaction} to the ARC Reaction {arc_reaction}.')
-    return r_map, p_map
+            if found:
+                break
+    if len(product_pairs.keys()) != len(arc_products):
+        raise ValueError(f'Could not match some of the products in: {reaction}\nto the given products:\n{products}')
+    return product_pairs
 
 
-def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',
-                                       backend: str = 'ARC',
-                                       ) -> List[List[int]]:
-    """
-    Find atom indices that are equivalent in the reactants of an ARCReaction
-    in the sense that they represent degenerate reaction sites that are indifferentiable in 2D.
-    Bridges between RMG reaction templates and ARC's 3D TS structures.
-    Running indices in the returned structure relate to reactant_0 + reactant_1 + ...
-
-    Args:
-        arc_reaction ('ARCReaction'): The ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-
-    Returns:
-        List[List[int]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
-    """
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction, backend=backend)
-    dicts = [get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(rmg_reaction=rmg_reaction,
-                                                                  arc_reaction=arc_reaction)[0]
-             for rmg_reaction in rmg_reactions]
-    equivalence_map = dict()
-    for index_dict in dicts:
-        for key, value in index_dict.items():
-            if key in equivalence_map:
-                equivalence_map[key].append(value)
-            else:
-                equivalence_map[key] = [value]
-    equivalent_indices = list(list(set(equivalent_list)) for equivalent_list in equivalence_map.values())
-    return equivalent_indices
 
 
-def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
-                                        backend: str = 'ARC',
-                                        db: Optional['RMGDatabase'] = None,
-                                        ) -> Optional[List['TemplateReaction']]:
-    """
-    A helper function for getting RMG reactions from an ARC reaction.
-    This function calls ``map_two_species()`` so that each species in the RMG reaction is correctly mapped
-    to the corresponding species in the ARC reaction. It does not attempt to map reactants to products.
 
-    Args:
-        arc_reaction (ARCReaction): The ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
-    Returns:
-        Optional[List[TemplateReaction]]:
-            The respective RMG TemplateReaction object instances (considering resonance structures).
-    """
-    if arc_reaction.family is None:
-        rmgdb.determine_family(reaction=arc_reaction, db=db)
-    if arc_reaction.family is None:
-        return None
-    if not arc_reaction.family.save_order:
-        raise ValueError('Must have the save_order attribute of the family set to True.')
-    rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol.copy(deep=True) for spc in arc_reaction.r_species],
-                                                           products=[spc.mol.copy(deep=True) for spc in arc_reaction.p_species],
-                                                           prod_resonance=True,
-                                                           delete_labels=False,
-                                                           relabel_atoms=False,
-                                                           )
-    for rmg_reaction in rmg_reactions:
-        r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
-        try:
-            ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
-            ordered_rmg_products = [rmg_reaction.products[p_map[i]] for i in range(len(rmg_reaction.products))]
-        except KeyError:
-            logger.warning(f'Got a problematic RMG rxn from ARC rxn, trying again')
-            continue
-        mapped_rmg_reactants, mapped_rmg_products = list(), list()
-        for ordered_rmg_mols, arc_species, mapped_mols in zip([ordered_rmg_reactants, ordered_rmg_products],
-                                                              [arc_reaction.r_species, arc_reaction.p_species],
-                                                              [mapped_rmg_reactants, mapped_rmg_products],
-                                                              ):
-            for rmg_mol, arc_spc in zip(ordered_rmg_mols, arc_species):
-                mol = arc_spc.copy().mol
-                # The RMG molecule will get a random 3D conformer, don't consider chirality when mapping.
-                atom_map = map_two_species(mol, rmg_mol, map_type='dict', backend=backend, consider_chirality=False)
-                if atom_map is None:
-                    continue
-                new_atoms_list = list()
-                for i in range(len(rmg_mol.atoms)):
-                    rmg_mol.atoms[atom_map[i]].id = mol.atoms[i].id
-                    new_atoms_list.append(rmg_mol.atoms[atom_map[i]])
-                rmg_mol.atoms = new_atoms_list
-                mapped_mols.append(rmg_mol)
-        rmg_reaction.reactants, rmg_reaction.products = mapped_rmg_reactants, mapped_rmg_products
-    return rmg_reactions
+
+# def get_rmg_reactions_from_arc_reaction(arc_reaction: 'ARCReaction',
+#                                         backend: str = 'ARC',
+#                                         ) -> Optional[List['TemplateReaction']]:
+#     """
+#     A helper function for getting RMG reactions from an ARC reaction.
+#     This function calls ``map_two_species()`` so that each species in the RMG reaction is correctly mapped
+#     to the corresponding species in the ARC reaction. It does not attempt to map reactants to products.
+#
+#     Args:
+#         arc_reaction (ARCReaction): The ARCReaction object instance.
+#         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+#
+#     Returns:
+#         Optional[List[TemplateReaction]]:
+#             The respective RMG TemplateReaction object instances (considering resonance structures).
+#     """
+#     if arc_reaction.family is None:
+#         return None
+#     rmg_reactions = arc_reaction.family.generate_reactions(reactants=[spc.mol.copy(deep=True) for spc in arc_reaction.r_species],
+#                                                            products=[spc.mol.copy(deep=True) for spc in arc_reaction.p_species],
+#                                                            prod_resonance=True,
+#                                                            delete_labels=False,
+#                                                            relabel_atoms=False,
+#                                                            )
+#     for rmg_reaction in rmg_reactions:
+#         r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
+#         try:
+#             ordered_rmg_reactants = [rmg_reaction.reactants[r_map[i]] for i in range(len(rmg_reaction.reactants))]
+#             ordered_rmg_products = [rmg_reaction.products[p_map[i]] for i in range(len(rmg_reaction.products))]
+#         except KeyError:
+#             logger.warning(f'Got a problematic RMG rxn from ARC rxn, trying again')
+#             continue
+#         mapped_rmg_reactants, mapped_rmg_products = list(), list()
+#         for ordered_rmg_mols, arc_species, mapped_mols in zip([ordered_rmg_reactants, ordered_rmg_products],
+#                                                               [arc_reaction.r_species, arc_reaction.p_species],
+#                                                               [mapped_rmg_reactants, mapped_rmg_products],
+#                                                               ):
+#             for rmg_mol, arc_spc in zip(ordered_rmg_mols, arc_species):
+#                 mol = arc_spc.copy().mol
+#                 # The RMG molecule will get a random 3D conformer, don't consider chirality when mapping.
+#                 atom_map = map_two_species(mol, rmg_mol, map_type='dict', backend=backend, consider_chirality=False)
+#                 if atom_map is None:
+#                     continue
+#                 new_atoms_list = list()
+#                 for i in range(len(rmg_mol.atoms)):
+#                     rmg_mol.atoms[atom_map[i]].id = mol.atoms[i].id
+#                     new_atoms_list.append(rmg_mol.atoms[atom_map[i]])
+#                 rmg_mol.atoms = new_atoms_list
+#                 mapped_mols.append(rmg_mol)
+#         rmg_reaction.reactants, rmg_reaction.products = mapped_rmg_reactants, mapped_rmg_products
+#     return rmg_reactions
+#
+#
+# def get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction: 'ARCReaction',
+#                                                          rmg_reaction: 'TemplateReaction',
+#                                                          ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
+#     """
+#     Get the RMG reaction atom labels and the corresponding 0-indexed atom indices
+#     for all labeled atoms in a TemplateReaction.
+#
+#     Args:
+#         arc_reaction (ARCReaction): An ARCReaction object instance.
+#         rmg_reaction (TemplateReaction): A respective RMG family TemplateReaction object instance.
+#
+#     Returns:
+#         Tuple[Optional[Dict[str, int]], Optional[Dict[str, int]]]:
+#             The tuple entries relate to reactants and products.
+#             Keys are labels (e.g., '*1'), values are corresponding 0-indices atoms.
+#     """
+#     if not hasattr(rmg_reaction, 'labeled_atoms') or not rmg_reaction.labeled_atoms:
+#         return None, None
+#
+#     for spc in rmg_reaction.reactants + rmg_reaction.products:
+#         generate_resonance_structures(object_=spc, save_order=True)
+#
+#     r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=rmg_reaction, concatenate=False)
+#
+#     reactant_index_dict, product_index_dict = dict(), dict()
+#     reactant_atoms, product_atoms = list(), list()
+#     rmg_reactant_order = [val for _, val in sorted(r_map.items(), key=lambda item: item[0])]
+#     rmg_product_order = [val for _, val in sorted(p_map.items(), key=lambda item: item[0])]
+#     for i in rmg_reactant_order:
+#         reactant_atoms.extend([atom for atom in rmg_reaction.reactants[i].atoms])
+#     for i in rmg_product_order:
+#         product_atoms.extend([atom for atom in rmg_reaction.products[i].atoms])
+#
+#     for labeled_atom_dict, atom_list, index_dict in zip([rmg_reaction.labeled_atoms['reactants'],
+#                                                          rmg_reaction.labeled_atoms['products']],
+#                                                         [reactant_atoms, product_atoms],
+#                                                         [reactant_index_dict, product_index_dict]):
+#         for label, atom_1 in labeled_atom_dict.items():
+#             for i, atom_2 in enumerate(atom_list):
+#                 if atom_1.id == atom_2.id:
+#                     index_dict[label] = i
+#                     break
+#     return reactant_index_dict, product_index_dict
+#
+#
+# def map_arc_rmg_species(arc_reaction: 'ARCReaction',
+#                         rmg_reaction: Union['Reaction', 'TemplateReaction'],
+#                         concatenate: bool = True,
+#                         ) -> Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
+#     """
+#     Map the species pairs in an ARC reaction to those in a respective RMG reaction
+#     which is defined in the same direction.
+#
+#     Args:
+#         arc_reaction (ARCReaction): An ARCReaction object instance.
+#         rmg_reaction (Union[Reaction, TemplateReaction]): A respective RMG family TemplateReaction object instance.
+#         concatenate (bool, optional): Whether to return isomorphic species as a single list (``True``, default),
+#                                       or to return isomorphic species separately (``False``).
+#
+#     Returns:
+#         Tuple[Dict[int, Union[List[int], int]], Dict[int, Union[List[int], int]]]:
+#             The first tuple entry refers to reactants, the second to products.
+#             Keys are specied indices in the ARC reaction,
+#             values are respective indices in the RMG reaction.
+#             If ``concatenate`` is ``True``, values are lists of integers. Otherwise, values are integers.
+#     """
+#     if rmg_reaction.is_isomerization():
+#         if concatenate:
+#             return {0: [0]}, {0: [0]}
+#         else:
+#             return {0: 0}, {0: 0}
+#     r_map, p_map = dict(), dict()
+#     arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True)
+#     for spc_map, rmg_species, arc_species in [(r_map, rmg_reaction.reactants, arc_reactants),
+#                                               (p_map, rmg_reaction.products, arc_products)]:
+#         for i, arc_spc in enumerate(arc_species):
+#             for j, rmg_obj in enumerate(rmg_species):
+#                 rmg_spc = Species(molecule=[rmg_obj]) if isinstance(rmg_obj, Molecule) else rmg_obj
+#                 if not isinstance(rmg_spc, Species):
+#                     raise ValueError(f'Expected an RMG object instances of Molecule or Species, '
+#                                      f'got {rmg_obj} which is a {type(rmg_obj)}.')
+#                 generate_resonance_structures(object_=rmg_spc, save_order=True)
+#                 rmg_spc_based_on_arc_spc = Species(molecule=arc_spc.mol_list)
+#                 generate_resonance_structures(object_=rmg_spc_based_on_arc_spc, save_order=True)
+#                 if rmg_spc.is_isomorphic(rmg_spc_based_on_arc_spc, save_order=True):
+#                     if i in spc_map.keys() and concatenate:
+#                         spc_map[i].append(j)
+#                     elif concatenate:
+#                         spc_map[i] = [j]
+#                     elif i not in spc_map.keys() and j not in spc_map.values():
+#                         spc_map[i] = j
+#                         break
+#     if not r_map or not p_map:
+#         raise ValueError(f'Could not match some of the RMG Reaction {rmg_reaction} to the ARC Reaction {arc_reaction}.')
+#     return r_map, p_map
+#
+#
+# def find_equivalent_atoms_in_reactants(arc_reaction: 'ARCReaction',  # ?
+#                                        backend: str = 'ARC',
+#                                        ) -> List[List[int]]:
+#     """
+#     Find atom indices that are equivalent in the reactants of an ARCReaction
+#     in the sense that they represent degenerate reaction sites that are indifferentiable in 2D.
+#     Bridges between RMG reaction templates and ARC's 3D TS structures.
+#     Running indices in the returned structure relate to reactant_0 + reactant_1 + ...
+#
+#     Args:
+#         arc_reaction ('ARCReaction'): The ARCReaction object instance.
+#         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+#
+#     Returns:
+#         List[List[int]]: Entries are lists of 0-indices, each such list represents equivalent atoms.
+#     """
+#     rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction, backend=backend)
+#     dicts = [get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(rmg_reaction=rmg_reaction,
+#                                                                   arc_reaction=arc_reaction)[0]
+#              for rmg_reaction in rmg_reactions]
+#     equivalence_map = dict()
+#     for index_dict in dicts:
+#         for key, value in index_dict.items():
+#             if key in equivalence_map:
+#                 equivalence_map[key].append(value)
+#             else:
+#                 equivalence_map[key] = [value]
+#     equivalent_indices = list(list(set(equivalent_list)) for equivalent_list in equivalence_map.values())
+#     return equivalent_indices
 
 
 def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
@@ -1031,8 +1098,7 @@ def make_bond_changes(rxn: 'ARCReaction',
         r_cuts: the cut products
         r_label_dict: the dictionary object the find the relevant location.
     """
-    
-    for action in rxn.family.forward_recipe.actions:
+    for action in ReactionFamily(label=rxn.family).actions:
         if action[0].lower() == "CHANGE_BOND".lower():
             indicies = r_label_dict[action[1]],r_label_dict[action[3]]
             for r_cut in r_cuts:
@@ -1064,26 +1130,51 @@ def make_bond_changes(rxn: 'ARCReaction',
                     r_cut.mol.update()
 
 
+def get_label_dict(rxn: 'ARCReaction') -> Optional[Dict[str, int]]:
+    """
+    A function that returns the labels of the products.
+
+    Args:
+        rxn: ARCReaction object
+
+    Returns:
+        Optional[Dict[str, int]]: The labels of the products.
+    """
+    products = get_reaction_family_products(rxn=rxn)
+    if len(products):
+        return products[0]['label_map']
+    return None
+
+
 def assign_labels_to_products(rxn: 'ARCReaction',
-                              p_label_dict: dict):
+                              products: List[Molecule],
+                              ):
     """
     Add the indices to the reactants and products.
 
     Args:
-        rxn: ARCReaction object to be mapped
-        p_label_dict: the labels of the products
-        Consider changing in rmgpy.
+        rxn ('ARCReaction'): The reaction to be mapped.
+        products (List[Molecule]): The products generated from the RMG family with the same atom order as the reactants.
 
     Returns:
         Adding labels to the atoms of the reactants and products, to be identified later.
     """
-
+    label_dict = get_label_dict(rxn)
     atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
-            if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
-                atom.label = key_by_val(p_label_dict,atom_index)
-            atom_index+=1
+    for r in rxn.r_species:
+        for atom in r.mol.atoms:
+            if atom_index in label_dict.values():
+                atom.label = key_by_val(label_dict, atom_index)
+            atom_index += 1
+    product_pairs = pair_reaction_products(reaction=rxn, products=products)
+    atom_index = 0
+    for product_index in range(len(products)):
+        rxn_product, fam_product = rxn.p_species[product_index], products[product_pairs[product_index]]
+        atom_map = map_two_species(spc_1=rxn_product, spc_2=fam_product, map_type='list')
+        for i, atom in enumerate(fam_product.atoms):
+            if atom_index in label_dict.values():
+                rxn_product.mol.atoms[atom_map[i]].label = key_by_val(label_dict, atom_index)
+            atom_index += 1
 
 
 def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -1095,7 +1186,7 @@ def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
         spcs: the scission products that needs to be updated
 
     Returns:
-        new: A newely generated copies of the ARCSpecies, with updated xyz
+        list: A newly generated copies of the ARCSpecies, with updated xyz.
     """
     new = list()
     for spc in spcs:
@@ -1125,7 +1216,7 @@ def r_cut_p_cut_isomorphic(reactant, product):
 
 def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
                                                p_cuts: List[ARCSpecies]
-                                               )-> List[Tuple[ARCSpecies,ARCSpecies]]:
+                                               ) -> List[Tuple[ARCSpecies,ARCSpecies]]:
     """
     A function for matching reactants and products in scissored products.
 
@@ -1134,21 +1225,21 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
         p_cuts: A list of the scissored species in the reactants
 
     Returns:
-        a list of paired reactant and products, to be sent to map_two_species.
+        list: Paired reactant and products, to be sent to map_two_species.
     """
     pairs = []
     for reactant_cut in r_cuts:
         for product_cut in p_cuts:
             if r_cut_p_cut_isomorphic(reactant_cut, product_cut):
                 pairs.append((reactant_cut, product_cut))
-                p_cuts.remove(product_cut) # Just in case there are two of the same species in the list, matching them by order.
+                p_cuts.remove(product_cut)  # Just in case there are two of the same species in the list, matching them by order.
                 break
     return pairs
 
 
 def map_pairs(pairs):
     """
-    A function that maps the mached species together
+    A function that maps the matched species together
 
     Args:
         pairs: A list of the pairs of reactants and species
@@ -1156,11 +1247,9 @@ def map_pairs(pairs):
     Returns:
         A list of the mapped species
     """
-
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
-
     return maps
 
 
@@ -1171,11 +1260,11 @@ def label_species_atoms(spcs):
     Args:
         spcs: ARCSpecies object to be labeled.
     """
-    index=0
+    index = 0
     for spc in spcs:
         for atom in spc.mol.atoms:
             atom.label = str(index)
-            index+=1
+            index += 1
 
 
 def glue_maps(maps, pairs_of_reactant_and_products):
@@ -1183,11 +1272,11 @@ def glue_maps(maps, pairs_of_reactant_and_products):
     a function that joins together the maps from the parts of the reaction.
 
     Args:
-        rxn: ARCReaction that requires atom mapping
         maps: The list of all maps of the isomorphic cuts.
+        pairs_of_reactant_and_products: The pairs of the reactants and products.
 
     Returns:
-        an Atom Map of the compleate reaction.
+        list: An Atom Map of the complete reaction.
     """
     am_dict = dict()
     for _map, pair in zip(maps, pairs_of_reactant_and_products):
@@ -1229,18 +1318,21 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
         return False
 
 
-def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tuple[int, int]]) -> Optional[List["ARCSpecies"]]:
+def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
+                                      bdes: List[Tuple[int, int]],
+                                      ) -> Optional[List["ARCSpecies"]]:
     """
     A function for scissoring species based on their atom indices.
+
     Args:
         species (List[ARCSpecies]): The species list that requires scission.
         bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored. The atoms are described using the atom labels, and not the actuall atom positions.
+
     Returns:
         Optional[List["ARCSpecies"]]: The species list input after the scission.
     """
     if not bdes:
         return species
-    
     for bde in bdes:
         for index, spc in enumerate(species):
             if determine_bdes_on_spc_based_on_atom_labels(spc, bde):
@@ -1261,7 +1353,6 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tu
                     except SpeciesError:
                         return None
                 break
-                
     return species
 
 
@@ -1280,18 +1371,34 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
     return copies
 
 
-def find_all_bdes(rxn: "ARCReaction", label_dict: dict, is_reactants: bool) -> List[Tuple[int, int]]:
+def find_all_bdes(rxn: "ARCReaction",
+                  is_reactants: bool,
+                  products: Optional[List["Molecule"]] = None,
+                  ) -> List[Tuple[int, int]]:
     """
     A function for finding all the broken(/formed) bonds during a chemical reaction, based on the atom indices.
+
     Args:
         rxn (ARCReaction): The reaction in question.
-        label_dict (dict): A dictionary of the atom indices to the atom labels.
-        is_reactants (bool): Whether or not the species list represents reactants or products.
+        is_reactants (bool): Whether the species list represents reactants or products.
+        products (List[Molecule], optional): The products generated from the RMG family with the same atom order
+                                             as the reactants. If given, the BDE values will be mapped from them
+                                             to the reaction products.
+
     Returns:
-        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond. Note that these represent the atom indicies to be cut, and not final BDEs.
+        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond.
+                               Note that these represent the atom indices to be cut, and not final BDEs.
     """
+    label_dict = get_label_dict(rxn)
+    if not is_reactants:
+        product_pairs = pair_reaction_products(reaction=rxn, products=products) if products is not None else None
+    print(label_dict)
     bdes = list()
-    for action in rxn.family.forward_recipe.actions:
-        if action[0].lower() == ("break_bond" if is_reactants else "form_bond"):
-            bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
+    if rxn.family is not None:
+        for action in ReactionFamily(rxn.family).actions:
+            print(action)
+            if (action[0].lower() == "break_bond" and is_reactants
+                    or action[0].lower() == "form_bond" and not is_reactants):
+                print(f'appending {action[1]} and {action[3]}: {(label_dict[action[1]] + 1, label_dict[action[3]] + 1)}')
+                bdes.append((label_dict[action[1]] + 1, label_dict[action[3]] + 1))
     return bdes

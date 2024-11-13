@@ -8,7 +8,6 @@ import os
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import arc.rmgdb as rmgdb
 from arc import parser
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
@@ -20,9 +19,7 @@ from arc.common import (ARC_PATH,
                         )
 from arc.imports import settings
 from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
-from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
-                                )
+from arc.mapping.engine import get_atom_indices_of_labeled_atoms_in_a_reaction
 from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:
@@ -302,8 +299,6 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     """
     if job is None:
         return
-    if reaction.family is None:
-        rmgdb.determine_family(reaction)
     amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.6, 0.8, 1]
     amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
     reaction.ts_species.ts_checks['NMD'] = False
@@ -333,8 +328,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
                                            bond_lone_hydrogens=bond_lone_hs)
         got_expected_changing_bonds = False
         for i, rmg_reaction in enumerate(rmg_reactions):
-            r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
-                                                                                rmg_reaction=rmg_reaction)[0]
+            r_label_dict = get_atom_indices_of_labeled_atoms_in_a_reaction(arc_reaction=reaction)[0]
             if r_label_dict is None:
                 continue
             expected_breaking_bonds, expected_forming_bonds = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
@@ -539,14 +533,11 @@ def get_rxn_normal_mode_disp_atom_number(rxn_family: Optional[str] = None,
     if rms_list is not None \
             and (not isinstance(rms_list, list) or not all(isinstance(entry, float) for entry in rms_list)):
         raise TypeError(f'rms_list must be a non empty list, got {rms_list} of type {type(rms_list)}.')
-    family = rxn_family
-    if family is None and reaction is not None and reaction.family is not None:
-        family = reaction.family.label
-    if family is None:
+    if reaction.family is None:
         logger.warning(f'Cannot deduce a reaction family for {reaction}, assuming {default} atoms in the reaction zone.')
         return default
     content = read_yaml_file(os.path.join(ARC_PATH, 'data', 'rxn_normal_mode_disp.yml'))
-    number_by_family = content.get(rxn_family, default)
+    number_by_family = content.get(rxn_family or reaction.family, default)
     if rms_list is None or not len(rms_list):
         return number_by_family
     entry = None
