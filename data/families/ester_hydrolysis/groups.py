@@ -1,4 +1,4 @@
-name = "ester_hydrolysis"
+name = "ester_hydrolysis/groups"
 shortDesc = u"ester_hydrolysis"
 longDesc = u"""
 A generic bimolecular ester hydrolysis reaction: R1-A(=C)-B(R2)-R3 + H2O <=> R1-A(=C)-OH + R3-B(R2)-H
@@ -32,9 +32,9 @@ entry(
     label = "ester",
     group = 
 """
-1    R            u0 {2,S}
-2 *1 C        u0 {1,S} {3,D} {4,S}
-3    O        u0 {2,D}
+1    R    u0 {2,S}
+2 *1 [C,P]    u0 {1,S} {3,D} {4,S}
+3    O    u0 {2,D}
 4 *2 O    u0 {2,S}
 """,
     kinetics = None,
