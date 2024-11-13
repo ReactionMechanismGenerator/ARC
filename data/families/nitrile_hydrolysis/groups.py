@@ -11,14 +11,15 @@ R1-A(*1)#N(*2) + H(*3)O(*4)H <=> R1-A(O(*4)H)=N(*2)H(*3)
 
 """
 
-template(reactants=["ester", "H2O"], products=["acid", "alcohol"], ownReverse=False)
+template(reactants=["nitrile", "H2O"], products=["acid"], ownReverse=False)
 
-reverse = "condensation"
+#reverse = "condensation"
 
-reversible = True
+#reversible = True
 
 recipe(actions=[
-    ['CHANGE_BOND', '*1', 1, '*2'],
+    ['CHANGE_BOND', '*1', -1, '*2'],
+    ['BREAK_BOND', '*3', 1, '*4'],
     ['FORM_BOND', '*1', 1, '*4'],
     ['FORM_BOND', '*2', 1, '*3'],
 ])
@@ -28,9 +29,9 @@ entry(
     label = "nitrile",
     group = 
 """
-1    R            u0 p0 c0 {2,S}
-2 *1 [C,P]        u0 p0 c0 {1,S} {3,T}
-3 *2 N            u0 p0 c0 {1,T} 
+1    R    u0 {2,S}
+2 *1 [C,P]    u0 {1,S} {3,T}
+3 *2 N    u0 {2,T} 
 """,
     kinetics = None,
 )
