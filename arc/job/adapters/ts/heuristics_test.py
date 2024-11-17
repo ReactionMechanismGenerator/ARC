@@ -1710,6 +1710,22 @@ class TestHeuristicsAdapter(unittest.TestCase):
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics_1'), ignore_errors=True)
 
+    def test_is_water(self):
+        # Create a water molecule
+        water_molecule = 'O'
+        water_species = ARCSpecies(label='water', smiles=water_molecule)
+        self.assertTrue(is_water(water_species))
+
+        # Create a non-water molecule (e.g., methane)
+        methane_molecule = 'C'
+        methane_species = ARCSpecies(label='methane', smiles=methane_molecule)
+        self.assertFalse(is_water(methane_species))
+
+        # Create a molecule with more than 3 atoms (e.g., ethanol)
+        ethanol_molecule = 'CCO'
+        ethanol_species = ARCSpecies(label='ethanol', smiles=ethanol_molecule)
+        self.assertFalse(is_water(ethanol_species))
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
