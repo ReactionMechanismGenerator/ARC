@@ -37,6 +37,10 @@ from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
 
+
+FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis'],
+               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
+
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import KineticsFamily
     from arc.level import Level
@@ -1061,6 +1065,51 @@ def is_water(spc: ARCSpecies) -> bool:
         if atom.is_hydrogen():
             H_counter+=1
     return (O_counter==1 and H_counter==2)
+
+
+def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List[int]:
+    """
+    Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity.
+
+    Effective electronegativity is calculated as:
+        Effective Electronegativity = Electronegativity of the neighbor * Bond order.
+
+    Sorting rules:
+    1. Neighbors are sorted in descending order of their effective electronegativity.
+    2. If two neighbors have the same effective electronegativity, the tie is broken by comparing the
+       sum of the effective electronegativities of their own bonded neighbors.
+       The neighbor with the higher sum will be ranked first.
+
+    Args:
+        spc (ARCSpecies): The species containing the atom and its neighbors.
+        atom_index (int): The index of the atom whose neighbors are being evaluated.
+
+    Returns:
+        List[int]: A list of the indices of the top two neighbors in the global `spc.atoms` list,
+                   sorted based on the rules above.
+
+    Raises:
+        ValueError: If the atom has no neighbors.
+    """
+    atom = spc.mol.atoms[atom_index]
+    neighbors = list(atom.edges.keys())
+
+    if not neighbors:
+        raise ValueError(f"Atom at index {atom_index} has no neighbors.")
+
+    effective_electronegativities = []
+    for neighbor in neighbors:
+        electronegativity = ELECTRONEGATIVITY[neighbor.symbol]
+        bond_order = atom.edges[neighbor].order
+        effective_electronegativity = electronegativity * bond_order
+        effective_electronegativities.append((effective_electronegativity, neighbor))
+
+    effective_electronegativities.sort(
+        key=lambda x: (x[0], sum(ELECTRONEGATIVITY[n.symbol] * x[1].edges[n].order for n in x[1].edges.keys())),
+        reverse=True)
+
+    sorted_neighbors = [spc.mol.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
+    return sorted_neighbors[:2]
 
 """
 def hydrolysis(arc_reaction: 'ARCReaction'):
