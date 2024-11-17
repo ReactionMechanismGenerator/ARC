@@ -91,7 +91,7 @@ SMEARED_SCAN_RESOLUTIONS = 30.0
 DE_THRESHOLD = 5.
 
 # The gap (in degrees) that defines different wells
-WELL_GAP = 31
+WELL_GAP = 5
 
 # The maximum number of times to iteratively search for the lowest conformer
 MAX_COMBINATION_ITERATIONS = 25
