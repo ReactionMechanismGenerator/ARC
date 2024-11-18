@@ -1711,6 +1711,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics_1'), ignore_errors=True)
 
     def test_is_water(self):
+        """Test the is_water() function."""
         # Create a water molecule
         water_molecule = 'O'
         water_species = ARCSpecies(label='water', smiles=water_molecule)
