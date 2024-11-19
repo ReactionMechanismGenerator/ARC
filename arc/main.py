@@ -986,16 +986,20 @@ class ARC(object):
         logger.info('\n\nUsing the following levels of theory:\n')
 
         if self.conformer_opt_level is None:
-            self.conformer_opt_level = default_levels_of_theory['conformer']
+            self.conformer_opt_level = default_levels_of_theory['conformer_opt']
             default_flag = ' (default)'
         else:
             default_flag = ''
         self.conformer_opt_level = Level(repr=self.conformer_opt_level)
         logger.info(f'Conformers opt:{default_flag} {self.conformer_opt_level}')
 
-        if self.conformer_sp_level is not None:
-            self.conformer_sp_level = Level(repr=self.conformer_sp_level)
-            logger.info(f'Conformers sp: {self.conformer_sp_level}')
+        if self.conformer_sp_level is None:
+            self.conformer_sp_level = default_levels_of_theory['conformer_sp']
+            default_flag = ' (default)'
+        else:
+            default_flag = ''
+        self.conformer_sp_level = Level(repr=self.conformer_sp_level)
+        logger.info(f'Conformers sp:{default_flag} {self.conformer_sp_level}')
 
         if self.reactions or any([spc.is_ts for spc in self.species]):
             if not self.ts_guess_level:

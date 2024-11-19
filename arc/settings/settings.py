@@ -180,7 +180,8 @@ output_filenames = {'cfour': 'output.out',
                     'openbabel':'output.yml',
                     }
 
-default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
+default_levels_of_theory = {'conformer_opt': 'wb97xd/def2svp',  # it's recommended to choose a method with dispersion
+                            'conformer_sp': 'ccsd(t)-f12/cc-pvtz-f12', # This should be a level for which BAC is available
                             'ts_guesses': 'wb97xd/def2svp',
                             'opt': 'wb97xd/def2tzvp',  # good default for Gaussian
                             # 'opt': 'wb97m-v/def2tzvp',  # good default for QChem
