@@ -28,7 +28,7 @@ Multiple species are defined using SMILES / an XYZ list / InChI::
 
     job_types:
       rotors: true
-      conformers: true
+      conf_opt: true
       fine: true
       freq: true
       opt: true
@@ -130,7 +130,7 @@ The same example as above ran via the API (e.g., in `Jupyter notebooks`__) would
               max_job_time=24,
               level_of_theory='CCSD(T)-F12/cc-pVTZ-F12//wb97xd/def2tzvp',
               scan_level='wb97xd/def2tzvp',
-              conformer_level='b3lyp/6-311+g(d,p)',
+              conformer_opt_level='b3lyp/6-311+g(d,p)',
               species=[spc1, spc2, spc3],
               )
 
