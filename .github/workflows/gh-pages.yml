@@ -16,17 +16,17 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Setup Mambaforge Python 3.7
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Clean Ubuntu Image
+      uses: kfir4444/free-disk-space@main
       with:
-        environment-file: environment.yml
-        miniforge-variant: Mambaforge
-        miniforge-version: latest
-        activate-environment: arc_env
-        python-version: 3.7
-        use-mamba: true
+        # This may remove tools actually needed - currently does not
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: true
 
-    - name: Update environment
       run: |
         mamba env update -n arc_env -f environment.yml
         conda list
