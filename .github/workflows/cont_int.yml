@@ -153,7 +153,7 @@ jobs:
       if: steps.cache-arc-env.outputs.cache-hit != 'true'
 
     - name: Install codecov
-      run: conda install --force-reinstall x86_64-conda_cos6-linux-gnu -y && conda install -y -c conda-forge codecov
+      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
 
     - name: Cythonize RMG-Py
       run: |
