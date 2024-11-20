@@ -129,13 +129,15 @@ jobs:
         path: ~/conda_pkgs_dir
         key:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
-    - name: Setup ARC Env
-      uses: conda-incubator/setup-miniconda@v2
+    
+    - name: Set up miniconda
+      uses: conda-incubator/setup-miniconda@v3
       with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
+          auto-update-conda: true
+          environment-file: environment.yml
           activate-environment: arc_env
-          use-mamba: true
+          miniconda-version: latest
+          conda-solver: libmamba
 
     - name: Cache ARC env
       uses: actions/cache@v2
@@ -147,11 +149,11 @@ jobs:
         CACHE_NUMBER: 0
       id: cache-arc-env
     - name: Update environment
-      run: mamba env update -n arc_env -f environment.yml
+      run: conda env update -n arc_env -f environment.yml
       if: steps.cache-arc-env.outputs.cache-hit != 'true'
 
     - name: Install codecov
-      run: mamba install -y -c conda-forge codecov
+      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
 
     - name: Cythonize RMG-Py
       run: |
@@ -177,9 +179,9 @@ jobs:
         echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-        mamba env create -f environment.yml
+        conda env create -f environment.yml
         # install pyaml
-        mamba install -n tst_env -c conda-forge -y pyyaml
+        conda install -n tst_env -c conda-forge -y pyyaml
         cd ..
     
     - name: Install TS-GCN
@@ -190,7 +192,7 @@ jobs:
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
         bash devtools/create_env_cpu.sh
-        mamba env update -n ts_gcn -f environment.yml
+        conda env update -n ts_gcn -f environment.yml
         cd ..
     
     - name: Install KinBot
@@ -207,19 +209,19 @@ jobs:
 
     - name: Install OpenBabel
       run: |
-        mamba env create -f devtools/ob_environment.yml
+        conda env create -f devtools/ob_environment.yml
 
     - name: Install Sella
       run: |
-        mamba env create -f devtools/sella_environment.yml
+        conda env create -f devtools/sella_environment.yml
 
     - name: Install Torch Ani
       run: |
-        mamba env create -f devtools/tani_environment.yml
+        conda env create -f devtools/tani_environment.yml
   
     - name: Install XTB
       run: |
-        mamba env create -f devtools/xtb_environment.yml
+        conda env create -f devtools/xtb_environment.yml
     
     - name: Test with pytest
       shell: bash -el {0} 
