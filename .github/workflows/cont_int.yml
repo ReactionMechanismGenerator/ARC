@@ -129,13 +129,15 @@ jobs:
         path: ~/conda_pkgs_dir
         key:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
-    - name: Setup ARC Env
-      uses: conda-incubator/setup-miniconda@v2
+    
+    - name: Set up miniconda
+      uses: conda-incubator/setup-miniconda@v3
       with:
-          miniforge-variant: Mambaforge
-          miniforge-version: latest
+          auto-update-conda: true
+          environment-file: environment.yml
           activate-environment: arc_env
-          use-mamba: true
+          miniconda-version: latest
+          conda-solver: libmamba
 
     - name: Cache ARC env
       uses: actions/cache@v2
