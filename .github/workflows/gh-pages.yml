@@ -14,22 +14,32 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
-    - name: Setup Mambaforge Python 3.7
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Clean Ubuntu Image
+      uses: kfir4444/free-disk-space@main
       with:
-        environment-file: environment.yml
-        miniforge-variant: Mambaforge
-        miniforge-version: latest
-        activate-environment: arc_env
-        python-version: 3.7
-        use-mamba: true
+        # This may remove tools actually needed - currently does not
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: true
 
-    - name: Update environment
-      run: |
-        mamba env update -n arc_env -f environment.yml
-        conda list
+    - name: Set up miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+          auto-update-conda: true
+          environment-file: environment.yml
+          activate-environment: arc_env
+          miniconda-version: latest
+          conda-solver: libmamba
+
+    # - name: Update environment
+    #   run: |
+    #     conda env update -n arc_env -f environment.yml
+    #     conda list
 
     - name: Install LaTeX
       run: |
@@ -40,7 +50,7 @@ jobs:
 
 
     - name: Install codecov
-      run: mamba install -y -c conda-forge codecov
+      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
 
     - name: Install dependencies
       run: |
