@@ -40,7 +40,7 @@ jobs:
 
 
     - name: Install codecov
-      run: mamba install -y -c conda-forge codecov
+      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
 
     - name: Install dependencies
       run: |
