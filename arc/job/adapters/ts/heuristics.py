@@ -290,7 +290,7 @@ class HeuristicsAdapter(JobAdapter):
                                      )
                 tsg.tok()
 
-            if rxn.family == 'hydrolysis':
+            if rxn.family in FAMILY_SETS['set_1'] or rxn.family in FAMILY_SETS['set_2']:
                 tsg = TSGuess(method='Heuristics')
                 tsg.tic()
                 xyzs = hydrolysis(arc_reaction=rxn,
