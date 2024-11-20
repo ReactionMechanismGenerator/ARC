@@ -256,8 +256,8 @@
         <span class="k">if</span> <span class="s1">&#39;fine_grid&#39;</span> <span class="ow">in</span> <span class="n">job_types</span><span class="p">:</span>
             <span class="k">del</span> <span class="n">job_types</span><span class="p">[</span><span class="s1">&#39;fine_grid&#39;</span><span class="p">]</span>
 
-    <span class="n">defaults_to_true</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;conformers&#39;</span><span class="p">,</span> <span class="s1">&#39;fine&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">,</span> <span class="s1">&#39;irc&#39;</span><span class="p">,</span> <span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;rotors&#39;</span><span class="p">,</span> <span class="s1">&#39;sp&#39;</span><span class="p">]</span>
-    <span class="n">defaults_to_false</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;bde&#39;</span><span class="p">,</span> <span class="s1">&#39;onedmin&#39;</span><span class="p">,</span> <span class="s1">&#39;orbitals&#39;</span><span class="p">]</span>
+    <span class="n">defaults_to_true</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;conf_opt&#39;</span><span class="p">,</span> <span class="s1">&#39;fine&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">,</span> <span class="s1">&#39;irc&#39;</span><span class="p">,</span> <span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;rotors&#39;</span><span class="p">,</span> <span class="s1">&#39;sp&#39;</span><span class="p">]</span>
+    <span class="n">defaults_to_false</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;conf_sp&#39;</span><span class="p">,</span> <span class="s1">&#39;bde&#39;</span><span class="p">,</span> <span class="s1">&#39;onedmin&#39;</span><span class="p">,</span> <span class="s1">&#39;orbitals&#39;</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">job_types</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">job_types</span> <span class="o">=</span> <span class="n">default_job_types</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Job types were not specified, using ARC&#39;s defaults&quot;</span><span class="p">)</span>
@@ -920,9 +920,7 @@
 <span class="sd">    Returns: Optional[Union[int, None]]</span>
 <span class="sd">        The entry with the minimal/maximal value.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">return</span> <span class="kc">None</span>
-    <span class="k">elif</span> <span class="nb">all</span><span class="p">([</span><span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">]):</span>
+    <span class="k">if</span> <span class="n">lst</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">([</span><span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">lst</span><span class="p">]):</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">lst</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">lst</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
