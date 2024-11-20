@@ -27,9 +27,19 @@ jobs:
         large-packages: true
         swap-storage: true
 
-      run: |
-        mamba env update -n arc_env -f environment.yml
-        conda list
+    - name: Set up miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+          auto-update-conda: true
+          environment-file: environment.yml
+          activate-environment: arc_env
+          miniconda-version: latest
+          conda-solver: libmamba
+
+    # - name: Update environment
+    #   run: |
+    #     conda env update -n arc_env -f environment.yml
+    #     conda list
 
     - name: Install LaTeX
       run: |
