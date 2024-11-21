@@ -125,5 +125,5 @@ jobs:
             CACHE_NUMBER: 0
         id: cache-arc-env
       - name: Update environment
-        run: mamba env update -n arc_env -f environment.yml
+        run: conda env update -n arc_env -f environment.yml
         if: steps.cache-arc-env.outputs.cache-hit != 'true'
