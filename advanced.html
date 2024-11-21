@@ -204,7 +204,7 @@ See <a class="reference internal" href="examples.html#examples"><span class="std
 <section id="specify-a-specific-job-type-to-execute">
 <h2>Specify a specific job type to execute<a class="headerlink" href="#specify-a-specific-job-type-to-execute" title="Permalink to this heading">¶</a></h2>
 <p>To run ARC with a particular job type <strong>only</strong>, set <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> to the job type you want.
-Currently, ARC supports the following job types: <code class="docutils literal notranslate"><span class="pre">conformers</span></code>, <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">fine</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>,
+Currently, ARC supports the following job types: <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code>, <code class="docutils literal notranslate"><span class="pre">conf_sp</span></code>, <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">fine</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">rotors</span></code>, <code class="docutils literal notranslate"><span class="pre">onedmin</span></code>, <code class="docutils literal notranslate"><span class="pre">orbitals</span></code>, <code class="docutils literal notranslate"><span class="pre">bde</span></code>, <code class="docutils literal notranslate"><span class="pre">irc</span></code>.</p>
 <p>Note: <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> takes higher precedence than <code class="docutils literal notranslate"><span class="pre">job_types</span></code>. If you specify both attributes, ARC will
 dismiss the given <code class="docutils literal notranslate"><span class="pre">job_types</span></code> and will only populate the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary using the given
@@ -234,7 +234,8 @@ as described below. Job types for which levels of theory may be specified (other
 defaults values) are:</p>
 <blockquote>
 <div><ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">conformer_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_opt_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_sp_level</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">ts_guess_level</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">opt_level</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">freq_level</span></code></p></li>
@@ -252,9 +253,9 @@ arguments to be defined: <code class="docutils literal notranslate"><span class=
 <code class="docutils literal notranslate"><span class="pre">cabs</span></code> (complementary auxiliary basis set for F12 calculations), <code class="docutils literal notranslate"><span class="pre">software</span></code>,
 <code class="docutils literal notranslate"><span class="pre">software_version</span></code> (not used), <code class="docutils literal notranslate"><span class="pre">solvation_method</span></code>, <code class="docutils literal notranslate"><span class="pre">solvent</span></code>, <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code>, <code class="docutils literal notranslate"><span class="pre">args</span></code>.</p>
 <p>For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conformer_level</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp&#39;</span><span class="p">,</span>
-                  <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;6-31g(d,p)&#39;</span><span class="p">,</span>
-                  <span class="s1">&#39;dispersion&#39;</span><span class="p">:</span> <span class="s1">&#39;empiricaldispersion=gd3bj&#39;</span><span class="p">,</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conformer_opt_level</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp&#39;</span><span class="p">,</span>
+                      <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;6-31g(d,p)&#39;</span><span class="p">,</span>
+                      <span class="s1">&#39;dispersion&#39;</span><span class="p">:</span> <span class="s1">&#39;empiricaldispersion=gd3bj&#39;</span><span class="p">,</span>
                   <span class="p">}</span>
 </pre></div>
 </div>
@@ -278,8 +279,8 @@ Make sure to pass the correct format based on the intended ESS that should be us
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="s1">&#39;apfd/def2tzvp&#39;</span>
 <span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2tzvp&#39;</span><span class="p">}</span>
 
-<span class="n">conformer_level</span> <span class="o">=</span> <span class="s1">&#39;PM6&#39;</span>
-<span class="n">conformer_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;PM6&#39;</span><span class="p">}</span>
+<span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="s1">&#39;PM6&#39;</span>
+<span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;PM6&#39;</span><span class="p">}</span>
 </pre></div>
 </div>
 <p>Note that the <code class="docutils literal notranslate"><span class="pre">cabs</span></code> and <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code> arguments currently have no effect
@@ -639,7 +640,7 @@ but just be an arbitrary conformer with the required chiralities to be preserved
 </section>
 <section id="don-t-generate-conformers-for-specific-species">
 <h2>Don’t generate conformers for specific species<a class="headerlink" href="#don-t-generate-conformers-for-specific-species" title="Permalink to this heading">¶</a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">conformers</span></code> entry in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary is a global flag,
+<p>The <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code> entry in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary is a global flag,
 affecting conformer generation of all species in the project.</p>
 <p>If you’d like to avoid generating conformers just for selected species,
 pass their labels to ARC in the <code class="docutils literal notranslate"><span class="pre">dont_gen_confs</span></code> list, e.g.:</p>
@@ -751,7 +752,7 @@ which could be read as an input in ARC:</p>
 
 <span class="n">job_types</span><span class="p">:</span>
   <span class="n">rotors</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">conformers</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">conf_opt</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">lennard_jones</span><span class="p">:</span> <span class="n">false</span>
@@ -850,7 +851,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the <code 
 
 <span class="n">job_types</span><span class="p">:</span>
   <span class="n">rotors</span><span class="p">:</span> <span class="n">true</span>
-  <span class="n">conformers</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">conf_opt</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
   <span class="n">opt</span><span class="p">:</span> <span class="n">true</span>
