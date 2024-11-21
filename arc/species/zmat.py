@@ -2092,3 +2092,41 @@ def map_index_to_int(index: Union[int, str]) -> int:
     if isinstance(index, str) and all(char.isdigit() for char in index[1:]):
         return int(index[1:])
     raise TypeError(f'Expected either an int or a string on the format "X15", got {index}')
+
+def add_atom_to_zmat(zmat: dict,
+                     element: str,
+                     r_atoms: list,
+                     a_atoms: list,
+                     d_atoms: list,
+                     r: float,
+                     a: float,
+                     d: float,
+                     ) -> dict:
+    """
+    Add a new atom to an existing ZMAT.
+    Args:
+        zmat (dict): The zmat.
+        element (str): The element of the new atom.
+        r_atoms (list): The R atom index descriptors.
+        a_atoms (list): The A atom index descriptors.
+        d_atoms (list): The D atom index descriptors.
+        r (float): The R value.
+        a (float): The A value.
+        d (float): The D value.
+    Returns:
+        dict: The updated zmat.
+    """
+    zmat = zmat.copy()
+    symbols = list(zmat['symbols'])
+    coords = list(zmat['coords'])
+    vars_ = zmat['vars']
+    symbols.append(element)
+    r_str = f'R_{r_atoms[0]}_{r_atoms[1]}'
+    a_str = f'A_{a_atoms[0]}_{a_atoms[1]}_{a_atoms[2]}'
+    d_str = f'D_{d_atoms[0]}_{d_atoms[1]}_{d_atoms[2]}_{d_atoms[3]}'
+    coords.append((r_str, a_str, d_str))
+    vars_[r_str] = r
+    vars_[a_str] = a
+    vars_[d_str] = d
+    zmat = {'symbols': tuple(symbols), 'coords': tuple(coords), 'vars': vars_}
+    return zmat

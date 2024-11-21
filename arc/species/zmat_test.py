@@ -10,6 +10,7 @@ import unittest
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
 from arc.species.species import ARCSpecies
+from arc.species.zmat import add_atom_to_zmat
 
 
 class TestZMat(unittest.TestCase):
@@ -1814,6 +1815,96 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(zmat.map_index_to_int('X5486'), 5486)
         with self.assertRaises(TypeError):
             zmat.map_index_to_int('XY5486')
+
+    def test_add_atom_to_zmat(self):
+        """Test adding a new atom to an existing ZMAT."""
+        zmat_1 = {
+            'symbols': ('H', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
+            'coords': (
+                (None, None, None),
+                ('R_1_0', None, None),
+                ('R_2_1', 'A_2_1_0', None),
+                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                ('R_4_1', 'A_4_1_2', 'D_4_1_2_3'),
+                ('R_5_2', 'A_5_2_1', 'D_5_2_1_4'),
+                ('R_6_2', 'A_6_2_1', 'D_6_2_1_5'),
+                ('R_7_2', 'A_7_2_1', 'D_7_2_1_6')
+            ),
+            'vars': {
+                'R_1_0': 1.0940775789443724,
+                'R_2_1': 1.5120487296562577,
+                'A_2_1_0': 110.56801921096591,
+                'R_3_1': 1.0940725668318991,
+                'A_3_1_2': 110.56890700195424,
+                'D_3_1_2_0': 239.99938309284212,
+                'R_4_1': 1.0940817193677925,
+                'A_4_1_2': 110.56754686774481,
+                'D_4_1_2_3': 239.9997190582892,
+                'R_5_2': 1.0940725668318991,
+                'A_5_2_1': 110.56890700195424,
+                'D_5_2_1_4': 59.99971758419434,
+                'R_6_2': 1.0940840619688397,
+                'A_6_2_1': 110.56790845138725,
+                'D_6_2_1_5': 239.99905123159166,
+                'R_7_2': 1.0940817193677925,
+                'A_7_2_1': 110.56754686774481,
+                'D_7_2_1_6': 240.00122783407815
+            },
+            'map': {0: 3, 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 6, 7: 7}
+        }
+        element = 'O'
+        r_atoms = [1, 2]
+        a_atoms = [1, 2, 3]
+        d_atoms = [1, 2, 3, 4]
+        r = 1.2
+        a = 120.0
+        d = 180.0
+
+        new_zmat = add_atom_to_zmat(zmat_1, element, r_atoms, a_atoms, d_atoms, r, a, d)
+
+        expected_zmat = {
+            'symbols': ('H', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'O'),
+            'coords': (
+                (None, None, None),
+                ('R_1_0', None, None),
+                ('R_2_1', 'A_2_1_0', None),
+                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                ('R_4_1', 'A_4_1_2', 'D_4_1_2_3'),
+                ('R_5_2', 'A_5_2_1', 'D_5_2_1_4'),
+                ('R_6_2', 'A_6_2_1', 'D_6_2_1_5'),
+                ('R_7_2', 'A_7_2_1', 'D_7_2_1_6'),
+                ('R_1_2', 'A_1_2_3', 'D_1_2_3_4')
+            ),
+            'vars': {
+                'R_1_0': 1.0940775789443724,
+                'R_2_1': 1.5120487296562577,
+                'A_2_1_0': 110.56801921096591,
+                'R_3_1': 1.0940725668318991,
+                'A_3_1_2': 110.56890700195424,
+                'D_3_1_2_0': 239.99938309284212,
+                'R_4_1': 1.0940817193677925,
+                'A_4_1_2': 110.56754686774481,
+                'D_4_1_2_3': 239.9997190582892,
+                'R_5_2': 1.0940725668318991,
+                'A_5_2_1': 110.56890700195424,
+                'D_5_2_1_4': 59.99971758419434,
+                'R_6_2': 1.0940840619688397,
+                'A_6_2_1': 110.56790845138725,
+                'D_6_2_1_5': 239.99905123159166,
+                'R_7_2': 1.0940817193677925,
+                'A_7_2_1': 110.56754686774481,
+                'D_7_2_1_6': 240.00122783407815,
+                'R_1_2': 1.2,
+                'A_1_2_3': 120.0,
+                'D_1_2_3_4': 180.0
+            },
+            'map': {0: 3, 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 6, 7: 7}
+        }
+
+        self.assertEqual(new_zmat['symbols'], expected_zmat['symbols'])
+        self.assertEqual(new_zmat['coords'], expected_zmat['coords'])
+        self.assertEqual(new_zmat['vars'], expected_zmat['vars'])
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
