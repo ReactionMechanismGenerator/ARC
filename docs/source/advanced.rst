@@ -18,7 +18,7 @@ __ xyz_format_
 Specify a specific job type to execute
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 To run ARC with a particular job type **only**, set ``specific_job_type`` to the job type you want.
-Currently, ARC supports the following job types: ``conformers``, ``opt``, ``fine``, ``freq``,
+Currently, ARC supports the following job types: ``conf_opt``, ``conf_sp``, ``opt``, ``fine``, ``freq``,
 ``sp``, ``rotors``, ``onedmin``, ``orbitals``, ``bde``, ``irc``.
 
 Note: ``specific_job_type`` takes higher precedence than ``job_types``. If you specify both attributes, ARC will
@@ -53,7 +53,8 @@ a level of theory. ARC allows users to specify a level of theory per job type, w
 as described below. Job types for which levels of theory may be specified (otherwise ARC will assume
 defaults values) are:
 
-    - ``conformer_level``
+    - ``conformer_opt_level``
+    - ``conformer_sp_level``
     - ``ts_guess_level``
     - ``opt_level``
     - ``freq_level``
@@ -72,9 +73,9 @@ arguments to be defined: ``method``, ``basis``, ``auxiliary_basis``, ``dispersio
 
 For example::
 
-    conformer_level: {'method': 'b3lyp',
-                      'basis': '6-31g(d,p)',
-                      'dispersion': 'empiricaldispersion=gd3bj',
+    conformer_opt_level: {'method': 'b3lyp',
+                          'basis': '6-31g(d,p)',
+                          'dispersion': 'empiricaldispersion=gd3bj',
                       }
 
 specifies ``b3lyp/6-31g(d,p)`` model chemistry along with the
@@ -101,8 +102,8 @@ THe following are examples for **equivalent** definitions::
     opt_level = 'apfd/def2tzvp'
     opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
 
-    conformer_level = 'PM6'
-    conformer_level = {'method': 'PM6'}
+    conformer_opt_level = 'PM6'
+    conformer_opt_level = {'method': 'PM6'}
 
 
 Note that the ``cabs`` and ``solvation_scheme_level`` arguments currently have no effect
@@ -499,7 +500,7 @@ but just be an arbitrary conformer with the required chiralities to be preserved
 
 Don't generate conformers for specific species
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-The ``conformers`` entry in the ``job_types`` dictionary is a global flag,
+The ``conf_opt`` entry in the ``job_types`` dictionary is a global flag,
 affecting conformer generation of all species in the project.
 
 If you'd like to avoid generating conformers just for selected species,
@@ -616,7 +617,7 @@ The above code generated the following input file::
 
     job_types:
       rotors: true
-      conformers: true
+      conf_opt: true
       fine: true
       freq: true
       lennard_jones: false
@@ -715,7 +716,7 @@ Below is an example requesting all hydrogen BDEs in ethanol including the ``C--O
 
     job_types:
       rotors: true
-      conformers: true
+      conf_opt: true
       fine: true
       freq: true
       opt: true
