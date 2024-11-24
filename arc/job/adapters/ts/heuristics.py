@@ -1045,7 +1045,6 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     return xyz_guesses
 
 
-
 def is_water(spc: ARCSpecies) -> bool:
     """
     Determine whether the species is water.
@@ -1066,6 +1065,19 @@ def is_water(spc: ARCSpecies) -> bool:
             H_counter+=1
     return (O_counter==1 and H_counter==2)
 
+def load_electronegativity(yaml_path: str) -> Dict[str, float]:
+    """
+    Load electronegativity values from a YAML file.
+
+    Args:
+        yaml_path (str): The path to the YAML file.
+
+    Returns:
+        Dict[str, float]: A dictionary of electronegativity values.
+    """
+    with open(yaml_path, 'r') as f:
+        electronegativity = yaml.safe_load(f)
+    return electronegativity
 
 def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List[int]:
     """
@@ -1093,20 +1105,26 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List
     """
     atom = spc.mol.atoms[atom_index]
     neighbors = list(atom.edges.keys())
+    yaml_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data', 'electronegativity.yml')
+    electronegativity=load_electronegativity(yaml_file_path)
 
     if not neighbors:
         raise ValueError(f"Atom at index {atom_index} has no neighbors.")
 
     effective_electronegativities = []
     for neighbor in neighbors:
-        electronegativity = ELECTRONEGATIVITY[neighbor.symbol]
+        electro_value = electronegativity[neighbor.symbol]
         bond_order = atom.edges[neighbor].order
-        effective_electronegativity = electronegativity * bond_order
+        effective_electronegativity = electro_value* bond_order
         effective_electronegativities.append((effective_electronegativity, neighbor))
 
     effective_electronegativities.sort(
-        key=lambda x: (x[0], sum(ELECTRONEGATIVITY[n.symbol] * x[1].edges[n].order for n in x[1].edges.keys())),
-        reverse=True)
+        key=lambda x: (
+            x[0],
+            sum(electronegativity[n.symbol] * x[1].edges[n].order for n in x[1].edges.keys())
+        ),
+        reverse=True
+    )
 
     sorted_neighbors = [spc.mol.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
     return sorted_neighbors[:2]
