@@ -695,7 +695,7 @@ class JobAdapter(ABC):
         # 2. Set other related attributes job_name and job_server_name.
         self.job_server_name = self.job_server_name or 'a' + str(self.job_num)
         if self.conformer is not None and self.job_name is None:
-            self.job_name = f'{self.job_type}_{self.conformer}_{self.job_server_name}'
+            self.job_name = f'{self.job_type}_{self.conformer}'
         elif self.tsg is not None and (self.job_name is None or 'tsg_a' in self.job_name):
             if self.job_name is not None:
                 logger.warning(f'Replacing job name {self.job_name} with tsg{self.conformer}')
