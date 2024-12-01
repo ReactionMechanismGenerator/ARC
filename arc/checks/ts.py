@@ -91,15 +91,27 @@ def check_ts(reaction: 'ARCReaction',
         if reaction.ts_species.ts_checks['E0'] is None and not reaction.ts_species.ts_checks['e_elect']:
             check_rxn_e_elect(reaction=reaction, verbose=verbose)
 
-    if 'freq' in checks or (not reaction.ts_species.ts_checks['NMD'] and job is not None):
-        try:
-            check_normal_mode_displacement(reaction, job=job)
-        except (ValueError, KeyError) as e:
-            logger.error(f'Could not check normal mode displacement, got: \n{e}')
+    if 'freq' in checks or (not reaction.ts_species.ts_checks.get('NMD', False) and job is not None):
+        # Check if the job adapter is 'autotst' to decide whether to skip NMD
+        if job.species[0].chosen_ts_method == "autotst":
+            logger.info(
+                f'Skipping normal mode displacement check for TS {reaction.ts_species.label} '
+                f'due to job adapter "autotst".'
+            )
             reaction.ts_species.ts_checks['NMD'] = True
-        if skip_nmd and not reaction.ts_species.ts_checks['NMD']:
-            logger.warning(f'Skipping normal mode displacement check for TS {reaction.ts_species.label}')
-            reaction.ts_species.ts_checks['NMD'] = True
+        else:
+            try:
+                check_normal_mode_displacement(reaction, job=job)
+            except (ValueError, KeyError) as e:
+                logger.error(f'Could not check normal mode displacement, got: \n{e}')
+                reaction.ts_species.ts_checks['NMD'] = True
+            
+            # Handle skipping NMD based on the `skip_nmd` flag
+            if skip_nmd and not reaction.ts_species.ts_checks.get('NMD', False):
+                logger.warning(
+                    f'Skipping normal mode displacement check for TS {reaction.ts_species.label}.'
+                )
+                reaction.ts_species.ts_checks['NMD'] = True
 
     if 'rotors' in checks or (ts_passed_checks(species=reaction.ts_species, exemptions=['E0', 'warnings', 'IRC'])
                               and job is not None):
