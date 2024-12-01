@@ -978,6 +978,27 @@ def trsh_ess_job(label: str,
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using more memory: {memory} GB '
                             f'instead of {memory_gb} GB')
                 ess_trsh_methods.append('memory')
+        elif 'Memory' in job_status['keywords'] and 'too high' in job_status['error'] and server is not None:
+            # Reduce memory allocation by 80%, rounded to the nearest 5 GB increment
+            couldnt_trsh = False
+            proposed_memory = round(memory_gb * 0.8 / 5) * 5  # Round to the nearest 5 GB increment
+            reduced_memory = max(2, proposed_memory)  # Ensure a minimum of 2 GB
+
+            # Ensure reduced_memory is strictly less than current memory_gb
+            if reduced_memory >= memory_gb:
+                reduced_memory = max(2, memory_gb - 5)  # Reduce by at least 5 GB if needed to make it strictly less
+
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using less memory: {reduced_memory} GB '
+                        f'instead of {memory_gb} GB')
+
+            # Check for existing 'waste_memory_' entries and calculate next reduction level
+            if f'waste_memory_{reduced_memory}' not in ess_trsh_methods:
+                ess_trsh_methods.append(f'waste_memory_{reduced_memory}')
+                memory_gb = reduced_memory  # Update memory to the reduced value for next iteration
+            else:
+                couldnt_trsh = True
+                logger.info(f'{logger_phrase} was unsuccessful. No further reductions possible without reaching threshold.')
+
 
         if attempted_ess_trsh_methods:
             if attempted_ess_trsh_methods == ess_trsh_methods:

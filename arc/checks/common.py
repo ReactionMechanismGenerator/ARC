@@ -30,7 +30,7 @@ def get_i_from_job_name(job_name: str) -> Optional[int]:
     Get the conformer or tsg index from the job name.
 
     Args:
-        job_name (str): The job name, e.g., 'conformer12' or 'tsg5'.
+        job_name (str): The job name, e.g., 'conf_opt_0_a7575' or 'tsg5'.
 
     Returns:
         Optional[int]: The corresponding conformer or tsg index.
@@ -43,3 +43,4 @@ def get_i_from_job_name(job_name: str) -> Optional[int]:
     elif 'tsg' in job_name:
         i = int(job_name[3:])
     return i
+

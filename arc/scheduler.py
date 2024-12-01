@@ -741,7 +741,7 @@ class Scheduler(object):
                         del self.running_jobs[label]
 
             if self.timer and len(job_list):
-                time.sleep(30)  # wait 30 sec before bugging the servers again.
+                time.sleep(300)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600 and self.running_jobs:
                 self.report_time = time.time()
