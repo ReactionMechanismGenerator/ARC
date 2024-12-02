@@ -171,6 +171,7 @@ def determine_ess_status(output_path: str,
                                 error = 'GS2 Optimization Failure'
                                 line = 'GS2 Optimization Failure'
                                 break
+                    
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
                         additional_info = forward_lines[len(forward_lines) - i - 2]
                         if 'No data on chk file' in additional_info \
@@ -1828,12 +1829,12 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
     Check if the job requires change of cartesian coordinate
     """
     if 'InternalCoordinateError' in job_status['keywords'] \
-                and 'cartesian' not in ess_trsh_methods:
-        ess_trsh_methods.append('cartesian')
+                and 'opt=(cartesian)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(cartesian)')
         trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
-    elif 'cartesian' in ess_trsh_methods and \
-            job_type == 'opt' and 'cartesian' not in trsh_keyword:
+    elif 'opt=(cartesian)' in ess_trsh_methods \
+                and 'opt=(cartesian)' not in trsh_keyword:
         trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
 
