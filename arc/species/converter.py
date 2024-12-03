@@ -12,8 +12,14 @@ from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
-from rdkit.Chem import SDWriter
+from rdkit.Chem import SDWriter, AllChem
 from rdkit.Chem.rdchem import AtomValenceException
+
+from rdkit import Chem
+from rdkit.Chem import AllChem, Draw, rdMolTransforms
+from rdkit.Chem.Draw import IPythonConsole
+from IPython.display import display
+import py3Dmol
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
 import rmgpy.constants as constants
@@ -1852,7 +1858,31 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def set_rdkit_ring_dihedrals(rd_mol, ring_head, ring_tail, torsions, dihedrals):
+def show_2d_molecule(mol, title=''):
+    """
+    Displays a 2D image of the molecule.
+    """
+    mol_copy = Chem.Mol(mol)  # Create a copy to avoid modifying the original
+    AllChem.Compute2DCoords(mol_copy)
+    img = Draw.MolToImage(mol_copy, size=(400, 300))
+    display(img)
+    if title:
+        print(title)
+
+def show_3d_molecule(mol, confId=-1, style='stick', title=''):
+    """
+    Displays a 3D interactive visualization of the molecule.
+    """
+    mb = Chem.MolToMolBlock(mol, confId=confId)
+    viewer = py3Dmol.view(width=400, height=300)
+    viewer.addModel(mb, 'mol')
+    viewer.setStyle({style: {}})
+    viewer.zoomTo()
+    if title:
+        print(title)
+    return viewer.show()
+
+def set_rdkit_ring_dihedrals(conf_original, rd_mol, ring_head, ring_tail, torsions, dihedrals):
     """
     A helper function for setting dihedral angles in a ring using RDKit.
 
@@ -1873,24 +1903,113 @@ def set_rdkit_ring_dihedrals(rd_mol, ring_head, ring_tail, torsions, dihedrals):
         dict: The xyz with the new dihedral, ordered according to the map.
     """
 
-    rd_mol_mod = Chem.RWMol(rd_mol)
-    rd_mol_mod.RemoveBond(ring_head, ring_tail)
-    Chem.SanitizeMol(rd_mol_mod)
+    # Create a copy of the molecule to modify
+    rd_mol_mod = Chem.Mol(rd_mol)
+
+    # Apply the original coordinates to the conformer
     conf_mod = rd_mol_mod.GetConformer()
+    for i in range(rd_mol_mod.GetNumAtoms()):
+        pos = conf_original.GetAtomPosition(i)
+        conf_mod.SetAtomPosition(i, pos)
+
+    # Visualize before removing hydrogens
+    print("Before removing hydrogens:")
+    show_3d_molecule(rd_mol_mod, title="Before removing hydrogens")
+
+    # Remove hydrogens
+    rd_mol_noH = Chem.RemoveHs(rd_mol_mod)
+    Chem.SanitizeMol(rd_mol_noH)
+    
+    # Map positions from conf_mod to conf_noH
+    conf_noH = Chem.Conformer(rd_mol_noH.GetNumAtoms())
+    atom_map = {}  # Map heavy atom indices between rd_mol_mod and rd_mol_noH
+    idx_noH = 0
+    for idx in range(rd_mol_mod.GetNumAtoms()):
+        atom = rd_mol_mod.GetAtomWithIdx(idx)
+        if atom.GetAtomicNum() != 1:  # Not hydrogen
+            pos = conf_mod.GetAtomPosition(idx)
+            conf_noH.SetAtomPosition(idx_noH, pos)
+            atom_map[idx] = idx_noH
+            idx_noH += 1
+    rd_mol_noH.AddConformer(conf_noH)
+
+    # Visualize after removing hydrogens
+    print("After removing hydrogens:")
+    show_3d_molecule(rd_mol_noH, title="After removing hydrogens")
+
+    # Remove the bond to open the ring
+    rd_mol_noH = Chem.RWMol(rd_mol_noH)
+    rd_mol_noH.RemoveBond(atom_map[ring_head], atom_map[ring_tail])
+    Chem.SanitizeMol(rd_mol_noH)
+
+    # Visualize after opening the ring
+    print("After opening the ring:")
+    show_3d_molecule(rd_mol_noH, title="After opening the ring")
+
+    # Set the specified dihedral angles
+    conf_noH = rd_mol_noH.GetConformer()
     for torsion, dihedral in zip(torsions, dihedrals):
-        torsion_0_indexed = [tor - 0 for tor in torsion]
-        set_rdkit_dihedrals(conf_mod, rd_mol_mod, torsion_0_indexed, deg_abs=dihedral)
-    
-    rd_mol_mod.AddBond(ring_head, ring_tail, Chem.BondType.SINGLE)
-    Chem.SanitizeMol(rd_mol_mod)
-    Chem.AllChem.MMFFOptimizeMolecule(rd_mol_mod)
-    conf_mod = rd_mol_mod.GetConformer()
-    
-    coords = list()
-    symbols = list()
-    for i, atom in enumerate(list(rd_mol_mod.GetAtoms())):
-        coords.append([conf_mod.GetAtomPosition(i).x, conf_mod.GetAtomPosition(i).y, conf_mod.GetAtomPosition(i).z])
+        torsion_noH = [atom_map[atom_idx] for atom_idx in torsion]
+        rdMolTransforms.SetDihedralDeg(conf_noH, *torsion_noH, dihedral)
+
+    # Visualize after setting dihedral angles
+    print("After setting dihedral angles:")
+    show_3d_molecule(rd_mol_noH, title="After setting dihedral angles")
+
+    # Re-add the bond to close the ring
+    rd_mol_noH.AddBond(
+        atom_map[ring_head], atom_map[ring_tail], rd_mol.GetBondBetweenAtoms(ring_head, ring_tail).GetBondType()
+    )
+    Chem.SanitizeMol(rd_mol_noH)
+
+    # Visualize after closing the ring
+    print("After closing the ring:")
+    show_3d_molecule(rd_mol_noH, title="After closing the ring")
+
+    # Optimize the molecule
+    uff_ff = AllChem.UFFGetMoleculeForceField(rd_mol_noH)
+    if uff_ff is None:
+        raise ValueError("UFF force field could not be generated for the molecule.")
+
+    # Add torsion constraints to keep dihedral angles fixed
+    force_constant = 1000.0  # A high force constant to strongly enforce the constraint
+    for torsion, dihedral in zip(torsions, dihedrals):
+        torsion_noH = [atom_map[atom_idx] for atom_idx in torsion]
+        i, j, k, l = torsion_noH
+        uff_ff.UFFAddTorsionConstraint(
+            i, j, k, l, False, dihedral, dihedral, force_constant
+        )
+
+    # Optimize the molecule
+    uff_ff.Minimize()
+
+    # Retrieve the optimized conformer
+    conf_noH = rd_mol_noH.GetConformer()
+
+    # Visualize after optimization
+    print("After optimization:")
+    show_3d_molecule(rd_mol_noH, title="After optimization")
+
+    # Add hydrogens back to the optimized molecule
+    rd_mol_opt_H = Chem.AddHs(rd_mol_noH)
+    # Generate new conformer with hydrogens
+    AllChem.EmbedMolecule(rd_mol_opt_H, coordMap={atom.GetIdx(): conf_noH.GetAtomPosition(atom.GetIdx()) for atom in rd_mol_noH.GetAtoms()})
+    AllChem.UFFOptimizeMolecule(rd_mol_opt_H)
+
+    # Visualize after adding hydrogens back
+    print("After adding hydrogens back:")
+    show_3d_molecule(rd_mol_opt_H, title="After adding hydrogens back")
+
+    # Extract updated coordinates
+    conf_opt_H = rd_mol_opt_H.GetConformer()
+    coords = []
+    symbols = []
+    for i, atom in enumerate(rd_mol_opt_H.GetAtoms()):
+        pos = conf_opt_H.GetAtomPosition(i)
+        coords.append([pos.x, pos.y, pos.z])
         symbols.append(atom.GetSymbol())
+
+    # Create the new xyz dictionary
     new_xyz = xyz_from_data(coords=coords, symbols=symbols)
     return new_xyz
 
