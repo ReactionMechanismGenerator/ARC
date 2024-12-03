@@ -963,9 +963,9 @@ class ARCSpecies(object):
                 try:
                     self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
                                                               raise_atomtype_exception=False)
-                except ValueError:
+                except ValueError as e:
                     print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
-                    raise
+                    raise e
             elif arkane_spc.inchi is not None:
                 self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
             elif arkane_spc.smiles is not None:
@@ -1385,7 +1385,12 @@ class ARCSpecies(object):
             return None
         mol = self.mol
         if mol is None:
-            mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mols = molecules_from_xyz(xyz,
+                                      multiplicity=self.multiplicity,
+                                      charge=self.charge,
+                                      original_molecule=mol,
+                                      numer_of_radicals=self.number_of_radicals,
+                                      )
             mol = mols[1] or mols[0]
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
@@ -1595,10 +1600,13 @@ class ARCSpecies(object):
             # self.mol should have come from another source, e.g., SMILES or yml.
             mol_s, mol_b = molecules_from_xyz(xyz=xyz,
                                               multiplicity=self.multiplicity,
-                                              charge=self.charge)
+                                              charge=self.charge,
+                                              original_molecule=self.mol,
+                                              numer_of_radicals=self.number_of_radicals,
+                                              )
             perceived_mol = mol_b or mol_s
             if perceived_mol is not None:
-                allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
+                allow_nonisomorphic_2d = self.charge \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
                                          or (self.multiplicity is not None and self.multiplicity >= 3) \
                                          or self.mol.multiplicity >= 3 or perceived_mol.multiplicity >= 3
@@ -1615,7 +1623,12 @@ class ARCSpecies(object):
                 if not self.keep_mol:
                     self.mol = perceived_mol
         else:
-            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+            mol_s, mol_b = molecules_from_xyz(xyz,
+                                              multiplicity=self.multiplicity,
+                                              charge=self.charge,
+                                              original_molecule=self.mol,
+                                              numer_of_radicals=self.number_of_radicals,
+                                              )
             if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
                 self.mol = mol_b
             elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
@@ -1755,7 +1768,7 @@ class ARCSpecies(object):
             dipoleMoment=(dipole_moment, 'De'),
             polarizability=polar,
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
-            comment=comment
+            comment=comment,
         )
 
     def check_xyz_isomorphism(self,
@@ -1788,7 +1801,12 @@ class ARCSpecies(object):
 
             # 1. Perceive
             try:
-                s_mol, b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
+                s_mol, b_mol = molecules_from_xyz(xyz,
+                                                  multiplicity=self.multiplicity,
+                                                  charge=self.charge,
+                                                  original_molecule=mol,
+                                                  numer_of_radicals=self.number_of_radicals,
+                                                  )
             except Exception as e:
                 if verbose:
                     logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}. This '
@@ -2018,6 +2036,19 @@ class ARCSpecies(object):
             keys = ['E0', 'e_elect', 'IRC', 'freq', 'NMD']
             self.ts_checks = {key: None for key in keys}
             self.ts_checks['warnings'] = ''
+
+    def get_bonds(self) -> List[tuple]:
+        """
+        Generate a list of length-2 tuples indicating the bonding atoms in the molecule.
+
+        Returns:
+            list: A list of length-2 tuples indicating the bonding atoms.
+        """
+        bonds = list()
+        for atom1 in self.mol.atoms:
+            for atom2, bond12 in atom1.edges.items():
+                bonds.append(tuple(sorted((self.mol.atoms.index(atom1), self.mol.atoms.index(atom2)))))
+        return list(set(bonds))
 
 
 class TSGuess(object):
