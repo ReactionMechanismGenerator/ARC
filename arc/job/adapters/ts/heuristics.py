@@ -17,6 +17,9 @@ Todo:
 
 import datetime
 import itertools
+import copy
+import os
+import yaml
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -46,6 +49,9 @@ if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
 
+
+FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
+               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
 
 DIHEDRAL_INCREMENT = 30
 
