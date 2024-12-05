@@ -98,7 +98,7 @@ WELL_GAP = 31 # 20/2 works
 MAX_COMBINATION_ITERATIONS = 25
 
 # A threshold below which all combinations will be generated. Above it just samples of the entire search space.
-COMBINATION_THRESHOLD = 1000
+COMBINATION_THRESHOLD = 10
 
 # Consolidation tolerances for Z matrices
 CONSOLIDATION_TOLS = {'R': 1e-2, 'A': 1e-2, 'D': 1e-2}
@@ -352,19 +352,29 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         symmetries[tuple(torsion)] = symmetry
     logger.debug(f'Identified {len([s for s in symmetries.values() if s > 1])} symmetric wells for {label}')
 
-    torsions_sampling_points, wells_dict = dict(), dict()
+    torsions_sampling_points, wells_dict, ring_sampling_points = dict(), dict(), dict()
     for tor, tor_angles in torsion_angles.items():
         torsions_sampling_points[tor], wells_dict[tor] = \
             determine_torsion_sampling_points(label, tor_angles, smeared_scan_res=smeared_scan_res,
                                               symmetry=symmetries[tor])
-
+    print('wells_dict:', wells_dict)
     if plot_path is not None:
         arc.plotter.plot_torsion_angles(torsion_angles, torsions_sampling_points, wells_dict=wells_dict,
                                         plot_path=plot_path)
-        arc.plotter.plot_ring_torsion_angles(conformers=conformers, plot_path=plot_path)
+        angles_sorted = arc.plotter.plot_ring_torsion_angles(conformers=conformers, plot_path=plot_path)
+    # Process the ring angle data
+    for ring, angle_counts in angles_sorted.items():
+        # Extract unique angles only
+        angles = [list(angle) for angle, _ in angle_counts]  # Ignore counts, only keep the angles
+        
+        # Flatten the structure and add to torsions_sampling_points
+        ring_sampling_points[tuple(ring)] = angles
+        print('ring_sampling_points:', ring_sampling_points)
+    
+    combined_sampling_points = {**torsions_sampling_points, **ring_sampling_points}
 
     hypothetical_num_comb = 1
-    for points in torsions_sampling_points.values():
+    for points in combined_sampling_points.values():
         hypothetical_num_comb *= len(points)
     number_of_chiral_centers = get_number_of_chiral_centers(label, mol, conformer=conformers[0],
                                                             just_get_the_number=True)
@@ -375,10 +385,10 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         hypothetical_num_comb_str = str(hypothetical_num_comb)
     logger.info(f'\nHypothetical number of conformer combinations for {label}: {hypothetical_num_comb_str}')
 
-    # split torsions_sampling_points into two lists, use combinations only for those with multiple sampling points
+    # split combined_sampling_points into two lists, use combinations only for those with multiple sampling points
     single_tors, multiple_tors, single_sampling_point, multiple_sampling_points = list(), list(), list(), list()
     multiple_sampling_points_dict = dict()  # used for plotting an energy "scan"
-    for tor, points in torsions_sampling_points.items():
+    for tor, points in combined_sampling_points.items():
         if len(points) == 1:
             single_tors.append(tor)
             single_sampling_point.append((points[0]))
@@ -541,7 +551,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                  'FF energy': round(energy, 3),
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
-                                 'dihedral': round(dihedral, 2),
+                                 'dihedral': round(dihedral, 2) if isinstance(dihedral, float)
+                                             else [round(angle, 2) for angle in dihedral],
                                  'dmat': dmat1,
                                  'fl_distance': fl_distance1}
                     newest_conformers_dict[tor].append(conformer)
@@ -557,7 +568,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                          'FF energy': None,
                          'source': f'Changing dihedrals on most stable conformer, iteration {i}, but FF energy is None',
                          'torsion': tor,
-                         'dihedral': round(dihedral, 2),
+                         'dihedral':  round(dihedral, 2) if isinstance(dihedral, float) else [round(angle, 2) for angle in dihedral],
                          'dmat': dmat1,
                          'fl_distance': fl_distance1})
         new_conformers.extend(newest_conformer_list)
@@ -572,6 +583,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
     if plot_path is not None:
         logger.info(converter.xyz_to_str(lowest_conf_i['xyz']))
         arc.plotter.draw_structure(xyz=lowest_conf_i['xyz'])
+        print('hhhh')
         num_comb = arc.plotter.plot_torsion_angles(torsion_angles, multiple_sampling_points_dict,
                                                    wells_dict=wells_dict, e_conformers=newest_conformers_dict,
                                                    de_threshold=de_threshold, plot_path=plot_path)
@@ -760,8 +772,26 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         for torsion, dihedral in zip(torsions, dihedrals):
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
             if conf is not None:
-                torsion_0_indexed = [tor - 1 for tor in torsion]
-                xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+                if isinstance(torsion[0], int):         # Assume torsion is a flat tuple
+                    torsion_0_indexed = [tor - 1 for tor in torsion]
+                elif isinstance(torsion[0], tuple):     # Check if torsion is a tuple of tuples
+                    torsion_0_indexed = [[tor - 0 for tor in sub_torsion] for sub_torsion in torsion]
+                print("change_torsion", torsion)
+                print("change_dihedral", dihedral)
+                if not isinstance(dihedral, list):
+                    xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+                elif isinstance(dihedral, list):
+                    # Calculate the head and tail
+                    ring_length = len(torsion_0_indexed)  # Length of the ring
+                    head = torsion_0_indexed[0][0]  # First element of the first torsion
+                    # Find the tail
+                    for torsion in torsion_0_indexed:
+                        if head == torsion[-1]:  # Check if the head appears in the torsion
+                            print("torsion", torsion)
+                            tail = torsion[-2]  # The last element in this torsion becomes the tail candidate
+                            break
+                    print(f'we are here ring twist, head {head}, tail {tail}')
+                    xyz_dihedrals = converter.set_rdkit_ring_dihedrals(conf, rd_mol, head, tail, torsion_0_indexed[0:ring_length-3], dihedral[0:ring_length-3])
         xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
                                                 force_field=force_field, suppress_warning=True)
         if energy and xyz_:
@@ -926,7 +956,6 @@ def determine_puckering(conformers, rings_indexes):
         list: Entries are conformer dictionaries.
     """
     for conformer in conformers:
-        # print(f'conformer:{conformer}')
         if isinstance(conformer['xyz'], str):
             xyz = converter.str_to_xyz(conformer['xyz'])
         else:
