@@ -2120,7 +2120,7 @@ def add_atom_to_zmat(zmat: dict,
     symbols = list(zmat['symbols'])
     coords = list(zmat['coords'])
     vars_ = zmat['vars']
-    symbols.append(element)
+    symbols.append(str(element))
     r_str = f'R_{r_atoms[0]}_{r_atoms[1]}'
     a_str = f'A_{a_atoms[0]}_{a_atoms[1]}_{a_atoms[2]}'
     d_str = f'D_{d_atoms[0]}_{d_atoms[1]}_{d_atoms[2]}_{d_atoms[3]}'
@@ -2128,5 +2128,10 @@ def add_atom_to_zmat(zmat: dict,
     vars_[r_str] = r
     vars_[a_str] = a
     vars_[d_str] = d
-    zmat = {'symbols': tuple(symbols), 'coords': tuple(coords), 'vars': vars_}
+    if 'map' not in zmat:
+        zmat['map'] = {}
+    zmat_map = zmat['map']
+    new_index = max(zmat_map.keys()) + 1 if zmat_map else 0
+    zmat_map[new_index] = new_index
+    zmat = {'symbols': tuple(symbols), 'coords': tuple(coords), 'vars': vars_, 'map': zmat_map}
     return zmat
