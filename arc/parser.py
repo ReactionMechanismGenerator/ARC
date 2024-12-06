@@ -638,16 +638,17 @@ def parse_nd_scan_energies(path: str,
 
                 elif 'Summary of Optimized Potential Surface Scan' in line:
                     # ' Summary of Optimized Potential Surface Scan (add -264.0 to energies):'
-                    base_e = float(line.split('(add ')[1].split()[0])
+                    base_e = float(line.split('(add ')[1].split()[0]) if '(add' in line and 'to energies):' in line else 0.0
                     energies, dihedrals_dict = list(), dict()
                     dihedral_num = 0
-                    while 'Grad' not in line:
+                    while 'Grad' not in line and 'Largest change from initial coordinates' not in line:
                         line = f.readline()
                         splits = line.split()
+                        numbers = re.findall(r'-?\d+\.\d+', line)
                         if 'Eigenvalues --' in line:
                             # convert Hartree energy to kJ/mol
                             energies = [(base_e + float(e)) * 4.3597447222071e-18 * 6.02214179e23 * 1e-3
-                                        for e in splits[2:]]
+                                        for e in numbers]
                             min_es = min(energies)
                             min_e = min_es if min_e is None else min(min_e, min_es)
                             dihedral_num = 0
