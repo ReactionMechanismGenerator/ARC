@@ -561,6 +561,14 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(len(list(results[0]['directed_scan'].keys())), 36 * 36 + 1)  # 1297
         self.assertAlmostEqual(results[0]['directed_scan']['170.00', '40.00']['energy'], 26.09747088)
 
+        path2 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'scan_2D_N3H5.out')
+        results = parser.parse_nd_scan_energies(path=path2, software='gaussian')
+        self.assertEqual(results[0]['directed_scan_type'], 'ess_gaussian')
+        self.assertEqual(results[0]['scans'], [(1, 2, 3, 7), (4, 1, 2, 3)])
+        self.assertEqual(len(list(results[0].keys())), 3)
+        self.assertEqual(len(list(results[0]['directed_scan'].keys())), 45 * 45)  # 2025
+        self.assertAlmostEqual(results[0]['directed_scan']['-38.33', '-65.67']['energy'], 27.01639591)
+
     def test_parse_dipole_moment(self):
         """Test parsing the dipole moment from an opt job output file"""
         path1 = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
