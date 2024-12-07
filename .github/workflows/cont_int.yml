@@ -102,7 +102,7 @@ jobs:
         path: TS-GCN
         ref: main
         fetch-depth: 1
-    
+
     - name: Cache KinBot
       id: cache-kinbot
       uses: actions/cache@v2
@@ -129,7 +129,7 @@ jobs:
         path: ~/conda_pkgs_dir
         key:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
-    
+
     - name: Set up miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
@@ -164,14 +164,14 @@ jobs:
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
         make
         cd ..
-  
+
     - name: Set ARC Path
       run: |
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-        
+
     - name: Install AutoTST
       run: |
         cd AutoTST
@@ -183,7 +183,7 @@ jobs:
         # install pyaml
         conda install -n tst_env -c conda-forge -y pyyaml
         cd ..
-    
+
     - name: Install TS-GCN
       run: |
         cd TS-GCN
@@ -194,7 +194,7 @@ jobs:
         bash devtools/create_env_cpu.sh
         conda env update -n ts_gcn -f environment.yml
         cd ..
-    
+
     - name: Install KinBot
       run: |
         cd KinBot
@@ -218,13 +218,13 @@ jobs:
     - name: Install Torch Ani
       run: |
         conda env create -f devtools/tani_environment.yml
-  
+
     - name: Install XTB
       run: |
         conda env create -f devtools/xtb_environment.yml
-    
+
     - name: Test with pytest
-      shell: bash -el {0} 
+      shell: bash -el {0}
       run: |
         source ~/.bashrc
         conda activate arc_env
