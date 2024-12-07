@@ -302,6 +302,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
                 return None
         else:
             rmsds, fixed_spcs = list(), list()
+            candidate = None
             for candidate in candidates:
                 fixed_spc_1, fixed_spc_2 = fix_dihedrals_by_backbone_mapping(spc_1, spc_2, backbone_map=candidate)
                 fixed_spcs.append((fixed_spc_1, fixed_spc_2))
@@ -319,9 +320,10 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
                 rmsds.append(compare_confs(xyz1=xyz1, xyz2=xyz2, rmsd_score=True))
             chosen_candidate_index = rmsds.index(min(rmsds))
             fixed_spc_1, fixed_spc_2 = fixed_spcs[chosen_candidate_index]
-            atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
-            if map_type == 'list':
-                atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
+            if candidate is not None:
+                atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
+                if map_type == 'list':
+                    atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
         if atom_map is None and allow_backend_shift:
             backend = 'QCElemental'
 
@@ -634,14 +636,14 @@ def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
     """
     new_dicts_list = list()
     for new_dict in dicts_list:
-        unique = True
+        unique_ = True
         for existing_dict in new_dicts_list:
-            if unique:
+            if unique_:
                 for new_key, new_val in new_dict.items():
                     if new_key not in existing_dict.keys() or new_val == existing_dict[new_key]:
-                        unique = False
+                        unique_ = False
                         break
-        if unique:
+        if unique_:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 
@@ -1024,7 +1026,6 @@ def make_bond_changes(rxn: 'ARCReaction',
         r_cuts: the cut products
         r_label_dict: the dictionary object the find the relevant location.
     """
-    
     for action in rxn.family.forward_recipe.actions:
         if action[0].lower() == "CHANGE_BOND".lower():
             indicies = r_label_dict[action[1]],r_label_dict[action[3]]
@@ -1070,48 +1071,47 @@ def assign_labels_to_products(rxn: 'ARCReaction',
     Returns:
         Adding labels to the atoms of the reactants and products, to be identified later.
     """
-
     atom_index = 0
-    for product in rxn.p_species:
-        for atom in product.mol.atoms:
+    for product_ in rxn.p_species:
+        for atom in product_.mol.atoms:
             if atom_index in p_label_dict.values() and (atom.label is str or atom.label is None):
                 atom.label = key_by_val(p_label_dict,atom_index)
             atom_index+=1
 
 
-def update_xyz(spcs: List[ARCSpecies]) -> List[ARCSpecies]:
+def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
     """
     A helper function, updates the xyz values of each species after cutting. This is important, since the
     scission sometimes scrambles the Molecule object, and updating the xyz makes up for that.
 
     Args:
-        spcs: the scission products that needs to be updated
+        species (List[ARCSpecies]): the scission products that needs to be updated.
 
     Returns:
-        new: A newely generated copies of the ARCSpecies, with updated xyz
+        List[ARCSpecies]: A newly generated copies of the ARCSpecies, with updated xyz.
     """
     new = list()
-    for spc in spcs:
+    for spc in species:
         new_spc = ARCSpecies(label="copy", mol=spc.mol.copy(deep=True))
         new_spc.final_xyz = new_spc.get_xyz() or spc.get_xyz()
         new.append(new_spc)
     return new
 
 
-def r_cut_p_cut_isomorphic(reactant, product):
+def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     """
     A function for checking if the reactant and product are the same molecule.
 
     Args:
-        reactant: an ARCSpecies. might be as a result of scissors() 
-        product: an ARCSpecies. might be as a result of scissors()
+        reactant (ARCSpecies): An ARCSpecies. might be as a result of scissors()
+        product_ (ARCSpecies): an ARCSpecies. might be as a result of scissors()
 
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
     res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
     for res in res1:
-        if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
+        if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
             return True
     return False
 
@@ -1123,13 +1123,13 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
     A function for matching reactants and products in scissored products.
 
     Args:
-        r_cuts: A list of the scissored species in the reactants
-        p_cuts: A list of the scissored species in the reactants
+        r_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
+        p_cuts (List[ARCSpecies]): A list of the scissored species in the reactants
 
     Returns:
-        a list of paired reactant and products, to be sent to map_two_species.
+        List[Tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
-    pairs = []
+    pairs = list()
     for reactant_cut in r_cuts:
         for product_cut in p_cuts:
             if r_cut_p_cut_isomorphic(reactant_cut, product_cut):
@@ -1139,48 +1139,47 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
     return pairs
 
 
-def map_pairs(pairs):
+def map_pairs(pairs: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[List[int]]:
     """
-    A function that maps the mached species together
+    A function that maps the matched species together
 
     Args:
-        pairs: A list of the pairs of reactants and species
+         (List[Tuple[ARCSpecies, ARCSpecies]]): A list of the pairs of reactants and species.
 
     Returns:
-        A list of the mapped species
+        List[List[int]]: A list of the mapped species
     """
 
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
-
     return maps
 
 
-def label_species_atoms(spcs):
+def label_species_atoms(species: List['ARCSpecies']):
     """
-    Adds the labels to the ``.mol.atoms`` properties of the species obect.
+    Adds the labels to the ``.mol.atoms`` properties of the species object.
     
     Args:
-        spcs: ARCSpecies object to be labeled.
+        species (List['ARCSpecies']): ARCSpecies object to be labeled.
     """
-    index=0
-    for spc in spcs:
+    index = 0
+    for spc in species:
         for atom in spc.mol.atoms:
             atom.label = str(index)
-            index+=1
+            index += 1
 
 
-def glue_maps(maps, pairs_of_reactant_and_products):
+def glue_maps(maps: List[List[int]], pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[int]:
     """
     a function that joins together the maps from the parts of the reaction.
 
     Args:
-        rxn: ARCReaction that requires atom mapping
-        maps: The list of all maps of the isomorphic cuts.
+        maps (List[List[int]]): The list of all maps of the isomorphic cuts.
+        pairs_of_reactant_and_products (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
 
     Returns:
-        an Atom Map of the compleate reaction.
+        List[int]: An Atom Map of the complete reaction.
     """
     am_dict = dict()
     for _map, pair in zip(maps, pairs_of_reactant_and_products):
@@ -1193,21 +1192,19 @@ def glue_maps(maps, pairs_of_reactant_and_products):
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
     """
-    A function for determining whether or not the species in question containt the bond specified by the bond dissociation indices.
+    A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
     
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
         bde (Tuple[int, int]): The bde in question.
-        add_bdes (bool): Whether or not to add the bde to the species.
     
     Returns:
-        bool: Whether or not the bde is based on the atom labels.
+        bool: Whether the bde is based on the atom labels.
     """
     bde = convert_list_index_0_to_1(bde, direction=-1)
     index1, index2 = bde[0], bde[1]
-    new_bde = list()
-    atoms = list()
+    new_bde, atoms = list(), list()
     for index, atom in enumerate(spc.mol.atoms):
         if atom.label == str(index1) or atom.label == str(index2):
             new_bde.append(index+1)
@@ -1222,18 +1219,22 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
         return False
 
 
-def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tuple[int, int]]) -> Optional[List["ARCSpecies"]]:
+def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
+                                      bdes: List[Tuple[int, int]],
+                                      ) -> Optional[List["ARCSpecies"]]:
     """
     A function for scissoring species based on their atom indices.
+
     Args:
         species (List[ARCSpecies]): The species list that requires scission.
-        bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored. The atoms are described using the atom labels, and not the actuall atom positions.
+        bdes (List[Tuple[int, int]]): A list of the atoms between which the bond should be scissored.
+                                      The atoms are described using the atom labels, and not the actual atom positions.
+
     Returns:
         Optional[List["ARCSpecies"]]: The species list input after the scission.
     """
     if not bdes:
         return species
-    
     for bde in bdes:
         for index, spc in enumerate(species):
             if determine_bdes_on_spc_based_on_atom_labels(spc, bde):
@@ -1254,7 +1255,6 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"], bdes: List[Tu
                     except SpeciesError:
                         return None
                 break
-                
     return species
 
 
@@ -1276,12 +1276,15 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
 def find_all_bdes(rxn: "ARCReaction", label_dict: dict, is_reactants: bool) -> List[Tuple[int, int]]:
     """
     A function for finding all the broken(/formed) bonds during a chemical reaction, based on the atom indices.
+
     Args:
         rxn (ARCReaction): The reaction in question.
         label_dict (dict): A dictionary of the atom indices to the atom labels.
-        is_reactants (bool): Whether or not the species list represents reactants or products.
+        is_reactants (bool): Whether the species list represents reactants or products.
+
     Returns:
-        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond. Note that these represent the atom indicies to be cut, and not final BDEs.
+        List[Tuple[int, int]]: A list of tuples of the form (atom_index1, atom_index2) for each broken bond.
+                               Note that these represent the atom indices to be cut, and not final BDEs.
     """
     bdes = list()
     for action in rxn.family.forward_recipe.actions:
