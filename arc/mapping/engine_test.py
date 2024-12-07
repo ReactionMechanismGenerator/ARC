@@ -531,8 +531,10 @@ class TestMappingEngine(unittest.TestCase):
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
         reactants, products = copy_species_list_for_mapping(rxn_1_test.r_species), copy_species_list_for_mapping(rxn_1_test.p_species)
         label_species_atoms(reactants), label_species_atoms(products)
-        
-        r_bdes, p_bdes = find_all_bdes(rxn_1_test, self.r_label_dict_rxn_1, True), find_all_bdes(rxn_1_test, self.p_label_dict_rxn_1, False)
+        product_dicts = get_reaction_family_products(rxn_1_test)
+
+        r_bdes = find_all_bdes(rxn=rxn_1_test, label_dict=self.r_label_dict_rxn_1, is_reactants=True)  # todo: got here, see how to replace the dict, maybe with s2s mapping?
+        p_bdes = find_all_bdes(rxn=rxn_1_test, label_dict=self.p_label_dict_rxn_1, is_reactants=False)
 
         r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
         p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
