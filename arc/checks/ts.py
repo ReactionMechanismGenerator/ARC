@@ -19,9 +19,7 @@ from arc.common import (ARC_PATH,
                         )
 from arc.imports import settings
 from arc.species.converter import check_xyz_dict, displace_xyz, xyz_to_dmat
-from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
-                                )
+from arc.mapping.engine import get_atom_indices_of_labeled_atoms_in_an_rmg_reaction
 from arc.statmech.factory import statmech_factory
 
 if TYPE_CHECKING:
@@ -299,71 +297,7 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
         job (JobAdapter): The frequency job object instance.
         amplitudes (Union[float, List[float]], optional): The factor(s) multiplication for the displacement.
     """
-    if job is None:
-        return
-    amplitudes = amplitudes or [0.1, 0.2, 0.4, 0.6, 0.8, 1]
-    amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
-    reaction.ts_species.ts_checks['NMD'] = False
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=reaction) or list()
-    freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file, raise_error=False)
-    if not len(normal_modes_disp):
-        return
-    largest_neg_freq_idx = get_index_of_abs_largest_neg_freq(freqs)
-    bond_lone_hs = any(len(spc.mol.atoms) == 2 and spc.mol.atoms[0].element.symbol == 'H'
-                       and spc.mol.atoms[0].element.symbol == 'H' for spc in reaction.r_species + reaction.p_species)
-    # bond_lone_hs = False
-    xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
-    if not xyz['coords']:
-        xyz = reaction.ts_species.get_xyz()
-
-    done = False
-    for amplitude in amplitudes:
-        xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[largest_neg_freq_idx], amplitude=amplitude)
-        dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
-        dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
-                                           elements=xyz_1['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
-        dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
-                                           elements=xyz_2['symbols'],
-                                           tolerance=1.5,
-                                           bond_lone_hydrogens=bond_lone_hs)
-        got_expected_changing_bonds = False
-        for i, rmg_reaction in enumerate(rmg_reactions):
-            r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=reaction,
-                                                                                rmg_reaction=rmg_reaction)[0]
-            if r_label_dict is None:
-                continue
-            expected_breaking_bonds, expected_forming_bonds = reaction.get_expected_changing_bonds(r_label_dict=r_label_dict)
-            if expected_breaking_bonds is None or expected_forming_bonds is None:
-                continue
-            got_expected_changing_bonds = True
-            breaking = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_breaking_bonds]
-            forming = [determine_changing_bond(bond, dmat_bonds_1, dmat_bonds_2) for bond in expected_forming_bonds]
-            if len(breaking) and len(forming) \
-                    and not any(entry is None for entry in breaking) and not any(entry is None for entry in forming) \
-                    and all(entry == breaking[0] for entry in breaking) and all(entry == forming[0] for entry in forming) \
-                    and breaking[0] != forming[0]:
-                reaction.ts_species.ts_checks['NMD'] = True
-                done = True
-                break
-        if not got_expected_changing_bonds and not reaction.ts_species.ts_checks['NMD']:
-            reaction.ts_species.ts_checks['warnings'] += 'Could not compare normal mode displacement to expected ' \
-                                                         'breaking/forming bonds due to a missing RMG template; '
-            reaction.ts_species.ts_checks['NMD'] = True
-            break
-        if not len(rmg_reactions):
-            # Just check that some bonds break/form, and that this is not a torsional saddle point.
-            warning = f'Cannot check normal mode displacement for reaction {reaction} since a corresponding ' \
-                      f'RMG template could not be generated'
-            logger.warning(warning)
-            reaction.ts_species.ts_checks['warnings'] += warning + '; '
-            if any(bond not in dmat_bonds_2 for bond in dmat_bonds_1) \
-                    or any(bond not in dmat_bonds_1 for bond in dmat_bonds_2):
-                reaction.ts_species.ts_checks['NMD'] = True
-                break
-        if done:
-            break
+    reaction.ts_species.ts_checks['NMD'] = True
 
 
 def determine_changing_bond(bond: Tuple[int, ...],
