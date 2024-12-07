@@ -332,7 +332,6 @@ class Scheduler(object):
                         rxn.r_species.append(spc)
                     if spc.label in rxn.products:
                         rxn.p_species.append(spc)
-                rxn.rmg_reaction_from_arc_species()
                 rxn.check_attributes()
                 family_text = ''
                 if rxn.family is not None:
