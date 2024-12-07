@@ -11,6 +11,7 @@ from rmgpy.molecule import Bond, Group, Molecule
 
 from arc.common import clean_text, generate_resonance_structures, get_logger
 from arc.imports import settings
+from arc.species.converter import check_isomorphism
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
@@ -438,6 +439,19 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     """
     Determine the possible reaction products for a given ARC reaction and a given RMG reaction family.
 
+    Structure of the returned product_dicts::
+
+        [{'family': str: Family label,
+          'group_labels': Tuple[str, str]: Group labels used to generate the products,
+          'products': List['Molecule']: The generated products,
+          'r_label_map': Dict[int, str]: Mapping of reactant atom indices to labels,
+          'p_label_map': Dict[str, int]: Mapping of product labels to atom indices
+                                         (refers to the given 'products' in this dict
+                                          and not to the products of the original reaction),
+          'own_reverse': bool: Whether the family's template also represents its own reverse,
+          'discovered_in_reverse': bool: Whether the reaction was discovered in reverse},
+         ]
+
     Args:
         rxn ('ARCReaction'): The ARC reaction object.
         family_label (str): The reaction family label.
@@ -457,7 +471,10 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                 product_dicts.append({'family': family_label,
                                       'group_labels': group_labels,
                                       'products': product_list[0],
-                                      'label_map': {val: key for key, val in product_list[1].items() if val},
+                                      'r_label_map': {val: key for key, val in product_list[1].items() if val},
+                                      'p_label_map': {atom.label: j + sum(len(p.atoms) for p in product_list[0][:i])
+                                                      for i, product in enumerate(product_list[0])
+                                                      for j, atom in enumerate(product.atoms) if atom.label},
                                       'own_reverse': family.own_reverse,
                                       'discovered_in_reverse': reverse,
                                       })
