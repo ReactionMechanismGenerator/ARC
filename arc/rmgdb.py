@@ -160,7 +160,7 @@ def load_rmg_database(rmgdb: RMGDatabase,
     logger.info('\n\n')
 
 
-def determine_reaction_family(rmgdb: RMGDatabase,
+def get_reaction_family_products(rmgdb: RMGDatabase,
                               reaction: Reaction,
                               save_order: bool = True,
                               ) -> Tuple[Optional['KineticsFamily'], bool]:
