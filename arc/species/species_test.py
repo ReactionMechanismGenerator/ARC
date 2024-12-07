@@ -1686,6 +1686,24 @@ H       1.32129900    0.71837500    0.38017700
         so2.mol_from_xyz(xyz=so2_t_xyz, get_cheap=False)
         self.assertEqual([atom.element.symbol for atom in so2.mol.atoms], ['S', 'O', 'O'])
 
+        # S2
+        s2_xyz = """S    0.0000000    0.0000000    0.9547220
+                    S    0.0000000    0.0000000   -0.9547220"""
+        s2 = ARCSpecies(label='S2', smiles='[S][S]')
+        self.assertEqual(s2.multiplicity, 3)
+        self.assertEqual(s2.charge, 0)
+        s2.mol_from_xyz(xyz=str_to_xyz(s2_xyz), get_cheap=False)
+        self.assertEqual([atom.element.symbol for atom in s2.mol.atoms], ['S', 'S'])
+        self.assertEqual(s2.mol.to_smiles(), '[S][S]')
+        self.assertEqual(s2.mol.multiplicity, 3)
+
+        # O2
+        o2_xyz = {'symbols': ('O', 'O'), 'isotopes': (16, 16), 'coords': ((0.0, 0.0, 0.6029), (0.0, 0.0, -0.6029))}
+        o2 = ARCSpecies(label='O2aa', xyz=o2_xyz, multiplicity=3)
+        self.assertEqual(o2.multiplicity, 3)
+        self.assertEqual(o2.mol.multiplicity, 3)
+        self.assertEqual(o2.mol.to_smiles(), '[O][O]')
+
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
         xyz9 = """O      -1.17310019   -0.30822930    0.16269772
