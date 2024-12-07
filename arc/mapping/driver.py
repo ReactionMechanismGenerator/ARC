@@ -9,13 +9,10 @@ Strategy:
 
 from typing import TYPE_CHECKING, List, Optional
 
-from arc.mapping.engine import (assign_labels_to_products,
-                                are_adj_elements_in_agreement,
+from arc.mapping.engine import (are_adj_elements_in_agreement,
                                 create_qc_mol,
                                 flip_map,
                                 fingerprint,
-                                get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
                                 glue_maps,
                                 label_species_atoms,
                                 make_bond_changes,
@@ -232,7 +229,7 @@ def map_rxn(rxn: 'ARCReaction',
             corresponding entry values are running atom indices of the products.
     """
     # step 1:
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
+    rmg_reactions = 5
     
     if not rmg_reactions:
         return None
