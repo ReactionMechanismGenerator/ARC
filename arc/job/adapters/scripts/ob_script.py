@@ -158,7 +158,7 @@ def save_output_file(path,
 
 def main():
     """
-    Run a job with torchani guesses.
+    Run a job with openbabel guesses.
     """
     args = parse_command_line_arguments()
     try:
