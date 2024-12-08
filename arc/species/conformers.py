@@ -269,9 +269,12 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         mol_list=mol_list, label=label, xyzs=xyzs, torsion_num=len(torsions), charge=charge, multiplicity=multiplicity,
         num_confs=num_confs_to_generate, force_field=force_field)
 
+    rings, rings_indices = determine_rings(mol_list)
     lowest_confs = list()
     if len(conformers):
         conformers = determine_dihedrals(conformers, torsions)
+        if len(rings):
+            conformers = determine_puckering(conformers, rings_indices)
 
         new_conformers, symmetries = deduce_new_conformers(
             label, conformers, torsions, tops, mol_list, smeared_scan_res, plot_path=plot_path,
@@ -884,6 +887,49 @@ def determine_dihedrals(conformers, torsions):
             for torsion in torsions:
                 dihedral = vectors.calculate_dihedral_angle(coords=xyz['coords'], torsion=torsion, index=1)
                 conformer['torsion_dihedrals'][tuple(torsion)] = dihedral
+    return conformers
+
+
+def determine_rings(mol_list):
+    """
+    Determine the rings in the molecule.
+
+    Args:
+        mol_list (list): Localized structures (Molecule objects) by which all rotors will be determined.
+
+    Returns:
+        Tuple[list, list]:
+            - A list of ring atoms.
+            - A list of ring atom indices.
+    """
+    rings, rings_indexes = list(), list()
+    for mol in mol_list:
+        rings = mol.get_deterministic_sssr()
+        rings_indexes = [[mol.atoms.index(atom) for atom in ring] for ring in rings]
+    return rings, rings_indexes
+
+
+def determine_puckering(conformers, rings_indices):
+    """
+    For each conformer in `conformers` determine the respective puckering angles.
+
+    Args:
+        conformers (list): Entries are conformer dictionaries.
+        rings_indices (list): Entries are lists of ring atom indices.
+        
+    Returns:
+        list: Entries are conformer dictionaries.
+    """
+    for conformer in conformers:
+        if isinstance(conformer['xyz'], str):
+            xyz = converter.str_to_xyz(conformer['xyz'])
+        else:
+            xyz = conformer['xyz']
+        if 'puckering' not in conformer or not conformer['puckering']:
+            conformer['puckering'] = dict()
+            for i, ring in enumerate(rings_indices):
+                theta = vectors.calculate_ring_dihedral_angles(coords=xyz['coords'], ring=ring, index=0)
+                conformer['puckering'][tuple((ring[i%len(ring)], ring[(i + 1)%len(ring)], ring[(i + 2)%len(ring)], ring[(i + 3)%len(ring)]) for i in range(len(ring)))] = theta    
     return conformers
 
 
