@@ -1380,12 +1380,14 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         return None, None
     xyz = check_xyz_dict(xyz)
 
-    if xyz['symbols'] == ('O', 'O') and multiplicity != 1:
-        coords = np.asarray(xyz['coords'], dtype=np.float32)
-        vector = coords[0] - coords[1]
-        if float(np.dot(vector, vector) ** 0.5) < 1.4:
-            # Special case for O2 triplet
-            return Molecule(smiles='[O][O]'), Molecule(smiles='[O][O]')
+    if len(xyz['symbols']) == 2:
+        for element, bond_length in zip(['O', 'S'], [1.4, 2.1]):
+            if xyz['symbols'] == (element, element) and multiplicity != 1:
+                coords = np.asarray(xyz['coords'], dtype=np.float32)
+                vector = coords[0] - coords[1]
+                if float(np.dot(vector, vector) ** 0.5) < bond_length:
+                    # Special case for O2 and S2 triplet
+                    return Molecule(smiles=f'[{element}][{element}]'), Molecule(smiles=f'[{element}][{element}]')
 
     # 1. Generate a molecule with no bond order information with atoms ordered as in xyz.
     mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
