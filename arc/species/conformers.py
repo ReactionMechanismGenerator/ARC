@@ -348,18 +348,25 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         symmetries[tuple(torsion)] = symmetry
     logger.debug(f'Identified {len([s for s in symmetries.values() if s > 1])} symmetric wells for {label}')
 
-    torsions_sampling_points, wells_dict = dict(), dict()
+    torsions_sampling_points, wells_dict, ring_sampling_points = dict(), dict(), dict()
     for tor, tor_angles in torsion_angles.items():
         torsions_sampling_points[tor], wells_dict[tor] = \
             determine_torsion_sampling_points(label, tor_angles, smeared_scan_res=smeared_scan_res,
                                               symmetry=symmetries[tor])
-
     if plot_path is not None:
         arc.plotter.plot_torsion_angles(torsion_angles, torsions_sampling_points, wells_dict=wells_dict,
                                         plot_path=plot_path)
+        ring_angle_data = arc.plotter.plot_ring_torsion_angles(conformers=conformers, plot_path=plot_path)
+    # Process the ring angle data
+    if ring_angle_data:
+        for ring, angle_counts in ring_angle_data.items():
+            angles = [list(angle) for angle, _ in angle_counts]
+            ring_sampling_points[tuple(ring)] = angles
+    
+    combined_sampling_points = {**torsions_sampling_points, **ring_sampling_points}
 
     hypothetical_num_comb = 1
-    for points in torsions_sampling_points.values():
+    for points in combined_sampling_points.values():
         hypothetical_num_comb *= len(points)
     number_of_chiral_centers = get_number_of_chiral_centers(label, mol, conformer=conformers[0],
                                                             just_get_the_number=True)
@@ -370,10 +377,10 @@ def deduce_new_conformers(label, conformers, torsions, tops, mol_list, smeared_s
         hypothetical_num_comb_str = str(hypothetical_num_comb)
     logger.info(f'\nHypothetical number of conformer combinations for {label}: {hypothetical_num_comb_str}')
 
-    # split torsions_sampling_points into two lists, use combinations only for those with multiple sampling points
+    # split combined_sampling_points into two lists, use combinations only for those with multiple sampling points
     single_tors, multiple_tors, single_sampling_point, multiple_sampling_points = list(), list(), list(), list()
     multiple_sampling_points_dict = dict()  # used for plotting an energy "scan"
-    for tor, points in torsions_sampling_points.items():
+    for tor, points in combined_sampling_points.items():
         if len(points) == 1:
             single_tors.append(tor)
             single_sampling_point.append((points[0]))
@@ -536,7 +543,8 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                                  'FF energy': round(energy, 3),
                                  'source': f'Changing dihedrals on most stable conformer, iteration {i}',
                                  'torsion': tor,
-                                 'dihedral': round(dihedral, 2),
+                                 'dihedral': round(dihedral, 2) if isinstance(dihedral, float)
+                                             else [round(angle, 2) for angle in dihedral],
                                  'dmat': dmat1,
                                  'fl_distance': fl_distance1}
                     newest_conformers_dict[tor].append(conformer)
@@ -552,7 +560,7 @@ def conformers_combinations_by_lowest_conformer(label, mol, base_xyz, multiple_t
                          'FF energy': None,
                          'source': f'Changing dihedrals on most stable conformer, iteration {i}, but FF energy is None',
                          'torsion': tor,
-                         'dihedral': round(dihedral, 2),
+                         'dihedral':  round(dihedral, 2) if isinstance(dihedral, float) else [round(angle, 2) for angle in dihedral],
                          'dmat': dmat1,
                          'fl_distance': fl_distance1})
         new_conformers.extend(newest_conformer_list)
