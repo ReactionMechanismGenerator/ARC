@@ -751,12 +751,33 @@ def change_dihedrals_and_force_field_it(label, mol, xyz, torsions, new_dihedrals
         new_dihedrals = [new_dihedrals]
 
     for dihedrals in new_dihedrals:
+        skip_to_next_dihedral = False  # Initialize a flag
         xyz_dihedrals = xyz
         for torsion, dihedral in zip(torsions, dihedrals):
             conf, rd_mol = converter.rdkit_conf_from_mol(mol, xyz_dihedrals)
             if conf is not None:
-                torsion_0_indexed = [tor - 1 for tor in torsion]
-                xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+                if not isinstance(dihedral, list):
+                    torsion_0_indexed = [tor - 1 for tor in torsion]
+                    xyz_dihedrals = converter.set_rdkit_dihedrals(conf, rd_mol, torsion_0_indexed, deg_abs=dihedral)
+                elif isinstance(dihedral, list):
+                    try:
+                        torsion_0_indexed = [[tor - 0 for tor in sub_torsion] for sub_torsion in torsion]
+                        ring_length = len(torsion_0_indexed)
+                        head = torsion_0_indexed[0][0]
+                        for torsion in torsion_0_indexed:
+                            if head == torsion[-1]:
+                                tail = torsion[-2]
+                                break
+                        xyz_dihedrals = converter.set_rdkit_ring_dihedrals(
+                            conf, rd_mol, head, tail, torsion_0_indexed[0:ring_length - 3], dihedral[0:ring_length - 3]
+                        )
+                    except Exception as e:  # Catch exceptions specifically from set_rdkit_ring_dihedrals
+                        print(f"Skipping ring dihedral due to an error: {e}")
+                        skip_to_next_dihedral = True  # Set the flag to skip this dihedral set
+                        break  # Exit the inner loop for this dihedral set
+        if skip_to_next_dihedral:
+            continue  # Skip the rest of this `dihedrals` iteration
+
         xyz_, energy = get_force_field_energies(label, mol=mol, xyz=xyz_dihedrals, optimize=True,
                                                 force_field=force_field, suppress_warning=True)
         if energy and xyz_:
