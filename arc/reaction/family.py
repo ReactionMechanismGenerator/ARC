@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from arc.reaction.reaction import ARCReaction
 
 RMG_DB_PATH = settings['RMG_DB_PATH']
+os.environ['ARC_FAMILIES_PATH'] = '/home/leen/Code/ARC/data/families'
 ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
 
@@ -54,6 +55,8 @@ class ReactionFamily(object):
             entry_labels.extend(reactant_group)
         self.entries = get_entries(self.groups_as_lines, entry_labels=entry_labels)
         self.actions = get_recipe_actions(self.groups_as_lines)
+        print(f"Initializing ReactionFamily with label: {self.label}")
+
 
     def __str__(self):
         """
@@ -72,12 +75,17 @@ class ReactionFamily(object):
         Returns:
             List[str]: The groups file as a list of lines.
         """
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', self.label, 'groups.py')
+        
+        groups_path = os.path.join(ARC_FAMILIES_PATH, self.label, 'groups.py')
+        print(f"Looking for groups.py in ARC families at: {groups_path}")  # Debug statement
+
+        if not os.path.isfile(groups_path) and consider_arc_families:
+        # If not found, fall back to the RMG database path
+           groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', self.label, 'groups.py')
            print(f"Looking for groups.py in RMG database at: {groups_path}")  # Debug statement
-            if consider_arc_families:
-                groups_path = os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')
-            if not os.path.isfile(groups_path):
-                raise FileNotFoundError(f'Could not find the groups file for family {self.label}')
+        if not os.path.isfile(groups_path):
+            raise FileNotFoundError(f'Could not find the groups file for family {self.label}')
+
         with open(groups_path, 'r') as f:
             groups_as_lines = f.readlines()
         return groups_as_lines
