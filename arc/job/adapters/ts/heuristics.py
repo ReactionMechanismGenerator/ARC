@@ -39,10 +39,7 @@ from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_th
 from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param,add_atom_to_zmat
-
-
-FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis'],
-               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
+from arc.reaction.family import  get_entries, ReactionFamily
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import KineticsFamily
@@ -56,7 +53,6 @@ FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysi
 DIHEDRAL_INCREMENT = 30
 
 logger = get_logger()
-
 
 class HeuristicsAdapter(JobAdapter):
     """
@@ -1109,7 +1105,7 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List
     Raises:
         ValueError: If the atom has no neighbors.
     """
-    atom = spc.mol.atoms[atom_index]
+    atom = spc.atoms[atom_index]
     neighbors = list(atom.edges.keys())
     yaml_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data', 'electronegativity.yml')
     electronegativity=load_electronegativity(yaml_file_path)
@@ -1132,32 +1128,63 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List
         reverse=True
     )
 
-    sorted_neighbors = [spc.mol.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
+    sorted_neighbors = [spc.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
     return sorted_neighbors[:2]
 
-"""
-def hydrolysis(arc_reaction: 'ARCReaction'):
-    
-        #Generate TS guesses for reactions of the RMG ``hydrolysis`` family.
+def generate_zmats(initial_zmat: dict,
+                   water: 'ARCSpecies',
+                   r_atoms: List[List[int]],
+                   a_atoms: List[List[int]],
+                   d_atoms: List[List[int]],
+                   r_value: List[float],
+                   a_value: List[float],
+                   d_values: List[List[float]],) \
+                   -> Tuple[List[dict], List[dict]]:
+        """
+        Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
-    #identify reactants and label reacting atoms
-    arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
-    arc_reactant,water=None,None
-    for mol in arc_reactants:
-        if not is_water(mol):
-            arc_reactant=mol
-            break
-        else water=mol
-    for atom in arc_reactant.atoms:
-        if atom.label=='*1':
-            a=atom
-            a_i=atom.atoms.index
-        elif atom.label=='*2':
-            b=atom
-            b_i=atom.atoms.index
+        Args:
+            initial_zmat (dict): The initial Z-matrix of the reactant.
+            water ('ARCSpecies'): The water molecule involved in the reaction.
+            r_atoms (List[List[int]]): Atom pairs for defining bond distances.
+            a_atoms (List[List[int]]): Atom triplets for defining bond angles.
+            d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
+            r_value (List[float]): Bond distances corresponding to each atom pair in `r_atoms`.
+            a_value (List[float]): Bond angles corresponding to each atom triplet in `a_atoms`.
+            d_values (List[List[float]]): Dihedral angle sets for each TS guess.
 
-    #identify 
-"""
+        Returns:
+            Tuple[List[dict], List[dict]]: A tuple containing:
+                - List[dict]: Unique Z-matrices for TS guesses without colliding atoms.
+                - List[dict]: Corresponding Cartesian coordinates for the TS guesses.
+        """
+        zmats, xyz_guesses = [], []
+        for d_value in d_values:
+            zmat_guess = copy.deepcopy(initial_zmat)
+            for i in range(3):
+                zmat_guess = add_atom_to_zmat(
+                    zmat_guess,
+                    water.mol.atoms[i],
+                    r_atoms[i],
+                    a_atoms[i],
+                    d_atoms[i],
+                    r_value[i],
+                    a_value[i],
+                    d_value[i],
+                )
+            print (zmat_guess)
+            xyz_guess = zmat_to_xyz(zmat_guess)
+
+            if xyz_guess is not None and not colliding_atoms(xyz_guess):
+                for existing_zmat_guess in zmats:
+                    if compare_zmats(existing_zmat_guess, zmat_guess):
+                        break
+                else:
+                    zmats.append(zmat_guess)
+                    xyz_guesses.append(xyz_guess)
+        return zmats, xyz_guesses
+
+
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
