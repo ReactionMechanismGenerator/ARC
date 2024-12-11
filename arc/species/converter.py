@@ -71,7 +71,59 @@ def str_to_str(xyz_str: str,
     """
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
-    pass
+    if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
+        xyz_str = os.path.join(project_directory, xyz_str)    
+    
+
+    BOHR_TO_ANGSTROM = 0.529177
+    ANGSTROM_TO_BOHR = 1.8897259886
+
+    if convert_to.lower() == 'angstrom':
+        conversion_factor = BOHR_TO_ANGSTROM
+    elif convert_to.lower() == 'bohr':
+        conversion_factor = ANGSTROM_TO_BOHR
+    else:
+        raise ValueError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
+
+
+    processed_lines = list()
+    # Split the string into lines
+    lxyz = xyz_str.strip().split()
+
+    atom_first = False if is_str_float(lxyz[0]) else True
+    lxyz = xyz_str.strip().splitlines()
+
+    for idx, item in enumerate(lxyz):
+        parts = item.strip().split()
+
+        if len(parts) != 4:
+            raise ConverterError(f'xyz_str has an incorrect format, expected 4 elements in each line, '
+                                    f'got "{item}" in:\n{xyz_str}')
+        if atom_first:
+            atom, x_str, y_str, z_str = parts
+        else:
+            x_str, y_str, z_str, atom = parts
+        
+        try:
+            x = float(x_str) * conversion_factor
+            y = float(y_str) * conversion_factor
+            z = float(z_str) * conversion_factor
+        
+        except ValueError:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.')
+        
+        if reverse_atoms and atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        elif reverse_atoms and not atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and not atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        
+        processed_lines.append(formatted_line)
+    
+    return '\n'.join(processed_lines)
 
 
 def str_to_xyz(xyz_str: str,
