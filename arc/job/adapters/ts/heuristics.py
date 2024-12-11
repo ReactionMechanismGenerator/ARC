@@ -1199,7 +1199,8 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     commands = [
         f'{CREST_PATH}',
         f'{path}/coords.ref',
-        f'--cinp {path}/constraints.inp'
+        f'--cinp {path}/constraints.inp',
+        '--noreftopo'
     ]
     command = ' '.join(commands)
     command = f"{CREST_ENV_PATH} && {command}" if CREST_ENV_PATH else command
