@@ -1087,6 +1087,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             for h_row in max_H_rows
             for col in ts_df_filt.columns[ts_df_filt.loc[h_row] == min_values_per_H[h_row]].tolist()
         ]
+        print("Row/Col of the lowest value: ", row_col_pairs)
         h_row = ts_df_filt.loc[row_col_pairs[0][0]]
         unique_sorted_values = h_row.sort_values().unique()
 
@@ -1103,8 +1104,11 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         if len(cols_second_lowest) == 1:
 
             h_str = row_col_pairs[0][0]  # 'H21'
+            print(f"h str = {h_str}")
             b_str = row_col_pairs[0][1]  # 'C14'
+            print(f"b str {b_str}")
             a_str = cols_second_lowest     # 'C4'
+            print(f"a str {a_str}")
 
             h = int(re.findall(r'\d+', h_str)[0])
             b = int(re.findall(r'\d+', b_str)[0])
