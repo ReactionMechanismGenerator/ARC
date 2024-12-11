@@ -1097,28 +1097,30 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             second_lowest = unique_sorted_values[1]
             print(f"The second lowest unique value in H21 is: {second_lowest}")
             cols_second_lowest = h_row[h_row == second_lowest].index.tolist()
+
+            if len(cols_second_lowest) == 1:
+
+                h_str = row_col_pairs[0][0]  # 'H21'
+                print(f"h str = {h_str}")
+                b_str = row_col_pairs[0][1]  # 'C14'
+                print(f"b str {b_str}")
+                a_str = cols_second_lowest[0]     # 'C4'
+                print(f"a str {a_str}")
+
+                h = int(re.findall(r'\d+', h_str)[0])
+                b = int(re.findall(r'\d+', b_str)[0])
+                a = int(re.findall(r'\d+', a_str)[0])
+
+                # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
+                logger.info(f'a: {a}, b: {b}, h: {h}')
+            else:
+                crest_run = False
+                print(f"Received more than one result for second lowest: {cols_second_lowest}")
         else:
             crest_run = False
             print("H21 does not have a second lowest unique value. Will not do CREST")
         
-        if len(cols_second_lowest) == 1:
 
-            h_str = row_col_pairs[0][0]  # 'H21'
-            print(f"h str = {h_str}")
-            b_str = row_col_pairs[0][1]  # 'C14'
-            print(f"b str {b_str}")
-            a_str = cols_second_lowest[0]     # 'C4'
-            print(f"a str {a_str}")
-
-            h = int(re.findall(r'\d+', h_str)[0])
-            b = int(re.findall(r'\d+', b_str)[0])
-            a = int(re.findall(r'\d+', a_str)[0])
-
-            # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
-            logger.info(f'a: {a}, b: {b}, h: {h}')
-        else:
-            crest_run = False
-            print(f"Received more than one result for second lowest: {cols_second_lowest}")
 
         ####
 

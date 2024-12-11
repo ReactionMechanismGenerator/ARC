@@ -1,0 +1,37 @@
+#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J server3
+#SBATCH -N 1
+#SBATCH -n 8
+#SBATCH --time=120:00:00
+#SBATCH --mem-per-cpu=15770000000
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+export g16root=/home/gridsan/groups/GRPAPI/Software
+export PATH=$g16root/g16/:$g16root/gv:$PATH
+which g16
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+touch initial_time
+
+GAUSS_SCRDIR=/state/partition1/user/<username>/$SLURM_JOB_NAME-$SLURM_JOB_ID
+export $GAUSS_SCRDIR
+. $g16root/g16/bsd/g16.profile
+
+mkdir -p $GAUSS_SCRDIR
+
+g16 < input.gjf > input.log
+
+rm -rf $GAUSS_SCRDIR
+
+touch final_time
+
+        
