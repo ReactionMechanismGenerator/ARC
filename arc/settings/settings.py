@@ -8,6 +8,7 @@ Any definitions made to the local file will take precedence over this file.
 import os
 import string
 import sys
+import shutil
 
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
@@ -362,3 +363,82 @@ for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_p
     if os.path.isfile(arc_pypath):
         ARC_PYTHON = arc_pypath
         break
+
+crest_path1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
+                                'crest_env', 'bin', 'crest')
+crest_path2 = os.path.join(home, 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path3 = os.path.join(home, 'miniconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path4 = os.path.join(home, '.conda', 'envs', 'crest_env', 'bin', 'crest')
+crest_path5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
+crest_path6 = os.path.join(home, 'mambaforge', 'envs', 'crest_env', 'bin', 'crest')
+crest_path7 = os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'crest')
+# Binary path for CREST
+
+
+for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_path5, crest_path6, crest_path7]:
+    if os.path.isfile(crest_path):
+        CREST_PATH = crest_path
+        # check if using micromamba, mambaforge, anaconda3, miniconda3, or .conda
+        if 'micromamba' in crest_path:
+            #         CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
+            CREST_ENV_PATH = "source ~/.bashrc && micromamba activate crest_env"
+        elif 'mambaforge' in crest_path:
+            CREST_ENV_PATH = "source ~/.bashrc && mamba activate crest_env"
+        elif 'anaconda3' in crest_path:
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
+        elif 'miniconda3' in crest_path:
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
+        elif '.conda' in crest_path:
+            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
+        break
+# If the path (environment) does not exist, then we use the binary
+
+
+def find_crest_executable():
+    """
+    Searches for the 'crest' executable in known environment directories and the system PATH.
+
+    Returns:
+        tuple: (crest_path, env_manager_command)
+               - crest_path (str): Full path to the 'crest' executable.
+               - env_manager_command (str): Command to activate the environment containing 'crest'.
+    """
+    home = os.path.expanduser('~')
+    # List of potential environments where 'crest' might be installed
+    potential_env_paths = [
+        os.path.join(home, 'anaconda3', 'envs', 'crest_env', 'bin', 'crest'),
+        os.path.join(home, 'miniconda3', 'envs', 'crest_env', 'bin', 'crest'),
+        os.path.join(home, '.conda', 'envs', 'crest_env', 'bin', 'crest'),
+        os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'crest_env', 'bin', 'crest'),
+        os.path.join(home, 'mambaforge', 'envs', 'crest_env', 'bin', 'crest'),
+        os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'crest'),
+    ]
+
+    # Include the 'crest' in the current Python environment if applicable
+    current_env_bin = os.path.dirname(sys.executable)
+    crest_in_current_env = os.path.join(current_env_bin, 'crest')
+    potential_env_paths.insert(0, crest_in_current_env)  # Prioritize current environment
+
+    # Iterate through the potential paths
+    for crest_path in potential_env_paths:
+        if os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
+            # Determine which environment manager is used based on the path
+            if 'micromamba' in crest_path:
+                env_cmd = "source ~/.bashrc && micromamba activate crest_env"
+            elif 'mambaforge' in crest_path:
+                env_cmd = "source ~/.bashrc && mamba activate crest_env"
+            elif any(keyword in crest_path for keyword in ['anaconda3', 'miniconda3', '.conda']):
+                env_cmd = "source ~/.bashrc && conda activate crest_env"
+            else:
+                env_cmd = ""  # Standalone binary; no environment activation needed
+            return crest_path, env_cmd
+
+    # If not found in environments, attempt to find 'crest' in PATH
+    crest_in_path = shutil.which('crest')
+    if crest_in_path:
+        return crest_in_path, ""  # No environment activation needed
+
+    # 'crest' not found
+    return None, None
+
+CREST_PATH, CREST_ENV_PATH = find_crest_executable()

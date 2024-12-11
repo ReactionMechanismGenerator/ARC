@@ -570,7 +570,11 @@ class JobAdapter(ABC):
             species_name_remote = self.species_label if isinstance(self.species_label, str) else self.species[0].multi_species
             species_name_remote = species_name_remote.replace('(', '_').replace(')', '_')
             path = servers[self.server].get('path', '').lower()
-            path = os.path.join(path, servers[self.server]['un']) if path else ''
+            if path is None:
+                # Log a warning if the path is not defined in the server settings.
+                logger.warning(f'Path is not defined as a key settings.py for server {self.server}.')
+            if servers[self.server]['un'].lower() not in path:
+                path = os.path.join(path, servers[self.server]['un']) if path else ''
             self.remote_path = os.path.join(path, 'runs', 'ARC_Projects', self.project,
                                             species_name_remote, self.job_name)
 
@@ -944,18 +948,24 @@ class JobAdapter(ABC):
         if cluster_soft in ['oge', 'sge', 'slurm', 'pbs', 'htcondor']:
             local_file_path_1 = os.path.join(self.local_path, 'out.txt')
             local_file_path_2 = os.path.join(self.local_path, 'err.txt')
-            local_file_path_3 = os.path.join(self.local_path, 'job.log')
+            local_file_path_3 = None
+            for files in self.files_to_upload:
+                if 'job.sh' in files.values():
+                    local_file_path_3 = os.path.join(self.local_path, 'job.log')
             if self.server != 'local' and self.remote_path is not None and not self.testing:
                 remote_file_path_1 = os.path.join(self.remote_path, 'out.txt')
                 remote_file_path_2 = os.path.join(self.remote_path, 'err.txt')
-                remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
+                remote_file_path_3 = None
+                for files in self.files_to_upload:
+                    if 'job.sh' in files.values():
+                        remote_file_path_3 = os.path.join(self.remote_path, 'job.log')
                 with SSHClient(self.server) as ssh:
-                    for local_file_path, remote_file_path in zip([local_file_path_1,
-                                                                  local_file_path_2,
-                                                                  local_file_path_3],
-                                                                 [remote_file_path_1,
-                                                                  remote_file_path_2,
-                                                                  remote_file_path_3]):
+                    local_files_to_zip = [local_file_path_1, local_file_path_2]
+                    remote_files_to_zip = [remote_file_path_1, remote_file_path_2]
+                    if local_file_path_3 and remote_file_path_3:
+                        local_files_to_zip.append(local_file_path_3)
+                        remote_files_to_zip.append(remote_file_path_3)
+                    for local_file_path, remote_file_path in zip(local_files_to_zip, remote_files_to_zip):
                         try:
                             ssh.download_file(remote_file_path=remote_file_path,
                                               local_file_path=local_file_path)
@@ -965,7 +975,7 @@ class JobAdapter(ABC):
                                            f'flags with stdout and stderr of out.txt and err.txt, respectively '
                                            f'(e.g., "#SBATCH -o out.txt"). Error message:')
                             logger.warning(e)
-            for local_file_path in [local_file_path_1, local_file_path_2, local_file_path_3]:
+            for local_file_path in [path for path in [local_file_path_1, local_file_path_2, local_file_path_3] if path]:
                 if os.path.isfile(local_file_path):
                     with open(local_file_path, 'r') as f:
                         lines = f.readlines()
@@ -1393,3 +1403,11 @@ class JobAdapter(ABC):
         if key is not None:
             content[key] = val
         save_yaml_file(path=yml_out_path, content=content)
+
+    def remove_remote_files(self):
+        """
+        Remove the remote files.
+        """
+        if self.server != 'local' and self.server is not None:
+            with SSHClient(self.server) as ssh:
+                ssh.remove_dir(self.remote_path)

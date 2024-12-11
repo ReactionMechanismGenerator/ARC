@@ -17,6 +17,9 @@ Todo:
 
 import datetime
 import itertools
+import math
+import subprocess
+import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -28,11 +31,12 @@ from rmgpy.species import Species
 from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
-from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
+from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz, str_to_xyz, xyz_to_str
 from arc.mapping.engine import map_arc_rmg_species, map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
@@ -42,6 +46,13 @@ if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
 
+try:
+    CREST_PATH = settings['CREST_PATH']
+    CREST_ENV_PATH = settings['CREST_ENV_PATH']
+    HAS_CREST = True
+
+except KeyError:
+    HAS_CREST = False
 
 DIHEDRAL_INCREMENT = 30
 
@@ -285,6 +296,7 @@ class HeuristicsAdapter(JobAdapter):
                 xyzs = h_abstraction(arc_reaction=rxn,
                                      rmg_reactions=reaction_list,
                                      dihedral_increment=self.dihedral_increment,
+                                     path=self.local_path,
                                      )
                 tsg.tok()
 
@@ -443,6 +455,9 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
 
     a = mol_1.atoms.index(list(mol_1.atoms[h1].edges.keys())[0])
     b = mol_2.atoms.index(list(mol_2.atoms[h2].edges.keys())[0])
+    
+    #log if a and b are different from prev step
+    logger.info(f'Combining coordinates with redundant atoms for atoms A ({a}) and B ({b})')
     if c == a:
         raise ValueError(f'The value for c ({c}) is invalid (it represents atom A, not atom C)')
     if d == b:
@@ -925,6 +940,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                   r2_stretch: float = 1.2,
                   a2: float = 180,
                   dihedral_increment: Optional[int] = None,
+                  path: str = '',
                   ) -> List[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
@@ -978,7 +994,8 @@ def h_abstraction(arc_reaction: 'ARCReaction',
         rmg_product_mol = rmg_reaction.products[int(not products_reversed)].molecule[0]
         h1 = rmg_reactant_mol.atoms.index([atom for atom in rmg_reactant_mol.atoms if atom.label == '*2'][0])
         h2 = rmg_product_mol.atoms.index([atom for atom in rmg_product_mol.atoms if atom.label == '*2'][0])
-
+        a = rmg_reactant_mol.atoms.index(list(rmg_reactant_mol.atoms[h1].edges.keys())[0])
+        b = rmg_product_mol.atoms.index(list(rmg_product_mol.atoms[h2].edges.keys())[0])
         c = find_distant_neighbor(rmg_mol=rmg_reactant_mol, start=h1)
         d = find_distant_neighbor(rmg_mol=rmg_product_mol, start=h2)
 
@@ -1032,7 +1049,177 @@ def h_abstraction(arc_reaction: 'ARCReaction',
                     zmats.append(zmat_guess)
                     xyz_guesses.append(xyz_guess)
 
+    if xyz_guesses:
+        # Take the first guess from the list of unique guesses.
+        xyz_guesses_crest = xyz_guesses[0]
+
+        ####
+        from arc.species.converter import xyz_to_dmat
+        import pandas as pd
+        import re
+        # 1. Convert xyz to dmat
+        ts_dmat = xyz_to_dmat(xyz_guesses_crest)
+        # 2. Create DataFrame & append ints to columns/index symbols
+        ts_df = pd.DataFrame(ts_dmat, index=xyz_guesses_crest["symbols"], columns=xyz_guesses_crest["symbols"])
+        org_labels = list(ts_df.columns)
+        row_label_mapping = [str(str(label) + str(i)) for i, label in enumerate(org_labels)]
+        column_label_mapping = [str(str(label) + str(i)) for i, label in enumerate(org_labels)]
+        ts_df.columns = column_label_mapping
+        ts_df.index = row_label_mapping
+        # 3. Filter Index(H), Column(~H)
+        columns_mask = ~ts_df.columns.str.startswith('H')
+        columns_to_remove = ts_df.columns[columns_mask]
+
+        rows_mask = ts_df.columns.str.startswith('H')
+        rows_to_keep = ts_df.index[rows_mask]
+
+        ts_df_filt = ts_df.loc[rows_to_keep, columns_to_remove]
+
+        # 4. Get min values per H
+        min_values_per_H = ts_df_filt.min(axis=1)
+        # 5. Get max value H
+        max_min_H_values = min_values_per_H.max()
+
+        max_H_rows = min_values_per_H[min_values_per_H == max_min_H_values].index.tolist()
+
+        row_col_pairs = [
+            (h_row, col)
+            for h_row in max_H_rows
+            for col in ts_df_filt.columns[ts_df_filt.loc[h_row] == min_values_per_H[h_row]].tolist()
+        ]
+        print("Row/Col of the lowest value: ", row_col_pairs)
+        h_row = ts_df_filt.loc[row_col_pairs[0][0]]
+        unique_sorted_values = h_row.sort_values().unique()
+
+        crest_run = True
+
+        if len(unique_sorted_values) >= 2:
+            second_lowest = unique_sorted_values[1]
+            print(f"The second lowest unique value in H21 is: {second_lowest}")
+            cols_second_lowest = h_row[h_row == second_lowest].index.tolist()
+        else:
+            crest_run = False
+            print("H21 does not have a second lowest unique value. Will not do CREST")
+        
+        if len(cols_second_lowest) == 1:
+
+            h_str = row_col_pairs[0][0]  # 'H21'
+            print(f"h str = {h_str}")
+            b_str = row_col_pairs[0][1]  # 'C14'
+            print(f"b str {b_str}")
+            a_str = cols_second_lowest[0]     # 'C4'
+            print(f"a str {a_str}")
+
+            h = int(re.findall(r'\d+', h_str)[0])
+            b = int(re.findall(r'\d+', b_str)[0])
+            a = int(re.findall(r'\d+', a_str)[0])
+
+            # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
+            logger.info(f'a: {a}, b: {b}, h: {h}')
+        else:
+            crest_run = False
+            print(f"Received more than one result for second lowest: {cols_second_lowest}")
+
+        ####
+
+        if crest_run:
+            xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a, h, b, path=path)
+        if xyz_guess is not None:
+            logger.info('Successfully completed crest conformer search:'
+                        f' {xyz_to_str(xyz_guess)}')
+            xyz_guesses.append(xyz_guess)
+
     return xyz_guesses
+
+
+def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom: int, path: str = ''
+                              ) -> None:
+    """
+    Perform a conformer search for the TS guess using CREST.
+    
+    
+    # TODO: Check if CREST is available
+    # TODO: Pass the first xyz guess from h_abstraction to CREST
+    # TODO: Pass the atom A - H - B for constraints
+    
+    """
+    path = os.path.join(path, 'crest')
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    # Write coords to coords.ref file
+    symbols = xyz_guess['symbols']
+    coords = xyz_guess['coords']
+    angstrom_to_bohr = 1.8897259886
+
+
+    with open(os.path.join(path, 'coords.ref'), 'w') as f:
+        # Format - XYZ in Bohr:
+        #
+        # $coord
+        # x y z atom1
+        # x y z atom2
+        # ...
+        # $end
+
+        f.write('$coord\n')
+        for i, (x, y, z) in enumerate(coords):
+            # Convert to Bohr from Angstrom
+            x_bohr = x * angstrom_to_bohr
+            y_bohr = y * angstrom_to_bohr
+            z_bohr = z * angstrom_to_bohr
+            f.write(f'    {x_bohr:>18.14f} {y_bohr:>18.14f} {z_bohr:>18.14f}   {symbols[i]}\n')
+        f.write('$end\n')
+    
+    # Get count of atoms - remember to add 1 to all atom numbers
+    num_atoms = len(symbols)
+    a_atom += 1
+    h_atom += 1
+    b_atom += 1
+
+    list_of_atoms_numbers_not_participating_in_reaction = [i for i in range(1, num_atoms + 1) if i not in [a_atom, h_atom, b_atom]]
+
+    with open(os.path.join(path, 'constraints.inp'), 'w') as f:
+        # Header
+        f.write('$constrain\n')
+        f.write(f'  atoms: {a_atom}, {h_atom}, {b_atom}\n')
+        f.write('  force constant: 0.5\n')
+        f.write('  reference=coords.ref\n')
+        
+        # Distance constraints
+        f.write(f'  distance: {a_atom}, {h_atom}, auto\n')
+        f.write(f'  distance: {h_atom}, {b_atom}, auto\n')
+        
+        # Metadynamics setup
+        f.write('$metadyn\n')
+        f.write(f'  atoms: {", ".join(map(str, list_of_atoms_numbers_not_participating_in_reaction))}\n')
+        f.write('$end\n')
+    # Run CREST
+    # Prepare the command
+    commands = [
+        f'{CREST_PATH}',
+        f'{path}/coords.ref',
+        f'--cinp {path}/constraints.inp',
+        '--noreftopo'
+    ]
+    command = ' '.join(commands)
+    command = f"{CREST_ENV_PATH} && {command}" if CREST_ENV_PATH else command
+    # Run the command using Popen
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=path, executable='/bin/bash')    
+    stdout, stderr = process.communicate()
+
+    if process.returncode == 0:
+        print("Command completed successfully.")
+        with open(os.path.join(path, 'crest_best.xyz'), 'r') as f:
+            content = f.read()
+        
+        xyz_guess = str_to_xyz(content)
+        return xyz_guess
+    else:
+        print(f"Command failed with return code {process.returncode}")
+        print(f"Standard Output: {stdout.decode()}")
+        print(f"Standard Error: {stderr.decode()}")
+        return None
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
