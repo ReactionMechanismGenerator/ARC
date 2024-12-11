@@ -49,6 +49,31 @@ ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
 
+def str_to_str(xyz_str: str,
+               reverse_atoms: bool = False,
+               convert_to: str = 'angstrom',
+               project_directory: Optional[str] = None
+               ) -> str:
+    """
+    Convert a string xyz format from `ATOM X Y Z` to `X Y Z ATOM`. Also, can convert units from `Angstrom` to `Bohr` and vice versa.
+
+    Args:
+        xyz_str (str): The string xyz format to be converted.
+        reverse_atoms (bool, optional): Whether to reverse the atoms and coordinates.
+        convert_to (str, optional): The units to convert to (either 'angstrom' or 'bohr').
+        project_directory (str, optional): The path to the project directory.
+    
+    Raises:
+        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.
+
+    Returns: str
+        The converted string xyz format.
+    """
+    if not isinstance(xyz_str, str):
+        raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
+    pass
+
+
 def str_to_xyz(xyz_str: str,
                project_directory: Optional[str] = None,
                ) -> dict:
