@@ -1052,25 +1052,74 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     if xyz_guesses:
         # Take the first guess from the list of unique guesses.
         xyz_guesses_crest = xyz_guesses[0]
-        # h_atom = h1
-        h_atom = h1 + h2
-        
-        a_atom = a
 
-        val_inc = - 1 if h2 < b else 0
-        
-        # Minusing by 1 because, I think, the atom H is now later in the bonding - so we need to account for that
-        # But the question is whether this is a specific case or a general one
-        b_atom = len(arc_product.get_xyz()['symbols']) + b + val_inc - 1
-        
-        # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
-        logger.info(f'a: {a}, b: {b}, h1: {h1}, h2: {h2}, b_atom: {b_atom}, a_atom: {a_atom}, h_atom: {h_atom}, val_inc: {val_inc}')
-        # log len of arc_product.get_xyz()['symbols'] 
-        logger.info(f"len of arc_product.get_xyz()[\'symbols\']: {len(arc_product.get_xyz()['symbols'])}")
-        # log len of arc_reactant.get_xyz()['symbols']
-        logger.info(f"len of arc_reactant.get_xyz()[\'symbols\']: {len(arc_reactant.get_xyz()['symbols'])}")
+        ####
+        from arc.species.converter import xyz_to_dmat
+        import pandas as pd
+        import re
+        # 1. Convert xyz to dmat
+        ts_dmat = xyz_to_dmat(xyz_guesses_crest)
+        # 2. Create DataFrame & append ints to columns/index symbols
+        ts_df = pd.DataFrame(ts_dmat, index=xyz_guesses_crest["symbols"], columns=xyz_guesses_crest["symbols"])
+        org_labels = list(ts_df.columns)
+        row_label_mapping = [str(str(label) + str(i)) for i, label in enumerate(org_labels)]
+        column_label_mapping = [str(str(label) + str(i)) for i, label in enumerate(org_labels)]
+        ts_df.columns = column_label_mapping
+        ts_df.index = row_label_mapping
+        # 3. Filter Index(H), Column(~H)
+        columns_mask = ~ts_df.columns.str.startswith('H')
+        columns_to_remove = ts_df.columns[columns_mask]
 
-        xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a_atom, h_atom, b_atom, path=path)
+        rows_mask = ts_df.columns.str.startswith('H')
+        rows_to_keep = ts_df.index[rows_mask]
+
+        ts_df_filt = ts_df.loc[rows_to_keep, columns_to_remove]
+
+        # 4. Get min values per H
+        min_values_per_H = ts_df_filt.min(axis=1)
+        # 5. Get max value H
+        max_min_H_values = min_values_per_H.max()
+
+        max_H_rows = min_values_per_H[min_values_per_H == max_min_H_values].index.tolist()
+
+        row_col_pairs = [
+            (h_row, col)
+            for h_row in max_H_rows
+            for col in ts_df_filt.columns[ts_df_filt.loc[h_row] == min_values_per_H[h_row]].tolist()
+        ]
+        h_row = ts_df_filt.loc[row_col_pairs[0][0]]
+        unique_sorted_values = h_row.sort_values().unique()
+
+        crest_run = True
+
+        if len(unique_sorted_values) >= 2:
+            second_lowest = unique_sorted_values[1]
+            print(f"The second lowest unique value in H21 is: {second_lowest}")
+            cols_second_lowest = h_row[h_row == second_lowest].index.tolist()
+        else:
+            crest_run = False
+            print("H21 does not have a second lowest unique value. Will not do CREST")
+        
+        if len(cols_second_lowest) == 1:
+
+            h_str = row_col_pairs[0][0]  # 'H21'
+            b_str = row_col_pairs[0][1]  # 'C14'
+            a_str = cols_second_lowest     # 'C4'
+
+            h = int(re.findall(r'\d+', h_str)[0])
+            b = int(re.findall(r'\d+', b_str)[0])
+            a = int(re.findall(r'\d+', a_str)[0])
+
+            # log info a, b, h1, h2, b_atom, a_atom, h_atom, val_inc
+            logger.info(f'a: {a}, b: {b}, h: {h}')
+        else:
+            crest_run = False
+            print(f"Received more than one result for second lowest: {cols_second_lowest}")
+
+        ####
+
+        if crest_run:
+            xyz_guess = crest_ts_conformer_search(xyz_guesses_crest, a, h, b, path=path)
         if xyz_guess is not None:
             logger.info('Successfully completed crest conformer search:'
                         f' {xyz_to_str(xyz_guess)}')
