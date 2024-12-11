@@ -741,7 +741,7 @@ class Scheduler(object):
                         del self.running_jobs[label]
 
             if self.timer and len(job_list):
-                time.sleep(30)  # wait 30 sec before bugging the servers again.
+                time.sleep(300)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
             if t > 3600 and self.running_jobs:
                 self.report_time = time.time()
@@ -1901,7 +1901,10 @@ class Scheduler(object):
                 try:
                     b_mol = molecules_from_xyz(self.species_dict[label].initial_xyz,
                                                multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
+                                               charge=self.species_dict[label].charge,
+                                               original_molecule=self.species_dict[label].mol,
+                                               numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                               )[1]
                 except SanitizationError:
                     b_mol = None
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
@@ -2064,9 +2067,12 @@ class Scheduler(object):
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
                     try:
-                        b_mol = molecules_from_xyz(xyz,
+                        b_mol = molecules_from_xyz(xyz=xyz,
                                                    multiplicity=self.species_dict[label].multiplicity,
-                                                   charge=self.species_dict[label].charge)[1]
+                                                   charge=self.species_dict[label].charge,
+                                                   original_molecule=self.species_dict[label].mol,
+                                                   numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                   )[1]
                     except SanitizationError:
                         b_mol = None
                     if b_mol is not None:
@@ -2097,9 +2103,12 @@ class Scheduler(object):
                                 self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
-                                    mol = molecules_from_xyz(xyzs[0],
+                                    mol = molecules_from_xyz(xyz=xyzs[0],
                                                              multiplicity=self.species_dict[label].multiplicity,
-                                                             charge=self.species_dict[label].charge)[1]
+                                                             charge=self.species_dict[label].charge,
+                                                             original_molecule=self.species_dict[label].mol,
+                                                             numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                             )[1]
                                     smiles_1 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
                                         if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                     smiles_2 = mol.copy(deep=True).to_smiles() \
@@ -2136,7 +2145,10 @@ class Scheduler(object):
                         try:
                             b_mol = molecules_from_xyz(xyz,
                                                        multiplicity=self.species_dict[label].multiplicity,
-                                                       charge=self.species_dict[label].charge)[1]
+                                                       charge=self.species_dict[label].charge,
+                                                       original_molecule=self.species_dict[label].mol,
+                                                       numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                       )[1]
                             smiles_list.append(b_mol.copy(deep=True).to_smiles())
                         except (SanitizationError, AttributeError):
                             smiles_list.append('Could not perceive molecule')
@@ -2514,7 +2526,7 @@ class Scheduler(object):
                     if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
-                                 checks=['freq'],
+                                 checks=['NMD'],
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
@@ -2615,9 +2627,7 @@ class Scheduler(object):
                     before_optimization=False,
                 )
                 if not self.testing:
-                    # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                # Set the ts_checks attribute of the TS species:
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
@@ -3485,6 +3495,8 @@ class Scheduler(object):
             self.species_dict[label].checkfile = None
         job.ess_trsh_methods = ess_trsh_methods
 
+        jobs_info = self.job_dict.get('TS0', {}).get('conf_opt', [])
+
         if not couldnt_trsh:
             self.run_job(label=label,
                          xyz=xyz,
@@ -3503,13 +3515,39 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
-        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
+            
+        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted and not any(self.is_job_running(jobs_info[job]) for job in jobs_info.keys()):
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')
             self.switch_ts(label=label)
 
         self.save_restart_dict()
+
+###### TO BE MOVED
+    def is_job_running(self,job):
+        """
+        Safely checks if the given job is in the 'running' state.
+        
+        Parameters:
+            job: The job object containing the .job_status attribute.
+        
+        Returns:
+            bool: True if the job is running, False otherwise.
+        """
+        try:
+            if isinstance(job.job_status, list) and len(job.job_status) > 0:
+                return job.job_status[0].lower() == 'running'
+        except AttributeError:
+            # The job object does not have a 'job_status' attribute
+            pass
+        return False
+
+
+
+
+#################
+
 
     def troubleshoot_conformer_isomorphism(self, label: str):
         """

@@ -171,6 +171,7 @@ def determine_ess_status(output_path: str,
                                 error = 'GS2 Optimization Failure'
                                 line = 'GS2 Optimization Failure'
                                 break
+                    
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
                         additional_info = forward_lines[len(forward_lines) - i - 2]
                         if 'No data on chk file' in additional_info \
@@ -986,14 +987,15 @@ def trsh_ess_job(label: str,
 
             # Ensure reduced_memory is strictly less than current memory_gb
             if reduced_memory >= memory_gb:
-                reduced_memory = max(2, memory_gb - 1)
+                reduced_memory = max(2, memory_gb - 5)  # Reduce by at least 5 GB if needed to make it strictly less
+
             logger.info(f'Troubleshooting {job_type} job in {software} for {label} using less memory: {reduced_memory} GB '
                         f'instead of {memory_gb} GB')
 
             # Check for existing 'waste_memory_' entries and calculate next reduction level
             if f'waste_memory_{reduced_memory}' not in ess_trsh_methods:
                 ess_trsh_methods.append(f'waste_memory_{reduced_memory}')
-                memory = reduced_memory  # Update memory to the reduced value for next iteration
+                memory_gb = reduced_memory  # Update memory to the reduced value for next iteration
             else:
                 couldnt_trsh = True
                 logger.info(f'{logger_phrase} was unsuccessful. No further reductions possible without reaching threshold.')
@@ -1827,12 +1829,12 @@ def trsh_keyword_cartesian(job_status, ess_trsh_methods, job_type, trsh_keyword:
     Check if the job requires change of cartesian coordinate
     """
     if 'InternalCoordinateError' in job_status['keywords'] \
-                and 'cartesian' not in ess_trsh_methods:
-        ess_trsh_methods.append('cartesian')
+                and 'opt=(cartesian)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(cartesian)')
         trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
-    elif 'cartesian' in ess_trsh_methods and \
-            job_type == 'opt' and 'cartesian' not in trsh_keyword:
+    elif 'opt=(cartesian)' in ess_trsh_methods \
+                and 'opt=(cartesian)' not in trsh_keyword:
         trsh_keyword.append('opt=(cartesian)')
         couldnt_trsh = False
 
