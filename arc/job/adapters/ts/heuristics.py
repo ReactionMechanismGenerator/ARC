@@ -1107,7 +1107,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             print(f"h str = {h_str}")
             b_str = row_col_pairs[0][1]  # 'C14'
             print(f"b str {b_str}")
-            a_str = cols_second_lowest     # 'C4'
+            a_str = cols_second_lowest[0]     # 'C4'
             print(f"a str {a_str}")
 
             h = int(re.findall(r'\d+', h_str)[0])
