@@ -1184,16 +1184,14 @@ def generate_zmats(initial_zmat: dict,
                     a_value[i],
                     d_value[i],
                 )
-            print (zmat_guess)
             xyz_guess = zmat_to_xyz(zmat_guess)
+            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats)
+            if xyz_guess is not None and not colliding_atoms(xyz_guess) and not duplicate:
+                zmats.append(zmat_guess)
+                xyz_guesses.append(xyz_guess)
+            else:
+                print(f"Colliding atoms or existing zmat: {xyz_guess}")
 
-            if xyz_guess is not None and not colliding_atoms(xyz_guess):
-                for existing_zmat_guess in zmats:
-                    if compare_zmats(existing_zmat_guess, zmat_guess):
-                        break
-                else:
-                    zmats.append(zmat_guess)
-                    xyz_guesses.append(xyz_guess)
         return zmats, xyz_guesses
 
 
