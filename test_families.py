@@ -181,18 +181,18 @@ class TestImineHydrolysisReactionFamily(unittest.TestCase):
         water = ARCSpecies(label='H2O', smiles=water_smiles)
 
         # Define the expected product (assuming a hydrolyzed imine product)
-        acid_smiles = 'CC(O)(N)C'  # Example hydrolyzed product
-        acid = ARCSpecies(label='acid', smiles=acid_smiles)
+        amine_smiles = 'CC(O)(N)C'  # Example hydrolyzed product
+        amine = ARCSpecies(label='amine', smiles=acid_smiles)
 
         # Create a reaction instance
-        rxn = ARCReaction(r_species=[imine, water], p_species=[acid], rmg_family_set=['imine_hydrolysis'])
+        rxn = ARCReaction(r_species=[imine, water], p_species=[amine], rmg_family_set=['imine_hydrolysis'])
 
         # Get reaction products
         products = get_reaction_family_products(rxn)
 
         # Check if the generated products match expected ones
         product_smiles = [p.to_smiles() for p in products[0]['products']]
-        expected_product_smiles = {acid_smiles}
+        expected_product_smiles = {amine_smiles}
 
         self.assertEqual(set(product_smiles), expected_product_smiles)
 
@@ -238,21 +238,21 @@ class TestEtherHydrolysisReactionFamily(unittest.TestCase):
         water = ARCSpecies(label='H2O', smiles=water_smiles)
 
         # Define the expected products 
-        acid_smiles = 'CCO'
-        alcohol_smiles = 'CO'
+        alcohol1_smiles = 'CCO'
+        alcohol2_smiles = 'CO'
 
-        acid = ARCSpecies(label='acid', smiles=acid_smiles)
-        alcohol = ARCSpecies(label='alcohol', smiles=alcohol_smiles)
+        alcohol1 = ARCSpecies(label='alcohol1', smiles=alcohol1_smiles)
+        alcohol2 = ARCSpecies(label='alcohol2', smiles=alcohol2_smiles)
 
         # Create a reaction instance
-        rxn = ARCReaction(r_species=[ether, water], p_species=[acid, alcohol], rmg_family_set=['ether_hydrolysis'])
+        rxn = ARCReaction(r_species=[ether, water], p_species=[alcohol1, alcohol2], rmg_family_set=['ether_hydrolysis'])
 
         # Get reaction products
         products = get_reaction_family_products(rxn)
 
         # Check if the generated products match expected ones
         product_smiles = [p.to_smiles() for p in products[0]['products']]
-        expected_product_smiles = {acid_smiles, alcohol_smiles}
+        expected_product_smiles = {alcohol1_smiles, alcohol2_smiles}
 
         self.assertEqual(set(product_smiles), expected_product_smiles)
 
