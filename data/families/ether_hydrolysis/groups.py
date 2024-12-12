@@ -12,7 +12,7 @@ R1-A(*1)(R2)(R3)-B(*2)-R4 + H(*3)O(*4)H <=> R1-A(*1)(R2)(R3)O(*4)H + R4B(*2)H(*3
 
 """
 
-template(reactants=["ether", "H2O"], products=["acid", "alcohol"], ownReverse=False)
+template(reactants=["ether", "H2O"], products=["alcohol1", "alcohol2"], ownReverse=False)
 
 #reverse = "condensation"
 
