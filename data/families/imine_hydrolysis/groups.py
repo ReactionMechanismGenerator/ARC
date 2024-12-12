@@ -11,7 +11,7 @@ R1-A(*1)(R2)=N(*2)-R3 + H(*3)O(*4)H <=> R1-A(*1)(R2)(O(*4)H)-N(*2)(H(*3))-R3
 
 """
 
-template(reactants=["imine", "H2O"], products=["acid"], ownReverse=False)
+template(reactants=["imine", "H2O"], products=["amine"], ownReverse=False)
 
 #reverse = "condensation"
 
