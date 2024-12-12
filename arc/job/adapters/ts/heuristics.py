@@ -1081,9 +1081,12 @@ def load_electronegativity(yaml_path: str) -> Dict[str, float]:
         electronegativity = yaml.safe_load(f)
     return electronegativity
 
-def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List[int]:
+
+def get_neighbors_by_electronegativity( spc: ARCSpecies, atom_index: int, exclude_index: int, two_neighbors: bool
+                                    ) -> List[int]:
     """
-    Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity.
+    Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
+    excluding a specified neighbor.
 
     Effective electronegativity is calculated as:
         Effective Electronegativity = Electronegativity of the neighbor * Bond order.
@@ -1097,27 +1100,33 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List
     Args:
         spc (ARCSpecies): The species containing the atom and its neighbors.
         atom_index (int): The index of the atom whose neighbors are being evaluated.
+        exclude_index (int): The index of the neighbor to exclude from consideration.
 
     Returns:
         List[int]: A list of the indices of the top two neighbors in the global `spc.atoms` list,
                    sorted based on the rules above.
 
     Raises:
-        ValueError: If the atom has no neighbors.
+        ValueError: If the atom has no neighbors or if all neighbors are excluded.
     """
     atom = spc.atoms[atom_index]
     neighbors = list(atom.edges.keys())
-    yaml_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data', 'electronegativity.yml')
-    electronegativity=load_electronegativity(yaml_file_path)
+
+    # Exclude the specified neighbor
+    neighbors = [neighbor for neighbor in neighbors if spc.atoms.index(neighbor) != exclude_index]
 
     if not neighbors:
-        raise ValueError(f"Atom at index {atom_index} has no neighbors.")
+        raise ValueError(f"Atom at index {atom_index} has no valid neighbors after excluding index {exclude_index}.")
+
+    # Load electronegativity data
+    yaml_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data', 'electronegativity.yml')
+    electronegativity = load_electronegativity(yaml_file_path)
 
     effective_electronegativities = []
     for neighbor in neighbors:
         electro_value = electronegativity[neighbor.symbol]
         bond_order = atom.edges[neighbor].order
-        effective_electronegativity = electro_value* bond_order
+        effective_electronegativity = electro_value * bond_order
         effective_electronegativities.append((effective_electronegativity, neighbor))
 
     effective_electronegativities.sort(
@@ -1129,7 +1138,10 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies, atom_index: int) -> List
     )
 
     sorted_neighbors = [spc.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
-    return sorted_neighbors[:2]
+    if two_neighbors:
+        return sorted_neighbors[:2]
+    else:
+        return sorted_neighbors[0]
 
 def generate_zmats(initial_zmat: dict,
                    water: 'ARCSpecies',
