@@ -83,7 +83,29 @@ class TestTSSplit(unittest.TestCase):
         self.assertEqual(g2, [11, 7, 9, 8, 4, 6, 5, 0, 3, 2, 1])
 
 
-
+    def test_get_group_xyzs_and_key_indices_from_ts_xyz(self):
+        """Test get_group_xyzs_and_key_indices_from_ts_xyz"""
+        xyz = """ C                 -3.80799396    1.05904061    0.12143410
+                  H                 -3.75776386    0.09672979   -0.34366835
+                  H                 -3.24934849    1.76454448   -0.45741718
+                  H                 -4.82886508    1.37420677    0.17961125
+                  C                 -3.21502590    0.97505234    1.54021348
+                  H                 -3.26525696    1.93736874    2.00531040
+                  H                 -3.77366533    0.26954471    2.11907272
+                  C                 -1.74572494    0.52144864    1.45646938
+                  H                 -1.18708880    1.22694232    0.87759054
+                  H                 -1.69550074   -0.44087971    0.99139265
+                  O                 -0.57307243    0.35560699    4.26172088
+                  H                 -1.12770789    0.43395779    2.93512192
+                  O                  0.45489302    1.17807207    4.35811043
+                  H                  1.12427554    0.93029226    3.71613651"""
+        a, b, h = 7, 10, 11
+        xyz_dict = check_xyz_dict(xyz)
+        g1_xyz, g2_xyz, index_dict = split.get_group_xyzs_and_key_indices_from_ts(xyz=xyz_dict, a=a, b=b, h=h)
+        print(f'g1_xyz: {g1_xyz}')
+        print(f'g2_xyz: {g2_xyz}')
+        print(f'index_dict: {index_dict}')
+        raise
 
 
 if __name__ == '__main__':
