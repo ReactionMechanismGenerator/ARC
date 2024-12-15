@@ -9,7 +9,6 @@ Strategy:
 
 from typing import TYPE_CHECKING, List, Optional
 
-import arc.rmgdb as rmgdb
 from arc.mapping.engine import (assign_labels_to_products,
                                 are_adj_elements_in_agreement,
                                 create_qc_mol,
@@ -64,9 +63,8 @@ def map_reaction(rxn: 'ARCReaction',
         return _map
     else:
         if rxn.family is None:
-            rmgdb.determine_family(reaction=rxn, db=db)
-        if rxn.family is None:
-            logger.warning(f'Could not determine the reaction family for {rxn.label}. Mapping as a general or isomerization reaction.')
+            logger.warning(f'Could not determine the reaction family for {rxn.label}. '
+                           f'Mapping as a general or isomerization reaction.')
             _map = map_general_rxn(rxn, backend=backend)
             return _map if _map is not None else map_reaction(rxn, backend=backend, db=db, flip=True)
         try:
