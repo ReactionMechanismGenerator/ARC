@@ -1074,9 +1074,9 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
             try:
                 h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                a = h_abs_atoms_dict['A']
-                h = h_abs_atoms_dict['H']
-                b = h_abs_atoms_dict['B']
+                a = extract_digits(h_abs_atoms_dict['A'])
+                h = extract_digits(h_abs_atoms_dict['H'])
+                b = extract_digits(h_abs_atoms_dict['B'])
                 xyz_guess = crest_ts_conformer_search(xyz_guess_crest, a, h, b, path=path, xyz_crest_int=i)
                 if xyz_guess is not None:
                     logger.info('Successfully completed crest conformer search:'
@@ -1170,6 +1170,10 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
             content = f.read()
         
         xyz_guess = str_to_xyz(content)
+        # Delete unnecessary files
+        for file in os.listdir(path):
+            if file not in {'coords.ref', 'constraints.inp', 'crest_best.xyz'}:
+                os.remove(os.path.join(path, file))
         return xyz_guess
     else:
         print(f"Command failed with return code {process.returncode}")
@@ -1270,6 +1274,19 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
         second_closest_atom = remaining_df.idxmin(axis=1).iloc[0]
 
     return {"H": hydrogen_with_min_distance, "A": min_distance_column, "B": second_closest_atom}
+
+def extract_digits(s: str) -> int:
+    """
+    Extract the first integer from a string
+
+    Args:
+        s (str): The string to extract the integer from
+
+    Returns:
+        int: The first integer in the string
+
+    """
+    return int(re.sub(r'[^\d]', '', s))
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
