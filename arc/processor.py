@@ -6,10 +6,9 @@ import os
 import shutil
 from typing import Optional, Type
 
-from rmgpy.data.rmg import RMGDatabase
+from rmgpy.data.rmg import RMGDatabase  # todo
 
 import arc.plotter as plotter
-import arc.rmgdb as rmgdb
 from arc.common import get_logger
 from arc.level import Level
 from arc.statmech.factory import statmech_factory
@@ -265,7 +264,7 @@ def compare_rates(rxns_for_kinetics_lib: list,
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     for reaction in rxns_for_kinetics_lib:
         try:
-            reaction.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=rmg_database,
+            reaction.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=rmg_database,  # todo
                                                                   reaction=reaction.rmg_reaction,
                                                                   dh_rxn298=reaction.dh_rxn298)
         except Exception as e:
@@ -317,7 +316,7 @@ def load_rmg_database(rmg_database: Optional[Type[RMGDatabase]],
             for species in species_dict.values()]):
         load_thermo_libs = True
     if rmg_database is not None and (load_kinetic_libs or load_thermo_libs):
-        rmgdb.load_rmg_database(rmgdb=rmg_database,
+        rmgdb.load_rmg_database(rmgdb=rmg_database,  # todo
                                 load_thermo_libs=load_thermo_libs,
                                 load_kinetic_libs=load_kinetic_libs)
 

@@ -21,24 +21,21 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from rmgpy.exceptions import ActionError
 from rmgpy.molecule.molecule import Molecule
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
 from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
-from arc.mapping.engine import map_arc_rmg_species, map_two_species
+from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
 
 if TYPE_CHECKING:
-    from rmgpy.data.kinetics.family import KineticsFamily
     from arc.level import Level
     from arc.reaction import ARCReaction
 
@@ -239,9 +236,8 @@ class HeuristicsAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            family_label = rxn.family.label
-            if family_label not in supported_families:
-                logger.warning(f'The heuristics TS search adapter does not support the {family_label} reaction family.')
+            if rxn.family not in supported_families:
+                logger.warning(f'The heuristics TS search adapter does not support the {rxn.family} reaction family.')
                 continue
             if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
                 logger.warning(f'The heuristics TS search adapter cannot process a reaction if 3D coordinates of '
@@ -255,24 +251,10 @@ class HeuristicsAdapter(JobAdapter):
                                             charge=rxn.charge,
                                             multiplicity=rxn.multiplicity,
                                             )
-            rxn.arc_species_from_rmg_reaction()
-            reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=True)
-            reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
-            product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
-            reaction_list = list()
-            for reactants in list(reactant_mol_combinations):
-                for products in list(product_mol_combinations):
-                    rxns = react(reactants=list(reactants),
-                                 products=list(products),
-                                 family=rxn.family,
-                                 arc_reaction=rxn,
-                                 )
-                    if rxns is not None:
-                        reaction_list.extend(rxns)
 
             xyzs = list()
             tsg = None
-            if family_label == 'H_Abstraction':
+            if rxn.family == 'H_Abstraction':
                 # Todo: train guess params
                 # r1_stretch_, r2_stretch_, a2_ = get_training_params(
                 #     family='H_Abstraction',
@@ -282,10 +264,7 @@ class HeuristicsAdapter(JobAdapter):
                 # r1_stretch_, r2_stretch_, a2_ = 1.2, 1.2, 170  # general guesses
                 tsg = TSGuess(method='Heuristics')
                 tsg.tic()
-                xyzs = h_abstraction(arc_reaction=rxn,
-                                     rmg_reactions=reaction_list,
-                                     dihedral_increment=self.dihedral_increment,
-                                     )
+                xyzs = h_abstraction(arc_reaction=rxn, dihedral_increment=self.dihedral_increment)
                 tsg.tok()
 
             for method_index, xyz in enumerate(xyzs):
@@ -303,7 +282,7 @@ class HeuristicsAdapter(JobAdapter):
                                        t0=tsg.t0,
                                        execution_time=tsg.execution_time,
                                        success=True,
-                                       family=family_label,
+                                       family=rxn.family,
                                        xyz=xyz,
                                        )
                     rxn.ts_species.ts_guesses.append(ts_guess)
@@ -311,7 +290,7 @@ class HeuristicsAdapter(JobAdapter):
                              path=self.local_path,
                              filename=f'Heuristics_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {family_label}',
+                             comment=f'Heuristics {method_index}, family: {rxn.family}',
                              )
 
             if len(self.reactions) < 5:
@@ -788,106 +767,6 @@ def update_new_map_based_on_zmat_2(new_map: dict,
     return new_map
 
 
-def react(reactants: List[Union[Molecule, Species]],
-          products: List[Union[Molecule, Species]],
-          family: 'KineticsFamily',
-          arc_reaction: 'ARCReaction',
-          ) -> Optional[List[Reaction]]:
-    """
-    React molecules to give the requested products via an RMG family,
-    resulting in a reaction with RMG's atom labels for the reactants and products.
-
-    Args:
-        reactants (List['Molecule']): Entries are Molecule instances of the reaction reactants.
-        products (List['Molecule']): Entries are Molecule instances of the reaction products.
-        family (KineticsFamily): The RMG reaction family instance.
-        arc_reaction (ARCReaction): The corresponding ARCReaction object instance.
-
-    Returns:
-        Optional[Reaction]: An RMG Reaction instance with atom-labeled reactants and products.
-    """
-    # Assure Molecule object instances:
-    reactant_mols, product_mols = list(), list()
-    for reactant in reactants:
-        reactant_mols.append(reactant.copy(deep=True) if isinstance(reactant, Molecule)
-                             else reactant.molecule[0].copy(deep=True))
-    for product in products:
-        product_mols.append(product.copy(deep=True) if isinstance(product, Molecule)
-                            else product.molecule[0].copy(deep=True))
-    reactants_copy, products_copy = [r.copy(deep=True) for r in reactant_mols], [p.copy(deep=True) for p in product_mols]
-
-    try:
-        reactions = family.generate_reactions(reactants=reactants_copy,
-                                              products=products_copy,
-                                              prod_resonance=False,
-                                              delete_labels=False,
-                                              relabel_atoms=False,
-                                              )
-    except (ActionError, ValueError):
-        return None
-    for reaction in reactions:
-        try:
-            family.add_atom_labels_for_reaction(reaction=reaction,
-                                                output_with_resonance=False,
-                                                save_order=True,
-                                                )
-        except (ActionError, ValueError):
-            continue
-
-    for i in range(len(reactions)):
-        r_map, p_map = map_arc_rmg_species(arc_reaction=arc_reaction, rmg_reaction=reactions[i], concatenate=False)
-        ordered_rmg_reactants = [reactions[i].reactants[r_map[j]] for j in range(len(reactions[i].reactants))]
-        ordered_rmg_products = [reactions[i].products[p_map[j]] for j in range(len(reactions[i].products))]
-        reactions[i].reactants = ordered_rmg_reactants
-        reactions[i].products = ordered_rmg_products
-
-    # Re-map all molecules since atoms in the RMG products were shuffled (products re-created from the reactants).
-    output, label_dicts = list(), list()
-    for reaction in reactions:
-        for index in range(len(reaction.reactants)):
-            # The RMG molecule will get a random 3D conformer, don't consider chirality when mapping.
-            atom_map = map_two_species(spc_1=reactant_mols[index],
-                                       spc_2=reaction.reactants[index],
-                                       consider_chirality=False,
-                                       )
-            if atom_map is None:
-                break
-            new_atoms_list = list()
-            for i in range(len(reactant_mols[index].atoms)):
-                reactant_mols[index].atoms[i].id = reaction.reactants[index].molecule[0].atoms[atom_map[i]].id
-                reactant_mols[index].atoms[i].label = reaction.reactants[index].molecule[0].atoms[atom_map[i]].label
-                new_atoms_list.append(reactant_mols[index].atoms[i])
-            reaction.reactants[index].molecule[0].atoms = new_atoms_list
-        else:
-            for index in range(len(reaction.products)):
-                # The RMG molecule will get a random 3D conformer, don't consider chirality when mapping.
-                atom_map = map_two_species(spc_1=product_mols[index],
-                                           spc_2=reaction.products[index],
-                                           consider_chirality=False,
-                                           )
-                if atom_map is None:
-                    break
-                new_atoms_list = list()
-                for i in range(len(product_mols[index].atoms)):
-                    product_mols[index].atoms[i].id = reaction.products[index].molecule[0].atoms[atom_map[i]].id
-                    product_mols[index].atoms[i].label = reaction.products[index].molecule[0].atoms[atom_map[i]].label
-                    new_atoms_list.append(product_mols[index].atoms[i])
-                reaction.products[index].molecule[0].atoms = new_atoms_list
-            else:
-                if reaction is not None:
-                    # Check that the RMG reaction atom labels are unique.
-                    label_dict = dict()
-                    for reactant, product in zip(reaction.reactants, reaction.products):
-                        for s, spc in enumerate([reactant, product]):
-                            for i, atom in enumerate(spc.molecule[0].atoms):
-                                if atom.label:
-                                    label_dict[f'{"P" if s else "R"}_{atom.label}'] = i
-                    if label_dict not in label_dicts:
-                        label_dicts.append(label_dict)
-                        output.append(reaction)
-    return output
-
-
 def find_distant_neighbor(rmg_mol: 'Molecule',
                           start: int,
                           ) -> Optional[int]:
@@ -919,8 +798,27 @@ def find_distant_neighbor(rmg_mol: 'Molecule',
 # Family-specific heuristics functions:
 
 
-def h_abstraction(arc_reaction: 'ARCReaction',
-                  rmg_reactions: List['Reaction'],
+def are_h_abs_wells_reversed(rxn: 'ARCReaction',
+                             product_dict: dict,
+                             ) -> Tuple[bool, bool]:
+    """
+    Determine whether the reactants or the products in an H_Abstraction reaction are reversed
+    relative to the RMG template: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
+
+    Args:
+        rxn (ARCReaction): The ARCReaction object.
+        product_dict (dict): The product dictionary.
+
+    Returns:
+        Tuple[bool, bool]: reactants_reversed, products_reversed.
+    """
+    star_2 = product_dict['label_map']['*2']
+    reactants_reversed = len(rxn.r_species[0].mol.atoms) <= star_2
+    products_reversed = len(rxn.p_species[0].mol.atoms) <= rxn.atom_map[star_2]
+    return reactants_reversed, products_reversed
+
+
+def h_abstraction(reaction: 'ARCReaction',
                   r1_stretch: float = 1.2,
                   r2_stretch: float = 1.2,
                   a2: float = 180,
@@ -930,10 +828,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
 
     Args:
-        arc_reaction: An ARCReaction instance.
-        rmg_reactions: Entries are RMGReaction instances. The reactants and products attributes should not contain
-                       resonance structures as only the first molecule is considered -- pass several Reaction entries
-                       instead. Atoms must be labeled according to the RMG reaction family.
+        reaction: An ARCReaction instance.
         r1_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
                                       atom ``h1`` in ``xyz1`` (bond A-H1) relative to the respective well.
         r2_stretch (float, optional): The factor by which to multiply (stretch/shrink) the bond length to the terminal
@@ -944,15 +839,41 @@ def h_abstraction(arc_reaction: 'ARCReaction',
     Returns: List[dict]
         Entries are Cartesian coordinates of TS guesses for all reactions.
     """
-    if not len(rmg_reactions):
-        logger.warning(f'Cannot generate TS guesses for {arc_reaction} without an RMG Reaction object instance.')
-        return list()
-
     xyz_guesses = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
 
+    product_dicts = get_reaction_family_products(rxn=reaction,
+                                                 rmg_family_set=[reaction.family],
+                                                 consider_rmg_families=True,
+                                                 consider_arc_families=False,
+                                                 discover_own_reverse_rxns_in_reverse=False,
+                                                 )  # todo: loop through product_dict instead of rmg family, finish are_h_abs_wells_reversed test
+    expected_products = [{'discovered_in_reverse': False,
+                          'family': 'H_Abstraction',
+                          'group_labels': ('Xrad_H', 'Y_rad'),
+                          'label_map': {'*1': 0, '*2': 1, '*3': 3},
+                          'own_reverse': True,
+                          'products': [Molecule(smiles="N"), Molecule(smiles="[NH]")]},
+                         {'discovered_in_reverse': False,
+                          'family': 'H_Abstraction',
+                          'group_labels': ('Xrad_H', 'Y_rad'),
+                          'label_map': {'*1': 0, '*2': 2, '*3': 3},
+                          'own_reverse': True,
+                          'products': [Molecule(smiles="N"), Molecule(smiles="[NH]")]},
+                         {'discovered_in_reverse': False,
+                          'family': 'H_Abstraction',
+                          'group_labels': ('Y_rad', 'Xrad_H'),
+                          'label_map': {'*1': 3, '*2': 4, '*3': 0},
+                          'own_reverse': True,
+                          'products': [Molecule(smiles="[NH]"), Molecule(smiles="N")]},
+                         {'discovered_in_reverse': False,
+                          'family': 'H_Abstraction',
+                          'group_labels': ('Y_rad', 'Xrad_H'),
+                          'label_map': {'*1': 3, '*2': 5, '*3': 0},
+                          'own_reverse': True,
+                          'products': [Molecule(smiles="N"), Molecule(smiles="[NH]")]}]
+
     # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
-    # using the first RMG reaction; all other RMG reactions and the ARC reaction should have the same order.
     # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
     reactants_reversed, products_reversed = False, False
     for atom in rmg_reactions[0].reactants[1].molecule[0].atoms:
@@ -964,16 +885,21 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             products_reversed = True
             break
 
-    arc_reactants, arc_products = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
-    arc_reactant = arc_reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
-    arc_product = arc_products[int(not products_reversed)]  # Get R(*3)-H(*2).
+    reactants, products = reaction.get_reactants_and_products(arc=True, return_copies=False)
+    reactant = reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
+    product = products[int(not products_reversed)]  # Get R(*3)-H(*2).
 
-    if any([is_linear(coordinates=np.array(arc_reactant.get_xyz()['coords'])),
-            is_linear(coordinates=np.array(arc_product.get_xyz()['coords']))]) and is_angle_linear(a2):
+    if any([is_linear(coordinates=np.array(reactant.get_xyz()['coords'])),
+            is_linear(coordinates=np.array(product.get_xyz()['coords']))]) and is_angle_linear(a2):
         # Don't modify dihedrals for an attacking H (or other linear radical) at a linear angle, C ~ A -- H1 - H2 -- H.
         dihedral_increment = 360
 
-    for rmg_reaction in rmg_reactions:
+    for product_dict in product_dicts:
+
+        reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=product_dict)
+
+
+
         rmg_reactant_mol = rmg_reaction.reactants[int(reactants_reversed)].molecule[0]
         rmg_product_mol = rmg_reaction.products[int(not products_reversed)].molecule[0]
         h1 = rmg_reactant_mol.atoms.index([atom for atom in rmg_reactant_mol.atoms if atom.label == '*2'][0])
@@ -1003,11 +929,11 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
-                    xyz_1=arc_reactant.get_xyz(),
-                    xyz_2=arc_product.get_xyz(),
+                    xyz_1=reactant.get_xyz(),
+                    xyz_2=product.get_xyz(),
                     mol_1=rmg_reactant_mol,
                     mol_2=rmg_product_mol,
-                    reactant_2=arc_reaction.get_reactants_and_products()[0][int(not reactants_reversed)],
+                    reactant_2=reaction.get_reactants_and_products()[0][int(not reactants_reversed)],
                     h1=h1,
                     h2=h2,
                     c=c,
