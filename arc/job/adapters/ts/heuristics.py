@@ -1075,9 +1075,6 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
             try:
                 h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                a = extract_digits(h_abs_atoms_dict['A'])
-                h = extract_digits(h_abs_atoms_dict['H'])
-                b = extract_digits(h_abs_atoms_dict['B'])
                 crest_path = crest_ts_conformer_search(xyz_guess_crest, a, h, b, path=path)
                 crest_paths.append(crest_path)
             except (ValueError, KeyError) as e:
