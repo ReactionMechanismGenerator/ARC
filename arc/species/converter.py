@@ -69,6 +69,8 @@ def str_to_str(xyz_str: str,
     Returns: str
         The converted string xyz format.
     """
+    if isinstance(xyz_str, list):
+        xyz_str = '\n'.join(xyz_str)
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):

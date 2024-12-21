@@ -289,6 +289,38 @@ touch final_time
     },
 
     'atlas': {
+        'crest': """Universe      = vanilla
+
++JobName      = "{name}"
+
+log           = job.log
+output        = out.txt
+error         = err.txt
+
+getenv        = True
+
+should_transfer_files = no
+
+executable = job.sh
+
+request_cpus  = {cpus}
+request_memory = {memory}MB
+
+queue
+
+""",
+        'crest_job': """#!/bin/bash
+
+touch initial_time
+
+{commands}
+
+touch final_time
+
+# Remove all files except for crest_best.xyz, coords.ref constraints.inp
+rm -vfr !(crest_best.xyz|coords.ref|constraints.inp)
+
+""",
         # Atlas uses HTCondor, see docs here: https://htcondor.readthedocs.io/en/latest/
         # Gaussian 09
         'gaussian': """Universe      = vanilla
@@ -854,6 +886,22 @@ rm -rf $GAUSS_SCRDIR
 touch final_time
 
     """,
+        'crest': """#!/bin/bash -l
+#PBS -q {queue}
+#PBS -N {name}
+#PBS -l select=1:ncpus={cpus}:mem={memory}:mpiprocs={cpus}
+#PBS -o out.txt
+#PBS -e err.txt
+
+touch initial_time
+
+{commands}
+
+touch final_time
+
+rm -vrf !(crest_best.xyz|coords.ref|constraints.inp)
+
+        """,
     },
  'server3': {
         'gaussian': """#!/bin/bash -l
