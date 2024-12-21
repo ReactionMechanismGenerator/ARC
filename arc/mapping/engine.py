@@ -834,20 +834,20 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
 
 def make_bond_changes(rxn: 'ARCReaction',
                       r_cuts: List[ARCSpecies],
-                      r_label_dict: Dict,
+                      r_label_dict: dict,
                       ) -> None:
     """
     Makes the bond change before matching the reactants and products
 
     Ags:
-        rxn: An ARCReaction object
-        r_cuts: the cut products
-        r_label_dict: the dictionary object the find the relevant location.
+        rxn ('ARCReaction'): An ARCReaction object
+        r_cuts (List[ARCSpecies]): the cut products
+        r_label_dict (dict): the dictionary object the find the relevant location.
     """
     family = ReactionFamily(label=rxn.family)
     for action in family.actions:
         if action[0].lower() == "change_bond":
-            indices = r_label_dict[action[1]],r_label_dict[action[3]]
+            indices = r_label_dict[action[1]], r_label_dict[action[3]]
             for r_cut in r_cuts:
                 if indices[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indices[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
                     atom1, atom2 = 0, 0
@@ -891,7 +891,17 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
     new = list()
     for spc in species:
         new_spc = ARCSpecies(label="copy", mol=spc.mol.copy(deep=True))
-        new_spc.final_xyz = new_spc.get_xyz() or spc.get_xyz()
+        print(f'mol copies: {new_spc.mol.copy(deep=True).to_smiles()}, {spc.mol.copy(deep=True).to_smiles()}')
+        xyz_1, xyz_2 = None, None
+        try:
+            xyz_1 = new_spc.get_xyz()
+        except:
+            pass
+        try:
+            xyz_2 = spc.get_xyz()
+        except:
+            pass
+        new_spc.final_xyz = xyz_1 or xyz_2
         new.append(new_spc)
     return new
 
@@ -1123,7 +1133,6 @@ def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
                 visited_ref_species.append(j)
                 species_map[j] = i
                 index_map[j] = map_two_species(ref_spc, spc)
-                print(f'Found a match between species {i} and ref species {j}, map: {index_map[j]}')
                 break
     ref_spcs_lengths = [ref_spc.number_of_atoms for ref_spc in ref_species]
     accum_sum_ref_spcs_lengths = [sum(ref_spcs_lengths[:i+1]) for i in range(len(ref_spcs_lengths))]
@@ -1185,22 +1194,16 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
         List[Tuple[int, int]]: Entries are tuples of the form (atom_index1, atom_index2) for each broken bond (1-indexed),
                                representing the atom indices to be cut.
     """
-    print(f'*** rxn.family: {rxn.family}')  # todo: product bdes are not being translated correctly
     family = ReactionFamily(label=rxn.family)
     product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set=[rxn.family])
-    print(f'*** product_dicts: {product_dicts}')
     label_dict = product_dicts[0]['r_label_map'] if r_direction else product_dicts[0]['p_label_map']
-    print(f'Label dict: {label_dict}')
     breaking_bonds = list()
     for action in family.actions:
         if action[0].lower() == ("break_bond" if r_direction else "form_bond"):
             breaking_bonds.append(tuple(sorted((label_dict[action[1]], label_dict[action[3]]))))
-            print(f'appended {breaking_bonds[-1]}')
-    print(f'original Breaking bonds: {breaking_bonds}')
     if not r_direction:
         breaking_bonds = translate_bdes_based_on_ref_species(
             species=rxn.get_reactants_and_products()[1],
             ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(product_dicts[0]['products'])],
             bdes=breaking_bonds)
-    print(f'translated Breaking bonds: {breaking_bonds}')
     return breaking_bonds

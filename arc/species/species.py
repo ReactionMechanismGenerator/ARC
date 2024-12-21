@@ -1141,6 +1141,8 @@ class ARCSpecies(object):
                                                        multiplicity=self.multiplicity)['xyz']
         else:
             num_confs = min(500, max(50, len(self.mol.atoms) * 3))
+            print(f'\n\n****************\n')
+            print(f'mol copy: {self.mol.copy(deep=True)}')
             rd_mol = conformers.embed_rdkit(label=self.label, mol=self.mol, num_confs=num_confs)
             xyzs, energies = conformers.rdkit_force_field(label=self.label,
                                                           rd_mol=rd_mol,

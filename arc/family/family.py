@@ -347,6 +347,8 @@ class ReactionFamily(object):
                 raise ValueError(f'Unknown action "{action[0]}" encountered.')
         if 'validAromatic' in structure.props and not structure.props['validAromatic']:
             structure.kekulize()
+        for atom in structure.atoms:
+            atom.update_charge()
         structures = structure.split()
         if self.product_num != len(structures):
             return None
