@@ -2599,7 +2599,7 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O   0.0000000   0.0000000   0.6029240
                                                             O   0.0000000   0.0000000  -0.6029240""")
         for mol in o2.mol_list:
-            print(f'mol lost')
+            print(f'mol list')
             print(mol.to_smiles())
         self.assertEqual(o2.multiplicity, 3)
         self.assertEqual(o2.mol.to_smiles(), '[O][O]')
@@ -2641,6 +2641,7 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         for m in molecules:
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
+
 
     @classmethod
     def tearDownClass(cls):

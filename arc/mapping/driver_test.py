@@ -11,6 +11,7 @@ import unittest
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
+from arc.family import get_reaction_family_products
 from arc.mapping.driver import *
 from arc.reaction import ARCReaction
 from arc.mapping.engine import check_atom_map
@@ -1056,6 +1057,77 @@ class TestMappingDriver(unittest.TestCase):
         self.assertIn(atom_map[6], [6, 8])
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
+
+    def test_convert_label_dict(self):
+        """Test the convert_label_dict() function."""
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='O2', smiles='[O][O]')],
+                            p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='HO2', smiles='O[O]')])
+        products = get_reaction_family_products(rxn_1)
+
+        self.assertEqual(products[0]['p_label_map'], {'*1': 3, '*2': 2, '*3': 1})
+        p_label_dict = convert_label_dict(label_dict=products[0]['p_label_map'],
+                                          reference_mol_list=products[0]['products'],
+                                          mol_list=[spc.mol for spc in rxn_1.p_species])
+        print(p_label_dict)
+        self.assertEqual(p_label_dict, {'*1': 3, '*2': 2, '*3': 1})  # did it do anyhting? looks like it didnt because the order should be different
+
+
+        # expected_products = [{'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 1, '*3': 5},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 1},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 1, '*3': 6},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 0},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 2, '*3': 5},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 1},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 2, '*3': 6},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 0},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 3, '*3': 5},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 1},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 3, '*3': 6},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 0},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 4, '*3': 5},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 1},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]},
+        #                      {'discovered_in_reverse': False,
+        #                       'family': 'H_Abstraction',
+        #                       'group_labels': ('X_H', 'Y_rad'),
+        #                       'r_label_map': {'*1': 0, '*2': 4, '*3': 6},
+        #                       'p_label_map': {'*1': 3, '*2': 2, '*3': 0},
+        #                       'own_reverse': True,
+        #                       'products': [Molecule(smiles="[O]O"), Molecule(smiles="[CH3]")]}]
 
 
 if __name__ == '__main__':

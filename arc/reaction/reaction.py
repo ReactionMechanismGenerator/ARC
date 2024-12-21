@@ -581,7 +581,7 @@ class ARCReaction(object):
                          consider_rmg_families: bool = True,
                          consider_arc_families: bool = True,
                          discover_own_reverse_rxns_in_reverse: bool = False,
-                         ):
+                         ) -> Tuple[Optional[str], Optional[bool]]:
         """
         Determine the RMG reaction family.
         Populates the .family, and .family_own_reverse attributes.
@@ -591,6 +591,9 @@ class ARCReaction(object):
             consider_rmg_families (bool, optional): Whether to consider RMG's families in addition to ARC's.
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
+
+        Returns:
+            Tuple[Optional[str], Optional[bool]]: The RMG reaction family and the family's own_reverse property.
         """
         if self.rmg_reaction is not None:
             product_dicts = get_reaction_family_products(rxn=self,

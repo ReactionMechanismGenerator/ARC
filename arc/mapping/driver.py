@@ -7,15 +7,12 @@ Strategy:
     3) If the reaction is supported by RMG, it is sent to the driver. Else, it is mapped with map_general_rxn.
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from arc.mapping.engine import (assign_labels_to_products,
-                                are_adj_elements_in_agreement,
+from arc.mapping.engine import (are_adj_elements_in_agreement,
                                 create_qc_mol,
                                 flip_map,
                                 fingerprint,
-                                get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
                                 glue_maps,
                                 label_species_atoms,
                                 make_bond_changes,
@@ -23,22 +20,22 @@ from arc.mapping.engine import (assign_labels_to_products,
                                 iterative_dfs, map_two_species,
                                 pairing_reactants_and_products_for_mapping,
                                 copy_species_list_for_mapping,
-                                find_all_bdes,
+                                find_all_breaking_bonds,
                                 cut_species_based_on_atom_indices,
                                 update_xyz,
                                 RESERVED_FINGERPRINT_KEYS,)
 from arc.common import logger
+from arc.species.converter import check_molecule_list_order
 
 from rmgpy.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
-    from rmgpy.data.rmg import RMGDatabase
+    from rmgpy.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
 
 
 def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
-                 db: Optional['RMGDatabase'] = None,
                  flip = False
                  ) -> Optional[List[int]]:
     """
@@ -47,7 +44,6 @@ def map_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[int]]:
@@ -76,7 +72,6 @@ def map_reaction(rxn: 'ARCReaction',
 
 def map_general_rxn(rxn: 'ARCReaction',
                     backend: str = 'ARC',
-                    db: Optional['RMGDatabase'] = None,
                     ) -> Optional[List[int]]:
     """
     Map a general reaction (one that was not categorized into a reaction family by RMG).
@@ -85,7 +80,6 @@ def map_general_rxn(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[int]]:
@@ -121,7 +115,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
 
     Returns:
         Optional[List[int]]:
@@ -209,7 +202,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
 
 def map_rxn(rxn: 'ARCReaction',
             backend: str = 'ARC',
-            db: Optional['RMGDatabase'] = None,
             ) -> Optional[List[int]]:
     """
     A wrapper function for mapping reaction, uses databases for mapping with the correct reaction family parameters.
@@ -224,7 +216,6 @@ def map_rxn(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        db (RMGDatabase, optional): The RMG database instance.
         
     Returns:
         Optional[List[int]]:
@@ -232,7 +223,7 @@ def map_rxn(rxn: 'ARCReaction',
             corresponding entry values are running atom indices of the products.
     """
     # step 1:
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn, backend=backend)
+    rmg_reactions = 5
     
     if not rmg_reactions:
         return None
@@ -243,11 +234,11 @@ def map_rxn(rxn: 'ARCReaction',
     # step 2:
     assign_labels_to_products(rxn, p_label_dict)
     
-    #step 3:
+    # step 3:
     reactants, products = copy_species_list_for_mapping(rxn.r_species), copy_species_list_for_mapping(rxn.p_species)
     label_species_atoms(reactants), label_species_atoms(products)
     
-    r_bdes, p_bdes = find_all_bdes(rxn, r_label_dict, True), find_all_bdes(rxn, p_label_dict, False)
+    r_bdes, p_bdes = find_all_breaking_bonds(rxn, True), find_all_breaking_bonds(rxn, False)
 
     r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
     p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
@@ -259,7 +250,7 @@ def map_rxn(rxn: 'ARCReaction',
 
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
 
-    #step 4:
+    # step 4:
     pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
     if len(p_cuts):
         logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
@@ -267,5 +258,45 @@ def map_rxn(rxn: 'ARCReaction',
     # step 5:
     maps = map_pairs(pairs_of_reactant_and_products)
 
-    #step 6:
+    # step 6:
     return glue_maps(maps, pairs_of_reactant_and_products)
+
+
+def convert_label_dict(label_dict: Dict[str, int],
+                       reference_mol_list: List['Molecule'],
+                       mol_list: List['Molecule'],
+                       ) -> Optional[Dict[str, int]]:
+    """
+    Convert the label dictionary to the correct atom indices in the reaction and reference molecules
+
+    Args:
+        label_dict (Dict[str, int]): A dictionary of atom labels (e.g., '*1') to atom indices.
+        reference_mol_list (List[Molecule]): The list of molecules to which label_dict values refer.
+        mol_list (List[Molecule]): The list of molecules to which label_dict values should be converted.
+
+    Returns:
+        Dict[str, int]: The converted label dictionary.
+    """
+    print(f'original label_dict: {label_dict}')
+    if len(reference_mol_list) != len(mol_list):
+        raise ValueError(f'The number of reference molecules ({len(reference_mol_list)}) '
+                         f'does not match the number of molecules ({len(mol_list)}).')
+    if len(reference_mol_list) == 1:
+        atom_map = map_two_species(reference_mol_list[0], mol_list[0])
+        if atom_map is None:
+            print(f'Could not map {reference_mol_list[0].to_smiles()} to {mol_list[0].to_smiles()}')
+            return None
+        return {label: atom_map[index] for label, index in label_dict.items()}
+    elif len(reference_mol_list) == 2:
+        ordered = check_molecule_list_order(mols_1=reference_mol_list, mols_2=mol_list)
+        print(f'ordered: {ordered}')
+        atom_map_1 = map_two_species(reference_mol_list[0], mol_list[0]) if ordered else map_two_species(reference_mol_list[1], mol_list[0])
+        atom_map_2 = map_two_species(reference_mol_list[1], mol_list[1]) if ordered else map_two_species(reference_mol_list[0], mol_list[1])
+        if atom_map_1 is None or atom_map_2 is None:
+            print(f'Could not map {reference_mol_list[0].to_smiles()} to {mol_list[0].to_smiles()} '
+                  f'or {reference_mol_list[1].to_smiles()} to {mol_list[1].to_smiles()}')
+            return None
+        atom_map = atom_map_1 + [index + len(atom_map_1) for index in atom_map_2] if ordered else \
+            atom_map_2 + [index + len(atom_map_2) for index in atom_map_1]
+        print(f'atom_map: {atom_map}')
+        return {label: atom_map[index] for label, index in label_dict.items()}

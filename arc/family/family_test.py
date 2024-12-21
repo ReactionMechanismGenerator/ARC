@@ -605,6 +605,8 @@ H      -0.83821148   -0.26602407    0.00000000"""
         families = get_all_families(consider_rmg_families=False)
         self.assertIsInstance(families, list)
         self.assertIn('hydrolysis', families)
+        families = get_all_families(rmg_family_set=['H_Abstraction'])
+        self.assertEqual(families, ['H_Abstraction'])
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
@@ -638,12 +640,12 @@ H      -0.83821148   -0.26602407    0.00000000"""
         self.assertFalse(fam_2.own_reverse)
         self.assertEqual(fam_2.reactants, [['Root']])
         self.assertEqual(fam_2.product_num, 2)
-        self.assertEqual(fam_2.entries, {'Root': """1 *3 R!H u0 {2,S} {3,[S,D]}
-2 *4 R!H u0 {1,S} {4,[S,D]}
-3 *2 R!H u0 {1,[S,D]} {5,[D,T,B]}
-4 *5 R!H u0 {2,[S,D]} {6,S}
-5 *1 R!H u0 {3,[D,T,B]}
-6 *6 H   u0 {4,S}"""})
+        self.assertEqual(fam_2.entries, {'Root': """1 *3 R!H    u0 {2,S} {3,[S,D]}
+2 *4 R!H    u0 {1,S} {4,[S,D]}
+3 *2 R!H    u0 {1,[S,D]} {5,[D,T,B]}
+4 *5 R!H    u0 {2,[S,D]} {6,S}
+5 *1 R!H    u0 {3,[D,T,B]}
+6 *6 [H,Li] u0 {4,S}"""})
         self.assertEqual(fam_2.actions, [['CHANGE_BOND', '*1', -1, '*2'],
                                          ['BREAK_BOND', '*5', 1, '*6'],
                                          ['BREAK_BOND', '*3', 1, '*4'],
@@ -959,6 +961,17 @@ H       1.24252625    0.91583948   -0.84155142"""
                                                       mol_2=spc_2.mol,
                                                       )
         self.assertEqual(isomorphic_subgraph, {0: '*3', 4: '*1', 7: '*2'})
+
+    # def test_order_species_list(self):
+    #     """Test the order_species_list() function"""
+    #     spc1 = ARCSpecies(label='spc1', smiles='C')
+    #     spc2 = ARCSpecies(label='spc2', smiles='CC')
+    #     ordered_species_list = order_species_list(species_list=[spc2, spc1], reference_species=[spc1, spc2])
+    #     self.assertEqual(ordered_species_list, [spc1, spc2])
+    #     ordered_species_list = order_species_list(species_list=[spc2, spc1], reference_species=[spc2, spc1])
+    #     self.assertEqual(ordered_species_list, [spc2, spc1])
+    #     ordered_species_list = order_species_list(species_list=[spc2.mol, spc1], reference_species=[spc2, spc1.mol])
+    #     self.assertEqual(ordered_species_list, [spc2.mol, spc1])
 
 
 if __name__ == '__main__':
