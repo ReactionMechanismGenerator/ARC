@@ -11,7 +11,6 @@ from rmgpy.molecule import Bond, Group, Molecule
 
 from arc.common import clean_text, generate_resonance_structures, get_logger
 from arc.imports import settings
-from arc.species.converter import check_isomorphism
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
@@ -348,6 +347,8 @@ class ReactionFamily(object):
                 raise ValueError(f'Unknown action "{action[0]}" encountered.')
         if 'validAromatic' in structure.props and not structure.props['validAromatic']:
             structure.kekulize()
+        for atom in structure.atoms:
+            atom.update_charge()
         structures = structure.split()
         if self.product_num != len(structures):
             return None
@@ -519,7 +520,7 @@ def check_product_isomorphism(products: List['Molecule'],
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    prods_a = [generate_resonance_structures(mol) or [mol] for mol in products]
+    prods_a = [generate_resonance_structures(mol.copy(deep=True)) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
     if len(prods_a) == 1:
         prod_a = prods_a[0]
@@ -564,6 +565,7 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
                      ) -> List[str]:
     """
     Get all available RMG and ARC families.
+    If ``rmg_family_set`` is a list of family labels and does not contain family sets, it will be returned as is.
 
     Args:
         rmg_family_set (Union[List[str], str], optional): The RMG family set to use.
@@ -574,9 +576,11 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
         List[str]: A list of all available families.
     """
     rmg_family_set = rmg_family_set or 'default'
+    family_sets = get_rmg_recommended_family_sets()
+    if isinstance(rmg_family_set, list) and all(fam not in family_sets for fam in rmg_family_set):
+        return rmg_family_set
     rmg_families, arc_families = list(), list()
     if consider_rmg_families:
-        family_sets = get_rmg_recommended_family_sets()
         if not isinstance(rmg_families, list) and rmg_family_set not in list(family_sets) + ['all']:
             raise ValueError(f'Invalid RMG family set: {rmg_family_set}')
         if rmg_family_set == 'all':
