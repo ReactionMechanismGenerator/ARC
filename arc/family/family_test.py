@@ -605,6 +605,8 @@ H      -0.83821148   -0.26602407    0.00000000"""
         families = get_all_families(consider_rmg_families=False)
         self.assertIsInstance(families, list)
         self.assertIn('hydrolysis', families)
+        families = get_all_families(rmg_family_set=['H_Abstraction'])
+        self.assertEqual(families, ['H_Abstraction'])
 
     def test_get_rmg_recommended_family_sets(self):
         """Test getting RMG recommended family sets"""
@@ -638,12 +640,12 @@ H      -0.83821148   -0.26602407    0.00000000"""
         self.assertFalse(fam_2.own_reverse)
         self.assertEqual(fam_2.reactants, [['Root']])
         self.assertEqual(fam_2.product_num, 2)
-        self.assertEqual(fam_2.entries, {'Root': """1 *3 R!H u0 {2,S} {3,[S,D]}
-2 *4 R!H u0 {1,S} {4,[S,D]}
-3 *2 R!H u0 {1,[S,D]} {5,[D,T,B]}
-4 *5 R!H u0 {2,[S,D]} {6,S}
-5 *1 R!H u0 {3,[D,T,B]}
-6 *6 H   u0 {4,S}"""})
+        self.assertEqual(fam_2.entries, {'Root': """1 *3 R!H    u0 {2,S} {3,[S,D]}
+2 *4 R!H    u0 {1,S} {4,[S,D]}
+3 *2 R!H    u0 {1,[S,D]} {5,[D,T,B]}
+4 *5 R!H    u0 {2,[S,D]} {6,S}
+5 *1 R!H    u0 {3,[D,T,B]}
+6 *6 [H,Li] u0 {4,S}"""})
         self.assertEqual(fam_2.actions, [['CHANGE_BOND', '*1', -1, '*2'],
                                          ['BREAK_BOND', '*5', 1, '*6'],
                                          ['BREAK_BOND', '*3', 1, '*4'],
