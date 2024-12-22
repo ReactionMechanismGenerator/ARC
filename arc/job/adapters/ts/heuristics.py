@@ -1075,7 +1075,7 @@ def h_abstraction(arc_reaction: 'ARCReaction',
 
             try:
                 h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                crest_path = crest_ts_conformer_search(xyz_guess_crest, a, h, b, path=path)
+                crest_path = crest_ts_conformer_search(xyz_guess_crest, h_abs_atoms_dict["A"], h_abs_atoms_dict["H"], h_abs_atoms_dict["B"], path=path)
                 crest_paths.append(crest_path)
             except (ValueError, KeyError) as e:
                 logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
