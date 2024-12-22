@@ -19,7 +19,7 @@ from rmgpy.species import Species
 
 from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
 from arc.exceptions import SpeciesError
-from arc.family import ReactionFamily
+from arc.family import ReactionFamily, get_reaction_family_products
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
@@ -735,7 +735,7 @@ def map_hydrogens(spc_1: ARCSpecies,
     return atom_map
 
 
-def check_atom_map(rxn) -> bool:
+def check_atom_map(rxn: 'ARCReaction') -> bool:
     """
     A helper function for testing a reaction atom map.
     Tests that element symbols are ordered correctly.
@@ -834,25 +834,27 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
 
 def make_bond_changes(rxn: 'ARCReaction',
                       r_cuts: List[ARCSpecies],
-                      r_label_dict: Dict):
+                      r_label_dict: dict,
+                      ) -> None:
     """
     Makes the bond change before matching the reactants and products
 
     Ags:
-        rxn: An ARCReaction object
-        r_cuts: the cut products
-        r_label_dict: the dictionary object the find the relevant location.
+        rxn ('ARCReaction'): An ARCReaction object
+        r_cuts (List[ARCSpecies]): the cut products
+        r_label_dict (dict): the dictionary object the find the relevant location.
     """
-    for action in rxn.family.forward_recipe.actions:
-        if action[0].lower() == "CHANGE_BOND".lower():
-            indicies = r_label_dict[action[1]],r_label_dict[action[3]]
+    family = ReactionFamily(label=rxn.family)
+    for action in family.actions:
+        if action[0].lower() == "change_bond":
+            indices = r_label_dict[action[1]], r_label_dict[action[3]]
             for r_cut in r_cuts:
-                if indicies[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indicies[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
+                if indices[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indices[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
                     atom1, atom2 = 0, 0
                     for atom in r_cut.mol.atoms:
-                        if int(atom.label) == indicies[0]:
+                        if int(atom.label) == indices[0]:
                             atom1 = atom
-                        elif int(atom.label) == indicies[1]:
+                        elif int(atom.label) == indices[1]:
                             atom2 = atom
                     if atom1.radical_electrons == 0 and atom2.radical_electrons == 0: # Both atoms do not have any radicals, but their bond is changing. There probably is resonance, so this will not affect the isomorphism check.
                         return
@@ -889,7 +891,17 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
     new = list()
     for spc in species:
         new_spc = ARCSpecies(label="copy", mol=spc.mol.copy(deep=True))
-        new_spc.final_xyz = new_spc.get_xyz() or spc.get_xyz()
+        print(f'mol copies: {new_spc.mol.copy(deep=True).to_smiles()}, {spc.mol.copy(deep=True).to_smiles()}')
+        xyz_1, xyz_2 = None, None
+        try:
+            xyz_1 = new_spc.get_xyz()
+        except:
+            pass
+        try:
+            xyz_2 = spc.get_xyz()
+        except:
+            pass
+        new_spc.final_xyz = xyz_1 or xyz_2
         new.append(new_spc)
     return new
 
@@ -945,14 +957,13 @@ def map_pairs(pairs: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[List[int]]:
     Returns:
         List[List[int]]: A list of the mapped species
     """
-
     maps = list()
     for pair in pairs:
         maps.append(map_two_species(pair[0], pair[1]))
     return maps
 
 
-def label_species_atoms(species: List['ARCSpecies']):
+def label_species_atoms(species: List['ARCSpecies']) -> None:
     """
     Adds the labels to the ``.mol.atoms`` properties of the species object.
     
@@ -966,9 +977,11 @@ def label_species_atoms(species: List['ARCSpecies']):
             index += 1
 
 
-def glue_maps(maps: List[List[int]], pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[int]:
+def glue_maps(maps: List[List[int]],
+              pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]],
+              ) -> List[int]:
     """
-    a function that joins together the maps from the parts of the reaction.
+    Join the maps from the parts of a bimolecular reaction.
 
     Args:
         maps (List[List[int]]): The list of all maps of the isomorphic cuts.
@@ -998,7 +1011,6 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
     Returns:
         bool: Whether the bde is based on the atom labels.
     """
-    bde = convert_list_index_0_to_1(bde, direction=-1)
     index1, index2 = bde[0], bde[1]
     new_bde, atoms = list(), list()
     for index, atom in enumerate(spc.mol.atoms):
@@ -1007,12 +1019,10 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
             atoms.append(atom)
         if len(new_bde) == 2:
             break
-    
     if len(new_bde) == 2 and atoms[1] in atoms[0].bonds.keys():
         spc.bdes = [tuple(new_bde)]
         return True
-    else:
-        return False
+    return False
 
 
 def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
@@ -1032,7 +1042,7 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
         Optional[List["ARCSpecies"]]: The species list input after the scission.
     """
     if ref_species is not None:
-        bdes = translate_indices_based_on_ref_species(species, ref_species, bdes)
+        bdes = translate_bdes_based_on_ref_species(species, ref_species, bdes)
     if not bdes:
         return species
     for bde in bdes:
@@ -1058,13 +1068,13 @@ def cut_species_based_on_atom_indices(species: List["ARCSpecies"],
     return species
 
 
-def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
-                                           ref_species: List["ARCSpecies"],
-                                           bdes: List[Tuple[int, int]],
-                                           ) -> Optional[List[Tuple[int, int]]]:
+def translate_bdes_based_on_ref_species(species: List["ARCSpecies"],
+                                        ref_species: List["ARCSpecies"],
+                                        bdes: List[Tuple[int, int]],
+                                        ) -> Optional[List[Tuple[int, int]]]:
     """
-    A function for translating the atom indices based on a reference species list.
-    The given bde indices refer to ``ref_species``, and they'll be translated to refer to ``species``.
+    Translate a list of BDE indices based on a reference species list.
+    The given BDE indices refer to `ref_species`, and they'll be translated to refer to `species`.
 
     Args:
         species (List[ARCSpecies]): The species list for which the indices should be translated.
@@ -1072,7 +1082,47 @@ def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
         bdes (List[Tuple[int, int]]): The BDE indices to be translated.
 
     Returns:
-        Optional[List[Tuple[int, int]]]: The translated BDE indices.
+        Optional[List[Tuple[int, int]]]: The translated BDE indices, or None if translation fails.
+    """
+    if not bdes:
+        return list()
+    all_indices = set()
+    for bde in bdes:
+        all_indices.update(bde)
+    sorted_indices = sorted(all_indices)
+    translated_indices = translate_indices_based_on_ref_species(species=species,
+                                                                ref_species=ref_species,
+                                                                indices=sorted_indices)
+    if translated_indices is None:
+        return None
+    index_translation_map = dict(zip(sorted_indices, translated_indices))
+    new_bdes = list()
+    for bde in bdes:
+        a, b = bde
+        translated_a = index_translation_map.get(a)
+        translated_b = index_translation_map.get(b)
+        if translated_a is not None and translated_b is not None:
+            new_bdes.append(tuple(sorted([translated_a, translated_b])))
+        else:
+            return None
+    return new_bdes
+
+
+def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
+                                           ref_species: List["ARCSpecies"],
+                                           indices: List[int],
+                                           ) -> Optional[List[int]]:
+    """
+    Translate a list of atom indices based on a reference species list.
+    The given indices refer to `ref_species`, and they'll be translated to refer to `species`.
+
+    Args:
+        species (List[ARCSpecies]): The species list for which the indices should be translated.
+        ref_species (List[ARCSpecies]): The reference species list.
+        indices (List[int]): The list of atom indices to be translated.
+
+    Returns:
+        Optional[List[int]]: The translated atom indices if all translations are successful; otherwise, None.
     """
     visited_ref_species = list()
     species_map = dict()  # maps ref species j to species i
@@ -1084,41 +1134,41 @@ def translate_indices_based_on_ref_species(species: List["ARCSpecies"],
                 species_map[j] = i
                 index_map[j] = map_two_species(ref_spc, spc)
                 break
-    new_bdes = list()
     ref_spcs_lengths = [ref_spc.number_of_atoms for ref_spc in ref_species]
     accum_sum_ref_spcs_lengths = [sum(ref_spcs_lengths[:i+1]) for i in range(len(ref_spcs_lengths))]
     spcs_lengths = [spc.number_of_atoms for spc in species]
     accum_sum_spcs_lengths = [sum(spcs_lengths[:i+1]) for i in range(len(spcs_lengths))]
-    for bde in bdes:
-        a, b = bde
-        translated_bde = list()
-        for n in [a, b]:
-            found = False
-            for j, ref_len in enumerate(accum_sum_ref_spcs_lengths):
-                if n < ref_len:
-                    atom_map = index_map[j]
-                    i = species_map[j]
-                    if atom_map is None or i is None:
-                        return None
-                    increment = accum_sum_spcs_lengths[i - 1] if i > 0 else 0
-                    translated_atom = atom_map[n - accum_sum_ref_spcs_lengths[j]] + increment
-                    translated_bde.append(translated_atom)
-                    found = True
-                    break
-            if not found:
-                return None
-        if len(translated_bde) == 2:
-            new_bdes.append(tuple(translated_bde))
+
+    def translate_single_index(index: int) -> Optional[int]:
+        for ref_idx, ref_len in enumerate(accum_sum_ref_spcs_lengths):
+            if index < ref_len:
+                atom_map = index_map.get(ref_idx)
+                species_i = species_map.get(ref_idx)
+                if atom_map is None or species_i is None:
+                    return None
+                increment = accum_sum_spcs_lengths[species_i - 1] if species_i > 0 else 0
+                ref_start = accum_sum_ref_spcs_lengths[ref_idx - 1] if ref_idx > 0 else 0
+                translated_atom = atom_map[index - ref_start] + increment
+                return translated_atom
+        return None
+
+    new_indices = list()
+    for idx in indices:
+        translated_idx = translate_single_index(idx)
+        if translated_idx is not None:
+            new_indices.append(translated_idx)
         else:
             return None
-    return new_bdes
+    return new_indices
 
 
 def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpecies"]:
     """
     A helper function for copying the species list for mapping. Also keeps the atom indices when copying.
+
     Args:
         species (List[ARCSpecies]): The species list to be copied.
+
     Returns:
         List[ARCSpecies]: The copied species list.
     """
@@ -1130,7 +1180,6 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
 
 
 def find_all_breaking_bonds(rxn: "ARCReaction",
-                            label_dict: Dict[str, int],
                             r_direction: bool,
                             ) -> Optional[List[Tuple[int, int]]]:
     """
@@ -1139,7 +1188,6 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
 
     Args:
         rxn (ARCReaction): The reaction in question.
-        label_dict (Dict[str, int]): Keys are atom labels (e.g., '*1'), values are atom indices (0-indexed).
         r_direction (bool): Whether to consider the reactants direction (``True``) or the products direction (``False``).
 
     Returns:
@@ -1147,8 +1195,15 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
                                representing the atom indices to be cut.
     """
     family = ReactionFamily(label=rxn.family)
+    product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set=[rxn.family])
+    label_dict = product_dicts[0]['r_label_map'] if r_direction else product_dicts[0]['p_label_map']
     breaking_bonds = list()
     for action in family.actions:
         if action[0].lower() == ("break_bond" if r_direction else "form_bond"):
-            breaking_bonds.append((label_dict[action[1]], label_dict[action[3]]))
+            breaking_bonds.append(tuple(sorted((label_dict[action[1]], label_dict[action[3]]))))
+    if not r_direction:
+        breaking_bonds = translate_bdes_based_on_ref_species(
+            species=rxn.get_reactants_and_products()[1],
+            ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(product_dicts[0]['products'])],
+            bdes=breaking_bonds)
     return breaking_bonds
