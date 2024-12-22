@@ -1257,6 +1257,8 @@ def process_completed_jobs(crest_jobs: dict, xyz_guesses: list) -> None:
         elif job_info["status"] == "failed":
             logger.error(f"CREST job failed for {crest_path}")
 
+    return xyz_guesses
+
 def extract_digits(s: str) -> int:
     """
     Extract the first integer from a string
