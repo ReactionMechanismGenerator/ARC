@@ -1080,12 +1080,12 @@ def h_abstraction(arc_reaction: 'ARCReaction',
             except (ValueError, KeyError) as e:
                 logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
 
-        if crest_paths:
-            crest_jobs = submit_crest_jobs(crest_paths)
-            monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
-            process_completed_jobs(crest_jobs, xyz_guesses)
-        else:
-            logger.error("No CREST paths found")
+    if crest_paths:
+        crest_jobs = submit_crest_jobs(crest_paths)
+        monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
+        process_completed_jobs(crest_jobs, xyz_guesses)
+    else:
+        logger.error("No CREST paths found")
 
 
     return xyz_guesses
@@ -1147,12 +1147,16 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     commands = [
         f'{CREST_PATH}',
         f' -T {SERVERS["local"].get("cpus", 8)}',
-        f'{path}/coords.ref',
-        f'--cinp {path}/constraints.inp',
+        'coords.ref',
+        '--cinp constraints.inp',
         '--noreftopo'
     ]
     command = ' '.join(commands)
-    command = f"{CREST_ENV_PATH} && {command}" if CREST_ENV_PATH else command
+
+    if CREST_ENV_PATH:
+        activation_line = CREST_ENV_PATH
+    else:
+        activation_line = ''
 
     if SERVERS.get('local') is not None:
         if SERVERS['local']['cluster_soft'].lower() in ['condor', 'htcondor']:
@@ -1172,6 +1176,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
             # Write the crest job
             crest_job = submit_scripts['local']['crest_job']
             format_params = {
+                "activation_line": activation_line,
                 "commands": command,
             }
             crest_job = crest_job.format(**format_params)
@@ -1186,6 +1191,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
                 "name": f"crest_{xyz_crest_int}",
                 "cpus": SERVERS['local'].get('cpus', 8),
                 "memory": SERVERS['local'].get('memory', 32.0) * 1024,
+                "activation_line": activation_line,
                 "commands": command,
             }
             sub_job = sub_job.format(**format_params)
