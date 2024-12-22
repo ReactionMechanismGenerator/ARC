@@ -1109,7 +1109,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
     # Write coords to coords.ref file
     symbols = xyz_guess['symbols']
 
-    converted_coords = str_to_str(xyz_str=xyz_guess['coords'], reverse_atoms=True, convert_to="bohr")
+    converted_coords = str_to_str(xyz_str=xyz_to_str(xyz_guess), reverse_atoms=True, convert_to="bohr")
     coords_ref_content = f"$coord\n{converted_coords}\n$end\n"
     coords_ref_path = os.path.join(path, 'coords.ref')
 
