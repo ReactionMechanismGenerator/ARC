@@ -51,6 +51,7 @@ logger = get_logger()
 
 def str_to_str(xyz_str: str,
                reverse_atoms: bool = False,
+               units: str = 'angstrom',
                convert_to: str = 'angstrom',
                project_directory: Optional[str] = None
                ) -> str:
@@ -69,6 +70,8 @@ def str_to_str(xyz_str: str,
     Returns: str
         The converted string xyz format.
     """
+    if isinstance(xyz_str, tuple):
+        xyz_str = '\n'.join(xyz_str)
     if isinstance(xyz_str, list):
         xyz_str = '\n'.join(xyz_str)
     if not isinstance(xyz_str, str):
@@ -80,13 +83,16 @@ def str_to_str(xyz_str: str,
     BOHR_TO_ANGSTROM = 0.529177
     ANGSTROM_TO_BOHR = 1.8897259886
 
-    if convert_to.lower() == 'angstrom':
-        conversion_factor = BOHR_TO_ANGSTROM
-    elif convert_to.lower() == 'bohr':
+    if units.lower() == 'angstrom' and convert_to.lower() == 'angstrom':
+        conversion_factor = 1
+    elif units.lower() == 'bohr' and convert_to.lower() == 'bohr':
+        conversion_factor = 1
+    elif units.lower() == 'angstrom' and convert_to.lower() == 'bohr':
         conversion_factor = ANGSTROM_TO_BOHR
+    elif units.lower() == 'bohr' and convert_to.lower() == 'angstrom':
+        conversion_factor = BOHR_TO_ANGSTROM
     else:
-        raise ValueError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
-
+        raise ConverterError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
 
     processed_lines = list()
     # Split the string into lines
@@ -111,8 +117,8 @@ def str_to_str(xyz_str: str,
             y = float(y_str) * conversion_factor
             z = float(z_str) * conversion_factor
         
-        except ValueError:
-            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.')
+        except ValueError as e:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.') from e
         
         if reverse_atoms and atom_first:
             formatted_line = f'{x} {y} {z} {atom}'
