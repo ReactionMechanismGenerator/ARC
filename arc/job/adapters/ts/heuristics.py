@@ -1146,10 +1146,10 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
 
     commands = [
         f'{CREST_PATH}',
-        f' -T {SERVERS["local"].get("cpus", 8)}',
         'coords.ref',
         '--cinp constraints.inp',
-        '--noreftopo'
+        '--noreftopo',
+        f' -T {SERVERS["local"].get("cpus", 8)}',
     ]
     command = ' '.join(commands)
 
@@ -1176,6 +1176,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
             # Write the crest job
             crest_job = submit_scripts['local']['crest_job']
             format_params = {
+                "path": path,
                 "activation_line": activation_line,
                 "commands": command,
             }
@@ -1190,7 +1191,7 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
                 "queue": "alon_q",
                 "name": f"crest_{xyz_crest_int}",
                 "cpus": SERVERS['local'].get('cpus', 8),
-                "memory": SERVERS['local'].get('memory', 32.0) * 1024,
+                "memory": SERVERS['local'].get('memory', 32.0)  if SERVERS['local'].get('memory', 32.0) < 60.0 else 40.0,
                 "activation_line": activation_line,
                 "commands": command,
             }
