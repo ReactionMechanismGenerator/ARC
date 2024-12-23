@@ -14,8 +14,10 @@ import shutil
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
-from arc.common import ARC_PATH, _check_r_n_p_symbols_between_rmg_and_arc_rxns, almost_equal_coords
+from arc.common import ARC_PATH, almost_equal_coords
+from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
+                                            are_h_abs_wells_reversed,
                                             combine_coordinates_with_redundant_atoms,
                                             determine_glue_params,
                                             find_distant_neighbor,
@@ -23,7 +25,6 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_modified_params_from_zmat_2,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
-                                            react,
                                             stretch_zmat_bond,
                                             )
 from arc.reaction import ARCReaction
@@ -1169,49 +1170,6 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(new_map, {0: 23, 1: 18, 2: 17, 3: 19, 4: 'X25', 5: 16, 6: 'X26', 7: 20, 8: 'X27', 9: 21,
                                    10: 22, 11: 'X28', 12: 24})  # +16
 
-    def test_react(self):
-        """Test the react() function and specifically that atom order in kept."""
-        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz),
-                                       ARCSpecies(label='CCOOj', smiles='CCO[O]', xyz=self.ccooj_xyz)],
-                            p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
-                                       ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz)])
-        reactants, products = rxn_1.get_reactants_and_products(arc=True)
-        reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
-        product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
-        reactants = list(reactant_mol_combinations)[0]
-        products = list(product_mol_combinations)[0]
-        rmg_reactions = react(reactants=list(reactants),
-                              products=list(products),
-                              family=rxn_1.family,
-                              arc_reaction=rxn_1,
-                              )
-        self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions))
-
-        rxn_2 = ARCReaction(reactants=['H2N2(T)', 'N2H4'], products=['N2H3', 'N2H3'],
-                            r_species=[ARCSpecies(label='H2N2(T)', smiles='[N]N'),
-                                       ARCSpecies(label='N2H4', smiles='NN')],
-                            p_species=[ARCSpecies(label='N2H3', smiles='[NH]N')])
-        self.assertEqual(rxn_2.family, 'H_Abstraction')
-        reactants, products = rxn_2.get_reactants_and_products(arc=False)
-        reactant_labels = [atom.label for atom in reactants[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in reactants[1].molecule[0].atoms if atom.label]
-        product_labels = [atom.label for atom in products[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in products[1].molecule[0].atoms if atom.label]
-        self.assertEqual(reactant_labels, list())
-        self.assertEqual(product_labels, list())
-        rmg_reactions = react(reactants=list(reactants),
-                              products=list(products),
-                              family=rxn_2.family,
-                              arc_reaction=rxn_2,
-                              )
-        reactant_labels = [atom.label for atom in rmg_reactions[0].reactants[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in rmg_reactions[0].reactants[1].molecule[0].atoms if atom.label]
-        product_labels = [atom.label for atom in rmg_reactions[0].products[0].molecule[0].atoms if atom.label] \
-                         + [atom.label for atom in rmg_reactions[0].products[1].molecule[0].atoms if atom.label]
-        for label in ['*1', '*2', '*3']:
-            self.assertIn(label, reactant_labels)
-            self.assertIn(label, product_labels)
-
     def test_generate_the_two_constrained_zmats(self):
         """Test the generate_the_two_constrained_zmats() function."""
         zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1=self.ccooh_xyz,
@@ -1700,6 +1658,63 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=1), 4)
         self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=2), 4)
         self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=2), 4)
+
+    def test_are_h_abs_wells_reversed(self):
+        """
+        Test the are_h_abs_wells_reversed() function.
+        The expected order is: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
+        """  # todo: fix this test, then fix h ans function to not use rmg_reactions, but rather the prod dicts, need r reversed and p reversed working good (add more tests here for different reactions?)
+        # todo: also the heuristics and heuristics tests we not done on the updated branch, save and transfer manually
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],  # none are reversed
+                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],  # r reversed
+                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
+        rxn_3 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],  # p reversed
+                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
+        rxn_4 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],  # r and p reversed
+                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
+
+        product_dicts = get_reaction_family_products(rxn=rxn_1,
+                                                     rmg_family_set=[rxn_1.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_1, product_dict=product_dicts[0])
+        self.assertFalse(r_reversed)
+        self.assertFalse(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_2,
+                                                     rmg_family_set=[rxn_2.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_2, product_dict=product_dicts[0])
+        self.assertTrue(r_reversed)
+        self.assertFalse(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_3,
+                                                     rmg_family_set=[rxn_3.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_3, product_dict=product_dicts[0])
+        self.assertFalse(r_reversed)
+        self.assertTrue(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_4,
+                                                     rmg_family_set=[rxn_4.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_4, product_dict=product_dicts[0])
+        self.assertTrue(r_reversed)
+        self.assertTrue(p_reversed)
+
+
 
     @classmethod
     def tearDownClass(cls):
