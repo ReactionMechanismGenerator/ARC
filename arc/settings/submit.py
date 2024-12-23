@@ -313,6 +313,8 @@ queue
 
 source ~/.bashrc
 
+{path}
+
 touch initial_time
 
 {activation_line}
@@ -321,7 +323,7 @@ touch initial_time
 
 touch final_time
 
-find . ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' -type f -exec rm -v {} +
+find {path} -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' -exec rm -v {{}} +
 
 """,
         # Atlas uses HTCondor, see docs here: https://htcondor.readthedocs.io/en/latest/
@@ -898,6 +900,8 @@ touch final_time
 
 source ~/.bashrc
 
+cd $PBS_O_WORKDIR
+
 touch initial_time
 
 {activation_line}
@@ -906,7 +910,7 @@ touch initial_time
 
 touch final_time
 
-find . ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' -type f -exec rm -v {} +
+find "$PBS_O_WORKDIR" -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' -exec rm -v {{}} + 
 
         """,
     },
