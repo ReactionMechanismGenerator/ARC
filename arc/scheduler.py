@@ -1290,35 +1290,36 @@ class Scheduler(object):
                         conformer=conformer)
             return
         # determine_occ(xyz=self.xyz, charge=self.charge)
-        if level == self.opt_level and not self.composite_method \
-                and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
-                and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
-                and self.output[label]['paths']['geo']:
-            logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
-                        f'same level of theory. Using the optimization output to parse the sp energy.')
-            recent_opt_job_name, recent_opt_job = 'opt_a0', None
-            if 'opt' in self.job_dict[label].keys():
-                for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
-                    if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
-                        recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
-                if recent_opt_job is not None:
-                    recent_opt_job.rename_output_file()
-                self.post_sp_actions(label=label,
-                                     sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
-                                     level=level,
-                                     )
+        # TODO: Removing for now as it is causing issues
+        # if level == self.opt_level and not self.composite_method \
+        #         and not (level.software == 'xtb' and self.species_dict[label].is_ts) \
+        #         and 'paths' in self.output[label] and 'geo' in self.output[label]['paths'] \
+        #         and self.output[label]['paths']['geo']:
+        #     logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
+        #                 f'same level of theory. Using the optimization output to parse the sp energy.')
+        #     recent_opt_job_name, recent_opt_job = 'opt_a0', None
+        #     if 'opt' in self.job_dict[label].keys():
+        #         for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
+        #             if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
+        #                 recent_opt_job_name, recent_opt_job = opt_job_name, opt_job
+        #         if recent_opt_job is not None:
+        #             recent_opt_job.rename_output_file()
+        #         self.post_sp_actions(label=label,
+        #                              sp_path=os.path.join(recent_opt_job.local_path_to_output_file),
+        #                              level=level,
+        #                              )
 
-            # If opt is not in the job dictionary, the likely explanation is this job has been restarted
-            elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
-                self.post_sp_actions(label=label,
-                                     sp_path=self.output[label]['paths']['geo'],
-                                     level=level,
-                                     )
+        #     # If opt is not in the job dictionary, the likely explanation is this job has been restarted
+        #     elif 'geo' in self.output[label]['paths']:  # Then just use this path directly
+        #         self.post_sp_actions(label=label,
+        #                              sp_path=self.output[label]['paths']['geo'],
+        #                              level=level,
+        #                              )
 
-            else:
-                raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
+        #     else:
+        #         raise RuntimeError(f'Unable to set the path for the sp job for species {label}')
 
-            return
+        #     return
         if 'sp' not in self.job_dict[label].keys():  # Check whether single-point energy jobs have been spawned yet.
             # We're spawning the first sp job for this species.
             self.job_dict[label]['sp'] = dict()
