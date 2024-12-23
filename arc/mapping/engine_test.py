@@ -994,30 +994,30 @@ class TestMappingEngine(unittest.TestCase):
             atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
             flip_map(atom_map)
 
-    def test_make_bond_changes(self):
-        """Test the make_bond_changes() function"""
-        spc1 = ARCSpecies(label="Test_bc", smiles="[CH2][CH2]")
-        spc2 = ARCSpecies(label="Test_bc", smiles="C=C")
-        label_species_atoms([spc1]), label_species_atoms([spc2])
-        rxn = ARCReaction(r_species = [spc1], p_species=[spc2])
-        self.assertEqual(rxn.family, '1,2-Birad_to_alkene')
-        r_label_dict = {'*1': 0, '*2': 1}
-        l = [spc1]
-        make_bond_changes(rxn, l, r_label_dict)
-        self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
-
-        rxn = ARCReaction(r_species=[ARCSpecies(label="N4", smiles="NNNN")],
-                          p_species=[ARCSpecies(label="NH3", smiles="N"),
-                                     ARCSpecies(label="NH2NHN_p", smiles="[N-]=[NH+]N")])
-        rxn.family = '1,2_NH3_elimination'
-        label_species_atoms(rxn.r_species), label_species_atoms(rxn.p_species)
-        r_bdes = find_all_breaking_bonds(rxn, r_direction=True)
-        r_cuts = cut_species_based_on_atom_indices(rxn.r_species, r_bdes)
-        self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
-        make_bond_changes(rxn=rxn,
-                          r_cuts=r_cuts,
-                          r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
-        self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
+    # def test_make_bond_changes(self):
+    #     """Test the make_bond_changes() function"""
+    #     spc1 = ARCSpecies(label="Test_bc", smiles="[CH2][CH2]")
+    #     spc2 = ARCSpecies(label="Test_bc", smiles="C=C")
+    #     label_species_atoms([spc1]), label_species_atoms([spc2])
+    #     rxn = ARCReaction(r_species = [spc1], p_species=[spc2])
+    #     self.assertEqual(rxn.family, '1,2-Birad_to_alkene')
+    #     r_label_dict = {'*1': 0, '*2': 1}
+    #     l = [spc1]
+    #     make_bond_changes(rxn, l, r_label_dict)
+    #     self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
+    #
+    #     rxn = ARCReaction(r_species=[ARCSpecies(label="N4", smiles="NNNN")],
+    #                       p_species=[ARCSpecies(label="NH3", smiles="N"),
+    #                                  ARCSpecies(label="NH2NHN_p", smiles="[N-]=[NH+]N")])
+    #     rxn.family = '1,2_NH3_elimination'
+    #     label_species_atoms(rxn.r_species), label_species_atoms(rxn.p_species)
+    #     r_bdes = find_all_breaking_bonds(rxn, r_direction=True)
+    #     r_cuts = cut_species_based_on_atom_indices(rxn.r_species, r_bdes)
+    #     self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
+    #     make_bond_changes(rxn=rxn,
+    #                       r_cuts=r_cuts,
+    #                       r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
+    #     self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
 
     def test_update_xyz(self):
         """tests the update_xyz() function"""

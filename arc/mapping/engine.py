@@ -832,49 +832,54 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
     return flipped_map
 
 
-def make_bond_changes(rxn: 'ARCReaction',
-                      r_cuts: List[ARCSpecies],
-                      r_label_dict: dict,
-                      ) -> None:
-    """
-    Makes the bond change before matching the reactants and products
-
-    Ags:
-        rxn ('ARCReaction'): An ARCReaction object
-        r_cuts (List[ARCSpecies]): the cut products
-        r_label_dict (dict): the dictionary object the find the relevant location.
-    """
-    family = ReactionFamily(label=rxn.family)
-    for action in family.actions:
-        if action[0].lower() == "change_bond":
-            indices = r_label_dict[action[1]], r_label_dict[action[3]]
-            for r_cut in r_cuts:
-                if indices[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indices[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
-                    atom1, atom2 = 0, 0
-                    for atom in r_cut.mol.atoms:
-                        if int(atom.label) == indices[0]:
-                            atom1 = atom
-                        elif int(atom.label) == indices[1]:
-                            atom2 = atom
-                    if atom1.radical_electrons == 0 and atom2.radical_electrons == 0: # Both atoms do not have any radicals, but their bond is changing. There probably is resonance, so this will not affect the isomorphism check.
-                        return
-                    elif atom1.radical_electrons == 0 and atom2.radical_electrons != 0:
-                        atom1.lone_pairs -= 1
-                        atom2.lone_pairs += 1
-                        atom1.charge += 1
-                        atom2.charge -= 1
-                        atom2.radical_electrons -= 2
-                    elif atom2.radical_electrons == 0 and atom1.radical_electrons != 0:
-                        atom2.lone_pairs -= 1
-                        atom1.lone_pairs += 1
-                        atom2.charge += 1
-                        atom1.charge -= 1
-                        atom1.radical_electrons -= 2
-                    else:    
-                        atom1.decrement_radical()
-                        atom2.decrement_radical()
-                    r_cut.mol.get_bond(atom1, atom2).order += action[2]
-                    r_cut.mol.update()
+# def make_bond_changes(rxn: 'ARCReaction',
+#                       r_cuts: List[ARCSpecies],
+#                       r_label_dict: dict,
+#                       ) -> None:
+#     """
+#     Apply any CHANGE_BOND recipe actions before matching the reactants and products.
+#
+#     Args:
+#         rxn ('ARCReaction'): An ARCReaction object.
+#         r_cuts (List[ARCSpecies]): The cut reactants.
+#         r_label_dict (dict): The dictionary that maps recipe star labels to atom indices.
+#     """
+#     print('\n\n\n++++++++++++++ 11.1 in make_bond_changes\n')
+#     family = ReactionFamily(label=rxn.family)
+#     for action in family.actions:  # TODO: see issue here with updating the charge for driver test test_map_ho2_elimination_from_peroxy_radical
+#         if action[0].lower() == "change_bond":
+#             indices = r_label_dict[action[1]], r_label_dict[action[3]]
+#             for r_cut in r_cuts:
+#                 if indices[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indices[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
+#                     atom1, atom2 = None, None
+#                     for atom in r_cut.mol.atoms:
+#                         if int(atom.label) == indices[0]:
+#                             atom1 = atom
+#                         elif int(atom.label) == indices[1]:
+#                             atom2 = atom
+#                     if atom1 is None or atom2 is None:
+#                         continue
+#                     if atom1.radical_electrons == 0 and atom2.radical_electrons == 0:
+#                         # Both atoms do not have any radicals, but their bond is changing.
+#                         # There's probably resonance, so this will not affect the isomorphism check.
+#                         return
+#                     elif atom1.radical_electrons == 0 and atom2.radical_electrons != 0:
+#                         atom1.lone_pairs -= 1
+#                         atom2.lone_pairs += 1
+#                         atom1.charge += 1
+#                         atom2.charge -= 1
+#                         atom2.radical_electrons -= 2
+#                     elif atom2.radical_electrons == 0 and atom1.radical_electrons != 0:
+#                         atom2.lone_pairs -= 1
+#                         atom1.lone_pairs += 1
+#                         atom2.charge += 1
+#                         atom1.charge -= 1
+#                         atom1.radical_electrons -= 2
+#                     else:
+#                         atom1.decrement_radical()
+#                         atom2.decrement_radical()
+#                     r_cut.mol.get_bond(atom1, atom2).order += action[2]
+#                     r_cut.mol.update()
 
 
 def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -891,7 +896,6 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
     new = list()
     for spc in species:
         new_spc = ARCSpecies(label="copy", mol=spc.mol.copy(deep=True))
-        print(f'mol copies: {new_spc.mol.copy(deep=True).to_smiles()}, {spc.mol.copy(deep=True).to_smiles()}')
         xyz_1, xyz_2 = None, None
         try:
             xyz_1 = new_spc.get_xyz()

@@ -962,6 +962,17 @@ H       1.24252625    0.91583948   -0.84155142"""
                                                       )
         self.assertEqual(isomorphic_subgraph, {0: '*3', 4: '*1', 7: '*2'})
 
+    # def test_order_species_list(self):
+    #     """Test the order_species_list() function"""
+    #     spc1 = ARCSpecies(label='spc1', smiles='C')
+    #     spc2 = ARCSpecies(label='spc2', smiles='CC')
+    #     ordered_species_list = order_species_list(species_list=[spc2, spc1], reference_species=[spc1, spc2])
+    #     self.assertEqual(ordered_species_list, [spc1, spc2])
+    #     ordered_species_list = order_species_list(species_list=[spc2, spc1], reference_species=[spc2, spc1])
+    #     self.assertEqual(ordered_species_list, [spc2, spc1])
+    #     ordered_species_list = order_species_list(species_list=[spc2.mol, spc1], reference_species=[spc2, spc1.mol])
+    #     self.assertEqual(ordered_species_list, [spc2.mol, spc1])
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
