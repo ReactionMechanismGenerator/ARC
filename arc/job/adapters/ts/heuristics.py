@@ -1184,6 +1184,9 @@ def crest_ts_conformer_search(xyz_guess: dict, a_atom: int, h_atom: int, b_atom:
 
             with open(os.path.join(path, 'job.sh'), 'w') as f:
                 f.write(crest_job)
+            # Need to make the job.sh file 777
+            os.chmod(os.path.join(path, 'job.sh'), 0o777)
+            
         elif SERVERS['local']['cluster_soft'].lower() == 'pbs':
             # Write job submission scripts
             sub_job = submit_scripts['local']['crest']
