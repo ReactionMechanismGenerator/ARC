@@ -323,7 +323,7 @@ touch initial_time
 
 touch final_time
 
-find {path} -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' -exec rm -v {{}} +
+find {path} -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' ! -name 'job.sh' ! -name 'submit.sub' ! -name 'job.log' -exec rm -v {{}} +
 
 """,
         # Atlas uses HTCondor, see docs here: https://htcondor.readthedocs.io/en/latest/
