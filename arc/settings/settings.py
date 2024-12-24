@@ -822,11 +822,13 @@ def find_crest_executable():
         for root, _, files in os.walk(directory):
             for file in files:
                 if name_contains.lower() in file.lower():
-                    match = re.search(r"(\d+\.\d+(\.\d+)?)", file)  # Match version patterns like 1.0, 1.0.1
-                    version = tuple(map(int, match.group(1).split('.'))) if match else (0,)
-                    if highest_version is None or version > highest_version:
-                        highest_version = version
-                        highest_version_path = os.path.join(root, file)
+                    match = re.search(r"(\d+\.\d+(\.\d+)*)", file)  # Match version patterns like 1.0, 1.0.1
+                    if match:
+                        version_str = match.group(1)
+                        version = tuple(map(int, version_str.split('.')))
+                        if highest_version is None or version > highest_version:
+                            highest_version = version
+                            highest_version_path = os.path.join(root, file)
 
         return highest_version_path
 
