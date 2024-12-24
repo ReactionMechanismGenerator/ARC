@@ -819,16 +819,25 @@ def find_crest_executable():
         highest_version_path = None
         highest_version = None
 
-        for root, _, files in os.walk(directory):
-            for file in files:
-                if name_contains.lower() in file.lower():
-                    match = re.search(r"(\d+\.\d+(\.\d+)*)", file)  # Match version patterns like 1.0, 1.0.1
-                    if match:
-                        version_str = match.group(1)
-                        version = tuple(map(int, version_str.split('.')))
-                        if highest_version is None or version > highest_version:
-                            highest_version = version
-                            highest_version_path = os.path.join(root, file)
+        for folder in os.listdir(directory):
+            file_path = os.path.join(directory, folder)
+            if name_contains.lower() in folder.lower() and os.path.isdir(file_path):
+                    # check if 'crest' is an executable file in the directory
+                    crest_path = os.path.join(file_path, 'crest')
+                    if os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
+                        match = re.search(r"(\d+\.\d+(\.\d+)*)", folder)  # Match version patterns like 1.0, 1.0.1
+                        if match:
+                            version_str = match.group(1)
+                            version = tuple(map(int, version_str.split('.')))
+                            if highest_version is None:
+                                highest_version = version
+                                highest_version_path = crest_path
+                            elif version[0] > highest_version[0]:
+                                highest_version = version
+                                highest_version_path = crest_path
+                            elif version[0] == highest_version[0] and version[1] > highest_version[1]:
+                                highest_version = version
+                                highest_version_path = crest_path
 
         return highest_version_path
 
