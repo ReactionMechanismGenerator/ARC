@@ -790,22 +790,56 @@ for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_pat
 # If the path (environment) does not exist, then we use the binary
 
 
+
 def find_crest_executable():
     """
-    Searches for the 'crest' executable in known environment directories and the system PATH.
+    Searches for the 'crest' executable by prioritizing the binary in '/Local/ce_dana',
+    identifying the highest version, and falling back to Conda environments or PATH.
 
     Returns:
         tuple: (crest_path, env_manager_command)
                - crest_path (str): Full path to the 'crest' executable.
                - env_manager_command (str): Command to activate the environment containing 'crest'.
     """
+    def find_highest_version_in_directory(directory, name_contains):
+        """
+        Finds the file with the highest version in a directory containing a specific string.
+
+        Args:
+            directory (str): The directory to search in.
+            name_contains (str): Substring that the file names must contain.
+
+        Returns:
+            str or None: Path to the file with the highest version, or None if no such file is found.
+        """
+        if not os.path.exists(directory):
+            return None
+
+        highest_version_path = None
+        highest_version = None
+
+        for root, _, files in os.walk(directory):
+            for file in files:
+                if name_contains.lower() in file.lower():
+                    match = re.search(r"(\d+\.\d+(\.\d+)?)", file)  # Match version patterns like 1.0, 1.0.1
+                    version = tuple(map(int, match.group(1).split('.'))) if match else (0,)
+                    if highest_version is None or version > highest_version:
+                        highest_version = version
+                        highest_version_path = os.path.join(root, file)
+
+        return highest_version_path
+
+    # Priority 1: Search in /Local/ce_dana for the highest version of 'crest'
+    crest_path = find_highest_version_in_directory('/Local/ce_dana', 'crest')
+    if crest_path and os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
+        return crest_path, ""  # No environment activation needed for standalone binary
+
+    # Priority 2: Check common Conda/Mamba environments
     home = os.path.expanduser('~')
-    # List of potential environments where 'crest' might be installed
     potential_env_paths = [
         os.path.join(home, 'anaconda3', 'envs', 'crest_env', 'bin', 'crest'),
         os.path.join(home, 'miniconda3', 'envs', 'crest_env', 'bin', 'crest'),
         os.path.join(home, '.conda', 'envs', 'crest_env', 'bin', 'crest'),
-        os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'crest_env', 'bin', 'crest'),
         os.path.join(home, 'mambaforge', 'envs', 'crest_env', 'bin', 'crest'),
         os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'crest'),
         os.path.join(home, 'miniforge3', 'envs', 'crest_env', 'bin', 'crest'),
@@ -813,13 +847,10 @@ def find_crest_executable():
 
     # Include the 'crest' in the current Python environment if applicable
     current_env_bin = os.path.dirname(sys.executable)
-    crest_in_current_env = os.path.join(current_env_bin, 'crest')
-    potential_env_paths.insert(0, crest_in_current_env)  # Prioritize current environment
+    potential_env_paths.insert(0, os.path.join(current_env_bin, 'crest'))
 
-    # Iterate through the potential paths
     for crest_path in potential_env_paths:
         if os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
-            # Determine which environment manager is used based on the path
             if 'micromamba' in crest_path:
                 env_cmd = "source ~/.bashrc && micromamba activate crest_env"
             elif 'mambaforge' in crest_path:
@@ -830,12 +861,13 @@ def find_crest_executable():
                 env_cmd = ""  # Standalone binary; no environment activation needed
             return crest_path, env_cmd
 
-    # If not found in environments, attempt to find 'crest' in PATH
+    # Priority 3: Check the system PATH
     crest_in_path = shutil.which('crest')
     if crest_in_path:
         return crest_in_path, ""  # No environment activation needed
 
     # 'crest' not found
     return None, None
+
 
 CREST_PATH, CREST_ENV_PATH = find_crest_executable()
