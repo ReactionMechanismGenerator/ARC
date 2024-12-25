@@ -303,6 +303,9 @@ class GaussianAdapter(JobAdapter):
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
                     keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
+            else:
+                if integral_algorithm == 'Acc2E=14':
+                    input_dict['job_type_1'] = input_dict['job_type_1'] + (f' integral=({integral_algorithm})')
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 

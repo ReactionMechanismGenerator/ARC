@@ -1937,7 +1937,8 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
 
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
-            trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
+            trsh_keyword = [kw for kw in trsh_keyword if not kw.startswith('opt')]
+            trsh_keyword.append(new_opt_keyword)    
     
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 

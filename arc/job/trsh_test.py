@@ -398,7 +398,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
 
         self.assertTrue(remove_checkfile)
-        self.assertEqual(ess_trsh_methods, ['change_node', 'int=(Acc2E=14)', 'checkfile=None', 'cartesian', 'NoSymm'])
+        self.assertEqual(ess_trsh_methods, ['change_node', 'int=(Acc2E=14)', 'checkfile=None', 'opt=(cartesian)', 'NoSymm'])
         self.assertEqual(trsh_keyword, ['opt=(cartesian)', 'int=(Acc2E=14)', 'nosymm'] )
 
         # Gaussian: test 3

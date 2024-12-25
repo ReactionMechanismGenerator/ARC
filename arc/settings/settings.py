@@ -817,28 +817,17 @@ def find_crest_executable():
             return None
 
         highest_version_path = None
-        highest_version = None
+        highest_version = ()
 
         for folder in os.listdir(directory):
             file_path = os.path.join(directory, folder)
             if name_contains.lower() in folder.lower() and os.path.isdir(file_path):
-                    # check if 'crest' is an executable file in the directory
-                    crest_path = os.path.join(file_path, 'crest')
-                    if os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
-                        match = re.search(r"(\d+\.\d+(\.\d+)*)", folder)  # Match version patterns like 1.0, 1.0.1
-                        if match:
-                            version_str = match.group(1)
-                            version = tuple(map(int, version_str.split('.')))
-                            if highest_version is None:
-                                highest_version = version
-                                highest_version_path = crest_path
-                            elif version[0] > highest_version[0]:
-                                highest_version = version
-                                highest_version_path = crest_path
-                            elif version[0] == highest_version[0] and version[1] > highest_version[1]:
-                                highest_version = version
-                                highest_version_path = crest_path
-
+                crest_path = os.path.join(file_path, 'crest')
+                if os.path.isfile(crest_path) and os.access(crest_path, os.X_OK):
+                    version = parse_version(folder)
+                    if highest_version == () or version > highest_version:
+                        highest_version = version
+                        highest_version_path = crest_path
         return highest_version_path
 
     # Priority 1: Search in /Local/ce_dana for the highest version of 'crest'
@@ -880,6 +869,40 @@ def find_crest_executable():
 
     # 'crest' not found
     return None, None
+
+def parse_version(folder_name):
+    """
+    Parses the version from the folder name and returns a tuple for comparison.
+
+    Supports versions like:
+    - 3.0.2
+    - v212
+    - 2.1
+    - 2
+
+    Args:
+        folder_name (str): The folder name containing the version.
+
+    Returns:
+        tuple: A version tuple (major, minor, patch)
+    """
+    version_regex = re.compile(r"(?:v?(\d+)(?:\.(\d+))?(?:\.(\d+))?)", re.IGNORECASE)
+    match = version_regex.search(folder_name)
+    if not match:
+        return (0, 0, 0)  # Default version if none found
+
+    major = int(match.group(1)) if match.group(1) else 0
+    minor = int(match.group(2)) if match.group(2) else 0
+    patch = int(match.group(3)) if match.group(3) else 0
+
+    # Handle specific cases
+    if major >= 100 and match.group(2) is None and match.group(3) is None:
+        # Example: v212 -> (2, 1, 2)
+        major = major // 100
+        minor = (major % 100) // 10
+        patch = major % 10
+
+    return (major, minor, patch)
 
 
 CREST_PATH, CREST_ENV_PATH = find_crest_executable()
