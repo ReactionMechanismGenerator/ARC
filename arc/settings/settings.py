@@ -9,6 +9,7 @@ import os
 import string
 import sys
 import shutil
+import re
 
 # Users should update the following server dictionary.
 # Instructions for RSA key generation can be found here:
