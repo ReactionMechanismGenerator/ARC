@@ -289,6 +289,43 @@ touch final_time
     },
 
     'atlas': {
+        'crest': """Universe      = vanilla
+
++JobName      = "{name}"
+
+log           = job.log
+output        = out.txt
+error         = err.txt
+
+getenv        = True
+
+should_transfer_files = no
+
+executable = job.sh
+
+request_cpus  = {cpus}
+request_memory = {memory}MB
+
+queue
+
+""",
+        'crest_job': """#!/bin/bash
+
+source ~/.bashrc
+
+{path}
+
+touch initial_time
+
+{activation_line}
+
+{commands}
+
+touch final_time
+
+find {path} -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' ! -name 'job.sh' ! -name 'submit.sub' ! -name 'job.log' -exec rm -v {{}} +
+
+""",
         # Atlas uses HTCondor, see docs here: https://htcondor.readthedocs.io/en/latest/
         # Gaussian 09
         'gaussian': """Universe      = vanilla
@@ -854,6 +891,28 @@ rm -rf $GAUSS_SCRDIR
 touch final_time
 
     """,
+        'crest': """#!/bin/bash -l
+#PBS -q {queue}
+#PBS -N {name}
+#PBS -l select=1:ncpus={cpus}:mem={memory}:mpiprocs={cpus}
+#PBS -o out.txt
+#PBS -e err.txt
+
+source ~/.bashrc
+
+cd $PBS_O_WORKDIR
+
+touch initial_time
+
+{activation_line}
+
+{commands}
+
+touch final_time
+
+find "$PBS_O_WORKDIR" -maxdepth 1 -type f ! -name 'crest_best.xyz' ! -name 'coords.ref' ! -name 'constraints.inp' ! -name 'submit.sh' ! -name 'out.txt' ! -name 'err.txt' ! -name 'initial_time' ! -name 'final_time' -exec rm -v {{}} + 
+
+        """,
     },
  'server3': {
         'gaussian': """#!/bin/bash -l
