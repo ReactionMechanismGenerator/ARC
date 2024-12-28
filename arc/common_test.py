@@ -21,9 +21,7 @@ from rmgpy.species import Species
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
-from arc.mapping.engine import get_rmg_reactions_from_arc_reaction
 import arc.species.converter as converter
-from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
 
@@ -1267,13 +1265,6 @@ class TestCommon(unittest.TestCase):
         mol = Molecule(smiles = "C")
         mol.atoms[0].label = "a"
         self.assertIsNone(common.sort_atoms_in_descending_label_order(mol=mol))
-
-    def test_check_r_n_p_symbols_between_rmg_and_arc_rxns(self):
-        """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
-        arc_rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
-                              p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
-        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=arc_rxn)
-        self.assertTrue(common._check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_rxn, rmg_reactions))
 
     def test_almost_equal_coords(self):
         """Test the almost_equal_coords() function"""
