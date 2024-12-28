@@ -205,7 +205,6 @@ class ARC(object):
         T_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int): The number of temperature points between ``T_min`` and ``T_max``.
         max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
-        rmg_database (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.
         memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
@@ -626,7 +625,6 @@ class ARC(object):
                                    ess_settings=self.ess_settings,
                                    job_types=self.job_types,
                                    bath_gas=self.bath_gas,
-                                   rmg_database=self.rmg_database,
                                    restart_dict=self.restart_dict,
                                    project_directory=self.project_directory,
                                    max_job_time=self.max_job_time,
@@ -669,7 +667,6 @@ class ARC(object):
                             T_max=self.T_max,
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
-                            rmg_database=self.rmg_database,
                             compare_to_rmg=self.compare_to_rmg,
                             three_params=self.three_params,
                             sp_level=self.arkane_level_of_theory,
