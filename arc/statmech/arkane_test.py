@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-This module contains unit tests for ARC's statmech.arkane modele
+This module contains unit tests for ARC's statmech.arkane module
 """
 
 import os
