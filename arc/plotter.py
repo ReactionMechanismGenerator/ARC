@@ -2,6 +2,7 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
+import math
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -52,6 +53,9 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_x_y_z,
                                    )
 from arc.species.species import ARCSpecies
+
+
+R = 8.31446261815324  # J/(mol*K)
 
 
 logger = get_logger()
@@ -438,9 +442,9 @@ def draw_thermo_parity_plots(species_list: list,
     for spc in species_list:
         labels.append(spc.label)
         h298_arc.append(spc.thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
-        h298_rmg.append(spc.rmg_thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
+        h298_rmg.append(spc.rmg_thermo['H298'])
         s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
-        s298_rmg.append(spc.rmg_thermo.get_entropy(298))  # in J/mol*K
+        s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K
         comments.append(spc.rmg_thermo.comment)
     var_units_h = r"$\left(\frac{J}{mol}\right)$"
     var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
@@ -449,7 +453,7 @@ def draw_thermo_parity_plots(species_list: list,
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label=label_h, var_units=var_units_h, labels=labels, pp=pp)
     draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label=label_s, var_units=var_units_s, labels=labels, pp=pp)
     pp.close()
-    thermo_sources = '\nSources of thermoproperties determined by RMG for the parity plots:\n'
+    thermo_sources = '\nSources of thermodynamic properties determined by RMG for the parity plots:\n'
     max_label_len = max([len(label) for label in labels])
     for i, label in enumerate(labels):
         thermo_sources += '   {0}: {1}{2}\n'.format(label, ' ' * (max_label_len - len(label)), comments[i])
@@ -494,7 +498,12 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.close(fig=fig)
 
 
-def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
+def draw_kinetics_plots(rxn_list: list,
+                        T_min: Optional[Tuple[float, str]] = None,
+                        T_max: Optional[Tuple[float, str]] = None,
+                        T_count: int = 50,
+                        path: Optional[str] = None,
+                        ) -> None:
     """
     Draws plots of calculated rate coefficients and RMG's estimates.
     `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.
@@ -508,7 +517,7 @@ def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
         path (str, optional): The path to the project's output folder.
     """
     plt.style.use('seaborn-talk')
-
+    T_min = T_min or (300, 'K')
     if T_min is None:
         T_min = (300, 'K')
     elif isinstance(T_min, (int, float)):
@@ -519,7 +528,7 @@ def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
         T_max = (T_min, 'K')
     T_min = ScalarQuantity(value=T_min[0], units=T_min[1])
     T_max = ScalarQuantity(value=T_max[0], units=T_max[1])
-    temperature = np.linspace(T_min.value_si, T_max.value_si, T_count)
+    temperatures = np.linspace(T_min.value_si, T_max.value_si, T_count)
     pressure = 1e7  # Pa  (=100 bar)
 
     pp = None
@@ -540,31 +549,37 @@ def draw_kinetics_plots(rxn_list, T_min, T_max, T_count=50, path=None):
                 units = r' (cm$^3$/(mol s))'
             elif reaction_order == 3:
                 units = r' (cm$^6$/(mol$^2$ s))'
-            arc_k = list()
-            for T in temperature:
-                arc_k.append(rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order])
+            arc_k = [rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order] for T in temperatures]
             rmg_rxns = list()
-            for rmg_rxn in rxn.rmg_reactions:
-                rmg_rxn_dict = dict()
-                rmg_rxn_dict['rmg_rxn'] = rmg_rxn
-                rmg_rxn_dict['T_min'] = rmg_rxn.kinetics.Tmin if rmg_rxn.kinetics.Tmin is not None else T_min
-                rmg_rxn_dict['T_max'] = rmg_rxn.kinetics.Tmax if rmg_rxn.kinetics.Tmax is not None else T_max
-                k = list()
-                scaled_T_count = int(max(T_count * (rmg_rxn_dict['T_max'].value_si - rmg_rxn_dict['T_min'].value_si)
-                                         / (T_max.value_si - T_min.value_si), 25))
-                temp = np.linspace(rmg_rxn_dict['T_min'].value_si, rmg_rxn_dict['T_max'].value_si, scaled_T_count)
-                for T in temp:
-                    k.append(rmg_rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order])
-                rmg_rxn_dict['k'] = k
-                rmg_rxn_dict['T'] = temp
-                if rmg_rxn.kinetics.is_pressure_dependent():
-                    rmg_rxn.comment += f' (at {int(pressure / 1e5)} bar)'
-                rmg_rxn_dict['label'] = rmg_rxn.comment
-                rmg_rxns.append(rmg_rxn_dict)
-            _draw_kinetics_plots(rxn.label, arc_k, temperature, rmg_rxns, units, pp)
+            for kinetics in rxn.rmg_kinetics:
+                if kinetics['T_max'] is None or kinetics['T_min'] is None:
+                    temps = temperatures
+                else:
+                    temps = np.linspace(kinetics['T_min'].value_si, kinetics['T_max'].value_si, T_count)
+                rmg_rxns.append({'label': kinetics['comment'],
+                                 'T': temps,
+                                 'k': [calculate_arrhenius_rate_coefficient(kinetics['A'], kinetics['n'], kinetics['Ea'], T)
+                                       for T in temperatures]})
+            _draw_kinetics_plots(rxn.label, arc_k, temperatures, rmg_rxns, units, pp)
 
     if path is not None:
         pp.close()
+
+
+def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float) -> float:
+    """
+    Calculate the Arrhenius rate coefficient.
+
+    Args:
+        A (float): Pre-exponential factor.
+        n (float): Temperature exponent.
+        Ea (float): Activation energy in J/mol.
+        T (float): Temperature in Kelvin.
+
+    Returns:
+        float: The rate coefficient at the specified temperature.
+    """
+    return A * (T ** n) * math.exp(-1 * Ea / (R * T))
 
 
 def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
