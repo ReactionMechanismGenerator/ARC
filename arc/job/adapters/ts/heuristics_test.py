@@ -14,8 +14,10 @@ import shutil
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
-from arc.common import ARC_PATH, _check_r_n_p_symbols_between_rmg_and_arc_rxns, almost_equal_coords
+from arc.common import ARC_PATH, almost_equal_coords
+from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
+                                            are_h_abs_wells_reversed,
                                             combine_coordinates_with_redundant_atoms,
                                             determine_glue_params,
                                             find_distant_neighbor,
@@ -23,7 +25,6 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_modified_params_from_zmat_2,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
-                                            react,
                                             stretch_zmat_bond,
                                             )
 from arc.reaction import ARCReaction
@@ -250,7 +251,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn1.ts_species.is_ts)
         self.assertEqual(rxn1.ts_species.charge, 0)
         self.assertEqual(rxn1.ts_species.multiplicity, 3)
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 1)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 2)
         self.assertTrue(almost_equal_coords(rxn1.ts_species.ts_guesses[0].initial_xyz,
                                             {'symbols': ('H', 'H', 'O'), 'isotopes': (1, 1, 16),
                                              'coords': ((0.0, 0.0, -1.875762), (0.0, 0.0, -0.984214), (0.0, 0.0, 0.180204))}))
@@ -310,7 +311,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn4.ts_species.is_ts)
         self.assertEqual(rxn4.ts_species.charge, 0)
         self.assertEqual(rxn4.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn4.ts_species.ts_guesses), 1)  # No dihedral scans for H attacking at 180 degrees.
+        self.assertEqual(len(rxn4.ts_species.ts_guesses), 4)  # No dihedral scans for H attacking at 180 degrees.
         self.assertTrue(rxn4.ts_species.ts_guesses[0].success)
         self.assertTrue(almost_equal_coords(rxn4.ts_species.ts_guesses[0].initial_xyz,
                                             {'symbols': ('C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1, 1),
@@ -372,8 +373,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn5.ts_species.is_ts)
         self.assertEqual(rxn5.ts_species.charge, 0)
         self.assertEqual(rxn5.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn5.ts_species.ts_guesses), 3)
-        self.assertGreaterEqual(len(rxn5.ts_species.ts_guesses), 3)
+        self.assertEqual(len(rxn5.ts_species.ts_guesses), 18)
         self.assertEqual(rxn5.ts_species.ts_guesses[0].initial_xyz['symbols'], ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'H'))
         self.assertEqual(rxn5.ts_species.ts_guesses[1].initial_xyz['symbols'], ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'H'))
         self.assertEqual(rxn5.ts_species.ts_guesses[2].initial_xyz['symbols'], ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'H'))
@@ -500,7 +500,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn8.ts_species.is_ts)
         self.assertEqual(rxn8.ts_species.charge, 0)
         self.assertEqual(rxn8.ts_species.multiplicity, 3)
-        self.assertEqual(len(rxn8.ts_species.ts_guesses), 3)
+        self.assertEqual(len(rxn8.ts_species.ts_guesses), 6)
         self.assertTrue(almost_equal_coords(rxn8.ts_species.ts_guesses[0].initial_xyz,
                                             {'symbols': ('N', 'C', 'O', 'N', 'H', 'H'), 'isotopes': (14, 12, 16, 14, 1, 1),
                                              'coords': ((-3.657596721635545e-09, 0.08876698337705413, 0.9329034620293603),
@@ -630,7 +630,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn9.ts_species.is_ts)
         self.assertEqual(rxn9.ts_species.charge, 0)
         self.assertEqual(rxn9.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn9.ts_species.ts_guesses), 3)
+        self.assertEqual(len(rxn9.ts_species.ts_guesses), 6)
         self.assertEqual(rxn9.ts_species.ts_guesses[2].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H',
                           'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C',
@@ -646,7 +646,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn10.ts_species.is_ts)
         self.assertEqual(rxn10.ts_species.charge, 0)
         self.assertEqual(rxn10.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn10.ts_species.ts_guesses), 3)
+        self.assertEqual(len(rxn10.ts_species.ts_guesses), 6)
         self.assertEqual(rxn10.ts_species.ts_guesses[1].initial_xyz['symbols'],
                          ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H',
                           'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C',
@@ -720,7 +720,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn12.ts_species.is_ts)
         self.assertEqual(rxn12.ts_species.charge, 0)
         self.assertEqual(rxn12.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn12.ts_species.ts_guesses), 6)
+        self.assertEqual(len(rxn12.ts_species.ts_guesses), 18)
         for i in range(6):
             self.assertTrue(rxn12.ts_species.ts_guesses[i].success)
         self.assertEqual(rxn12.ts_species.ts_guesses[0].initial_xyz['symbols'], ('N', 'H', 'H', 'H', 'O', 'H'))
@@ -740,7 +740,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn13.ts_species.is_ts)
         self.assertEqual(rxn13.ts_species.charge, 0)
         self.assertEqual(rxn13.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn13.ts_species.ts_guesses), 2)
+        self.assertEqual(len(rxn13.ts_species.ts_guesses), 4)
         self.assertEqual(rxn13.ts_species.ts_guesses[0].initial_xyz['symbols'], ('N', 'H', 'H', 'O', 'H', 'H'))
 
         # different reactant order order
@@ -758,7 +758,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn14.ts_species.is_ts)
         self.assertEqual(rxn14.ts_species.charge, 0)
         self.assertEqual(rxn14.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn14.ts_species.ts_guesses), 2)
+        self.assertEqual(len(rxn14.ts_species.ts_guesses), 4)
         self.assertEqual(rxn14.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'H', 'H', 'N', 'H', 'H'))
 
         # different product order order
@@ -776,7 +776,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertTrue(rxn15.ts_species.is_ts)
         self.assertEqual(rxn15.ts_species.charge, 0)
         self.assertEqual(rxn15.ts_species.multiplicity, 2)
-        self.assertEqual(len(rxn15.ts_species.ts_guesses), 2)
+        self.assertEqual(len(rxn15.ts_species.ts_guesses), 4)
         self.assertEqual(rxn15.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'H', 'H', 'N', 'H', 'H'))
 
         # NFCl + H2O <=> NHFCl + OH
@@ -797,15 +797,15 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                           dihedral_increment=360,
                                           )
         heuristics_16.execute_incore()
-        self.assertEqual(len(rxn16.ts_species.ts_guesses), 1)
+        self.assertEqual(len(rxn16.ts_species.ts_guesses), 2)
         self.assertTrue(rxn16.ts_species.ts_guesses[0].success)
         self.assertEqual(rxn16.ts_species.ts_guesses[0].initial_xyz['symbols'], ('N', 'F', 'Cl', 'O', 'H', 'H'))
 
         # HO2 + H2NN(T) <=> O2 + N2H3
         ho2_xyz = """O 0.0553530 -0.6124600 0.0000000
                      O 0.0553530 0.7190720 0.0000000
-                     H -0.8856540 -0.8528960 0.0000000"""  # tmp
-        ho2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)  # tmp
+                     H -0.8856540 -0.8528960 0.0000000"""
+        ho2 = ARCSpecies(label='HO2', smiles='O[O]', xyz=ho2_xyz)
         h2nnt = ARCSpecies(label='H2NN(T)', smiles='[N]N', xyz="""N       1.25464159   -0.04494405   -0.06271952
                                                                   N      -0.11832785   -0.00810069    0.29783210
                                                                   H      -0.59897890   -0.78596704   -0.15190060
@@ -848,9 +848,9 @@ class TestHeuristicsAdapter(unittest.TestCase):
 
         # H2NN(T) + N2H4 <=> N2H3 + N2H3
         h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
-        n2h2 = ARCSpecies(label='N2H4', smiles='NN')
+        n2h4 = ARCSpecies(label='N2H4', smiles='NN')
         n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
-        rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
+        rxn1 = ARCReaction(r_species=[h2nn, n2h4], p_species=[n2h3, n2h3])
         self.assertEqual(rxn1.family, 'H_Abstraction')
         heuristics_1 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn1],
@@ -862,7 +862,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         heuristics_1.execute_incore()
         self.assertTrue(rxn1.ts_species.is_ts)
         self.assertEqual(rxn1.ts_species.charge, 0)
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 6)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 18)
 
         # Molecules with linear motifs (and many dummy atoms in both R1H and P2H):
         rxn1 = ARCReaction(r_species=[ARCSpecies(label='CtC[CH]CtC', smiles='C#C[CH]C#C'),
@@ -894,7 +894,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                          dihedral_increment=120,
                                          )
         heuristics_1.execute_incore()
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 3)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 12)
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
@@ -1168,49 +1168,6 @@ class TestHeuristicsAdapter(unittest.TestCase):
         new_map = get_new_map_based_on_zmat_1(zmat_1=self.zmat_6, zmat_2=self.zmat_5, reactants_reversed=True)
         self.assertEqual(new_map, {0: 23, 1: 18, 2: 17, 3: 19, 4: 'X25', 5: 16, 6: 'X26', 7: 20, 8: 'X27', 9: 21,
                                    10: 22, 11: 'X28', 12: 24})  # +16
-
-    def test_react(self):
-        """Test the react() function and specifically that atom order in kept."""
-        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz),
-                                       ARCSpecies(label='CCOOj', smiles='CCO[O]', xyz=self.ccooj_xyz)],
-                            p_species=[ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
-                                       ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz)])
-        reactants, products = rxn_1.get_reactants_and_products(arc=True)
-        reactant_mol_combinations = list(itertools.product(*list(reactant.mol_list for reactant in reactants)))
-        product_mol_combinations = list(itertools.product(*list(product.mol_list for product in products)))
-        reactants = list(reactant_mol_combinations)[0]
-        products = list(product_mol_combinations)[0]
-        rmg_reactions = react(reactants=list(reactants),
-                              products=list(products),
-                              family=rxn_1.family,
-                              arc_reaction=rxn_1,
-                              )
-        self.assertTrue(_check_r_n_p_symbols_between_rmg_and_arc_rxns(rxn_1, rmg_reactions))
-
-        rxn_2 = ARCReaction(reactants=['H2N2(T)', 'N2H4'], products=['N2H3', 'N2H3'],
-                            r_species=[ARCSpecies(label='H2N2(T)', smiles='[N]N'),
-                                       ARCSpecies(label='N2H4', smiles='NN')],
-                            p_species=[ARCSpecies(label='N2H3', smiles='[NH]N')])
-        self.assertEqual(rxn_2.family, 'H_Abstraction')
-        reactants, products = rxn_2.get_reactants_and_products(arc=False)
-        reactant_labels = [atom.label for atom in reactants[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in reactants[1].molecule[0].atoms if atom.label]
-        product_labels = [atom.label for atom in products[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in products[1].molecule[0].atoms if atom.label]
-        self.assertEqual(reactant_labels, list())
-        self.assertEqual(product_labels, list())
-        rmg_reactions = react(reactants=list(reactants),
-                              products=list(products),
-                              family=rxn_2.family,
-                              arc_reaction=rxn_2,
-                              )
-        reactant_labels = [atom.label for atom in rmg_reactions[0].reactants[0].molecule[0].atoms if atom.label] \
-                          + [atom.label for atom in rmg_reactions[0].reactants[1].molecule[0].atoms if atom.label]
-        product_labels = [atom.label for atom in rmg_reactions[0].products[0].molecule[0].atoms if atom.label] \
-                         + [atom.label for atom in rmg_reactions[0].products[1].molecule[0].atoms if atom.label]
-        for label in ['*1', '*2', '*3']:
-            self.assertIn(label, reactant_labels)
-            self.assertIn(label, product_labels)
 
     def test_generate_the_two_constrained_zmats(self):
         """Test the generate_the_two_constrained_zmats() function."""
@@ -1655,13 +1612,13 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             (-0.8785689, -2.02453514, 0.38494433),
                             (-1.34135876, 1.49608206, 0.53295071))}
         mol_1 = ARCSpecies(label='CS(=O)(O)[NH]', xyz=xyz_1).mol
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_1, start=8), 0)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_1, start=9), 0)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_1, start=5), 0)
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_1, start=2), [1, 3, 4])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_1, start=4), [1, 2, 3])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_1, start=3), [1, 2, 4])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_1, start=0), [5, 6, 7, 8, 9])
+        self.assertEqual(find_distant_neighbor(mol=mol_1, start=8), 0)
+        self.assertEqual(find_distant_neighbor(mol=mol_1, start=9), 0)
+        self.assertEqual(find_distant_neighbor(mol=mol_1, start=5), 0)
+        self.assertIn(find_distant_neighbor(mol=mol_1, start=2), [1, 3, 4])
+        self.assertIn(find_distant_neighbor(mol=mol_1, start=4), [1, 2, 3])
+        self.assertIn(find_distant_neighbor(mol=mol_1, start=3), [1, 2, 4])
+        self.assertIn(find_distant_neighbor(mol=mol_1, start=0), [5, 6, 7, 8, 9])
 
         xyz_2 = {'symbols': ('S', 'H', 'O', 'N', 'C', 'H', 'H', 'H', 'H'),
                  'isotopes': (32, 1, 16, 14, 12, 1, 1, 1, 1),
@@ -1675,12 +1632,12 @@ class TestHeuristicsAdapter(unittest.TestCase):
                             (1.59252246, 1.5117895, -0.33908352),
                             (-0.8785689, -2.02453514, 0.38494433))}
         mol_2 = ARCSpecies(label='C[SH](=O)[NH]', xyz=xyz_2).mol
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_2, start=8), 0)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_2, start=5), 0)
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_2, start=2), [3, 4])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_2, start=4), [2, 3])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_2, start=3), [2, 4])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_2, start=0), [5, 6, 7, 8])
+        self.assertEqual(find_distant_neighbor(mol=mol_2, start=8), 0)
+        self.assertEqual(find_distant_neighbor(mol=mol_2, start=5), 0)
+        self.assertIn(find_distant_neighbor(mol=mol_2, start=2), [3, 4])
+        self.assertIn(find_distant_neighbor(mol=mol_2, start=4), [2, 3])
+        self.assertIn(find_distant_neighbor(mol=mol_2, start=3), [2, 4])
+        self.assertIn(find_distant_neighbor(mol=mol_2, start=0), [5, 6, 7, 8])
 
         xyz_3 = """C                 -2.27234259   -0.78101274   -0.00989219
                    H                 -1.94047502   -1.78971513   -0.14135849
@@ -1693,13 +1650,93 @@ class TestHeuristicsAdapter(unittest.TestCase):
                    H                  0.05399540    0.27317450    0.67703880
                    H                 -0.00873286    0.04200717    2.29236958"""
         mol_3 = ARCSpecies(label='EA', smiles='NCC', xyz=xyz_3).mol
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=9), 4)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=8), 4)
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_3, start=5), [0, 7])
-        self.assertIn(find_distant_neighbor(rmg_mol=mol_3, start=6), [0, 7])
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=1), 4)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=2), 4)
-        self.assertEqual(find_distant_neighbor(rmg_mol=mol_3, start=2), 4)
+        self.assertEqual(find_distant_neighbor(mol=mol_3, start=9), 4)
+        self.assertEqual(find_distant_neighbor(mol=mol_3, start=8), 4)
+        self.assertIn(find_distant_neighbor(mol=mol_3, start=5), [0, 7])
+        self.assertIn(find_distant_neighbor(mol=mol_3, start=6), [0, 7])
+        self.assertEqual(find_distant_neighbor(mol=mol_3, start=1), 4)
+        self.assertEqual(find_distant_neighbor(mol=mol_3, start=2), 4)
+        self.assertEqual(find_distant_neighbor(mol=mol_3, start=2), 4)
+
+    def test_are_h_abs_wells_reversed(self):
+        """
+        Test the are_h_abs_wells_reversed() function.
+        The expected order is: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2)
+        """
+        rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],  # none are reversed
+                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],  # r reversed
+                            p_species=[ARCSpecies(label='C2H5', smiles='[CH2]C'), ARCSpecies(label='H2O', smiles='O')])
+        rxn_3 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'), ARCSpecies(label='OH', smiles='[OH]')],  # p reversed
+                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
+        rxn_4 = ARCReaction(r_species=[ARCSpecies(label='OH', smiles='[OH]'), ARCSpecies(label='C2H6', smiles='CC')],  # r and p reversed
+                            p_species=[ARCSpecies(label='H2O', smiles='O'), ARCSpecies(label='C2H5', smiles='[CH2]C')])
+
+        product_dicts = get_reaction_family_products(rxn=rxn_1,
+                                                     rmg_family_set=[rxn_1.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_1, product_dict=product_dicts[0])
+        self.assertFalse(r_reversed)
+        self.assertFalse(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_2,
+                                                     rmg_family_set=[rxn_2.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_2, product_dict=product_dicts[0])
+        self.assertTrue(r_reversed)
+        self.assertFalse(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_3,
+                                                     rmg_family_set=[rxn_3.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_3, product_dict=product_dicts[0])
+        self.assertFalse(r_reversed)
+        self.assertTrue(p_reversed)
+
+        product_dicts = get_reaction_family_products(rxn=rxn_4,
+                                                     rmg_family_set=[rxn_4.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_4, product_dict=product_dicts[0])
+        self.assertTrue(r_reversed)
+        self.assertTrue(p_reversed)
+
+        rxn_5 = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'), ARCSpecies(label='H2O', smiles='O')],  # r and p reversed
+                            p_species=[ARCSpecies(label='H2', smiles='[H][H]'), ARCSpecies(label='OH', smiles='[OH]')])
+        product_dicts = get_reaction_family_products(rxn=rxn_5,
+                                                     rmg_family_set=[rxn_5.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_5, product_dict=product_dicts[0])
+        self.assertTrue(r_reversed)
+        self.assertTrue(p_reversed)
+
+        rxn_6 = ARCReaction(r_species=[ARCSpecies(label='CCCC(O)=O', smiles='CCCC(O)=O'), ARCSpecies(label='OH', smiles='[OH]')],  # none are reversed
+                            p_species=[ARCSpecies(label='CCCC([O])=O', smiles='CCCC([O])=O'), ARCSpecies(label='H2O', smiles='O')])
+        product_dicts = get_reaction_family_products(rxn=rxn_6,
+                                                     rmg_family_set=[rxn_6.family],
+                                                     consider_rmg_families=True,
+                                                     consider_arc_families=False,
+                                                     discover_own_reverse_rxns_in_reverse=False,
+                                                     )
+        r_reversed, p_reversed = are_h_abs_wells_reversed(rxn_6, product_dict=product_dicts[0])
+        self.assertFalse(r_reversed)
+        self.assertFalse(p_reversed)
+
+
 
     @classmethod
     def tearDownClass(cls):
