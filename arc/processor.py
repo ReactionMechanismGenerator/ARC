@@ -4,18 +4,19 @@ Processor module for computing thermodynamic properties and rate coefficients us
 
 import os
 import shutil
-from typing import Optional, Type
-
-from rmgpy.data.rmg import RMGDatabase
+from typing import Optional
 
 import arc.plotter as plotter
-import arc.rmgdb as rmgdb
-from arc.common import get_logger
+from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
 from arc.level import Level
+from arc.job.local import execute_command
 from arc.statmech.factory import statmech_factory
 
 
 logger = get_logger()
+
+THERMO_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_thermo.py')
+KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py')
 
 
 def process_arc_project(thermo_adapter: str,
@@ -35,7 +36,6 @@ def process_arc_project(thermo_adapter: str,
                         T_max: tuple = None,
                         T_count: int = 50,
                         lib_long_desc: str = '',
-                        rmg_database: Optional[RMGDatabase] = None,
                         compare_to_rmg: bool = True,
                         three_params: bool = True,
                         skip_nmd: bool = False,
@@ -63,7 +63,6 @@ def process_arc_project(thermo_adapter: str,
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
         lib_long_desc (str, optional): A multiline description of levels of theory for the resulting RMG libraries.
-        rmg_database (RMGDatabase, optional): The RMG database object.
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
         three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
@@ -196,21 +195,15 @@ def process_arc_project(thermo_adapter: str,
 
     # Comparisons
     if compare_to_rmg:
-        try:
-            load_rmg_database(rmg_database=rmg_database, species_dict=species_dict, output_dict=output_dict)
-        except Exception as e:
-            logger.error(f'Could not load the RMG database! Got:\n{e}')
-        else:
-            compare_thermo(species_for_thermo_lib=species_for_thermo_lib,
-                           rmg_database=rmg_database,
-                           output_directory=output_directory)
-            compare_rates(rxns_for_kinetics_lib, rmg_database,
-                          output_directory=output_directory,
-                          T_min=T_min,
-                          T_max=T_max,
-                          T_count=T_count)
-            compare_transport(species_for_transport_lib, rmg_database,
-                              output_directory=output_directory)
+        compare_thermo(species_for_thermo_lib=species_for_thermo_lib,
+                       output_directory=output_directory)
+        compare_rates(rxns_for_kinetics_lib=rxns_for_kinetics_lib,
+                      output_directory=output_directory,
+                      T_min=T_min,
+                      T_max=T_max,
+                      T_count=T_count)
+        compare_transport(species_for_transport_lib,
+                          output_directory=output_directory)
 
     write_unconverged_log(unconverged_species=unconverged_species,
                           unconverged_rxns=unconverged_rxns,
@@ -219,60 +212,67 @@ def process_arc_project(thermo_adapter: str,
 
 
 def compare_thermo(species_for_thermo_lib: list,
-                   rmg_database: Type[RMGDatabase],
                    output_directory: str,
                    ) -> None:
     """
-    Compare the calculates thermo with RMG's estimations.
+    Compare the calculated thermo with RMG's estimations or libraries.
 
     Args:
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
-        rmg_database (RMGDatabase, optional): The RMG database object.
         output_directory (str): The path to the project's output folder.
     """
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
-    for species in species_for_thermo_lib:
-        try:
-            species.rmg_thermo = rmg_database.thermo.get_thermo_data(species.rmg_species)
-        except Exception as e:
-            logger.info(f'Could not estimate thermo for species {species.label} using RMG, possibly due to a missing '
-                        f'2D structure. Not including this species in the parity plots. Got:\n{e}')
-        else:
-            species_to_compare.append(species)
-    if species_to_compare:
-        plotter.draw_thermo_parity_plots(species_list=species_to_compare,
-                                         path=output_directory)
+    species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
+    save_yaml_file(path=species_thermo_path,
+                   content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
+    command = f'python {THERMO_SCRIPT_PATH} {species_thermo_path}'
+    execute_command(command=command, no_fail=True)
+    species_list = read_yaml_file(path=species_thermo_path)
+    for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
+        h298, s298 = rmg_spc.get('h298', None), rmg_spc.get('s298', None)
+        if h298 is not None and s298 is not None:
+            original_spc.rmg_thermo = {'H298': h298, 'S298': s298}
+        species_to_compare.append(original_spc)
+    if len(species_to_compare):
+        plotter.draw_thermo_parity_plots(species_list=species_to_compare, path=output_directory)
 
 
-def compare_rates(rxns_for_kinetics_lib: list,
-                  rmg_database: Type[RMGDatabase],
+def compare_rates(rxns_for_kinetics_lib: list,  # todo: draw kinetics plot need updaye
                   output_directory: str,
                   T_min: tuple = None,
                   T_max: tuple = None,
                   T_count: int = 50,
                   ) -> None:
     """
-    Compare the calculates rates with RMG's estimations.
+    Compare the calculated rates with RMG's estimations or libraries.
 
     Args:
         rxns_for_kinetics_lib (list): Reactions for which rate coefficients were computed.
-        rmg_database (RMGDatabase, optional): The RMG database object.
         output_directory (str): The path to the project's output folder.
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
     """
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
-    for reaction in rxns_for_kinetics_lib:
-        try:
-            reaction.rmg_reactions = rmgdb.determine_rmg_kinetics(rmgdb=rmg_database,
-                                                                  reaction=reaction.rmg_reaction,
-                                                                  dh_rxn298=reaction.dh_rxn298)
-        except Exception as e:
-            logger.info(f'Could not estimate a rate for reaction {reaction.label} using RMG. '
-                        f'Not generating a comparison plot for this reaction.\nGot: {e}')
-        else:
-            reactions_to_compare.append(reaction)
+    reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
+    save_yaml_file(path=reactions_kinetics_path,
+                     content=[{'label': rxn.label,
+                              'reactants': [spc.label for spc in rxn.r_species],
+                              'products': [spc.label for spc in rxn.p_species],
+                              'dh_rxn298': rxn.dh_rxn298} for rxn in rxns_for_kinetics_lib])
+    command = f'python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}'
+    execute_command(command=command, no_fail=True)
+    reactions_list = read_yaml_file(path=reactions_kinetics_path)
+    for original_rxn, rmg_rxn in zip(rxns_for_kinetics_lib, reactions_list):
+        original_rxn.rmg_kinetics = original_rxn.rmg_kinetics or list()
+        for kinetics_entry in rmg_rxn['kinetics']:
+            if 'A' in kinetics_entry and 'n' in kinetics_entry and 'Ea' in kinetics_entry:
+                original_rxn.rmg_kinetics.append({'A': kinetics_entry['A'],
+                                                  'n': kinetics_entry['n'],
+                                                  'Ea': kinetics_entry['Ea'],
+                                                  'comment': kinetics_entry['comment'],
+                                                  })
+                reactions_to_compare.append(original_rxn)
     if reactions_to_compare:
         plotter.draw_kinetics_plots(reactions_to_compare,
                                     T_min=T_min,
@@ -282,7 +282,6 @@ def compare_rates(rxns_for_kinetics_lib: list,
 
 
 def compare_transport(species_for_transport_lib: list,
-                      rmg_database: Type[RMGDatabase],
                       output_directory: str,
                       ) -> None:
     """
@@ -290,36 +289,10 @@ def compare_transport(species_for_transport_lib: list,
 
     Args:
         species_for_transport_lib (list): Species for which thermochemical properties were computed.
-        rmg_database (RMGDatabase, optional): The RMG database object.
         output_directory (str): The path to the project's output folder.
     """
     pass
     # todo
-
-
-def load_rmg_database(rmg_database: Optional[Type[RMGDatabase]],
-                      species_dict: dict,
-                      output_dict: dict,
-                      ) -> None:
-    """
-    Load the RMG database.
-
-    Args:
-        rmg_database (RMGDatabase, optional): The RMG database object.
-        species_dict (dict): Keys are labels, values are ARCSpecies objects.
-        output_dict (dict): Keys are labels, values are output file paths.
-                            See Scheduler for a description of this dictionary.
-    """
-    load_thermo_libs, load_kinetic_libs = False, False
-    if any([species.is_ts and output_dict[species.label]['convergence'] for species in species_dict.values()]):
-        load_kinetic_libs = True
-    if any([species.compute_thermo and output_dict[species.label]['convergence']
-            for species in species_dict.values()]):
-        load_thermo_libs = True
-    if rmg_database is not None and (load_kinetic_libs or load_thermo_libs):
-        rmgdb.load_rmg_database(rmgdb=rmg_database,
-                                load_thermo_libs=load_thermo_libs,
-                                load_kinetic_libs=load_kinetic_libs)
 
 
 def process_bdes(label: str,
