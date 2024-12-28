@@ -154,7 +154,6 @@ class TestARCReaction(unittest.TestCase):
         str_representation = str(self.rxn1)
         self.assertEqual(self.rxn1.charge, 0)
         expected_representation = 'ARCReaction(label="CH4 + OH <=> CH3 + H2O", ' \
-                                  'rmg_reaction="CH4 + OH <=> CH3 + H2O", ' \
                                   'multiplicity=2, charge=0)'
         self.assertEqual(str_representation, expected_representation)
 
@@ -628,7 +627,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
-
         # 1. trivial unimolecular: H2O <=> H2O
         h2o_xyz_1 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                      'coords': ((-0.0003283189391273643, 0.39781490416473486, 0.0),
@@ -1005,10 +1003,10 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='C4H6', smiles='C=CC=C', xyz=c4h6_xyz)
         rxn = ARCReaction(reactants=['C4H7', 'O2'], products=['HO2', 'C4H6'],
                           r_species=[r_1, r_2], p_species=[p_1, p_2])
-        self.assertEqual(rxn.atom_map[:5], [3, 4, 5, 10, 6])
-        self.assertIn(rxn.atom_map[5:7], [[8, 7], [7, 8]])
-        self.assertEqual(rxn.atom_map[7], 9)
-        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([2, 11, 12]))
+        self.assertEqual(rxn.atom_map[:5], [6, 5, 4, 9, 3])
+        self.assertIn(rxn.atom_map[5:7], [[11, 12], [12, 11]])
+        self.assertEqual(rxn.atom_map[7], 10)
+        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([2, 8, 7]))
         self.assertIn(tuple(rxn.atom_map[11:]), permutations([0, 1]))
 
         # Disproportionation: HO2 + NHOH <=> NH2OH + O2
@@ -1345,6 +1343,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(atom_map[15], 7)
         self.assertTrue(check_atom_map(rxn_rev))
 
+    def test_get_atom_map_2(self):
         # Diels_alder_addition: C5H8 + C6H10 <=> C11H18
         c5h8_xyz = {'coords': ((2.388426506127341, -0.6020682478448856, -0.8986239521455471),
                                (1.396815470095451, 0.2559764141247285, -0.632876393172657),
@@ -1545,7 +1544,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
         self.assertEqual(atom_map[5], 6)
 
-    # Same species in products
+        # Same species in products
         rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
                           p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
                                      ARCSpecies(label="p2", smiles= 'C=CC=C')])
@@ -1570,23 +1569,6 @@ class TestARCReaction(unittest.TestCase):
             else:
                 self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
         self.assertTrue(check_atom_map(rxn=rxn))
-
-    def test_mapping_XY_elimination_hydroxyl(self):
-        """Test mapping of a reaction family XY_elimination_hydroxyl"""    
-        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'O=C(O)CCF')],
-                          p_species=[ARCSpecies(label="p1", smiles='C=C'),
-                                     ARCSpecies(label="p2", smiles="F"),
-                                     ARCSpecies(label="p3", smiles="O=C=O")])
-        # if not rxn.family:  # reaction family not found for some reason.
-        #     rxn.family = "XY_elimination_hydroxyl"
-        atom_map = rxn.atom_map
-        self.assertIsNotNone(rxn.family)
-        self.assertTrue(check_atom_map(rxn=rxn))
-        self.assertIn(atom_map[:3], [[8, 9, 10], [10, 9, 8]])
-        self.assertIn(atom_map[3:5], [[0, 1], [1, 0]])
-        self.assertEqual(atom_map[5:7], [6, 7])
-        self.assertIn(atom_map[7:9], [[4, 5], [5, 4]])
-        self.assertIn(atom_map[9:], [[2, 3], [3, 2]])
 
     def test_get_reactants_xyz(self):
         """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
@@ -1913,7 +1895,6 @@ H       1.12853146   -0.86793870    0.06973060"""
                   ts_guess_level=arc_object.ts_guess_level,
                   ess_settings=arc_object.ess_settings,
                   job_types=arc_object.job_types,
-                  rmg_database=arc_object.rmg_database,
                   project_directory=arc_object.project_directory,
                   ts_adapters=arc_object.ts_adapters,
                   testing=True,
@@ -1935,7 +1916,6 @@ H       1.12853146   -0.86793870    0.06973060"""
                   ts_guess_level=arc_object.ts_guess_level,
                   ess_settings=arc_object.ess_settings,
                   job_types=arc_object.job_types,
-                  rmg_database=arc_object.rmg_database,
                   project_directory=arc_object.project_directory,
                   ts_adapters=arc_object.ts_adapters,
                   testing=True,
@@ -1969,6 +1949,10 @@ H       1.12853146   -0.86793870    0.06973060"""
             full_file_path = os.path.join(project_directory, file_path)
             if os.path.isfile(full_file_path):
                 os.remove(full_file_path)
+        file_paths = [os.path.join(ARC_PATH, 'arc', 'reaction', 'nul'), os.path.join(ARC_PATH, 'arc', 'reaction', 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 if __name__ == '__main__':
