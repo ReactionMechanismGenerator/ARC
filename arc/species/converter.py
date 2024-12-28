@@ -51,6 +51,7 @@ logger = get_logger()
 
 def str_to_str(xyz_str: str,
                reverse_atoms: bool = False,
+               units: str = 'angstrom',
                convert_to: str = 'angstrom',
                project_directory: Optional[str] = None
                ) -> str:
@@ -69,6 +70,10 @@ def str_to_str(xyz_str: str,
     Returns: str
         The converted string xyz format.
     """
+    if isinstance(xyz_str, tuple):
+        xyz_str = '\n'.join(xyz_str)
+    if isinstance(xyz_str, list):
+        xyz_str = '\n'.join(xyz_str)
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
@@ -78,13 +83,16 @@ def str_to_str(xyz_str: str,
     BOHR_TO_ANGSTROM = 0.529177
     ANGSTROM_TO_BOHR = 1.8897259886
 
-    if convert_to.lower() == 'angstrom':
-        conversion_factor = BOHR_TO_ANGSTROM
-    elif convert_to.lower() == 'bohr':
+    if units.lower() == 'angstrom' and convert_to.lower() == 'angstrom':
+        conversion_factor = 1
+    elif units.lower() == 'bohr' and convert_to.lower() == 'bohr':
+        conversion_factor = 1
+    elif units.lower() == 'angstrom' and convert_to.lower() == 'bohr':
         conversion_factor = ANGSTROM_TO_BOHR
+    elif units.lower() == 'bohr' and convert_to.lower() == 'angstrom':
+        conversion_factor = BOHR_TO_ANGSTROM
     else:
-        raise ValueError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
-
+        raise ConverterError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
 
     processed_lines = list()
     # Split the string into lines
@@ -109,8 +117,8 @@ def str_to_str(xyz_str: str,
             y = float(y_str) * conversion_factor
             z = float(z_str) * conversion_factor
         
-        except ValueError:
-            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.')
+        except ValueError as e:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.') from e
         
         if reverse_atoms and atom_first:
             formatted_line = f'{x} {y} {z} {atom}'
@@ -1438,6 +1446,8 @@ def elementize(atom):
 def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                        multiplicity: Optional[int] = None,
                        charge: int = 0,
+                       original_molecule: Optional[Molecule] = None,
+                       numer_of_radicals: Optional[int] = None,
                        ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling.
@@ -1448,6 +1458,8 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         xyz (dict): The ARC dict format xyz coordinates of the species.
         multiplicity (int, optional): The species spin multiplicity.
         charge (int, optional): The species net charge.
+        original_molecule (Molecule, optional): An RMG Molecule object to use as a reference for atom order.
+        numer_of_radicals (int, optional): The number of radicals in the species.
 
     Returns: Tuple[Optional[Molecule], Optional[Molecule]]
         - The respective Molecule object with only single bonds.
@@ -1516,9 +1528,16 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                            f'following error:\n{e}')
 
     for mol in [mol_s1_updated, mol_bo]:
-        if mol is not None and mol.multiplicity == 1:
+        if mol is not None and mol.multiplicity == 1 and not numer_of_radicals:
             for atom in mol.atoms:
                 atom.radical_electrons = 0
+
+    if mol_bo is None and mol_s1_updated is not None and original_molecule is not None:
+        try:
+            mol_bo = add_bond_order_to_s_mol(mol_s1_updated, original_molecule)
+        except SanitizationError:
+            logger.warning(f'Could not add bond orders to {mol_s1_updated.copy(deep=True).to_smiles()}!')
+            return mol_s1_updated, None
 
     return mol_s1_updated, mol_bo
 
@@ -1710,7 +1729,7 @@ def order_atoms(ref_mol, mol):
         TypeError: If ``mol`` has a wrong type.
     """
     if not isinstance(mol, Molecule):
-        raise TypeError(f'expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
+        raise TypeError(f'Expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
     if ref_mol is not None and mol is not None:
         ref_mol_is_iso_copy = ref_mol.copy(deep=True)
         mol_is_iso_copy = mol.copy(deep=True)
@@ -1742,7 +1761,37 @@ def order_atoms(ref_mol, mol):
             raise SanitizationError('Could not map non isomorphic molecules')
 
 
-def update_molecule(mol, to_single_bonds=False):
+def add_bond_order_to_s_mol(s_mol: Molecule,
+                            bo_mol: Molecule,
+                            ) -> Molecule:
+    """
+    Add bond orders to a molecule with only single bonds.
+
+    Args:
+        s_mol (Molecule): The RMG Molecule object with only single bonds.
+        bo_mol (Molecule): The RMG Molecule object with bond orders.
+
+    Returns:
+        Molecule: The respective Molecule object with atom order as in s)mol and with bond orders as in bo_mol.
+    """
+    s_mol_copy = s_mol.copy(deep=True)
+    order_atoms(ref_mol=s_mol_copy, mol=bo_mol)
+    for s_atom, b_atom in zip(s_mol_copy.atoms, bo_mol.atoms):
+        s_atom.radical_electrons = b_atom.radical_electrons
+        s_atom.lone_pairs = b_atom.lone_pairs
+        s_atom.charge = b_atom.charge
+        for b_bond in b_atom.bonds.values():
+            s_mol_copy.get_bond(s_mol_copy.atoms[bo_mol.atoms.index(b_bond.atom1)], s_mol_copy.atoms[bo_mol.atoms.index(b_bond.atom2)]).set_order_num(b_bond.get_order_num())
+    try:
+        s_mol_copy.update_atomtypes(raise_exception=False)
+    except KeyError:
+        logger.debug('Could not update atom types for the species')
+    return s_mol_copy
+
+
+def update_molecule(mol: Molecule,
+                    to_single_bonds: bool=False,
+                    ) -> Optional[Molecule]:
     """
     Updates the molecule, useful for isomorphism comparison.
 
@@ -1751,21 +1800,21 @@ def update_molecule(mol, to_single_bonds=False):
         to_single_bonds (bool, optional): Whether to convert all bonds to single bonds. ``True`` to convert.
 
     Returns:
-        Molecule: The updated molecule.
+        Optional[Molecule]: The updated molecule.
     """
     new_mol = Molecule()
     try:
         atoms = mol.atoms
     except AttributeError:
         return None
-    atom_mapping = dict()
+    new_atoms_dict = dict()
     for atom in atoms:
-        new_atom = new_mol.add_atom(Atom(atom.element))
-        atom_mapping[atom] = new_atom
-    for atom1 in atoms:
-        for atom2 in atom1.bonds.keys():
-            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].get_order_num()
-            bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
+        new_atom = new_mol.add_atom(Atom(element=atom.element))
+        new_atoms_dict[atom] = new_atom
+    for atom_1 in atoms:
+        for atom_2 in atom_1.bonds.keys():
+            bond_order = 1.0 if to_single_bonds else atom_1.bonds[atom_2].get_order_num()
+            bond = Bond(new_atoms_dict[atom_1], new_atoms_dict[atom_2], bond_order)
             new_mol.add_bond(bond)
     try:
         new_mol.update_atomtypes(raise_exception=False)
