@@ -2598,9 +2598,6 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         """Test that ARC represents O2 and S2 correctly."""
         o2 = ARCSpecies(label='O2', smiles='[O][O]', xyz="""O   0.0000000   0.0000000   0.6029240
                                                             O   0.0000000   0.0000000  -0.6029240""")
-        for mol in o2.mol_list:
-            print(f'mol lost')
-            print(mol.to_smiles())
         self.assertEqual(o2.multiplicity, 3)
         self.assertEqual(o2.mol.to_smiles(), '[O][O]')
         self.assertEqual(o2.mol.to_adjacency_list(), """multiplicity 3
