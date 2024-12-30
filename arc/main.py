@@ -21,7 +21,6 @@ from typing import Dict, List, Optional, Tuple, Union
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
-import arc.rmgdb as rmgdb
 from arc.common import (VERSION,
                         ARC_PATH,
                         check_ess_settings,
@@ -206,7 +205,6 @@ class ARC(object):
         T_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int): The number of temperature points between ``T_min`` and ``T_max``.
         max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).
-        rmg_database (RMGDatabase): The RMG database object.
         allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is
                                        isomorphic to the 2D graph representation.
         memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).
@@ -309,7 +307,6 @@ class ARC(object):
                     job['xyz'] = str_to_xyz(job['xyz'])
         self.lib_long_desc = ''
         self.unique_species_labels = list()
-        self.rmg_database = rmgdb.make_rmg_database_object()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.memory = job_memory or default_job_settings.get('job_total_memory_gb', 14)
@@ -628,7 +625,6 @@ class ARC(object):
                                    ess_settings=self.ess_settings,
                                    job_types=self.job_types,
                                    bath_gas=self.bath_gas,
-                                   rmg_database=self.rmg_database,
                                    restart_dict=self.restart_dict,
                                    project_directory=self.project_directory,
                                    max_job_time=self.max_job_time,
@@ -671,7 +667,6 @@ class ARC(object):
                             T_max=self.T_max,
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
-                            rmg_database=self.rmg_database,
                             compare_to_rmg=self.compare_to_rmg,
                             three_params=self.three_params,
                             sp_level=self.arkane_level_of_theory,

@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-This module contains unit tests of the arc.reaction module
+This module contains unit tests of the arc.reaction.reaction module
 """
 
 from itertools import permutations
@@ -13,11 +13,10 @@ import unittest
 from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
-import arc.rmgdb as rmgdb
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
-from arc.reaction import ARCReaction, remove_dup_species
+from arc.reaction.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
 from arc.mapping.engine import check_atom_map, label_species_atoms
@@ -34,10 +33,7 @@ class TestARCReaction(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = rmgdb.make_rmg_database_object()
-        cls.rmgdb.kinetics.families = None
-        rmgdb.load_families_only(cls.rmgdb, "all")
-        
+
         cls.h2_xyz = {'coords': ((0, 0, 0.3736550), (0, 0, -0.3736550)), 'isotopes': (1, 1), 'symbols': ('H', 'H')}
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
         cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
@@ -158,13 +154,11 @@ class TestARCReaction(unittest.TestCase):
         str_representation = str(self.rxn1)
         self.assertEqual(self.rxn1.charge, 0)
         expected_representation = 'ARCReaction(label="CH4 + OH <=> CH3 + H2O", ' \
-                                  'rmg_reaction="CH4 + OH <=> CH3 + H2O", ' \
                                   'multiplicity=2, charge=0)'
         self.assertEqual(str_representation, expected_representation)
 
     def test_as_dict(self):
         """Test ARCReaction.as_dict()"""
-        self.rxn1.determine_family(self.rmgdb)
         rxn_dict_1 = self.rxn1.as_dict()
         # mol.atoms are not tested since all id's (including connectivity) changes depending on how the test is run.
         expected_dict_1 = {'family': 'H_Abstraction',
@@ -229,6 +223,7 @@ class TestARCReaction(unittest.TestCase):
         rxn_dict_6 = self.rxn6.as_dict()
         # The ``long_thermo_description`` attribute isn't deterministic (order could change)
         expected_dict_6 = {'label': 'NH2 + N2H3 <=> NH3 + H2NN[S]',
+                           'family': 'Disproportionation',
                            'multiplicity': 1,
                            'p_species': [{'bond_corrections': {'H-N': 3},
                                           'cheap_conformer': 'N       0.00064924   -0.00099698    0.29559292\n'
@@ -300,7 +295,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(rxn.label, 'CH4 + OH <=> CH3 + H2O')
         self.assertEqual(rxn.multiplicity, 2)
         self.assertEqual(rxn.charge, 0)
-        self.assertEqual(rxn.family.label, 'H_Abstraction')
+        self.assertEqual(rxn.family, 'H_Abstraction')
         self.assertEqual(rxn.family_own_reverse, True)
         self.assertEqual(rxn.reactants, ['CH4', 'OH'])
         self.assertEqual(rxn.products, ['CH3', 'H2O'])
@@ -398,39 +393,30 @@ class TestARCReaction(unittest.TestCase):
 
     def test_rxn_family(self):
         """Test that ARC gets the correct RMG family for different reactions"""
-        self.rxn1.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn1.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn1.family, 'H_Abstraction')
         self.assertTrue(self.rxn1.family_own_reverse)
-        self.rxn2.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn2.family.label, 'Disproportionation')
+        self.assertEqual(self.rxn2.family, 'Disproportionation')
         self.assertFalse(self.rxn2.family_own_reverse)
-        self.rxn3.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn3.family.label, 'intra_H_migration')
+        self.assertEqual(self.rxn3.family, 'intra_H_migration')
         self.assertTrue(self.rxn3.family_own_reverse)
-        self.rxn4.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn4.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn4.family, 'H_Abstraction')
         self.rxn5.rmg_reaction_from_arc_species()
         self.rxn5.check_attributes()
-        self.rxn5.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn5.family.label, 'H_Abstraction')
+        self.assertEqual(self.rxn5.family, 'H_Abstraction')
         self.rxn9.rmg_reaction_from_arc_species()
         self.rxn9.check_attributes()
-        self.rxn9.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn9.family.label, 'HO2_Elimination_from_PeroxyRadical')
+        self.assertEqual(self.rxn9.family, 'HO2_Elimination_from_PeroxyRadical')
         rxn_9_flipped = self.rxn9.flip_reaction()
         rxn_9_flipped.rmg_reaction_from_arc_species()
         rxn_9_flipped.check_attributes()
-        rxn_9_flipped.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_9_flipped.family.label, 'HO2_Elimination_from_PeroxyRadical')
-        self.rxn10.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(self.rxn10.family.label, 'H_Abstraction')
+        self.assertEqual(rxn_9_flipped.family, 'HO2_Elimination_from_PeroxyRadical')
+        self.assertEqual(self.rxn10.family, 'H_Abstraction')
         rxn_1 = ARCReaction(r_species=[ARCSpecies(label='C2H6', smiles='CC'),
                                        ARCSpecies(label='CCOOj', smiles='CCO[O]')],
                             p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'),
                                        ARCSpecies(label='C2H5', smiles='C[CH2]')])
         rxn_1.check_attributes()
-        rxn_1.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn_1.family.label, 'H_Abstraction')
+        self.assertEqual(rxn_1.family, 'H_Abstraction')
 
         # Test identifying the reaction family for with zwitterions read from Arkane YAML files
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'HNNO+NH3O=H2NO+NH2NO')
@@ -438,8 +424,7 @@ class TestARCReaction(unittest.TestCase):
                                       ARCSpecies(label='NH3O', smiles='[O-][NH3+]', yml_path=os.path.join(base_path, 'NH3O.yml'))],
                            p_species=[ARCSpecies(label='H2NO', smiles='N[O]', yml_path=os.path.join(base_path, 'H2NO.yml')),
                                       ARCSpecies(label='NH2NO', smiles='NN=O', yml_path=os.path.join(base_path, 'NH2NO.yml'))])
-        rxn2.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn2.family.label, 'H_Abstraction')
+        self.assertEqual(rxn2.family, 'H_Abstraction')
 
     def test_charge_property(self):
         """Test determining charge"""
@@ -621,7 +606,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_expected_changing_bonds(self):
         """Test the get_expected_changing_bonds() method."""
-        self.rxn11.determine_family(self.rmgdb)
         expected_breaking_bonds, expected_forming_bonds = self.rxn11.get_expected_changing_bonds(
             r_label_dict={'*1': 1, '*2': 2, '*3': 6})
         self.assertEqual(expected_breaking_bonds, [(2, 6)])
@@ -629,10 +613,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_number_of_atoms_in_reaction_zone(self):
         """Test the get_number_of_atoms_in_reaction_zone() method."""
-        for rxn in [self.rxn1, self.rxn2, self.rxn3, self.rxn4, self.rxn5, self.rxn6, self.rxn7, self.rxn8,
-                    self.rxn9, self.rxn10, self.rxn11]:
-            if rxn.family is None:
-                rxn.determine_family(self.rmgdb)
         self.assertEqual(self.rxn1.get_number_of_atoms_in_reaction_zone(), 3)  # H_Abstraction
         self.assertEqual(self.rxn2.get_number_of_atoms_in_reaction_zone(), 4)  # Disprop
         self.assertEqual(self.rxn3.get_number_of_atoms_in_reaction_zone(), 3)
@@ -647,7 +627,6 @@ class TestARCReaction(unittest.TestCase):
 
     def test_get_atom_map(self):
         """Test getting an atom map for a reaction"""
-
         # 1. trivial unimolecular: H2O <=> H2O
         h2o_xyz_1 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
                      'coords': ((-0.0003283189391273643, 0.39781490416473486, 0.0),
@@ -693,8 +672,7 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
         rxn_3 = ARCReaction(reactants=['H', 'CH3NH2'], products=['H2', 'CH2NH2'],
                             r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn_3.determine_family(self.rmgdb)
-        self.assertEqual(rxn_3.family.label.lower(), "H_Abstraction".lower())
+        self.assertEqual(rxn_3.family, "H_Abstraction")
         self.assertIn(rxn_3.atom_map[0], [0, 1])
         self.assertEqual(rxn_3.atom_map[1:3], [2, 5])
         for index in [3, 4, 5]:
@@ -774,7 +752,6 @@ class TestARCReaction(unittest.TestCase):
         p_1 = ARCSpecies(label='C3H5O', smiles='C[CH]C=O', xyz=c3h5o_xyz)
         p_2 = ARCSpecies(label='C4H10O', smiles='CC(C)CO', xyz=c4h10o_xyz)
         rxn = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
-        rxn.determine_family(self.rmgdb)
         atom_map = rxn.atom_map
         self.assertEqual(atom_map[0:4], [0, 1, 3, 4])
         self.assertIn(atom_map[4], [5,6, 7])
@@ -1026,10 +1003,10 @@ class TestARCReaction(unittest.TestCase):
         p_2 = ARCSpecies(label='C4H6', smiles='C=CC=C', xyz=c4h6_xyz)
         rxn = ARCReaction(reactants=['C4H7', 'O2'], products=['HO2', 'C4H6'],
                           r_species=[r_1, r_2], p_species=[p_1, p_2])
-        self.assertEqual(rxn.atom_map[:5], [3, 4, 5, 10, 6])
-        self.assertIn(rxn.atom_map[5:7], [[8, 7], [7, 8]])
-        self.assertEqual(rxn.atom_map[7], 9)
-        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([2, 11, 12]))
+        self.assertEqual(rxn.atom_map[:5], [6, 5, 4, 9, 3])
+        self.assertIn(rxn.atom_map[5:7], [[11, 12], [12, 11]])
+        self.assertEqual(rxn.atom_map[7], 10)
+        self.assertIn(tuple(rxn.atom_map[8:11]), permutations([2, 8, 7]))
         self.assertIn(tuple(rxn.atom_map[11:]), permutations([0, 1]))
 
         # Disproportionation: HO2 + NHOH <=> NH2OH + O2
@@ -1366,6 +1343,7 @@ class TestARCReaction(unittest.TestCase):
         self.assertEqual(atom_map[15], 7)
         self.assertTrue(check_atom_map(rxn_rev))
 
+    def test_get_atom_map_2(self):
         # Diels_alder_addition: C5H8 + C6H10 <=> C11H18
         c5h8_xyz = {'coords': ((2.388426506127341, -0.6020682478448856, -0.8986239521455471),
                                (1.396815470095451, 0.2559764141247285, -0.632876393172657),
@@ -1566,11 +1544,10 @@ class TestARCReaction(unittest.TestCase):
         self.assertIn(tuple(atom_map[3:5]+[atom_map[-1]]), permutations([3, 4, 5]))
         self.assertEqual(atom_map[5], 6)
 
-    # Same species in products
+        # Same species in products
         rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'C=C[CH]CC[CH]C=C')],
                           p_species=[ARCSpecies(label="p1", smiles= 'C=CC=C'),
                                      ARCSpecies(label="p2", smiles= 'C=CC=C')])
-        rxn.determine_family(rmg_database=self.rmgdb)
         c_symmetry_h_1 = [1, 2, 11, 12]            # symmetry of carbons with one hydrogen
         c_symmetry_h_2 = [0, 3, 10, 13]            # symmetry of carbons with two hydrogens
         h_symmetry1 = [6, 7, 16, 17]               # symmetry of hydrogens with one other hydrogen second order neighbor
@@ -1592,24 +1569,6 @@ class TestARCReaction(unittest.TestCase):
             else:
                 self.assertIn(atom_map[int(atom.label)], c_symmetry_h_2 if atom.symbol == "C" else h_symmetry2)
         self.assertTrue(check_atom_map(rxn=rxn))
-
-    def test_mapping_XY_elimination_hydroxyl(self):
-        """Test mapping of a reaction family XY_elimination_hydroxyl"""    
-        rxn = ARCReaction(r_species=[ARCSpecies(label="r", smiles = 'O=C(O)CCF')],
-                          p_species=[ARCSpecies(label="p1", smiles='C=C'),
-                                     ARCSpecies(label="p2", smiles="F"),
-                                     ARCSpecies(label="p3", smiles="O=C=O")])
-        rxn.determine_family(rmg_database=self.rmgdb)
-        if not rxn.family: # reaction family not found for some reason.
-            rxn.family = self.rmgdb.kinetics.families["XY_elimination_hydroxyl"]
-        atom_map = rxn.atom_map
-        self.assertIsNotNone(rxn.family)
-        self.assertTrue(check_atom_map(rxn=rxn))
-        self.assertIn(atom_map[:3], [[8, 9, 10], [10, 9, 8]])
-        self.assertIn(atom_map[3:5], [[0, 1], [1, 0]])
-        self.assertEqual(atom_map[5:7], [6, 7])
-        self.assertIn(atom_map[7:9], [[4, 5], [5, 4]])
-        self.assertIn(atom_map[9:], [[2, 3], [3, 2]])
 
     def test_get_reactants_xyz(self):
         """Test getting a combined string/dict representation of the cartesian coordinates of all reactant species"""
@@ -1936,7 +1895,6 @@ H       1.12853146   -0.86793870    0.06973060"""
                   ts_guess_level=arc_object.ts_guess_level,
                   ess_settings=arc_object.ess_settings,
                   job_types=arc_object.job_types,
-                  rmg_database=arc_object.rmg_database,
                   project_directory=arc_object.project_directory,
                   ts_adapters=arc_object.ts_adapters,
                   testing=True,
@@ -1958,7 +1916,6 @@ H       1.12853146   -0.86793870    0.06973060"""
                   ts_guess_level=arc_object.ts_guess_level,
                   ess_settings=arc_object.ess_settings,
                   job_types=arc_object.job_types,
-                  rmg_database=arc_object.rmg_database,
                   project_directory=arc_object.project_directory,
                   ts_adapters=arc_object.ts_adapters,
                   testing=True,
@@ -1992,6 +1949,10 @@ H       1.12853146   -0.86793870    0.06973060"""
             full_file_path = os.path.join(project_directory, file_path)
             if os.path.isfile(full_file_path):
                 os.remove(full_file_path)
+        file_paths = [os.path.join(ARC_PATH, 'arc', 'reaction', 'nul'), os.path.join(ARC_PATH, 'arc', 'reaction', 'run.out')]
+        for file_path in file_paths:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 if __name__ == '__main__':
