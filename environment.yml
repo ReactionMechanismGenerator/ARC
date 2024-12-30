@@ -44,7 +44,7 @@ dependencies:
   - rmg::rdkit >=2020.03.3.0
   - scikit-learn
   - scipy
-  - rmg::symmetry
+  - connie::symmetry
   - xlrd
   - xlwt
   - anaconda::sphinx_rtd_theme
