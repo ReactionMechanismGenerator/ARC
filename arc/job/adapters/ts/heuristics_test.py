@@ -28,12 +28,12 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             is_water,
                                             get_neighbors_by_electronegativity,
                                             generate_zmats,
-                                            #hydrolysis
+                                            hydrolysis
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz, compare_zmats
 from arc.species.species import ARCSpecies
-from arc.species.zmat import _compare_zmats
+from arc.species.zmat import _compare_zmats, xyz_to_zmat
 
 FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
                'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
@@ -132,6 +132,15 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H      -0.75690800   -0.19845300    0.00000000
         H       0.75723500   -0.19720400    0.00000000""")
 
+        cls.methylformate=ARCSpecies(label='ester', smiles='COC=O', xyz="""C      -1.01765390   -0.08355112    0.05206009
+O       0.22303684   -0.79051481    0.05294172
+C       0.35773087   -1.66017412   -0.97863090
+O      -0.45608483   -1.87500387   -1.86208833
+H      -1.82486467   -0.81522856    0.14629516
+H      -1.06962462    0.60119223    0.90442455
+H      -1.14968688    0.45844916   -0.88969505
+H       1.33643417   -2.15859899   -0.90083808""")
+
         cls.ethyl_ethanoate = ARCSpecies(label='ester', smiles='CC(=O)OCC', xyz="""C       2.44505336    0.33426556   -0.05839486
         C       1.22268719   -0.52813666    0.01896600
         O       1.23293886   -1.74943142   -0.03929182
@@ -168,9 +177,18 @@ class TestHeuristicsAdapter(unittest.TestCase):
 
         cls.carbonyl_chloride = ARCSpecies(label='carbonyl_chloride', smiles='C(=O)Cl', xyz="""C      -0.13997478   -0.00390480    0.00181459
         O      -0.92417109   -0.94772461    0.00285300
-        Cl      1.58884844   -0.07729945   -0.02180153
+        Cl     1.58884844   -0.07729945   -0.02180153
         H      -0.52470257    1.02892886    0.01713394""")
 
+        cls.formicacid=ARCSpecies(label='formicacid', smiles='C(=O)O', xyz="""C      -0.39120646    0.07781977    0.13864035
+        O      -0.92483455   -0.71970938   -0.60912134
+        O       0.93691157    0.26838190    0.13942568
+        H      -0.89084150    0.72004713    0.87848577
+        H       1.26997096   -0.34653955   -0.54743033""")
+
+        cls.hydrochloric_acid=ARCSpecies(label='acid', smiles='Cl', xyz="""Cl      0.00000000    0.00000000    0.63500000
+        H       0.00000000    0.00000000   -0.63500000""")
+        
         cls.ethanimine = ARCSpecies(label='imine', smiles='CC(=N)', xyz="""C       0.96167873    0.13821742   -0.08370350
         C      -0.47767687   -0.25465987    0.00603687
         N      -0.88812856   -1.10552567    0.88392498
@@ -229,23 +247,21 @@ class TestHeuristicsAdapter(unittest.TestCase):
         H       1.43056708    1.33384843   -1.04192555
         H       1.28070929   -1.53312020    0.41216154""")
 
-        cls.carbonyl_chloride_zmat={'symbols': ('O', 'C', 'Cl', 'H'),
+        cls.carbonyl_chloride_zmat={'symbols': ('C', 'O', 'Cl', 'H'),
             'coords': (
                 (None, None, None),
                 ('R_1_0', None, None),
-                ('R_2_1', 'A_2_1_0', None),
-                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                ('R_2_0', 'A_2_0_1', None),
+                ('R_3_0', 'A_3_0_2', 'D_3_0_2_1'),
             ),
-            'vars': {
-                'R_1_0': 1.2270944498764313,
-                'R_2_1': 1.7305415635472825,
-                'R_3_1': 1.1022683986375041,
-                'A_2_1_0': 127.28815004383823,
-                'A_3_1_2': 112.8683863839517,
-                'D_3_1_2_0': 179.99999879258172,
-            },
+            'vars': {'A_2_0_1': 127.28815004383823,
+                    'A_3_0_2': 112.8683863839517,
+                    'D_3_0_2_1': 179.99999879258172,
+                    'R_1_0': 1.2270944498764313,
+                    'R_2_0': 1.7305415635472825,
+                    'R_3_0': 1.1022683986375041},
             'map': {
-                0: 1, 1: 0, 2: 2, 3: 3,}
+                0: 0, 1: 1, 2: 2, 3: 3,}
         }
 
 
@@ -1938,7 +1954,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
 
     def test_generate_zmats(self):
         """
-        Test #1 for generate_zmats() function for a hydrolysis TS structure.
+        Test for generate_zmats() function for a hydrolysis TS structure.
         """
         water = self.water
         initial_zmat = self.carbonyl_chloride_zmat
@@ -1950,91 +1966,128 @@ class TestHeuristicsAdapter(unittest.TestCase):
         a_atoms = [[O, a, b], [H1, O, a], [H2, O, H1]]
         d_atoms = [[O, a, d, f], [H1, O, a, b], [H2, O, H1, a]]
         d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
-        zmats,_ = generate_zmats(initial_zmat, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values)
-        expected_zmats =[ {
-            'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
-            'coords': (
-                (None, None, None),
-                ('R_1_0', None, None),
-                ('R_2_1', 'A_2_1_0', None),
-                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
-                ('R_4_0', 'A_4_0_2', 'D_4_0_3_1'),
-                ('R_5_4', 'A_5_4_0', 'D_5_4_0_2'),
-                ('R_6_4', 'A_6_4_5', 'D_6_4_5_0')
-            ),
-            'vars': {
-                'R_1_0': 1.2270944498764313,'R_2_1': 1.7305415635472825, 'R_3_1': 1.1022683986375041,
-                'R_4_0': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
-                'A_2_1_0': 127.28815004383823,'A_3_1_2': 112.8683863839517, 'A_4_0_2': 77.4,
-                'A_5_4_0': 76, 'A_6_4_5': 104.5,'D_3_1_2_0': 179.99999879258172,
-                'D_4_0_3_1': 140,'D_5_4_0_2': 1.64, 'D_6_4_5_0': 103
-            },
+        print(a,b)
+        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.5)
+        zmats,xyzs = generate_zmats(initial_zmat, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values)
+        print(xyzs)
+        expected_zmats = [
+            {
+                'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                           ('R_4_1', 'A_4_1_2', 'D_4_1_3_0'),
+                           ('R_5_4', 'A_5_4_1', 'D_5_4_1_2'),
+                           ('R_6_4', 'A_6_4_5', 'D_6_4_5_1')),
+                'vars': {'R_1_0': 1.2270944498764313, 'R_2_1': 2.595812345320924, 'R_3_1': 1.1022683986375041,
+                         'R_4_1': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
+                         'A_2_1_0': 127.28815004383823, 'A_3_1_2': 112.8683863839517, 'A_4_1_2': 77.4,
+                         'A_5_4_1': 76, 'A_6_4_5': 104.5, 'D_3_1_2_0': 179.99999879258172,
+                         'D_4_1_3_0': 140, 'D_5_4_1_2': 1.64, 'D_6_4_5_1': 103},
+                'map': {0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}},
 
-            'map': {
-                0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}}, {
-            'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
-            'coords': (
-                (None, None, None),
-                ('R_1_0', None, None),
-                ('R_2_1', 'A_2_1_0', None),
-                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
-                ('R_4_0', 'A_4_0_2', 'D_4_0_3_1'),
-                ('R_5_4', 'A_5_4_0', 'D_5_4_0_2'),
-                ('R_6_4', 'A_6_4_5', 'D_6_4_5_0')
-            ),
-            'vars': {
-                'R_1_0': 1.2270944498764313,'R_2_1': 1.7305415635472825, 'R_3_1': 1.1022683986375041,
-                'R_4_0': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
-                'A_2_1_0': 127.28815004383823,'A_3_1_2': 112.8683863839517, 'A_4_0_2': 77.4,
-                'A_5_4_0': 76, 'A_6_4_5': 104.5,'D_3_1_2_0': 179.99999879258172,
-                'D_4_0_3_1': -140,'D_5_4_0_2': 1.64, 'D_6_4_5_0': 103
-            },
+            {
+                'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                           ('R_4_1', 'A_4_1_2', 'D_4_1_3_0'),
+                           ('R_5_4', 'A_5_4_1', 'D_5_4_1_2'),
+                           ('R_6_4', 'A_6_4_5', 'D_6_4_5_1')),
+                'vars': {'R_1_0': 1.2270944498764313, 'R_2_1': 2.595812345320924, 'R_3_1': 1.1022683986375041,
+                         'R_4_1': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
+                         'A_2_1_0': 127.28815004383823, 'A_3_1_2': 112.8683863839517, 'A_4_1_2': 77.4,
+                         'A_5_4_1': 76, 'A_6_4_5': 104.5, 'D_3_1_2_0': 179.99999879258172,
+                         'D_4_1_3_0': -140, 'D_5_4_1_2': 1.64, 'D_6_4_5_1': 103},
+                'map': {0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}},
 
-            'map': {
-                0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}},{
-            'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
-            'coords': (
-                (None, None, None),
-                ('R_1_0', None, None),
-                ('R_2_1', 'A_2_1_0', None),
-                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
-                ('R_4_0', 'A_4_0_2', 'D_4_0_3_1'),
-                ('R_5_4', 'A_5_4_0', 'D_5_4_0_2'),
-                ('R_6_4', 'A_6_4_5', 'D_6_4_5_0')
-            ),
-            'vars': {
-                'R_1_0': 1.2270944498764313,'R_2_1': 1.7305415635472825, 'R_3_1': 1.1022683986375041,
-                'R_4_0': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
-                'A_2_1_0': 127.28815004383823,'A_3_1_2': 112.8683863839517, 'A_4_0_2': 77.4,
-                'A_5_4_0': 76, 'A_6_4_5': 104.5,'D_3_1_2_0': 179.99999879258172,
-                'D_4_0_3_1': 140,'D_5_4_0_2': 1.64, 'D_6_4_5_0': -103
-            },
+            {
+                'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                           ('R_4_1', 'A_4_1_2', 'D_4_1_3_0'),
+                           ('R_5_4', 'A_5_4_1', 'D_5_4_1_2'),
+                           ('R_6_4', 'A_6_4_5', 'D_6_4_5_1')),
+                'vars': {'R_1_0': 1.2270944498764313, 'R_2_1': 2.595812345320924, 'R_3_1': 1.1022683986375041,
+                         'R_4_1': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
+                         'A_2_1_0': 127.28815004383823, 'A_3_1_2': 112.8683863839517, 'A_4_1_2': 77.4,
+                         'A_5_4_1': 76, 'A_6_4_5': 104.5, 'D_3_1_2_0': 179.99999879258172,
+                         'D_4_1_3_0': 140, 'D_5_4_1_2': 1.64, 'D_6_4_5_1': -103},
+                'map': {0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}},
 
-            'map': {
-                0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}},{
-            'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
-            'coords': (
-                (None, None, None),
-                ('R_1_0', None, None),
-                ('R_2_1', 'A_2_1_0', None),
-                ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
-                ('R_4_0', 'A_4_0_2', 'D_4_0_3_1'),
-                ('R_5_4', 'A_5_4_0', 'D_5_4_0_2'),
-                ('R_6_4', 'A_6_4_5', 'D_6_4_5_0')
-            ),
-            'vars': {
-                'R_1_0': 1.2270944498764313,'R_2_1': 1.7305415635472825, 'R_3_1': 1.1022683986375041,
-                'R_4_0': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
-                'A_2_1_0': 127.28815004383823,'A_3_1_2': 112.8683863839517, 'A_4_0_2': 77.4,
-                'A_5_4_0': 76, 'A_6_4_5': 104.5,'D_3_1_2_0': 179.99999879258172,
-                'D_4_0_3_1': -140,'D_5_4_0_2': 1.64, 'D_6_4_5_0': -103
-            },
-
-            'map': {
-                0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}}
-
+            {
+                'symbols': ('O', 'C', 'Cl', 'H', 'O', 'H', 'H'),
+                'coords': ((None, None, None),
+                           ('R_1_0', None, None),
+                           ('R_2_1', 'A_2_1_0', None),
+                           ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                           ('R_4_1', 'A_4_1_2', 'D_4_1_3_0'),
+                           ('R_5_4', 'A_5_4_1', 'D_5_4_1_2'),
+                           ('R_6_4', 'A_6_4_5', 'D_6_4_5_1')),
+                'vars': {'R_1_0': 1.2270944498764313, 'R_2_1': 2.595812345320924, 'R_3_1': 1.1022683986375041,
+                         'R_4_1': 1.85, 'R_5_4': 1.21, 'R_6_4': 0.97,
+                         'A_2_1_0': 127.28815004383823, 'A_3_1_2': 112.8683863839517, 'A_4_1_2': 77.4,
+                         'A_5_4_1': 76, 'A_6_4_5': 104.5, 'D_3_1_2_0': 179.99999879258172,
+                         'D_4_1_3_0': -140, 'D_5_4_1_2': 1.64, 'D_6_4_5_1': -103},
+                'map': {0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}}
         ]
+
         self.assertEqual(zmats, expected_zmats)
+
+
+    def test_hydrolysis(self):
+        #Test that the hydrolysis function correctly identifies hydrolysis reactions and categorizes them into Set 1 or Set 2.
+        xyz_guesses_total, zmats_total= [],[]
+        ester=self.ethyl_ethanoate
+        acid=self.acetic_acid
+        alcohol=self.ethanol
+        water=self.water
+        rxn1=ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
+        self.assertEqual(rxn1.family, 'ester_hydrolysis')
+        self.assertIn(rxn1.family, FAMILY_SETS['set_1'])
+
+        imine=self.ethanimine
+        amine=self.aminoethanol
+        rxn2=ARCReaction(r_species=[imine, water], p_species=[amine])
+        self.assertEqual(rxn2.family, 'imine_hydrolysis')
+        self.assertIn(rxn2.family, FAMILY_SETS['set_1'])
+
+        ether=self.ethyl_methylether
+        alcohol1=alcohol
+        alcohol2=self.methanol
+        rxn3=ARCReaction(r_species=[ether, water], p_species=[alcohol1, alcohol2])
+        self.assertEqual(rxn3.family, 'ether_hydrolysis')
+        self.assertIn(rxn3.family, FAMILY_SETS['set_1'])
+
+        nitrile=self.propionitrile
+        acid2=self.imidic_acid
+        rxn4=ARCReaction(r_species=[nitrile, water], p_species=[acid2])
+        self.assertEqual(rxn4.family, 'nitrile_hydrolysis')
+        self.assertIn(rxn4.family, FAMILY_SETS['set_2'])
+
+        carbonyl_chloride = self.carbonyl_chloride
+        formicacid = self.formicacid
+        hydrochloric_acid = self.hydrochloric_acid
+        rxn5 = ARCReaction(r_species=[carbonyl_chloride, water], p_species=[formicacid, hydrochloric_acid])
+        self.assertEqual(rxn5.family, 'ester_hydrolysis')
+        self.assertIn(rxn5.family, FAMILY_SETS['set_1'])
+
+        methylformate=self.methylformate
+        rxn6=ARCReaction(r_species=[methylformate, water], p_species=[formicacid, alcohol2])
+        self.assertEqual(rxn6.family, 'ester_hydrolysis')
+        self.assertIn(rxn6.family, FAMILY_SETS['set_1'])
+
+        xyz_guesses_total, zmats_total=hydrolysis(rxn6)
+        print(zmats_total, xyz_guesses_total)
+        """
+        for rxn in rxns:
+            ts_guesses = hydrolysis(rxn)
+            print(ts_guesses)
+            self.assertIsNotNone(ts_guesses, f"Failed to generate TS guesses for reaction: {rxn}")"""
 
 
 if __name__ == '__main__':
