@@ -1379,11 +1379,11 @@ def crest_ts_conformer_search(
             format_params = {
                 "queue": "alon_q",
                 "name": f"crest_{xyz_crest_int}",
-                "cpus": SERVERS["local"].get("cpus", 8),
-                "memory": (
-                    SERVERS["local"].get("memory", 32.0)
-                    if SERVERS["local"].get("memory", 32.0) < 60.0
-                    else 40.0
+                "cpus": int(SERVERS["local"].get("cpus", 8)),
+                "memory": int(
+                    SERVERS["local"].get("memory", 32)
+                    if SERVERS["local"].get("memory", 32) < 60
+                    else 40
                 ),
                 "activation_line": activation_line,
                 "commands": command,
