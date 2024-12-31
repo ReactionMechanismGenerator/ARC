@@ -22,7 +22,7 @@ import arc.species.converter as converter
 from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.species.species import ARCSpecies
-from arc.species.vectors import calculate_dihedral_angle
+from arc.species.vectors import calculate_dihedral_angle, calculate_param
 from arc.species.zmat import _compare_zmats, xyz_to_zmat
 
 
@@ -5053,6 +5053,56 @@ H      -0.81291200   -0.46933500   -0.31111876"""
 
         xyzs3 = [nco_1, nco_2, nco_6, nco_7, nco_8, nco_9]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
+
+    def test_add_atom_to_xyz_using_internal_coords(self):
+        """Test the add_atom_to_xyz_using_internal_coords() function."""
+        xyz_1 = """ C                 -3.63243985   -0.48299420   -0.05541310
+                    H                 -3.27244945   -1.49054926   -0.06723326
+                    H                 -3.24128971    0.04543562   -0.89960709
+                    H                 -4.70149255   -0.48565830   -0.10034895
+                    C                 -3.17488405    0.21042224    1.24128129
+                    H                 -3.53487445    1.21797729    1.25310144
+                    H                 -3.56603419   -0.31800758    2.08547528
+                    C                 -1.63624745    0.21425655    1.30595531
+                    H                 -1.24509731    0.74268637    0.46176133
+                    H                 -1.31833530    0.69604590    2.20690531"""
+        new_xyz_1 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
+                                                                    element='Cl',
+                                                                    r_index=7,
+                                                                    a_indices=(4, 7),
+                                                                    d_indices=(0, 4, 7),
+                                                                    r_value=1.77,
+                                                                    a_value=109.5,
+                                                                    d_value=-60.0,
+                                                                    )
+        expected_xyz = {'symbols': ('C', 'H', 'H', 'H', 'C', 'H', 'H', 'C', 'H', 'H', 'Cl'),
+                        'isotopes': (12, 1, 1, 1, 12, 1, 1, 12, 1, 1, 35),
+                        'coords': ((-3.63243985, -0.4829942, -0.0554131), (-3.27244945, -1.49054926, -0.06723326),
+                                   (-3.24128971, 0.04543562, -0.89960709), (-4.70149255, -0.4856583, -0.10034895),
+                                   (-3.17488405, 0.21042224, 1.24128129), (-3.53487445, 1.21797729, 1.25310144),
+                                   (-3.56603419, -0.31800758, 2.08547528), (-1.63624745, 0.21425655, 1.30595531),
+                                   (-1.24509731, 0.74268637, 0.46176133), (-1.3183353, 0.6960459, 2.20690531),
+                                   (-1.0399130826377951, -1.4521481683234707, 1.2864453881141027))}
+        self.assertEqual(new_xyz_1, expected_xyz)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[7, 10]), 1.77, places=2)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 7, 10]), 109.5, places=1)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
+
+        new_xyz_2 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
+                                                                    element='Cl',
+                                                                    r_index=4,
+                                                                    a_indices=(4, 0),
+                                                                    d_indices=(0, 4, 7),
+                                                                    r_value=2.70,
+                                                                    a_value=61.46,
+                                                                    d_value=-60.0,
+                                                                    opt_method='BFGS',
+                                                                    )
+        self.assertEqual(new_xyz_2['coords'][-1], (-1.0966631688164716, -1.5123640474266677, 1.296181153302943))
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 10]), 2.70, places=1)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
+
 
     @classmethod
     def tearDownClass(cls):
