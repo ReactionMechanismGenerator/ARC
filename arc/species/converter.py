@@ -2,6 +2,7 @@
 A module for performing various species-related format conversions.
 """
 
+import math
 import numpy as np
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
@@ -14,6 +15,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
+from scipy.optimize import minimize
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
 import rmgpy.constants as constants
@@ -2147,3 +2149,242 @@ def ics_to_scan_constraints(ics: list,
         raise NotImplementedError(f'Given software {software} is not implemented '
                                   f'for ics_to_scan_constraints().')
     return scan_trsh
+
+
+def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
+                                          element: str,
+                                          r_index: int,
+                                          a_indices: tuple,
+                                          d_indices: tuple,
+                                          r_value: float,
+                                          a_value: float,
+                                          d_value: float,
+                                          opt_method: str = 'Nelder-Mead',
+                                          ) -> dict:
+    """
+    Add an atom to XYZ. The new atom may have random r, a, and d index parameters
+    (not necessarily defined for the same respective atoms).
+    This function will compute the coordinates for the new atom.
+    This function assumes that the original xyz has at least 3 atoms.
+
+    Args:
+        xyz (Union[dict, str]): The xyz coordinates to process.
+        element (str): The chemical element of the atom to add.
+        r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.
+        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
+        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
+        r_value (float): The value of the R-X distance parameter, r.
+        a_value (float): The value of the A-B-X angle parameter, a.
+        d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
+        opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
+                                    Additional options include 'trust-constr' and 'BFGS'.
+
+    Returns:
+        dict: The updated xyz coordinates.
+    """
+    xyz = check_xyz_dict(xyz)
+    if len(xyz['symbols']) < 3:
+        raise ValueError('The zmat must have at least 3 atoms to add a new atom with arbitrary parameters.')
+    if len(a_indices) != 2 or len(d_indices) != 3:
+        raise ValueError('The indices of the atoms defining the angle and dihedral must be of length 2 and 3, '
+                        f'respectively, got {a_indices} and {d_indices}.')
+
+    coords, symbols = xyz['coords'], xyz['symbols']
+
+    atom_r_coord = coords[r_index]
+    atom_a_coord = coords[a_indices[0]]
+    atom_b_coord = coords[a_indices[1]]
+    atom_l_coord = coords[d_indices[0]]
+    atom_m_coord = coords[d_indices[1]]
+    atom_n_coord = coords[d_indices[2]]
+
+    sphere_eq = distance_constraint(reference_coord=atom_r_coord, distance=r_value)
+    angle_eq = angle_constraint(atom_a=atom_a_coord, atom_b=atom_b_coord, angle=a_value)
+    dihedral_eq = dihedral_constraint(atom_a=atom_l_coord, atom_b=atom_m_coord, atom_c=atom_n_coord, dihedral=d_value)
+
+    def objective_func(coord: Tuple[float, float, float]) -> float:
+        """
+        The objective function to minimize to satisfy the sphere, angle, and dihedral constraints.
+
+        Args:
+            coord (Tuple[float, float, float]): The Cartesian coordinates of the new atom.
+
+        Returns:
+            float: The sum of the squared differences between the constraints and their desired values.
+        """
+        x, y, z = coord
+        distance_constraint_ = sphere_eq(x, y, z)
+        angle_constraint_ = angle_eq(x, y, z)
+        dihedral_constraint_ = dihedral_eq(x, y, z)
+
+        sphere_error = sphere_eq(*coord)
+        angle_error = angle_eq(*coord)
+        dihedral_error = dihedral_eq(*coord)
+
+        total_error = ((distance_constraint_ / r_value) ** 2 +
+                       (angle_constraint_ / math.radians(a_value)) ** 2 +
+                       (dihedral_constraint_ / math.radians(d_value)) ** 2)
+
+        return total_error
+
+    initial_guess = generate_initial_guess(atom_r_coord=atom_r_coord,
+                                           r_value=r_value,
+                                           atom_a_coord=atom_a_coord,
+                                           atom_b_coord=atom_b_coord,
+                                           a_value=a_value)
+    result = minimize(objective_func, initial_guess, method=opt_method,
+                      options={'maxiter': 1e+4, 'ftol': 1e-10, 'xtol': 1e-10})
+    if not result.success:
+        raise ValueError(f"Failed to find a solution: {result.message}")
+
+    coords = coords + (tuple(result.x.tolist()),)
+    symbols = symbols + (element,)
+    isotopes = xyz['isotopes'] + (get_most_common_isotope_for_element(element),)
+    xyz = xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+    return xyz
+
+
+def distance_constraint(reference_coord: tuple, distance: float):
+    """
+    Generate the sphere equation for a new atom at a specific distance from a reference atom.
+
+    Args:
+        reference_coord (tuple): The Cartesian coordinates (x1, y1, z1) of the reference atom.
+        distance (float): The fixed distance (radius of the sphere) in Angstroms.
+
+    Returns:
+        function: A lambda function representing the sphere equation.
+    """
+    x1, y1, z1 = reference_coord
+    sphere_eq = lambda x, y, z: (x - x1) ** 2 + (y - y1) ** 2 + (z - z1) ** 2 - distance ** 2
+    return sphere_eq
+
+
+def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
+    """
+    Generate the angle constraint for a new atom with two other atoms in Cartesian space.
+    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)
+
+    Args:
+        atom_a (tuple): Cartesian coordinates of the first reference atom (A).
+        atom_b (tuple): Cartesian coordinates of the second reference atom (B).
+        angle (float): Desired angle (in degrees).
+
+    Returns:
+        function: A lambda function representing the angle constraint equation.
+    """
+    x_a, y_a, z_a = atom_a
+    x_b, y_b, z_b = atom_b
+    target_angle = math.radians(angle)
+
+    def angle_eq(x, y, z):
+        """
+        Calculate the angle between the vectors AB and BX, and compare it to the desired angle.
+
+        Args:
+            x (float): x-coordinate of the new atom.
+            y (float): y-coordinate of the new atom.
+            z (float): z-coordinate of the new atom.
+
+        Returns:
+            float: The difference between the calculated cosine of the angle and the desired cosine of the angle.
+        """
+        BA = np.array([x_a - x_b, y_a - y_b, z_a - z_b])
+        BX = np.array([x - x_b, y - y_b, z - z_b])
+        BA_length = np.linalg.norm(BA)
+        BX_length = np.linalg.norm(BX)
+        if BA_length == 0 or BX_length == 0:
+            raise ValueError("Zero-length vector encountered in angle calculation.")
+        cross_product_length = np.linalg.norm(np.cross(BA, BX))
+        dot_product = np.dot(BA, BX)
+        calc_angle = math.atan2(cross_product_length, dot_product)
+        return (calc_angle - target_angle) ** 2
+
+    return angle_eq
+
+
+def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: float):
+    """
+    Generate the dihedral angle constraint for a new atom with three other atoms in Cartesian space.
+
+    Args:
+        atom_a (tuple): Cartesian coordinates of the first atom (A).
+        atom_b (tuple): Cartesian coordinates of the second atom (B).
+        atom_c (tuple): Cartesian coordinates of the third atom (C).
+        dihedral (float): Desired dihedral angle (in degrees).
+
+    Returns:
+        function: A lambda function representing the dihedral constraint equation.
+    """
+    x1, y1, z1 = atom_a
+    x2, y2, z2 = atom_b
+    x3, y3, z3 = atom_c
+    cos_d = math.cos(math.radians(dihedral))
+    sin_d = math.sin(math.radians(dihedral))
+
+    def dihedral_eq(x, y, z):
+        """
+        Calculate the dihedral angle between the planes defined by vectors AB and BC, and compare it to the desired angle.
+        Return the combined equation: both cosine and sine should match.
+
+        Args:
+            x (float): x-coordinate of the new atom.
+            y (float): y-coordinate of the new atom.
+            z (float): z-coordinate of the new atom.
+
+        Returns:
+            float: The difference between the calculated cosine and sine of the dihedral angle
+                   and the desired cosine and sine of the dihedral angle.
+        """
+        AB = np.array([x2 - x1, y2 - y1, z2 - z1])
+        BC = np.array([x3 - x2, y3 - y2, z3 - z2])
+        CD = np.array([x - x3, y - y3, z - z3])
+        N1 = np.cross(AB, BC)
+        N2 = np.cross(BC, CD)
+        N1_norm = np.linalg.norm(N1)
+        N2_norm = np.linalg.norm(N2)
+        BC_norm = np.linalg.norm(BC)
+        cos_calc = np.dot(N1, N2) / (N1_norm * N2_norm)
+        sin_calc = np.dot(BC, np.cross(N1, N2)) / (BC_norm * N1_norm * N2_norm)
+        return (cos_calc - cos_d) ** 2 + (sin_calc - sin_d) ** 2
+
+    return dihedral_eq
+
+
+def generate_initial_guess(atom_r_coord: tuple,
+                           r_value: float,
+                           atom_a_coord: tuple,
+                           atom_b_coord: tuple,
+                           a_value: float,
+                           ):
+    """
+    Generate an initial guess for the new atom's coordinates based on the reference atom R, the distance R-X, and the angle A-B-X.
+
+    Args:
+        atom_r_coord (tuple): Cartesian coordinates of the reference atom R.
+        r_value (float): Desired distance between R and X.
+        atom_a_coord (tuple): Cartesian coordinates of atom A (for the angle constraint).
+        atom_b_coord (tuple): Cartesian coordinates of atom B (for the angle constraint).
+        a_value (float): Desired angle A-B-X in degrees.
+
+    Returns:
+        np.array: Initial guess coordinates for the new atom.
+    """
+    # Step 1: Vector BA (for directionality)
+    BA = np.array(atom_a_coord) - np.array(atom_b_coord)
+    BA_unit = BA / np.linalg.norm(BA)
+
+    # Step 2: Find a vector orthogonal to BA
+    arbitrary_vector = np.array([1.0, 0.0, 0.0])
+    if np.allclose(BA_unit, arbitrary_vector):  # Avoid collinearity
+        arbitrary_vector = np.array([0.0, 1.0, 0.0])
+    orthogonal_vector = np.cross(BA_unit, arbitrary_vector)
+    orthogonal_vector = orthogonal_vector / np.linalg.norm(orthogonal_vector)
+
+    # Step 3: Calculate approximate position using the angle
+    angle_rad = math.radians(a_value)
+    X_direction = np.cos(angle_rad) * BA_unit + np.sin(angle_rad) * orthogonal_vector
+
+    # Step 4: Scale by R distance and offset by R's position
+    X_position = np.array(atom_r_coord) + r_value * X_direction
+    return X_position
