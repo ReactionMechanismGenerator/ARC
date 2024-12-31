@@ -1815,5 +1815,6 @@ class TestZMat(unittest.TestCase):
         with self.assertRaises(TypeError):
             zmat.map_index_to_int('XY5486')
 
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
