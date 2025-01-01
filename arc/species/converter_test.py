@@ -5103,6 +5103,35 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
 
+        xyz_2= """C      -1.01765390   -0.08355112    0.05206009
+                  O       0.22303684   -0.79051481    0.05294172
+                  C       0.35773087   -1.66017412   -0.97863090
+                  O      -0.45608483   -1.87500387   -1.86208833
+                  H      -1.82486467   -0.81522856    0.14629516
+                  H      -1.06962462    0.60119223    0.90442455
+                  H      -1.14968688    0.45844916   -0.88969505
+                  H       1.33643417   -2.15859899   -0.90083808"""
+        new_xyz_3 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_2,
+                                                                    element='O',
+                                                                    r_index=2,
+                                                                    a_indices=(1, 2),
+                                                                    d_indices=(3, 7, 2),
+                                                                    r_value=1.85,
+                                                                    a_value=77.4,
+                                                                    d_value=140,
+                                                                    )
+        expected_xyz = {'symbols': ('C', 'O', 'C', 'O', 'H', 'H', 'H', 'H', 'O'),
+                        'isotopes': (12, 16, 12, 16, 1, 1, 1, 1, 16),
+                        'coords': ((-1.0176539, -0.08355112, 0.05206009), (0.22303684, -0.79051481, 0.05294172),
+                                   (0.35773087, -1.66017412, -0.9786309), (-0.45608483, -1.87500387, -1.86208833),
+                                   (-1.82486467, -0.81522856, 0.14629516), (-1.06962462, 0.60119223, 0.90442455),
+                                   (-1.14968688, 0.45844916, -0.88969505), (1.33643417, -2.15859899, -0.90083808),
+                                   (1.4828269120297688, -2.3770289575185632, 0.3030781302151979))}
+        self.assertEqual(new_xyz_3, expected_xyz)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[2, 8]), 1.85, places=2)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[1, 2, 8]), 77.4, places=1)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8]), 140, places=1)
+
 
     @classmethod
     def tearDownClass(cls):
