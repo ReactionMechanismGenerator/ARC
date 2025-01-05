@@ -1111,6 +1111,7 @@ def h_abstraction(
         return list()
 
     xyz_guesses = list()
+    crest_paths = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
 
     # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
@@ -1141,7 +1142,7 @@ def h_abstraction(
         # Don't modify dihedrals for an attacking H (or other linear radical) at a linear angle, C ~ A -- H1 - H2 -- H.
         dihedral_increment = 360
 
-    for i, rmg_reaction in enumerate(rmg_reactions):
+    for rmg_reaction in rmg_reactions:
         rmg_reactant_mol = rmg_reaction.reactants[int(reactants_reversed)].molecule[0]
         rmg_product_mol = rmg_reaction.products[int(not products_reversed)].molecule[0]
         h1 = rmg_reactant_mol.atoms.index(
@@ -1179,9 +1180,8 @@ def h_abstraction(
             d2_d3_product = [(None, d3) for d3 in d3_values]
         else:
             d2_d3_product = [(None, None)]
-        rmg_xyz_guesses = list()
         zmats = list()
-        for d2, d3 in d2_d3_product:
+        for iteration, (d2, d3) in d2_d3_product:
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -1217,37 +1217,48 @@ def h_abstraction(
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
                     xyz_guesses.append(xyz_guess)
-                    rmg_xyz_guesses.append(xyz_guess)
-        crest_paths = list()
-        if rmg_xyz_guesses and HAS_CREST:
-            xyz_guess_crest = rmg_xyz_guesses[0]
-            if isinstance(xyz_guess_crest, dict):
-                df_dmat = convert_xyz_to_df(xyz_guess_crest)
-            elif isinstance(xyz_guess_crest, str):
-                xyz = str_to_xyz(xyz_guess_crest)
-                df_dmat = convert_xyz_to_df(xyz)
-            elif isinstance(xyz_guess_crest, list):
-                xyz_temp = "\n".join(xyz_guess_crest)
-                xyz_to_dmat = str_to_xyz(xyz_temp)
-                df_dmat = convert_xyz_to_df(xyz_to_dmat)
+        
+                if HAS_CREST:
+                    xyz_guess_crest = xyz_guess.copy()
+                    if isinstance(xyz_guess_crest, dict):
+                        df_dmat = convert_xyz_to_df(xyz_guess_crest)
+                    elif isinstance(xyz_guess_crest, str):
+                        xyz = str_to_xyz(xyz_guess_crest)
+                        df_dmat = convert_xyz_to_df(xyz)
+                    elif isinstance(xyz_guess_crest, list):
+                        xyz_temp = "\n".join(xyz_guess_crest)
+                        xyz_to_dmat = str_to_xyz(xyz_temp)
+                        df_dmat = convert_xyz_to_df(xyz_to_dmat)
 
-            try:
-                h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                crest_path = crest_ts_conformer_search(
-                    xyz_guess_crest,
-                    h_abs_atoms_dict["A"],
-                    h_abs_atoms_dict["H"],
-                    h_abs_atoms_dict["B"],
-                    path=path,
-                )
-                crest_paths.append(crest_path)
-            except (ValueError, KeyError) as e:
-                logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
+                    try:
+                        h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
+                        crest_path = crest_ts_conformer_search(
+                            xyz_guess_crest,
+                            h_abs_atoms_dict["A"],
+                            h_abs_atoms_dict["H"],
+                            h_abs_atoms_dict["B"],
+                            path=path,
+                            xyz_crest_int=iteration,
+                        )
+                        crest_paths.append(crest_path)
+                    except (ValueError, KeyError) as e:
+                        logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
 
     if crest_paths:
         crest_jobs = submit_crest_jobs(crest_paths)
         monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
-        process_completed_jobs(crest_jobs, xyz_guesses)
+        xyz_guesses_crest = process_completed_jobs(crest_jobs)
+        for xyz_guess_crest in xyz_guesses_crest:
+            zmat_guess = zmat_from_xyz(xyz_guess_crest, is_ts=True)
+            is_unique = True  # Assume the current Z-matrix is unique
+            for existing_zmat_guess in zmats:
+                if compare_zmats(existing_zmat_guess, zmat_guess):
+                    is_unique = False  # Found a match, mark as not unique
+                    break  # Exit this inner loop only
+            if is_unique:
+                # If no match was found, append to lists
+                zmats.append(zmat_guess)
+                xyz_guesses.append(xyz_guess_crest)
     else:
         logger.error("No CREST paths found")
 
@@ -1439,7 +1450,7 @@ def monitor_crest_jobs(crest_jobs: dict, check_interval: int = 300) -> None:
         time.sleep(min(check_interval, 100))
 
 
-def process_completed_jobs(crest_jobs: dict, xyz_guesses: list) -> None:
+def process_completed_jobs(crest_jobs: dict) -> list:
     """
     Process the completed CREST jobs and update XYZ guesses.
 
@@ -1447,6 +1458,7 @@ def process_completed_jobs(crest_jobs: dict, xyz_guesses: list) -> None:
         crest_jobs (dict): Dictionary containing job information.
         xyz_guesses (list): List to store the resulting XYZ guesses.
     """
+    xyz_guesses = []
     for job_id, job_info in crest_jobs.items():
         crest_path = job_info["path"]
         if job_info["status"] == "done":
