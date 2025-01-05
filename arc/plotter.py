@@ -498,7 +498,7 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.close(fig=fig)
 
 
-def draw_kinetics_plots(rxn_list: list,
+def draw_kinetics_plots(rxn_list: list,  # todo
                         T_min: Optional[Tuple[float, str]] = None,
                         T_max: Optional[Tuple[float, str]] = None,
                         T_count: int = 50,
@@ -847,7 +847,7 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
         transport_library.save(lib_path)
 
 
-def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
+def save_kinetics_lib(rxn_list, path, name, lib_long_desc):  # todo: remove rmg reaction
     """
     Save an RMG kinetics library of all reactions in `rxn_list` in the supplied `path`.
     `rxn_list` is a list of ARCReaction objects.
