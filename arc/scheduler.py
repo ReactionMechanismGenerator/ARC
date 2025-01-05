@@ -676,6 +676,7 @@ class Scheduler(object):
                             self.timer = False
                             break
                     elif 'irc' in job_name:
+                        logger.info(f'S692 job name: {job_name}')
                         job = self.job_dict[label]['irc'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
@@ -1452,6 +1453,7 @@ class Scheduler(object):
             label (str): The species label.
             irc_direction (str): The IRC job direction, either 'forward' or 'reverse'.
         """
+        logger.info('S1468 run_irc_job')
         self.run_job(label=label,
                      xyz=self.species_dict[label].get_xyz(generate=False),
                      level_of_theory=self.irc_level,
@@ -1513,6 +1515,7 @@ class Scheduler(object):
 
         # Spawn IRC if requested and if relevant.
         if label in self.output.keys() and self.job_types['irc'] and self.species_dict[label].is_ts:
+            logger.info('S1529 running IRC')
             self.run_irc_job(label=label, irc_direction='forward')
             self.run_irc_job(label=label, irc_direction='reverse')
 
@@ -1555,8 +1558,12 @@ class Scheduler(object):
             self.run_onedmin_job(label)
 
         # Spawn bde jobs.
+        logger.info('S1574 spawn BDE jobs')
         if label in self.output.keys() and self.job_types['bde'] and self.species_dict[label].bdes is not None:
             bde_species_list = self.species_dict[label].scissors()
+            logger.info(f'Creating BDE species for {label}')
+            logger.info(f'bde s list: {bde_species_list}')
+            raise
             for bde_species in bde_species_list:
                 if bde_species.label != 'H':
                     # H was added in main.
@@ -2767,6 +2774,8 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        logger.info('S 2771 spawn_post_irc_jobs')
+        raise
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
@@ -2823,6 +2832,7 @@ class Scheduler(object):
         Args:
             label (str): The label of one of the optimized IRC-resulting species.
         """
+        logger.info('S 2827 check_irc_species')
         ts_label = self.species_dict[label].irc_label
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
