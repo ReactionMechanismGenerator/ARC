@@ -34,10 +34,9 @@ class TestKinBotAdapter(unittest.TestCase):
     def test_intra_h_migration(self):
         """Test KinBot for intra H migration reactions"""
         if HAS_KINBOT:
-            rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'])
-            rxn1.rmg_reaction = Reaction(reactants=[Species().from_smiles('CC[O]')],
-                                         products=[Species().from_smiles('[CH2]CO')])
-            rxn1.arc_species_from_rmg_reaction()
+            rxn1 = ARCReaction(reactants=['CC[O]'], products=['[CH2]CO'],
+                               r_species=[Species().from_smiles('CC[O]')],
+                               p_species=[Species().from_smiles('[CH2]CO')])
             self.assertEqual(rxn1.family, 'intra_H_migration')
             kinbot1 = KinBotAdapter(job_type='tsg',
                                     reactions=[rxn1],
