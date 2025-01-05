@@ -37,6 +37,8 @@ jobs:
     - name: Cache RMG-Py
       id: cache-rmg-py
       uses: actions/cache@v2
+      env:
+        CACHE_NUMBER: 2
       with:
         path: RMG-Py
         key: ${{ runner.os }}-rmg-main
