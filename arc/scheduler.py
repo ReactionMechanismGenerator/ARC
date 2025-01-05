@@ -339,8 +339,6 @@ class Scheduler(object):
                 logger.info(f'Considering reaction: {rxn.label}')
                 if family_text:
                     logger.info(f'({family_text})')
-                if rxn.rmg_reaction is not None:
-                    display(rxn.rmg_reaction.copy())
                 rxn.ts_label = rxn.ts_label if rxn.ts_label is not None else f'TS{rxn.index}'
                 with open(rxn_info_path, 'a') as f:
                     f.write(f'{rxn.ts_label}: {rxn.label}')
@@ -384,7 +382,6 @@ class Scheduler(object):
                     ts_species.ts_guesses.append(
                         TSGuess(method=f'user guess {i}',
                                 xyz=user_guess,
-                                rmg_reaction=rxn.rmg_reaction,
                                 index=len(rxn.ts_species.ts_guesses),
                                 success=True,
                                 project_directory=self.project_directory,

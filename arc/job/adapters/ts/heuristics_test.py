@@ -292,9 +292,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
         ch3 = ARCSpecies(label='CH3', smiles='[CH3]', xyz=self.ch3_xyz)
         rxn4 = ARCReaction(reactants=['CH4', 'H'], products=['CH3', 'H2'],
-                           r_species=[ch4, h], p_species=[ch3, h2],
-                           rmg_reaction=Reaction(reactants=[Species(smiles='C'), Species(smiles='[H]')],
-                                                 products=[Species(smiles='[CH3]'), Species(smiles='[H][H]')]))
+                           r_species=[ch4, h], p_species=[ch3, h2])
         self.assertEqual(rxn4.family, 'H_Abstraction')
         self.assertEqual(rxn4.atom_map[0], 0)
         for index in [1, 2, 3, 4]:
@@ -356,11 +354,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         c3h7 = ARCSpecies(label='C3H7', smiles='[CH2]CC', xyz=c3h7_xyz)
         h2o2 = ARCSpecies(label='H2O2', smiles='OO', xyz=h2o2_xyz)
         rxn5 = ARCReaction(reactants=['C3H8', 'HO2'], products=['C3H7', 'H2O2'],
-                           r_species=[c3h8, ho2], p_species=[c3h7, h2o2],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('CCC'),
-                                                            Species().from_smiles('O[O]')],
-                                                 products=[Species().from_smiles('[CH2]CC'),
-                                                           Species().from_smiles('OO')]))
+                           r_species=[c3h8, ho2], p_species=[c3h7, h2o2])
         self.assertEqual(rxn5.family, 'H_Abstraction')
         heuristics_5 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn5],
@@ -412,11 +406,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         ccco = ARCSpecies(label='CCCO', smiles='CCC[O]', xyz=ccco_xyz)
         h2o = ARCSpecies(label='H2O', smiles='O', xyz=h2o_xyz)
         rxn6 = ARCReaction(reactants=['CCCOH', 'OH'], products=['CCCO', 'H2O'],
-                           r_species=[cccoh, oh], p_species=[ccco, h2o],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('CCCO'),
-                                                            Species().from_smiles('[OH]')],
-                                                 products=[Species().from_smiles('CCC[O]'),
-                                                           Species().from_smiles('O')]))
+                           r_species=[cccoh, oh], p_species=[ccco, h2o])
         self.assertEqual(rxn6.family, 'H_Abstraction')
         heuristics_6 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn6],
@@ -450,11 +440,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         cdcoh = ARCSpecies(label='C=COH', smiles='C=CO', xyz=cdcoh_xyz)
         cdco = ARCSpecies(label='C=CO', smiles='C=C[O]', xyz=cdco_xyz)
         rxn7 = ARCReaction(reactants=['C=COH', 'H'], products=['C=CO', 'H2'],
-                           r_species=[cdcoh, h], p_species=[cdco, h2],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('C=CO'),
-                                                            Species().from_smiles('[H]')],
-                                                 products=[Species().from_smiles('C=C[O]'),
-                                                           Species().from_smiles('[H][H]')]))
+                           r_species=[cdcoh, h], p_species=[cdco, h2])
         self.assertEqual(rxn7.family, 'H_Abstraction')
         heuristics_7 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn7],

@@ -18,7 +18,6 @@ from arc.species.vectors import calculate_dihedral_angle
 from qcelemental.models.molecule import Molecule as QCMolecule
 
 from rmgpy.molecule import Molecule
-from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 
@@ -235,15 +234,9 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H       0.78091492   -0.31605120    1.13875203
                                                                       H       0.92382278    0.74158978   -0.25822764
                                                                       H       1.97108857   -1.36649904   -0.64094836""")])
-        cls.rmg_reaction_1 = Reaction(reactants=[Species(smiles='C'), Species(smiles='[OH]')],
-                                      products=[Species(smiles='[CH3]'), Species(smiles='O')])
-        cls.rmg_reaction_2 = Reaction(reactants=[Species(smiles='[OH]'), Species(smiles='C')],
-                                      products=[Species(smiles='[CH3]'), Species(smiles='O')])
         cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
                                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
                                          p_species=[ARCSpecies(label='C2H6', smiles='CC')])
-        cls.rmg_reaction_3 = Reaction(reactants=[Species(smiles='[CH3]'), Species(smiles='[CH3]')],
-                                      products=[Species(smiles='CC')])
 
         cls.r_xyz_2a = """C                  0.50180491   -0.93942231   -0.57086745
         C                  0.01278145    0.13148427    0.42191407

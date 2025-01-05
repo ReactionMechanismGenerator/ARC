@@ -402,25 +402,7 @@ class ARC(object):
         self.reactions = reactions or list()
         converted_reactions, indices_to_pop = list(), list()
         for i, rxn in enumerate(self.reactions):
-            if isinstance(rxn, Reaction):
-                # RMG Reaction
-                if not rxn.reactants or not rxn.products:
-                    raise InputError('Missing reactants and/or products in RMG Reaction object {0}'.format(rxn))
-                indices_to_pop.append(i)
-                arc_rxn = ARCReaction(rmg_reaction=rxn)
-                converted_reactions.append(arc_rxn)
-                for spc in rxn.reactants + rxn.products:
-                    if not isinstance(spc, Species):
-                        raise InputError(f'All reactants and products of an RMG Reaction have to be RMG Species '
-                                         f'objects. Got: {type(spc)} in reaction {rxn}')
-                    if not spc.label:
-                        raise InputError(f'Missing label on RMG Species object {spc} in reaction {rxn}')
-                    if spc.label not in self.unique_species_labels:
-                        # Add species participating in an RMG Reaction to ``species`` if not already there
-                        # We assume each species has a unique label
-                        self.species.append(ARCSpecies(is_ts=False, rmg_species=spc))
-                        self.unique_species_labels.append(spc.label)
-            elif isinstance(rxn, dict):
+            if isinstance(rxn, dict):
                 # dict representation for ARCReaction as in a YAML input file
                 indices_to_pop.append(i)
                 converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))

@@ -2669,12 +2669,7 @@ class TestTSGuess(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        spc1 = Species().from_smiles('CON=O')
-        spc1.label = 'CONO'
-        spc2 = Species().from_smiles('C[N+](=O)[O-]')
-        spc2.label = 'CNO2'
-        rmg_reaction = Reaction(reactants=[spc1], products=[spc2])
-        cls.tsg1 = TSGuess(rmg_reaction=rmg_reaction, method='AutoTST', family='H_Abstraction')
+        cls.tsg1 = TSGuess(method='AutoTST', family='H_Abstraction')
         cls.xyz_2 = """N       0.9177905887     0.5194617797     0.0000000000
                    H       1.8140204898     1.0381941417     0.0000000000
                    H      -0.4763167868     0.7509348722     0.0000000000
@@ -2692,7 +2687,7 @@ class TestTSGuess(unittest.TestCase):
                    H      -0.6371484821    -0.7497769134     0.0000000000
                    H      -2.0093636431     0.0331190314    -0.8327683174
                    H      -2.0093636431     0.0331190314     0.8327683174"""
-        cls.tsg3 = TSGuess(rmg_reaction=rmg_reaction, method='KinBot', family='H_Abstraction', xyz=cls.xyz_3)
+        cls.tsg3 = TSGuess(method='KinBot', family='H_Abstraction', xyz=cls.xyz_3)
         cls.tsg3.index = 3
         cls.tsg3.method_index = 1
         cls.tsg3.method_direction = 'F'
@@ -2711,7 +2706,6 @@ class TestTSGuess(unittest.TestCase):
                          'conformer_index': None,
                          'family': 'H_Abstraction',
                          'index': None,
-                         'rmg_reaction': 'CON=O <=> [O-][N+](=O)C',
                          'success': None,
                          'method_index': None,
                          't0': None,
@@ -2727,7 +2721,6 @@ class TestTSGuess(unittest.TestCase):
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
-        self.assertTrue(isinstance(tsg.rmg_reaction, Reaction))
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
         self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_index', 'success', 'index',
                                                            'conformer_index', 'initial_xyz', 'opt_xyz'])

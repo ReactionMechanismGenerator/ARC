@@ -9,8 +9,6 @@ import os
 import subprocess
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from rmgpy.reaction import Reaction
-
 from arc.common import almost_equal_coords, ARC_PATH, get_logger, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
@@ -241,9 +239,11 @@ class AutoTSTAdapter(JobAdapter):
                                                 charge=rxn.charge,
                                                 multiplicity=rxn.multiplicity,
                                                 )
-                reaction_label_fwd = get_autotst_reaction_string(rxn.rmg_reaction)
-                reaction_label_rev = get_autotst_reaction_string(Reaction(reactants=rxn.rmg_reaction.products,
-                                                                          products=rxn.rmg_reaction.reactants))
+                reaction_label_fwd = get_autotst_reaction_string(rxn)
+                reaction_label_rev = get_autotst_reaction_string(ARCReaction(r_species=rxn.p_species,
+                                                                             p_species=rxn.r_species,
+                                                                             reactants=rxn.products,
+                                                                             products=rxn.reactants))
 
                 i = 0
                 for reaction_label, direction in zip([reaction_label_fwd, reaction_label_rev], ['F', 'R']):
@@ -324,26 +324,25 @@ class AutoTSTAdapter(JobAdapter):
         self.execute_incore()
 
 
-def get_autotst_reaction_string(rmg_reaction: Reaction) -> str:
+def get_autotst_reaction_string(rxn: ARCReaction) -> str:
     """
     Returns the AutoTST reaction string in the form of r1+r2_p1+p2 (e.g., `CCC+[O]O_[CH2]CC+OO`).
 
     Args:
-        rmg_reaction (Reaction): The RMG reaction instance.
+        rxn (ARCReaction): The ARC reaction instance.
 
     Returns:
         str: The AutoTST reaction string.
     """
-    reactants = rmg_reaction.reactants
-    products = rmg_reaction.products
+    reactants, products = rxn.get_reactants_and_products()
     if len(reactants) > 1:
-        reactants_string = '+'.join([reactant.molecule[0].copy(deep=True).to_smiles() for reactant in reactants])
+        reactants_string = '+'.join([reactant.mol.copy(deep=True).to_smiles() for reactant in reactants])
     else:
-        reactants_string = reactants[0].molecule[0].copy(deep=True).to_smiles()
+        reactants_string = reactants[0].mol.copy(deep=True).to_smiles()
     if len(products) > 1:
-        products_string = '+'.join([product.molecule[0].copy(deep=True).to_smiles() for product in products])
+        products_string = '+'.join([product.mol.copy(deep=True).to_smiles() for product in products])
     else:
-        products_string = products[0].molecule[0].copy(deep=True).to_smiles()
+        products_string = products[0].mol.copy(deep=True).to_smiles()
     reaction_label = '_'.join([reactants_string, products_string])
     return reaction_label
 
