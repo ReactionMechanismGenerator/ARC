@@ -22,7 +22,7 @@ from arc.species.species import ARCSpecies, TSGuess
 from arc.utils.wip import work_in_progress
 
 
-class TestChecks(unittest.TestCase):
+class TestTSChecks(unittest.TestCase):
     """
     Contains unit tests for the check module.
     """
@@ -52,16 +52,16 @@ H       0.98208300    0.28882200   -0.62114100
 H       0.30969500   -0.94370100    0.59100600
 H      -1.47626400   -0.10694600   -1.88883800"""  # 'N#[CH].[CH2][OH]'
 
-        cls.ts_xyz_2 = """C       0.52123900   -0.93806900   -0.55301700
-C       0.15387500    0.18173100    0.37122900
-C      -0.89554000    1.16840700   -0.01362800
-H       0.33997700    0.06424800    1.44287100
-H       1.49602200   -1.37860200   -0.29763200
-H       0.57221700   -0.59290500   -1.59850500
-H       0.39006800    1.39857900   -0.01389600
-H      -0.23302200   -1.74751100   -0.52205400
-H      -1.43670700    1.71248300    0.76258900
-H      -1.32791000    1.11410600   -1.01554900"""  # C[CH]C <=> [CH2]CC
+        cls.ts_xyz_2 = """C        1.279906   -0.191149   -0.024558
+                          C       -0.040637    0.517073    0.025028
+                          C       -1.318249   -0.255157   -0.038482
+                          H       -0.091811    1.556222   -0.280736
+                          H        2.096169    0.442456    0.330967
+                          H        1.269507   -1.096591    0.591664
+                          H       -0.823137    0.291596    1.036018
+                          H        1.524901   -0.510401   -1.049451
+                          H       -2.222433    0.228641   -0.382279
+                          H       -1.279319   -1.336527   -0.018107"""  # C[CH]C <=> [CH2]CC
         cls.r_xyz_2a = """C                  0.50180491   -0.93942231   -0.57086745
 C                  0.01278145    0.13148427    0.42191407
 C                 -0.86874485    1.29377369   -0.07163907
@@ -177,8 +177,17 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                              H                 -1.86062564   -0.03164117   -1.24991054"""
         cls.rxn_7 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=cls.c2h5no2_xyz)],
                                 p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O')])
-        cls.rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out'))
+        xyz_7 = """O        0.520045    1.026544   -0.223307
+                   N        0.818877   -0.207900   -0.075436
+                   O        1.964221   -0.523711   -0.014266
+                   C       -0.968581    0.050866    0.695117
+                   C       -1.903603   -0.321292   -0.395596
+                   H       -1.145584    1.019535    1.170709
+                   H       -0.740906   -0.730110    1.427000
+                   H       -1.628826   -1.274421   -0.863423
+                   H       -2.906412   -0.425097    0.055493
+                   H       -1.951439    0.465285   -1.158262"""
+        cls.rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True, xyz=xyz_7)
         cls.rxn_8 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
                                 p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
         cls.rxn_8.ts_species = ARCSpecies(label='TS8', is_ts=True,
@@ -233,25 +242,21 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                                'composite': ''},
                                      'convergence': True}}
 
-    def test_check_ts(self):
-        """Test the check_ts() function."""
+    def test_analyze_ts_normal_mode_displacement(self):
+        """Test checking for NMD."""
+        # # iC3H7 <=> nC3H7
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
         self.rxn_2a.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-        ts.check_ts(reaction=self.rxn_2a, job=self.job1)
+        ts.check_ts(reaction=self.rxn_2a, job=self.job1, checks=['NMD'])
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'keto_enol_ts.out')
+        # C2H5NO2 <=> C2H5ONO
+        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C2H5NO2__C2H5ONO.out')
         self.rxn_7.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_7.ts_species.ts_checks['NMD'])
-        ts.check_ts(reaction=self.rxn_7, job=self.job1)
+        ts.check_ts(reaction=self.rxn_7, job=self.job1, checks=['NMD'])
         self.assertTrue(self.rxn_7.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
-        self.rxn_8.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_8.ts_species.ts_checks['NMD'])
-        ts.check_ts(reaction=self.rxn_8, job=self.job1)
-        self.assertTrue(self.rxn_8.ts_species.ts_checks['NMD'])
 
     def test_did_ts_pass_all_checks(self):
         """Test the did_ts_pass_all_checks() function."""
@@ -373,170 +378,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         self.assertIsNone(rxn_copy.ts_species.ts_checks['E0'])
         ts.check_rxn_e0(reaction=rxn_copy, verbose=True)
         self.assertTrue(rxn_copy.ts_species.ts_checks['E0'])
-
-    def test_check_normal_mode_displacement(self):
-        """Test the check_normal_mode_displacement() function."""
-        self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_intra_H_migration_CBS-QB3.out')
-        self.rxn_2a.determine_family(rmg_database=self.rmgdb)
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
-        self.rxn_2a.ts_species.populate_ts_checks()
-
-        self.rxn_2b.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['NMD'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_2b, job=self.job1)
-        self.assertFalse(self.rxn_2b.ts_species.ts_checks['NMD'])
-
-        # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_1.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_2.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_3.out')  # ** The correct TS. **
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_4.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_5.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_6.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_C3_intraH_7.out')  # A wrong TS.
-        self.rxn_2a.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
-                                                           'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
-        self.rxn_2a.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
-        self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
-
-        # CCO[O] + CC <=> CCOO + [CH2]C, incorrect TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2043.out')
-        self.rxn_4.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertFalse(self.rxn_4.ts_species.ts_checks['NMD'])
-
-        # CCO[O] + CC <=> CCOO + [CH2]C, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2102.out')
-        self.rxn_4.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
-        self.assertTrue(self.rxn_4.ts_species.ts_checks['NMD'])
-
-        # NCC + H <=> CH3CHNH2 + H2, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2044.out')
-        self.rxn_5.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=self.rxn_5, job=self.job1)
-        self.assertTrue(self.rxn_5.ts_species.ts_checks['NMD'])
-
-        # NH2 + N2H3 <=> NH + N2H4:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
-        rxn_6 = ARCReaction(r_species=[ARCSpecies(label='NH2', xyz="""N       0.00000000   -0.00000000    0.14115400
-                                                                      H      -0.80516800    0.00000000   -0.49355600
-                                                                      H       0.80516800   -0.00000000   -0.49355600"""),
-                                       ARCSpecies(label='N2H3', xyz="""N       0.59115400    0.02582600   -0.07080800
-                                                                       H       1.01637000    0.90287000    0.19448100
-                                                                       H       1.13108000   -0.79351700    0.15181600
-                                                                       N      -0.73445800   -0.15245400    0.02565700
-                                                                       H      -1.14969800    0.77790100   -0.02540800""")],
-                            p_species=[ARCSpecies(label='NH', xyz="""N       0.00000000    0.00000000    0.13025700
-                                                                     H       0.00000000    0.00000000   -0.90825700"""),
-                                       ARCSpecies(label='N2H4', xyz="""N       0.70348300    0.09755100   -0.07212500
-                                                                       N      -0.70348300   -0.09755100   -0.07212500
-                                                                       H       1.05603900    0.38865300    0.83168200
-                                                                       H      -1.05603900   -0.38865300    0.83168200
-                                                                       H       1.14245100   -0.77661300   -0.32127200
-                                                                       H      -1.14245100    0.77661300   -0.32127200""")])
-        rxn_6.ts_species = ARCSpecies(label='TS6', is_ts=True, xyz="""N      -0.44734500    0.68033000   -0.09191900
-                                                                      H      -0.45257300    1.14463200    0.81251500
-                                                                      H       0.67532500    0.38185200   -0.23044400
-                                                                      N      -1.22777700   -0.47121500   -0.00284000
-                                                                      H      -1.81516400   -0.50310400    0.81640600
-                                                                      H      -1.78119500   -0.57249600   -0.84071000
-                                                                      N       1.91083300   -0.14543600   -0.06636000
-                                                                      H       1.73701100   -0.85419700    0.66460600""")
-        rxn_6.ts_species.mol_from_xyz()
-        rxn_6.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=rxn_6, job=self.job1)
-        self.assertTrue(rxn_6.ts_species.ts_checks['NMD'])
-
-        # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_butylene_intra_H_migration.out')
-        rxn_7 = ARCReaction(r_species=[
-            ARCSpecies(label='butylene',
-                       xyz={'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                            'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
-                            'coords': ((-1.5025309111564664, -0.534274223668814, -0.8036222996901808),
-                                       (-0.7174177387201146, -0.023936112728414158, 0.35370258735369786),
-                                       (-1.5230462996626752, -0.05695435961481443, 1.6163349692848272),
-                                       (-1.8634470313869078, 1.0277715224421244, 2.324841919574016),
-                                       (-0.984024423978003, -0.9539130636653048, -1.6577859414775906),
-                                       (-2.550807526086091, -0.2789561000296545, -0.9131030981780086),
-                                       (-0.3724512697624012, 0.9914237465990766, 0.12894489304781925),
-                                       (0.1738420368001901, -0.6466414881716757, 0.48830614688365104),
-                                       (-1.8352343593831375, -1.0368501719961523, 1.9724902744574715),
-                                       (-1.57401834878684, 2.026695960278519, 2.0137658090390858),
-                                       (-2.446426657980167, 0.9347672870076474, 3.235948559430434))})],
-                            p_species=[ARCSpecies(label='CCC=[CH]', smiles='CCC=[CH]')])
-        rxn_7.ts_species = ARCSpecies(label='TS7', is_ts=True,
-                                      xyz="""C                 -1.21222600   -0.64083500    0.00000300
-                                             C                 -0.63380200    0.77863500   -0.00000300
-                                             C                  0.87097000    0.58302100    0.00000400
-                                             C                  1.24629100   -0.68545200   -0.00000300
-                                             H                 -1.72740700   -0.95796100    0.90446200
-                                             H                 -1.72743700   -0.95796100   -0.90443900
-                                             H                 -0.95478600    1.35296500    0.87649200
-                                             H                 -0.95477600    1.35295100   -0.87651200
-                                             H                  1.55506600    1.42902600    0.00001400
-                                             H                  2.20977700   -1.17852900   -0.00000300
-                                             H                 -0.02783300   -1.25271100   -0.00001000""")
-        rxn_7.ts_species.mol_from_xyz()
-        rxn_7.ts_species.populate_ts_checks()
-        ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
-        self.assertTrue(rxn_7.ts_species.ts_checks['NMD'])
-
-    @work_in_progress
-    def test_check_normal_mode_displacement_wip(self):
-        """Test the check_normal_mode_displacement() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
-                                                           'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
-        self.rxn_3.ts_species.populate_ts_checks()
-        self.assertFalse(self.rxn_3.ts_species.ts_checks['NMD'])
-        ts.check_normal_mode_displacement(reaction=self.rxn_3, job=self.job1)
-        self.assertTrue(self.rxn_3.ts_species.ts_checks['NMD'])
 
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
         """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
