@@ -520,10 +520,6 @@ def combine_coordinates_with_redundant_atoms(
     a = mol_1.atoms.index(list(mol_1.atoms[h1].edges.keys())[0])
     b = mol_2.atoms.index(list(mol_2.atoms[h2].edges.keys())[0])
 
-    # log if a and b are different from prev step
-    logger.info(
-        f"Combining coordinates with redundant atoms for atoms A ({a}) and B ({b})"
-    )
     if c == a:
         raise ValueError(
             f"The value for c ({c}) is invalid (it represents atom A, not atom C)"
@@ -1422,6 +1418,7 @@ def submit_crest_jobs(crest_paths: List[str]) -> None:
     crest_jobs = {}
     for crest_path in crest_paths:
         job_status, job_id = submit_job(path=crest_path)
+        logger.info(f"CREST job {job_id} submitted for {crest_path}")
         crest_jobs[job_id] = {"path": crest_path, "status": job_status}
     return crest_jobs
 
