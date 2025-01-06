@@ -1181,7 +1181,7 @@ def h_abstraction(
         else:
             d2_d3_product = [(None, None)]
         zmats = list()
-        for iteration, (d2, d3) in d2_d3_product:
+        for iteration, (d2, d3) in enumerate(d2_d3_product):
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
