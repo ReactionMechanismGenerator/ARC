@@ -3483,6 +3483,7 @@ class Scheduler(object):
             self.species_dict[label].checkfile = None
         job.ess_trsh_methods = ess_trsh_methods
 
+        jobs_info = self.job_dict.get('TS0', {}).get('conf_opt', {})
         if not couldnt_trsh:
             self.run_job(label=label,
                          xyz=xyz,
@@ -3501,13 +3502,31 @@ class Scheduler(object):
                          cpu_cores=cpu_cores,
                          shift=shift,
                          )
-        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
+        elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted and not any(self.is_job_running(jobs_info[job]) for job in jobs_info.keys()):
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')
             self.switch_ts(label=label)
 
         self.save_restart_dict()
+
+    def is_job_running(self,job):
+        """
+        Safely checks if the given job is in the 'running' state.
+        
+        Parameters:
+            job: The job object containing the .job_status attribute.
+        
+        Returns:
+            bool: True if the job is running, False otherwise.
+        """
+        try:
+            if isinstance(job.job_status, list) and len(job.job_status) > 0:
+                return job.job_status[0].lower() == 'running'
+        except AttributeError:
+            # The job object does not have a 'job_status' attribute
+            pass
+        return False
 
     def troubleshoot_conformer_isomorphism(self, label: str):
         """
