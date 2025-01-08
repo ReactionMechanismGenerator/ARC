@@ -1379,6 +1379,20 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.convert_to_hours(time_str), 3600.0)
         time_str = '190:40:10'
         self.assertAlmostEqual(common.convert_to_hours(time_str), 190.66944444444442)
+
+
+    def test_calculate_arrhenius_rate_coefficient(self):
+        """
+        Test the calculate_arrhenius_rate() function.
+        """
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=30, T=1000, Ea_units='cal/mol') / 3.11e+13, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=30, T=1000, Ea_units='kcal/mol') / 8.78e+06, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=8.2, T=1000, Ea_units='kJ/mol') / 1.18e+13, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=8200, T=1000, Ea_units='J/mol') / 1.18e+13, 1.0, places=2)
         
 
     @classmethod
