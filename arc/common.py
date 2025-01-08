@@ -9,6 +9,7 @@ VERSION is the full ARC version, using `semantic versioning <https://semver.org/
 import ast
 import datetime
 import logging
+import math
 import os
 import pprint
 import re
@@ -49,6 +50,8 @@ ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
 VERSION = '1.1.0'
 
+R = 8.31446261815324  # J/(mol*K)
+EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 default_job_types, servers, supported_ess = settings['default_job_types'], settings['servers'], settings['supported_ess']
 
@@ -1682,3 +1685,22 @@ def convert_to_hours(time_str:str) -> float:
     """
     h, m, s = map(int, time_str.split(':'))
     return h + m / 60 + s / 3600
+
+
+def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float, Ea_units: str = 'kJ/mol') -> float:
+    """
+    Calculate the Arrhenius rate coefficient.
+
+    Args:
+        A (float): Pre-exponential factor.
+        n (float): Temperature exponent.
+        Ea (float): Activation energy in J/mol.
+        T (float): Temperature in Kelvin.
+        Ea_units (str): Units of the rate coefficient.
+
+    Returns:
+        float: The rate coefficient at the specified temperature.
+    """
+    if Ea_units not in EA_UNIT_CONVERSION:
+        raise ValueError(f"Unsupported Ea units: {Ea_units}")
+    return A * (T ** n) * math.exp(-1 * (Ea * EA_UNIT_CONVERSION[Ea_units]) / (R * T))
