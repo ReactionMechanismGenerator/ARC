@@ -1,9 +1,5 @@
 """
-This module contains functions which are shared across multiple ARC modules.
-As such, it should not import any other ARC module (specifically ones that use the logger defined here)
-to avoid circular imports.
-
-VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
+A common module for subprocess scripts with importable functions outside the environment of ARC
 """
 
 import argparse
