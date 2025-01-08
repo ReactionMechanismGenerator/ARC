@@ -15,6 +15,7 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
+from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
@@ -31,7 +32,6 @@ except (ImportError, ModuleNotFoundError):
 
 if TYPE_CHECKING:
     from arc.level import Level
-    from arc.reaction import ARCReaction
 
 
 AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
@@ -116,7 +116,7 @@ class AutoTSTAdapter(JobAdapter):
                  level: Optional['Level'] = None,
                  max_job_time: Optional[float] = None,
                  run_multi_species: bool = False,
-                 reactions: Optional[List['ARCReaction']] = None,
+                 reactions: Optional[List[ARCReaction]] = None,
                  rotor_index: Optional[int] = None,
                  server: Optional[str] = None,
                  server_nodes: Optional[list] = None,
