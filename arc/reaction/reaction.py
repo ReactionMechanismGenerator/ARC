@@ -137,6 +137,10 @@ class ARCReaction(object):
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
+        for spc in r_species + p_species:
+            if not isinstance(spc, ARCSpecies):
+                raise InputError(f'All reactants and products must be ARCSpecies objects. Got {spc} which is a '
+                                 f'{type(spc)} object.')
         self.remove_dup_species()
         self.check_atom_balance()
 
