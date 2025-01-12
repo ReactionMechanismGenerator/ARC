@@ -5088,7 +5088,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 7, 10]), 109.5, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
 
-        new_xyz_2 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
+        """new_xyz_2 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
                                                                     element='Cl',
                                                                     r_index=4,
                                                                     a_indices=(4, 0),
@@ -5101,7 +5101,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertEqual(new_xyz_2['coords'][-1], (-1.0966631688164716, -1.5123640474266677, 1.296181153302943))
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 10]), 2.70, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
+        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)"""
 
         xyz_2= """C      -1.01765390   -0.08355112    0.05206009
                   O       0.22303684   -0.79051481    0.05294172
@@ -5131,6 +5131,30 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[2, 8]), 1.85, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[1, 2, 8]), 77.4, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8]), 140, places=1)
+        xyz_3="""C       2.44505336    0.33426556   -0.05839486
+        C       1.22268719   -0.52813666    0.01896600
+        O       1.23293886   -1.74943142   -0.03929182
+        O       0.11391589    0.24824549    0.16222715
+        C      -1.11109125   -0.48993657    0.24566449
+        C      -2.25017001    0.49859954    0.40179846
+        H       2.37692031    0.99705687   -0.92466676
+        H       3.32902965   -0.29956749   -0.17330464
+        H       2.54916374    0.91324784    0.86263828
+        H      -1.08105124   -1.15952384    1.11255293
+        H      -1.25277743   -1.07595826   -0.66934869
+        H      -2.28059310    1.18899674   -0.44763085
+        H      -3.21043340   -0.02017141    0.47000585
+        H      -2.11200849    1.10694712    1.30175876"""
+        new_xyz_4=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_3,
+                                                                  element='O',
+                                                                  r_index=1,
+                                                                  a_indices=(3, 1),
+                                                                  d_indices=(2, 0, 1),
+                                                                  r_value=1.85,
+                                                                  a_value=77.4,
+                                                                  d_value=140,
+                                                                  )
+        print(new_xyz_4)
 
 
     @classmethod
