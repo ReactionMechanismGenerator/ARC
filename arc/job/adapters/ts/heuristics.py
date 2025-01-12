@@ -35,11 +35,11 @@ from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
-from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz ,zmat_to_str
+from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz , add_atom_to_xyz_using_internal_coords
 from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
-from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param, add_atom_to_zmat, xyz_to_zmat, _add_nth_atom_to_zmat
-from arc.reaction.family import  get_entries, ReactionFamily, get_reaction_family_products
+from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
+from arc.reaction.family import  get_reaction_family_products
 
 if TYPE_CHECKING:
     from rmgpy.data.kinetics.family import KineticsFamily
@@ -1143,9 +1143,9 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies, atom_index: int, exclud
     else:
         return sorted_neighbors[0]
 
-def generate_zmats(initial_zmat: dict,
+def generate_zmats(initial_xyz: dict,
                    water: 'ARCSpecies',
-                   r_atoms: List[List[int]],
+                   r_atoms: List[int],
                    a_atoms: List[List[int]],
                    d_atoms: List[List[int]],
                    r_value: List[float],
@@ -1170,33 +1170,28 @@ def generate_zmats(initial_zmat: dict,
                 - List[dict]: Unique Z-matrices for TS guesses without colliding atoms.
                 - List[dict]: Corresponding Cartesian coordinates for the TS guesses.
         """
-        zmats, xyz_guesses = [], []
+        zmat_guesses,xyz_guesses = [], []
         for d_value in d_values:
-            zmat_guess = copy.deepcopy(initial_zmat)
+            xyz_guess = copy.deepcopy(initial_xyz)
             for i in range(3):
-                zmat_guess = add_atom_to_zmat(
-                    zmat_guess,
-                    water.mol.atoms[i],
-                    r_atoms[i],
-                    a_atoms[i],
-                    d_atoms[i],
-                    r_value[i],
-                    a_value[i],
-                    d_value[i],)
-                zmat_guess2=_add_nth_atom_to_zmat(zmat_guess2,)
-            xyz_guess = zmat_to_xyz(zmat_guess) #there is an issue here, the convertion is not good
-            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats)
-            if not duplicate:
-                zmats.append(zmat_guess)
+                xyz_guess = add_atom_to_xyz_using_internal_coords(
+                    xyz=xyz_guess,
+                    element=water.mol.atoms[i].element.symbol,
+                    r_index=r_atoms[i],
+                    a_indices=a_atoms[i],
+                    d_indices=d_atoms[i],
+                    r_value=r_value[i],
+                    a_value=a_value[i],
+                    d_value=d_value[i])
+            #zmat_guess= zmat_from_xyz(xyz_guess)
+            #duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmat_guesses)
+            if xyz_guess is not None and not colliding_atoms(xyz_guess):
                 xyz_guesses.append(xyz_guess)
-
-            """ if xyz_guess is not None and not colliding_atoms(xyz_guess) and not duplicate:
-                zmats.append(zmat_guess)
-                xyz_guesses.append(xyz_guess)
+                #zmat_guesses.append(zmat_guess)
             else:
-                print(f"Colliding atoms or existing zmat: {xyz_guess}")"""
+                print(f"Colliding atoms or existing guess: {xyz_guess}")
 
-        return zmats, xyz_guesses
+        return xyz_guesses,zmat_guesses
 
 def hydrolysis(arc_reaction: 'ARCReaction'):
     """
@@ -1226,8 +1221,8 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
         if not arc_reactant or not water:
             raise ValueError("Reactants must include a non-water molecule and water.")
 
-        intial_xyz = arc_reactant.get_xyz()
-        initial_zmat = zmat_from_xyz(intial_xyz)
+        initial_xyz = arc_reactant.get_xyz()
+        initial_zmat = zmat_from_xyz(initial_xyz)
         map_dict = initial_zmat.get('map', {})
         a = product_dict['label_map']['*1']
         b = product_dict['label_map']['*2']
@@ -1237,21 +1232,19 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
         H1 = O + 1
         H2 = H1 + 1
         r_value = [1.85, 1.21, 0.97]
-        r_atoms = [[O, real_a], [H1, O], [H2, O]]
-        if 'X' in initial_zmat['symbols']:
-            O += 1
-            H1 += 1
-            H2 += 1
-        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a,b),min(a,b)), stretch=1.3)
+        r_atoms = [a, O, O]
         if product_dict['family'] in FAMILY_SETS['set_1']:
+            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
+            initial_xyz = zmat_to_xyz(initial_zmat)
             two_neighbors=product_dict['family'] in FAMILY_SETS['set_1']
             f, d = get_neighbors_by_electronegativity(arc_reactant.mol, a, b, two_neighbors)
-            real_f= key_by_val(map_dict, f)
+            real_f = key_by_val(map_dict, f)
             real_d = key_by_val(map_dict, d)
             print(real_a, real_b, real_f, real_d, O, H1, H2)
-            a_atoms = [[O, real_a, real_b], [H1, O, real_a], [H2, O, H1]]
+            print(a, b, f, d, O, H1, H2)
+            a_atoms = [[b, a], [a, O], [H1, O]]
             a_value = [77.4, 70, 111]
-            d_atoms = [[O, real_a, real_d, real_f], [H1, O, real_a, real_b], [H2, O, H1, real_a]]
+            d_atoms = [[f, d, a], [b, a, O], [a, H1, O]]
             if arc_reaction.family == 'ether_hydrolysis':
                 a_value [0]=65
                 d_values = [[98.25, -0.72, 103], [-98.25, -0.72, 103], [98.25, -0.72, -103], [-98.25, -0.72, -103]]
@@ -1259,29 +1252,30 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
                 d_values = [[108, 12, 113], [-108, 12, 113], [108, 12, -113], [-108, 12, -113]]
             else:
                 d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
-            zmats, xyz_guesses = generate_zmats(
-                initial_zmat, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values
+            xyz_guesses, zmat_guesses = generate_zmats(
+                initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values
             )
 
 
         elif product_dict['family'] in FAMILY_SETS['set_2']:
+            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.1)
+            initial_xyz = zmat_to_xyz(initial_zmat)
             two_neighbors = product_dict['family'] in FAMILY_SETS['set_2']
             f= get_neighbors_by_electronegativity(arc_reactant.mol, a, b, two_neighbors)[0]
-            real_f = key_by_val(map_dict, f)
-            print(real_a, real_b, real_f, O, H1, H2)
-            a_value = [97, 58, 104.5]
-            a_atoms = [[O, real_a, real_b], [H1, O, real_a], [H2, O, H1]]
-            d_atoms = [[O, real_a, real_b, real_f], [H1, O, real_a, real_b], [H2, O, H1, real_a]]
+            print(a,b,f)
+            a_value = [97, 58, 111]
+            a_atoms = [[b, a], [a, O], [H1, O]]
+            d_atoms = [[f,b,a], [b, a, O], [a, H1, O]]
             d_values = [[174, -0.0154, 104], [-174, -0.0154, 104], [174, -0.0154, -104], [-174, -0.0154, -104]]
-            zmats, xyz_guesses = generate_zmats(
-                initial_zmat, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values
+            xyz_guesses, zmat_guesses = generate_zmats(
+                initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values
             )
 
         else:
             raise ValueError(f"Family {product_dict['family']} not supported for hydrolysis TS guess generation")
 
         xyz_guesses_total.append({'family': product_dict['family'], 'xyz_guesses': xyz_guesses})
-        zmats_total.append({'family': product_dict['family'], 'zmats': zmats})
+        zmats_total.append({'family': product_dict['family']})
 
     return xyz_guesses_total, zmats_total
 
