@@ -23,7 +23,7 @@ from arc.exceptions import SpeciesError
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
-from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
+from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle, VectorsError
 from numpy import unique
 
 if TYPE_CHECKING:
@@ -856,17 +856,23 @@ def map_hydrogens(spc_1: ARCSpecies,
                     heavy_atom_1_index = atoms_1.index(heavy_atom_1)
                     for rotor_dict in spc_1.rotors_dict.values():
                         if heavy_atom_1_index in [rotor_dict['torsion'][1], rotor_dict['torsion'][2]]:
-                            atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
-                                spc_1=spc_1,
-                                spc_2=spc_2,
-                                heavy_atom_1=heavy_atom_1,
-                                heavy_atom_2=heavy_atom_2,
-                                torsion=rotor_dict['torsion'],
-                                atom_map=atom_map,
-                                find_torsion_end_to_map=True,
-                            )
-                            success = True
-                            break
+                            try:
+                                atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
+                                    spc_1=spc_1,
+                                    spc_2=spc_2,
+                                    heavy_atom_1=heavy_atom_1,
+                                    heavy_atom_2=heavy_atom_2,
+                                    torsion=rotor_dict['torsion'],
+                                    atom_map=atom_map,
+                                    find_torsion_end_to_map=True,
+                                )
+                                success = True
+                                break
+                            except VectorsError:
+                                # Trying to map a linear torsion
+                                # but the torsion is undefined, since v1 x v2 = 0 if v1 || v2
+                                # using other internal coordinates to map the hydrogens.
+                                continue
             # 3. Check for a pseudo-torsion (may involve multiple bonds) with heavy_atom_1 as a pivot.
             if not success:
                 pseudo_torsion = list()
@@ -883,17 +889,23 @@ def map_hydrogens(spc_1: ARCSpecies,
                                     pseudo_torsion = [atoms_1.index(atom) for atom in [hydrogen_1, heavy_atom_1, atom_1_3, atom_1_4]]
                                     break
                         if len(pseudo_torsion):
-                            atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
-                                spc_1=spc_1,
-                                spc_2=spc_2,
-                                heavy_atom_1=heavy_atom_1,
-                                heavy_atom_2=heavy_atom_2,
-                                torsion=pseudo_torsion[::-1],
-                                atom_map=atom_map,
-                                find_torsion_end_to_map=False,
-                            )
-                            success = True
-                            break
+                            try:
+                                atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
+                                    spc_1=spc_1,
+                                    spc_2=spc_2,
+                                    heavy_atom_1=heavy_atom_1,
+                                    heavy_atom_2=heavy_atom_2,
+                                    torsion=pseudo_torsion[::-1],
+                                    atom_map=atom_map,
+                                    find_torsion_end_to_map=False,
+                                )
+                                success = True
+                                break
+                            except VectorsError:
+                                # Trying to map a linear torsion
+                                # but the torsion is undefined, since v1 x v2 = 0 if v1 || v2
+                                # using other internal coordinates to map the hydrogens.
+                                continue
             # 4. Check by angles and bond lengths (search for 2 consecutive heavy atoms).
             if not success:
                 atom_1_3, angle_1, bond_length_1 = None, None, None
@@ -1117,8 +1129,12 @@ def r_cut_p_cut_isomorphic(reactant, product):
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
     res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
-    for res in res1:
-        if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
+    if res1 is not None:
+        for res in res1:
+            if res.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(res, save_order=True):
+                return True
+    else:
+        if reactant.mol.fingerprint == product.mol.fingerprint or product.mol.is_isomorphic(reactant.mol.copy(deep=True), save_order=True):
             return True
     return False
 
