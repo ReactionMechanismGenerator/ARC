@@ -7,18 +7,17 @@ and get kinetic rate coefficients for reactions
 """
 
 import os
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
 from rmgpy.data.kinetics.common import find_degenerate_reactions
+from rmgpy.data.kinetics.family import KineticsFamily, TemplateReaction
 from rmgpy.data.rmg import RMGDatabase
 from rmgpy import settings as rmg_settings
 from rmgpy.reaction import same_species_lists, Reaction
+from rmgpy.rmg.model import get_family_library_object
 from rmgpy.species import Species
-
-if TYPE_CHECKING:
-    from rmgpy.data.kinetics.family import KineticsFamily
 
 
 DB_PATH = rmg_settings['database.directory']
@@ -55,17 +54,20 @@ def get_rate_coefficients(reaction_list: List[dict]) -> List[dict]:
     Returns:
         List[dict]: The list of reactions with rate coefficients.
     """
+    print('Loading RMG database...')
     rmgdb = load_rmg_database()
     for i in range(len(reaction_list)):
         rxn = Reaction(reactants=[Species().from_adjacency_list(adjlist) for adjlist in reaction_list[i]['reactants']],
                        products=[Species().from_adjacency_list(adjlist) for adjlist in reaction_list[i]['products']])
-        reaction_list[i]['kinetics'] = determine_rmg_kinetics(rmgdb=rmgdb, reaction=rxn, dh_rxn298=reaction_list[i]['dh_rxn298'])
+        reaction_list[i]['kinetics'] = determine_rmg_kinetics(rmgdb=rmgdb, reaction=rxn, dh_rxn298=reaction_list[i]['dh_rxn298'],
+                                                              family=reaction_list[i]['family'] if 'family' in reaction_list[i] else None)
     return reaction_list
 
 
 def determine_rmg_kinetics(rmgdb: RMGDatabase,
                            reaction: Reaction,
                            dh_rxn298: Optional[float] = None,
+                           family: Optional[str] = None,
                            ) -> List[dict]:
     """
     Determine kinetics for `reaction` (an RMG Reaction object) from RMG's database, if possible.
@@ -75,6 +77,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
         rmgdb (RMGDatabase): The RMG database instance.
         reaction (Reaction): The RMG Reaction object.
         dh_rxn298 (float, optional): The heat of reaction at 298 K in J/mol.
+        family (str, optional): The RMG family label.
 
     Returns: List[dict]
         All matching RMG reactions kinetics (both libraries and families) as a dict of parameters.
@@ -88,14 +91,24 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
                 library_reaction.comment = f'Library: {library.label}'
                 rmg_reactions.append(library_reaction)
                 break
-    # Families:
-    fam_list = loop_families(rmgdb, reaction)
+    # # Families:
+    # family = get_family_library_object(family)
+    # template = family.get_reaction_template(TemplateReaction(reactants=reaction.reactants, products=reaction.products))
+    # # Get the kinetics for the reaction
+    # kinetics, source, entry, is_forward = family.get_kinetics(
+    #     reaction=reaction, template_labels=template, degeneracy=reaction.degeneracy, estimator='rate rules',
+    #     return_all_kinetics=False,
+    # )
+    # print(f'direct kinetics: {kinetics}')
+
+    fam_list = loop_families(rmgdb, reaction)  # todo: n is 0 for H abstraction from CH4, why?
+    dh_rxn298 = dh_rxn298 or get_dh_rxn298(rmgdb=rmgdb, reaction=reaction)  # J/mol
     for family, degenerate_reactions in fam_list:
         for deg_rxn in degenerate_reactions:
             template = family.retrieve_template(deg_rxn.template)
             kinetics = family.estimate_kinetics_using_rate_rules(template)[0]
             kinetics.change_rate(deg_rxn.degeneracy)
-            kinetics = kinetics.to_arrhenius(dh_rxn298 or get_dh_rxn298(rmgdb=rmgdb, reaction=reaction))  # Convert ArrheniusEP to Arrhenius using the dHrxn at 298K
+            kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius
             deg_rxn.kinetics = kinetics
             deg_rxn.comment = f'Family: {deg_rxn.family}'
             deg_rxn.reactants = reaction.reactants
@@ -158,16 +171,16 @@ def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[dict]:
             'comment': rxn.comment,
             'A': rxn.kinetics.A.value_si if hasattr(rxn.kinetics, 'A') else None,
             'n': rxn.kinetics.n.value_si if hasattr(rxn.kinetics, 'n') else None,
-            'Ea': rxn.kinetics.Ea.value_si if hasattr(rxn.kinetics, 'Ea') else None,
-            'T_min': rxn.kinetics.Tmin.value_si if hasattr(rxn.kinetics, 'Tmin') else None,
-            'T_max': rxn.kinetics.Tmax.value_si if hasattr(rxn.kinetics, 'Tmax') else None,
+            'Ea': rxn.kinetics.Ea.value_si * 0.001 if hasattr(rxn.kinetics, 'Ea') else None,  # kJ/mol
+            'T_min': rxn.kinetics.Tmin.value_si if hasattr(rxn.kinetics, 'Tmin') and rxn.kinetics.Tmin is not None else None,
+            'T_max': rxn.kinetics.Tmax.value_si if hasattr(rxn.kinetics, 'Tmax') and rxn.kinetics.Tmax is not None else None,
         })
     return kinetics_list
 
 
 def loop_families(rmgdb: RMGDatabase,
                   reaction: Reaction,
-                  ) -> List[Tuple['KineticsFamily', list]]:
+                  ) -> List[Tuple[KineticsFamily, list]]:
     """
     Loop through kinetic families and return a list of tuples of (family, degenerate_reactions)
     corresponding to ``reaction``.
@@ -266,7 +279,10 @@ def load_rmg_database() -> RMGDatabase:
     kinetics_libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))['kinetics']
     thermo_libraries = read_yaml_file(path=os.path.join(os.path.dirname(__file__), 'libraries.yaml'))['thermo']
     rmgdb.load_thermo(path=os.path.join(DB_PATH, 'thermo'), thermo_libraries=thermo_libraries, depository=True, surface=False)
-    rmgdb.load_kinetics(path=os.path.join(DB_PATH, 'kinetics'), reaction_libraries=kinetics_libraries, kinetics_families='default')
+    rmgdb.load_kinetics(path=os.path.join(DB_PATH, 'kinetics'),
+                        reaction_libraries=kinetics_libraries,
+                        kinetics_families='default',
+                        kinetics_depositories=['training'])
     return rmgdb
 
 
