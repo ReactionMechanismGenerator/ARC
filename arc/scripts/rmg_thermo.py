@@ -51,6 +51,7 @@ def get_thermo(species_list: List[dict]) -> List[dict]:
     Returns:
         List[dict]: A list of species dictionaries with thermo properties.
     """
+    print('Loading RMG database...')
     rmgdb = load_rmg_database()
     for i in range(len(species_list)):
         spc = Species(label=species_list[i]['label'])
