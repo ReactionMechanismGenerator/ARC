@@ -1692,7 +1692,7 @@ def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float
     Calculate the Arrhenius rate coefficient.
 
     Args:
-        A (float): Pre-exponential factor.
+        A (float): Pre-exponential factor in cm^3, mol, s units.
         n (float): Temperature exponent.
         Ea (float): Activation energy in J/mol.
         T (float): Temperature in Kelvin.
