@@ -28,7 +28,8 @@ from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
 from rmgpy.species import Species
 
-from arc.common import (extremum_list,
+from arc.common import (calculate_arrhenius_rate_coefficient,
+                        extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
                         get_logger,
@@ -498,7 +499,7 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
     plt.close(fig=fig)
 
 
-def draw_kinetics_plots(rxn_list: list,  # todo
+def draw_kinetics_plots(rxn_list: list,
                         T_min: Optional[Tuple[float, str]] = None,
                         T_max: Optional[Tuple[float, str]] = None,
                         T_count: int = 50,
@@ -529,7 +530,6 @@ def draw_kinetics_plots(rxn_list: list,  # todo
     T_min = ScalarQuantity(value=T_min[0], units=T_min[1])
     T_max = ScalarQuantity(value=T_max[0], units=T_max[1])
     temperatures = np.linspace(T_min.value_si, T_max.value_si, T_count)
-    pressure = 1e7  # Pa  (=100 bar)
 
     pp = None
     if path is not None:
@@ -549,16 +549,24 @@ def draw_kinetics_plots(rxn_list: list,  # todo
                 units = r' (cm$^3$/(mol s))'
             elif reaction_order == 3:
                 units = r' (cm$^6$/(mol$^2$ s))'
-            arc_k = [rxn.kinetics.get_rate_coefficient(T, pressure) * conversion_factor[reaction_order] for T in temperatures]
+            arc_k = [calculate_arrhenius_rate_coefficient(A=rxn.kinetics['A'],
+                                                          n=rxn.kinetics['n'],
+                                                          Ea=rxn.kinetics['Ea'],
+                                                          T=T,
+                                                          ) for T in temperatures]
             rmg_rxns = list()
             for kinetics in rxn.rmg_kinetics:
-                if kinetics['T_max'] is None or kinetics['T_min'] is None:
+                if kinetics.get('T_max', None) is None or kinetics.get('T_min', None) is None:
                     temps = temperatures
                 else:
                     temps = np.linspace(kinetics['T_min'].value_si, kinetics['T_max'].value_si, T_count)
                 rmg_rxns.append({'label': kinetics['comment'],
                                  'T': temps,
-                                 'k': [calculate_arrhenius_rate_coefficient(kinetics['A'], kinetics['n'], kinetics['Ea'], T)
+                                 'k': [calculate_arrhenius_rate_coefficient(A=kinetics['A'] * conversion_factor[reaction_order],
+                                                                            n=kinetics['n'],
+                                                                            Ea=kinetics['Ea'],
+                                                                            T=T,
+                                                                            )
                                        for T in temperatures]})
             _draw_kinetics_plots(rxn.label, arc_k, temperatures, rmg_rxns, units, pp)
 
@@ -566,23 +574,19 @@ def draw_kinetics_plots(rxn_list: list,  # todo
         pp.close()
 
 
-def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float) -> float:
+def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
     """
-    Calculate the Arrhenius rate coefficient.
+    Draw the kinetics plots.
 
     Args:
-        A (float): Pre-exponential factor.
-        n (float): Temperature exponent.
-        Ea (float): Activation energy in J/mol.
-        T (float): Temperature in Kelvin.
-
-    Returns:
-        float: The rate coefficient at the specified temperature.
+        rxn_label (str): The reaction label.
+        arc_k (list): The ARC rate coefficients.
+        temperature (np.ndarray): The temperatures.
+        rmg_rxns (list): The RMG rate coefficients.
+        units (str): The units of the rate coefficients.
+        pp (PdfPages): Used for storing the image as a multipage PDF file.
+        max_rmg_rxns (int, optional): The maximum number of RMG rate coefficients to plot.
     """
-    return A * (T ** n) * math.exp(-1 * Ea / (R * T))
-
-
-def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max_rmg_rxns=5):
     kinetics_library_priority = ['primaryH2O2', 'Klippenstein_Glarborg2016', 'primaryNitrogenLibrary',
                                  'primarySulfurLibrary', 'N-S_interactions', 'NOx2018',
                                  'Nitrogen_Dean_and_Bozzelli', 'FFCM1(-)', 'JetSurF2.0']
@@ -591,26 +595,26 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
     plt.title(rxn_label)
     inverse_temperature = [1000 / t for t in temperature]
     ax.semilogy(inverse_temperature, arc_k, 'k--', linewidth=2.5, label='ARC')
-    plotted_rmg_rxns = 0
+    plotted_rmg_rxns = list()
     remaining_rmg_rxns = list()
-    for rmg_rxn in rmg_rxns:
+    for i, rmg_rxn in enumerate(rmg_rxns):
         if 'family' in rmg_rxn['label'].lower():
             inverse_temp = [1000 / t for t in rmg_rxn['T']]
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
-            plotted_rmg_rxns += 1
+            plotted_rmg_rxns.append(i)
         else:
             remaining_rmg_rxns.append(rmg_rxn)
     for priority_lib in kinetics_library_priority:
-        for rmg_rxn in remaining_rmg_rxns:
-            if priority_lib.lower() in rmg_rxn['label'].lower() and plotted_rmg_rxns <= max_rmg_rxns:
+        for i, rmg_rxn in enumerate(remaining_rmg_rxns):
+            if i not in plotted_rmg_rxns and priority_lib.lower() in rmg_rxn['label'].lower() and len(plotted_rmg_rxns) <= max_rmg_rxns:
                 inverse_temp = [1000 / t for t in rmg_rxn['T']]
                 ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
-                plotted_rmg_rxns += 1
-    for rmg_rxn in rmg_rxns:
-        if plotted_rmg_rxns <= max_rmg_rxns:
+                plotted_rmg_rxns.append(i)
+    for i, rmg_rxn in enumerate(rmg_rxns):
+        if i not in plotted_rmg_rxns and len(plotted_rmg_rxns) <= max_rmg_rxns:
             inverse_temp = [1000 / t for t in rmg_rxn['T']]
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
-            plotted_rmg_rxns += 1
+            plotted_rmg_rxns.append(i)
     plt.xlabel(r'1000 / T (K$^-$$^1$)')
     plt.ylabel(f'Rate coefficient{units}')
     plt.legend()
