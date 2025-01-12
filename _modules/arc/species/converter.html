@@ -166,6 +166,7 @@
 <span class="sd">A module for performing various species-related format conversions.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
+<span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
@@ -178,6 +179,7 @@
 <span class="kn">from</span> <span class="nn">rdkit.Chem</span> <span class="kn">import</span> <span class="n">rdMolTransforms</span> <span class="k">as</span> <span class="n">rdMT</span>
 <span class="kn">from</span> <span class="nn">rdkit.Chem</span> <span class="kn">import</span> <span class="n">SDWriter</span>
 <span class="kn">from</span> <span class="nn">rdkit.Chem.rdchem</span> <span class="kn">import</span> <span class="n">AtomValenceException</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">minimize</span>
 
 <span class="kn">from</span> <span class="nn">arkane.common</span> <span class="kn">import</span> <span class="n">get_element_mass</span><span class="p">,</span> <span class="n">mass_by_symbol</span><span class="p">,</span> <span class="n">symbol_by_number</span>
 <span class="kn">import</span> <span class="nn">rmgpy.constants</span> <span class="k">as</span> <span class="nn">constants</span>
@@ -2313,6 +2315,371 @@
         <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Given software </span><span class="si">{</span><span class="n">software</span><span class="si">}</span><span class="s1"> is not implemented &#39;</span>
                                   <span class="sa">f</span><span class="s1">&#39;for ics_to_scan_constraints().&#39;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">scan_trsh</span></div>
+
+
+<div class="viewcode-block" id="add_atom_to_xyz_using_internal_coords"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.add_atom_to_xyz_using_internal_coords">[docs]</a><span class="k">def</span> <span class="nf">add_atom_to_xyz_using_internal_coords</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
+                                          <span class="n">element</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                          <span class="n">r_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                                          <span class="n">a_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                          <span class="n">d_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                          <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                          <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                          <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                          <span class="n">opt_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span>
+                                          <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add an atom to XYZ. The new atom may have random r, a, and d index parameters</span>
+<span class="sd">    (not necessarily defined for the same respective atoms).</span>
+<span class="sd">    This function will compute the coordinates for the new atom.</span>
+<span class="sd">    This function assumes that the original xyz has at least 3 atoms.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        xyz (dict): The xyz coordinates to process in a dictionary format.</span>
+<span class="sd">        element (str): The chemical element of the atom to add.</span>
+<span class="sd">        r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.</span>
+<span class="sd">        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        r_value (float): The value of the R-X distance parameter, r.</span>
+<span class="sd">        a_value (float): The value of the A-B-X angle parameter, a.</span>
+<span class="sd">        d_value (float): The value of the L-M-N-X dihedral angle parameter, d.</span>
+<span class="sd">        opt_method (str, optional): The optimization method to use for finding the new atom&#39;s coordinates.</span>
+<span class="sd">                                    Additional options include &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Optional[dict]: The updated xyz coordinates.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">calculate_errors</span><span class="p">(</span><span class="n">result_coords</span><span class="p">):</span>
+        <span class="n">r_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">result_coords</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">]))</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span> <span class="o">-</span> <span class="n">r_value</span><span class="p">)</span>
+        <span class="n">a_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">angle_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">a_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
+        <span class="n">d_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dihedral_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span> <span class="n">d_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span>
+
+    <span class="k">def</span> <span class="nf">meets_precision</span><span class="p">(</span><span class="n">result_coords</span><span class="p">):</span>
+        <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span> <span class="o">=</span> <span class="n">calculate_errors</span><span class="p">(</span><span class="n">result_coords</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r_error</span> <span class="o">&lt;</span> <span class="mf">0.01</span> <span class="ow">and</span> <span class="n">a_error</span> <span class="o">&lt;</span> <span class="mf">0.1</span> <span class="ow">and</span> <span class="n">d_error</span> <span class="o">&lt;</span> <span class="mf">0.1</span>
+
+    <span class="n">guess_functions</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">generate_initial_guess_r_a</span><span class="p">,</span>
+        <span class="n">generate_midpoint_initial_guess</span><span class="p">,</span>
+        <span class="n">generate_perpendicular_initial_guess</span><span class="p">,</span>
+        <span class="n">generate_bond_length_initial_guess</span><span class="p">,</span>
+        <span class="n">generate_random_initial_guess</span><span class="p">,</span>
+        <span class="n">generate_shifted_initial_guess</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="n">closest_result</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">closest_error</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">attempt</span><span class="p">,</span> <span class="n">guess_func</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">guess_functions</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">initial_guess</span> <span class="o">=</span> <span class="n">guess_func</span><span class="p">(</span>
+            <span class="n">atom_r_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">],</span>
+            <span class="n">r_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
+            <span class="n">atom_a_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+            <span class="n">atom_b_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+            <span class="n">a_value</span><span class="o">=</span><span class="n">a_value</span>
+        <span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">updated_xyz</span> <span class="o">=</span> <span class="n">_add_atom_to_xyz_using_internal_coords</span><span class="p">(</span>
+                <span class="n">xyz</span><span class="p">,</span> <span class="n">element</span><span class="p">,</span> <span class="n">r_index</span><span class="p">,</span> <span class="n">a_indices</span><span class="p">,</span> <span class="n">d_indices</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">a_value</span><span class="p">,</span> <span class="n">d_value</span><span class="p">,</span> <span class="n">initial_guess</span><span class="p">,</span> <span class="n">opt_method</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">new_coord</span> <span class="o">=</span> <span class="n">updated_xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+            <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span> <span class="o">=</span> <span class="n">calculate_errors</span><span class="p">(</span><span class="n">new_coord</span><span class="p">)</span>
+            <span class="n">total_error</span> <span class="o">=</span> <span class="n">r_error</span> <span class="o">+</span> <span class="n">a_error</span> <span class="o">+</span> <span class="n">d_error</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempt </span><span class="si">{</span><span class="n">attempt</span><span class="si">}</span><span class="s2">: r_error=</span><span class="si">{</span><span class="n">r_error</span><span class="si">}</span><span class="s2">, a_error=</span><span class="si">{</span><span class="n">a_error</span><span class="si">}</span><span class="s2">, d_error=</span><span class="si">{</span><span class="n">d_error</span><span class="si">}</span><span class="s2">, total_error=</span><span class="si">{</span><span class="n">total_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">meets_precision</span><span class="p">(</span><span class="n">new_coord</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Precision criteria met. Returning result.&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">updated_xyz</span>
+
+            <span class="k">if</span> <span class="n">total_error</span> <span class="o">&lt;</span> <span class="n">closest_error</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Updating closest result. Previous closest_error=</span><span class="si">{</span><span class="n">closest_error</span><span class="si">}</span><span class="s2">, new total_error=</span><span class="si">{</span><span class="n">total_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">closest_result</span> <span class="o">=</span> <span class="n">updated_xyz</span>
+                <span class="n">closest_error</span> <span class="o">=</span> <span class="n">total_error</span>
+
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempt </span><span class="si">{</span><span class="n">attempt</span><span class="si">}</span><span class="s2"> with </span><span class="si">{</span><span class="n">guess_func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> failed due to exception: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">closest_result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Returning closest result as no guess met precision criteria.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">closest_result</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No valid solution was found.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+<span class="k">def</span> <span class="nf">_add_atom_to_xyz_using_internal_coords</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+                                           <span class="n">element</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                                           <span class="n">r_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+                                           <span class="n">a_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                           <span class="n">d_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                           <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                           <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                           <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                                           <span class="n">initial_guess</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+                                           <span class="n">opt_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span>
+                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add an atom to XYZ. The new atom may have random r, a, and d index parameters</span>
+<span class="sd">    (not necessarily defined for the same respective atoms).</span>
+<span class="sd">    This function will compute the coordinates for the new atom.</span>
+<span class="sd">    This function assumes that the original xyz has at least 3 atoms.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        xyz (dict): The xyz coordinates to process in a dictionary format.</span>
+<span class="sd">        element (str): The chemical element of the atom to add.</span>
+<span class="sd">        r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.</span>
+<span class="sd">        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        r_value (float): The value of the R-X distance parameter, r.</span>
+<span class="sd">        a_value (float): The value of the A-B-X angle parameter, a.</span>
+<span class="sd">        d_value (float): The value of the L-M-N-X dihedral angle parameter, d.</span>
+<span class="sd">        initial_guess (np.ndarray): The initial guess for the new atom&#39;s coordinates.</span>
+<span class="sd">        opt_method (str, optional): The optimization method to use for finding the new atom&#39;s coordinates.</span>
+<span class="sd">                                    Additional options include &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        dict: The updated xyz coordinates.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;The zmat must have at least 3 atoms to add a new atom with arbitrary parameters.&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">a_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">d_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;The indices of the atoms defining the angle and dihedral must be of length 2 and 3, &#39;</span>
+                        <span class="sa">f</span><span class="s1">&#39;respectively, got </span><span class="si">{</span><span class="n">a_indices</span><span class="si">}</span><span class="s1"> and </span><span class="si">{</span><span class="n">d_indices</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+
+    <span class="n">coords</span><span class="p">,</span> <span class="n">symbols</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]</span>
+
+    <span class="n">atom_r_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">r_index</span><span class="p">]</span>
+    <span class="n">atom_a_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+    <span class="n">atom_b_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="n">atom_l_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+    <span class="n">atom_m_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="n">atom_n_coord</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]]</span>
+
+    <span class="n">sphere_eq</span> <span class="o">=</span> <span class="n">distance_constraint</span><span class="p">(</span><span class="n">reference_coord</span><span class="o">=</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="n">r_value</span><span class="p">)</span>
+    <span class="n">angle_eq</span> <span class="o">=</span> <span class="n">angle_constraint</span><span class="p">(</span><span class="n">atom_a</span><span class="o">=</span><span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b</span><span class="o">=</span><span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">angle</span><span class="o">=</span><span class="n">a_value</span><span class="p">)</span>
+    <span class="n">dihedral_eq</span> <span class="o">=</span> <span class="n">dihedral_constraint</span><span class="p">(</span><span class="n">atom_a</span><span class="o">=</span><span class="n">atom_l_coord</span><span class="p">,</span> <span class="n">atom_b</span><span class="o">=</span><span class="n">atom_m_coord</span><span class="p">,</span> <span class="n">atom_c</span><span class="o">=</span><span class="n">atom_n_coord</span><span class="p">,</span> <span class="n">dihedral</span><span class="o">=</span><span class="n">d_value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">objective_func</span><span class="p">(</span><span class="n">coord</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The objective function to minimize to satisfy the sphere, angle, and dihedral constraints.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            coord (Tuple[float, float, float]): The Cartesian coordinates of the new atom.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            float: The sum of the squared differences between the constraints and their desired values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="n">coord</span>
+        <span class="n">distance_constraint_</span> <span class="o">=</span> <span class="n">sphere_eq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>
+        <span class="n">angle_constraint_</span> <span class="o">=</span> <span class="n">angle_eq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>
+        <span class="n">dihedral_constraint_</span> <span class="o">=</span> <span class="n">dihedral_eq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>
+
+        <span class="n">sphere_error</span> <span class="o">=</span> <span class="n">sphere_eq</span><span class="p">(</span><span class="o">*</span><span class="n">coord</span><span class="p">)</span>
+        <span class="n">angle_error</span> <span class="o">=</span> <span class="n">angle_eq</span><span class="p">(</span><span class="o">*</span><span class="n">coord</span><span class="p">)</span>
+        <span class="n">dihedral_error</span> <span class="o">=</span> <span class="n">dihedral_eq</span><span class="p">(</span><span class="o">*</span><span class="n">coord</span><span class="p">)</span>
+
+        <span class="n">total_error</span> <span class="o">=</span> <span class="p">((</span><span class="n">distance_constraint_</span> <span class="o">/</span> <span class="n">r_value</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span>
+                       <span class="p">(</span><span class="n">angle_constraint_</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">a_value</span><span class="p">))</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span>
+                       <span class="p">(</span><span class="n">dihedral_constraint_</span> <span class="o">/</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">d_value</span><span class="p">))</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">total_error</span>
+
+    <span class="n">result</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="n">initial_guess</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">opt_method</span><span class="p">,</span>
+                      <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;maxiter&#39;</span><span class="p">:</span> <span class="mf">1e+4</span><span class="p">,</span> <span class="s1">&#39;ftol&#39;</span><span class="p">:</span> <span class="mf">1e-10</span><span class="p">,</span> <span class="s1">&#39;xtol&#39;</span><span class="p">:</span> <span class="mf">1e-10</span><span class="p">})</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to find a solution: </span><span class="si">{</span><span class="n">result</span><span class="o">.</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">coords</span> <span class="o">+</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">x</span><span class="o">.</span><span class="n">tolist</span><span class="p">()),)</span>
+    <span class="n">symbols</span> <span class="o">=</span> <span class="n">symbols</span> <span class="o">+</span> <span class="p">(</span><span class="n">element</span><span class="p">,)</span>
+    <span class="n">isotopes</span> <span class="o">=</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;isotopes&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">get_most_common_isotope_for_element</span><span class="p">(</span><span class="n">element</span><span class="p">),)</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyz_from_data</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">coords</span><span class="p">,</span> <span class="n">symbols</span><span class="o">=</span><span class="n">symbols</span><span class="p">,</span> <span class="n">isotopes</span><span class="o">=</span><span class="n">isotopes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">xyz</span>
+
+
+<div class="viewcode-block" id="distance_constraint"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.distance_constraint">[docs]</a><span class="k">def</span> <span class="nf">distance_constraint</span><span class="p">(</span><span class="n">reference_coord</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">distance</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate the sphere equation for a new atom at a specific distance from a reference atom.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        reference_coord (tuple): The Cartesian coordinates (x1, y1, z1) of the reference atom.</span>
+<span class="sd">        distance (float): The fixed distance (radius of the sphere) in Angstroms.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        function: A lambda function representing the sphere equation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z1</span> <span class="o">=</span> <span class="n">reference_coord</span>
+    <span class="n">sphere_eq</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">x1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">y1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">z</span> <span class="o">-</span> <span class="n">z1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="n">distance</span> <span class="o">**</span> <span class="mi">2</span>
+    <span class="k">return</span> <span class="n">sphere_eq</span></div>
+
+
+<div class="viewcode-block" id="angle_constraint"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.angle_constraint">[docs]</a><span class="k">def</span> <span class="nf">angle_constraint</span><span class="p">(</span><span class="n">atom_a</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">atom_b</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate the angle constraint for a new atom with two other atoms in Cartesian space.</span>
+<span class="sd">    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atom_a (tuple): Cartesian coordinates of the first reference atom (A).</span>
+<span class="sd">        atom_b (tuple): Cartesian coordinates of the second reference atom (B).</span>
+<span class="sd">        angle (float): Desired angle (in degrees).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        function: A lambda function representing the angle constraint equation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x_a</span><span class="p">,</span> <span class="n">y_a</span><span class="p">,</span> <span class="n">z_a</span> <span class="o">=</span> <span class="n">atom_a</span>
+    <span class="n">x_b</span><span class="p">,</span> <span class="n">y_b</span><span class="p">,</span> <span class="n">z_b</span> <span class="o">=</span> <span class="n">atom_b</span>
+    <span class="n">target_angle</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">angle</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">angle_eq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the angle between the vectors AB and BX, and compare it to the desired angle.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (float): x-coordinate of the new atom.</span>
+<span class="sd">            y (float): y-coordinate of the new atom.</span>
+<span class="sd">            z (float): z-coordinate of the new atom.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            float: The difference between the calculated cosine of the angle and the desired cosine of the angle.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">BA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x_a</span> <span class="o">-</span> <span class="n">x_b</span><span class="p">,</span> <span class="n">y_a</span> <span class="o">-</span> <span class="n">y_b</span><span class="p">,</span> <span class="n">z_a</span> <span class="o">-</span> <span class="n">z_b</span><span class="p">])</span>
+        <span class="n">BX</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x</span> <span class="o">-</span> <span class="n">x_b</span><span class="p">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">y_b</span><span class="p">,</span> <span class="n">z</span> <span class="o">-</span> <span class="n">z_b</span><span class="p">])</span>
+        <span class="n">BA_length</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">BA</span><span class="p">)</span>
+        <span class="n">BX_length</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">BX</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">BA_length</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">BX_length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Zero-length vector encountered in angle calculation.&quot;</span><span class="p">)</span>
+        <span class="n">cross_product_length</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">BA</span><span class="p">,</span> <span class="n">BX</span><span class="p">))</span>
+        <span class="n">dot_product</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">BA</span><span class="p">,</span> <span class="n">BX</span><span class="p">)</span>
+        <span class="n">calc_angle</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">atan2</span><span class="p">(</span><span class="n">cross_product_length</span><span class="p">,</span> <span class="n">dot_product</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">calc_angle</span> <span class="o">-</span> <span class="n">target_angle</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="n">angle_eq</span></div>
+
+
+<div class="viewcode-block" id="dihedral_constraint"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.dihedral_constraint">[docs]</a><span class="k">def</span> <span class="nf">dihedral_constraint</span><span class="p">(</span><span class="n">atom_a</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">atom_b</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">atom_c</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">dihedral</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate the dihedral angle constraint for a new atom with three other atoms in Cartesian space.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atom_a (tuple): Cartesian coordinates of the first atom (A).</span>
+<span class="sd">        atom_b (tuple): Cartesian coordinates of the second atom (B).</span>
+<span class="sd">        atom_c (tuple): Cartesian coordinates of the third atom (C).</span>
+<span class="sd">        dihedral (float): Desired dihedral angle (in degrees).</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        function: A lambda function representing the dihedral constraint equation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">x1</span><span class="p">,</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z1</span> <span class="o">=</span> <span class="n">atom_a</span>
+    <span class="n">x2</span><span class="p">,</span> <span class="n">y2</span><span class="p">,</span> <span class="n">z2</span> <span class="o">=</span> <span class="n">atom_b</span>
+    <span class="n">x3</span><span class="p">,</span> <span class="n">y3</span><span class="p">,</span> <span class="n">z3</span> <span class="o">=</span> <span class="n">atom_c</span>
+    <span class="n">cos_d</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">dihedral</span><span class="p">))</span>
+    <span class="n">sin_d</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">dihedral</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">dihedral_eq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the dihedral angle between the planes defined by vectors AB and BC, and compare it to the desired angle.</span>
+<span class="sd">        Return the combined equation: both cosine and sine should match.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (float): x-coordinate of the new atom.</span>
+<span class="sd">            y (float): y-coordinate of the new atom.</span>
+<span class="sd">            z (float): z-coordinate of the new atom.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            float: The difference between the calculated cosine and sine of the dihedral angle</span>
+<span class="sd">                   and the desired cosine and sine of the dihedral angle.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">AB</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x2</span> <span class="o">-</span> <span class="n">x1</span><span class="p">,</span> <span class="n">y2</span> <span class="o">-</span> <span class="n">y1</span><span class="p">,</span> <span class="n">z2</span> <span class="o">-</span> <span class="n">z1</span><span class="p">])</span>
+        <span class="n">BC</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x3</span> <span class="o">-</span> <span class="n">x2</span><span class="p">,</span> <span class="n">y3</span> <span class="o">-</span> <span class="n">y2</span><span class="p">,</span> <span class="n">z3</span> <span class="o">-</span> <span class="n">z2</span><span class="p">])</span>
+        <span class="n">CD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x</span> <span class="o">-</span> <span class="n">x3</span><span class="p">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">y3</span><span class="p">,</span> <span class="n">z</span> <span class="o">-</span> <span class="n">z3</span><span class="p">])</span>
+        <span class="n">N1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">AB</span><span class="p">,</span> <span class="n">BC</span><span class="p">)</span>
+        <span class="n">N2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">BC</span><span class="p">,</span> <span class="n">CD</span><span class="p">)</span>
+        <span class="n">N1_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">N1</span><span class="p">)</span>
+        <span class="n">N2_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">N2</span><span class="p">)</span>
+        <span class="n">BC_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">BC</span><span class="p">)</span>
+        <span class="n">cos_calc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">N1</span><span class="p">,</span> <span class="n">N2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">N1_norm</span> <span class="o">*</span> <span class="n">N2_norm</span><span class="p">)</span>
+        <span class="n">sin_calc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">BC</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">N1</span><span class="p">,</span> <span class="n">N2</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="n">BC_norm</span> <span class="o">*</span> <span class="n">N1_norm</span> <span class="o">*</span> <span class="n">N2_norm</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">cos_calc</span> <span class="o">-</span> <span class="n">cos_d</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="n">sin_calc</span> <span class="o">-</span> <span class="n">sin_d</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="n">dihedral_eq</span></div>
+
+
+<div class="viewcode-block" id="generate_initial_guess_r_a"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_initial_guess_r_a">[docs]</a><span class="k">def</span> <span class="nf">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                               <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                               <span class="n">atom_a_coord</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                               <span class="n">atom_b_coord</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                               <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                               <span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate an initial guess for the new atom&#39;s coordinates based on the reference atom R, the distance R-X, and the angle A-B-X.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atom_r_coord (tuple): Cartesian coordinates of the reference atom R.</span>
+<span class="sd">        r_value (float): Desired distance between R and X.</span>
+<span class="sd">        atom_a_coord (tuple): Cartesian coordinates of atom A (for the angle constraint).</span>
+<span class="sd">        atom_b_coord (tuple): Cartesian coordinates of atom B (for the angle constraint).</span>
+<span class="sd">        a_value (float): Desired angle A-B-X in degrees.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.array: Initial guess coordinates for the new atom.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Step 1: Vector BA (for directionality)</span>
+    <span class="n">BA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_a_coord</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_b_coord</span><span class="p">)</span>
+    <span class="n">BA_unit</span> <span class="o">=</span> <span class="n">BA</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">BA</span><span class="p">)</span>
+
+    <span class="c1"># Step 2: Find a vector orthogonal to BA</span>
+    <span class="n">arbitrary_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">BA_unit</span><span class="p">,</span> <span class="n">arbitrary_vector</span><span class="p">):</span>  <span class="c1"># Avoid collinearity</span>
+        <span class="n">arbitrary_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+    <span class="n">orthogonal_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">BA_unit</span><span class="p">,</span> <span class="n">arbitrary_vector</span><span class="p">)</span>
+    <span class="n">orthogonal_vector</span> <span class="o">=</span> <span class="n">orthogonal_vector</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">orthogonal_vector</span><span class="p">)</span>
+
+    <span class="c1"># Step 3: Calculate approximate position using the angle</span>
+    <span class="n">angle_rad</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="n">a_value</span><span class="p">)</span>
+    <span class="n">X_direction</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">angle_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">BA_unit</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">angle_rad</span><span class="p">)</span> <span class="o">*</span> <span class="n">orthogonal_vector</span>
+
+    <span class="c1"># Step 4: Scale by R distance and offset by R&#39;s position</span>
+    <span class="n">X_position</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">X_direction</span>
+    <span class="k">return</span> <span class="n">X_position</span></div>
+
+<div class="viewcode-block" id="generate_midpoint_initial_guess"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_midpoint_initial_guess">[docs]</a><span class="k">def</span> <span class="nf">generate_midpoint_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate an initial guess midway between the two reference atoms.&quot;&quot;&quot;</span>
+    <span class="n">midpoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_a_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_b_coord</span><span class="p">))</span> <span class="o">/</span> <span class="mf">2.0</span>
+    <span class="n">direction</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">-</span> <span class="n">midpoint</span>
+    <span class="n">direction</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">midpoint</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">direction</span></div>
+
+<div class="viewcode-block" id="generate_perpendicular_initial_guess"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_perpendicular_initial_guess">[docs]</a><span class="k">def</span> <span class="nf">generate_perpendicular_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate an initial guess that is perpendicular to the plane defined by the reference atoms.&quot;&quot;&quot;</span>
+    <span class="n">BA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_a_coord</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_b_coord</span><span class="p">)</span>
+    <span class="n">BA_unit</span> <span class="o">=</span> <span class="n">BA</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">BA</span><span class="p">)</span>
+    <span class="c1"># Find a vector perpendicular to BA</span>
+    <span class="n">arbitrary_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">BA_unit</span><span class="p">,</span> <span class="n">arbitrary_vector</span><span class="p">):</span>
+        <span class="n">arbitrary_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+    <span class="n">perpendicular_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span><span class="n">BA_unit</span><span class="p">,</span> <span class="n">arbitrary_vector</span><span class="p">)</span>
+    <span class="n">perpendicular_vector</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">perpendicular_vector</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">perpendicular_vector</span></div>
+
+<span class="k">def</span> <span class="nf">generate_random_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+    <span class="n">perturbation</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+    <span class="n">base_guess</span> <span class="o">=</span> <span class="n">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">base_guess</span> <span class="o">+</span> <span class="n">perturbation</span>
+
+<span class="k">def</span> <span class="nf">generate_shifted_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+    <span class="n">shift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">])</span>  <span class="c1"># A deterministic shift</span>
+    <span class="n">base_guess</span> <span class="o">=</span> <span class="n">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">base_guess</span> <span class="o">+</span> <span class="n">shift</span>
+
+<div class="viewcode-block" id="generate_bond_length_initial_guess"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_bond_length_initial_guess">[docs]</a><span class="k">def</span> <span class="nf">generate_bond_length_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate an initial guess considering only the bond length to the reference atom.&quot;&quot;&quot;</span>
+    <span class="n">direction</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># Random direction</span>
+    <span class="n">direction</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>  <span class="c1"># Normalize to unit vector</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">direction</span></div>
 </pre></div>
 
            </div>
@@ -2325,7 +2692,7 @@
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2024, Alon Grinberg Dana
+        &copy; Copyright 2018-2025, Alon Grinberg Dana
 
     </p>
   </div>

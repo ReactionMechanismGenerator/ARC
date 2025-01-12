@@ -217,6 +217,8 @@
         <li><a href="api/scheduler.html#arc.scheduler.Scheduler.adaptive_levels">(arc.scheduler.Scheduler attribute)</a>
 </li>
       </ul></li>
+      <li><a href="api/converter.html#arc.species.converter.add_atom_to_xyz_using_internal_coords">add_atom_to_xyz_using_internal_coords() (in module arc.species.converter)</a>
+</li>
       <li><a href="api/zmat.html#arc.species.zmat.add_dummy_atom">add_dummy_atom() (in module arc.species.zmat)</a>
 </li>
       <li><a href="api/main.html#arc.main.ARC.add_hydrogen_for_bde">add_hydrogen_for_bde() (arc.main.ARC method)</a>
@@ -244,6 +246,8 @@
       <li><a href="api/common.html#arc.common.almost_equal_lists">almost_equal_lists() (in module arc.common)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.TSGuess.almost_equal_tsgs">almost_equal_tsgs() (arc.species.species.TSGuess method)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.angle_constraint">angle_constraint() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/main.html#arc.main.ARC">ARC (class in arc.main)</a>
 </li>
@@ -310,6 +314,8 @@
         <li><a href="api/plotter.html#module-arc.plotter">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     arc.processor
 
@@ -317,8 +323,6 @@
         <li><a href="api/processor.html#module-arc.processor">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     arc.reaction
 
@@ -742,10 +746,10 @@
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_descriptors">determine_multiplicity_from_descriptors() (arc.species.species.ARCSpecies method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.determine_multiplicity_from_xyz">determine_multiplicity_from_xyz() (arc.species.species.ARCSpecies method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/conformers.html#arc.species.conformers.determine_number_of_conformers_to_generate">determine_number_of_conformers_to_generate() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.determine_occ">determine_occ() (in module arc.species.species)</a>
@@ -790,9 +794,13 @@
 </li>
       <li><a href="api/reaction.html#arc.reaction.ARCReaction.dh_rxn298">dh_rxn298 (arc.reaction.ARCReaction attribute)</a>
 </li>
+      <li><a href="api/converter.html#arc.species.converter.dihedral_constraint">dihedral_constraint() (in module arc.species.converter)</a>
+</li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.directed_rotors">directed_rotors (arc.species.species.ARCSpecies attribute)</a>
 </li>
       <li><a href="api/converter.html#arc.species.converter.displace_xyz">displace_xyz() (in module arc.species.converter)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.distance_constraint">distance_constraint() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/reaction.html#arc.reaction.ARCReaction.done_opt_r_n_p">done_opt_r_n_p (arc.reaction.ARCReaction attribute)</a>
 </li>
@@ -934,6 +942,8 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/conformers.html#arc.species.conformers.generate_all_combinations">generate_all_combinations() (in module arc.species.conformers)</a>
 </li>
+      <li><a href="api/converter.html#arc.species.converter.generate_bond_length_initial_guess">generate_bond_length_initial_guess() (in module arc.species.converter)</a>
+</li>
       <li><a href="api/conformers.html#arc.species.conformers.generate_conformer_combinations">generate_conformer_combinations() (in module arc.species.conformers)</a>
 </li>
       <li><a href="api/species.html#arc.species.species.ARCSpecies.generate_conformers">generate_conformers() (arc.species.species.ARCSpecies method)</a>
@@ -948,7 +958,13 @@
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.generate_force_field_conformers">generate_force_field_conformers() (in module arc.species.conformers)</a>
 </li>
+      <li><a href="api/converter.html#arc.species.converter.generate_initial_guess_r_a">generate_initial_guess_r_a() (in module arc.species.converter)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.generate_midpoint_initial_guess">generate_midpoint_initial_guess() (in module arc.species.converter)</a>
+</li>
       <li><a href="api/conformers.html#arc.species.conformers.generate_monoatomic_conformer">generate_monoatomic_conformer() (in module arc.species.conformers)</a>
+</li>
+      <li><a href="api/converter.html#arc.species.converter.generate_perpendicular_initial_guess">generate_perpendicular_initial_guess() (in module arc.species.converter)</a>
 </li>
       <li><a href="api/common.html#arc.common.generate_resonance_structures">generate_resonance_structures() (in module arc.common)</a>
 </li>
@@ -1002,12 +1018,12 @@
 </li>
       <li><a href="api/common.html#arc.common.get_git_branch">get_git_branch() (in module arc.common)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/common.html#arc.common.get_git_commit">get_git_commit() (in module arc.common)</a>
 </li>
       <li><a href="api/local.html#arc.job.local.get_last_modified_time">get_last_modified_time() (in module arc.job.local)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api/common.html#arc.common.get_logger">get_logger() (in module arc.common)</a>
 </li>
       <li><a href="api/conformers.html#arc.species.conformers.get_lowest_confs">get_lowest_confs() (in module arc.species.conformers)</a>
@@ -2138,7 +2154,7 @@
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2024, Alon Grinberg Dana
+        &copy; Copyright 2018-2025, Alon Grinberg Dana
 
     </p>
   </div>

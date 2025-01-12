@@ -193,6 +193,37 @@
 <span id="arc-species-converter"></span><span id="converter"></span><h1>arc.species.converter<a class="headerlink" href="#module-arc.species.converter" title="Permalink to this heading">¶</a></h1>
 <p>A module for performing various species-related format conversions.</p>
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.add_atom_to_xyz_using_internal_coords">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">add_atom_to_xyz_using_internal_coords</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_indices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_indices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Nelder-Mead'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#add_atom_to_xyz_using_internal_coords"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.add_atom_to_xyz_using_internal_coords" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add an atom to XYZ. The new atom may have random r, a, and d index parameters
+(not necessarily defined for the same respective atoms).
+This function will compute the coordinates for the new atom.
+This function assumes that the original xyz has at least 3 atoms.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>xyz</strong> (<em>dict</em>) – The xyz coordinates to process in a dictionary format.</p></li>
+<li><p><strong>element</strong> (<em>str</em>) – The chemical element of the atom to add.</p></li>
+<li><p><strong>r_index</strong> (<em>int</em>) – The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.</p></li>
+<li><p><strong>a_indices</strong> (<em>tuple</em>) – The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.</p></li>
+<li><p><strong>d_indices</strong> (<em>tuple</em>) – The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.</p></li>
+<li><p><strong>r_value</strong> (<em>float</em>) – The value of the R-X distance parameter, r.</p></li>
+<li><p><strong>a_value</strong> (<em>float</em>) – The value of the A-B-X angle parameter, a.</p></li>
+<li><p><strong>d_value</strong> (<em>float</em>) – The value of the L-M-N-X dihedral angle parameter, d.</p></li>
+<li><p><strong>opt_method</strong> (<em>str</em><em>, </em><em>optional</em>) – The optimization method to use for finding the new atom’s coordinates.
+Additional options include ‘trust-constr’ and ‘BFGS’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated xyz coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[dict]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.add_lone_pairs_by_atom_valance">
 <span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">add_lone_pairs_by_atom_valance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#add_lone_pairs_by_atom_valance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.add_lone_pairs_by_atom_valance" title="Permalink to this definition">¶</a></dt>
 <dd><p>A helper function for assigning lone pairs instead of carbenes/nitrenes if not identified automatically,
@@ -214,6 +245,28 @@ Note: This implementation might also be problematic for aromatic species with un
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – The Molecule object to process.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.angle_constraint">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">angle_constraint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#angle_constraint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.angle_constraint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate the angle constraint for a new atom with two other atoms in Cartesian space.
+This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>atom_a</strong> (<em>tuple</em>) – Cartesian coordinates of the first reference atom (A).</p></li>
+<li><p><strong>atom_b</strong> (<em>tuple</em>) – Cartesian coordinates of the second reference atom (B).</p></li>
+<li><p><strong>angle</strong> (<em>float</em>) – Desired angle (in degrees).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A lambda function representing the angle constraint equation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>function</p>
 </dd>
 </dl>
 </dd></dl>
@@ -416,6 +469,28 @@ integer number of 360 degrees / sigma are considered identical.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.dihedral_constraint">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">dihedral_constraint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dihedral</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#dihedral_constraint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.dihedral_constraint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate the dihedral angle constraint for a new atom with three other atoms in Cartesian space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>atom_a</strong> (<em>tuple</em>) – Cartesian coordinates of the first atom (A).</p></li>
+<li><p><strong>atom_b</strong> (<em>tuple</em>) – Cartesian coordinates of the second atom (B).</p></li>
+<li><p><strong>atom_c</strong> (<em>tuple</em>) – Cartesian coordinates of the third atom (C).</p></li>
+<li><p><strong>dihedral</strong> (<em>float</em>) – Desired dihedral angle (in degrees).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A lambda function representing the dihedral constraint equation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>function</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.displace_xyz">
 <span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">displace_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">displacement</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amplitude</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/converter.html#displace_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.displace_xyz" title="Permalink to this definition">¶</a></dt>
 <dd><p>Displace the coordinates using the <code class="docutils literal notranslate"><span class="pre">displacement</span></code> by the requested <code class="docutils literal notranslate"><span class="pre">amplitude</span></code> using atom mass weights.</p>
@@ -438,6 +513,26 @@ integer number of 360 degrees / sigma are considered identical.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.distance_constraint">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">distance_constraint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#distance_constraint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.distance_constraint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate the sphere equation for a new atom at a specific distance from a reference atom.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>reference_coord</strong> (<em>tuple</em>) – The Cartesian coordinates (x1, y1, z1) of the reference atom.</p></li>
+<li><p><strong>distance</strong> (<em>float</em>) – The fixed distance (radius of the sphere) in Angstroms.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A lambda function representing the sphere equation.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>function</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="arc.species.converter.elementize">
 <span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">elementize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#elementize"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.elementize" title="Permalink to this definition">¶</a></dt>
 <dd><p>Convert the atom type of an RMG <code class="docutils literal notranslate"><span class="pre">Atom</span></code> object into its general parent element atom type (e.g., ‘S4d’ into ‘S’).</p>
@@ -446,6 +541,47 @@ integer number of 360 degrees / sigma are considered identical.</p></li>
 <dd class="field-odd"><p><strong>atom</strong> (<em>Atom</em>) – The atom to process.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.generate_bond_length_initial_guess">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">generate_bond_length_initial_guess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_r_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_a_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#generate_bond_length_initial_guess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.generate_bond_length_initial_guess" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate an initial guess considering only the bond length to the reference atom.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.generate_initial_guess_r_a">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">generate_initial_guess_r_a</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_r_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_a_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b_coord</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#generate_initial_guess_r_a"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.generate_initial_guess_r_a" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate an initial guess for the new atom’s coordinates based on the reference atom R, the distance R-X, and the angle A-B-X.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>atom_r_coord</strong> (<em>tuple</em>) – Cartesian coordinates of the reference atom R.</p></li>
+<li><p><strong>r_value</strong> (<em>float</em>) – Desired distance between R and X.</p></li>
+<li><p><strong>atom_a_coord</strong> (<em>tuple</em>) – Cartesian coordinates of atom A (for the angle constraint).</p></li>
+<li><p><strong>atom_b_coord</strong> (<em>tuple</em>) – Cartesian coordinates of atom B (for the angle constraint).</p></li>
+<li><p><strong>a_value</strong> (<em>float</em>) – Desired angle A-B-X in degrees.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Initial guess coordinates for the new atom.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.generate_midpoint_initial_guess">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">generate_midpoint_initial_guess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_r_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_a_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#generate_midpoint_initial_guess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.generate_midpoint_initial_guess" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate an initial guess midway between the two reference atoms.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.converter.generate_perpendicular_initial_guess">
+<span class="sig-prename descclassname"><span class="pre">arc.species.converter.</span></span><span class="sig-name descname"><span class="pre">generate_perpendicular_initial_guess</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_r_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_a_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_b_coord</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_value</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/converter.html#generate_perpendicular_initial_guess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.converter.generate_perpendicular_initial_guess" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate an initial guess that is perpendicular to the plane defined by the reference atoms.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -1554,7 +1690,7 @@ Must be ordered as the original mol/xyz used to create <code class="docutils lit
 
   <div role="contentinfo">
     <p>
-        &copy; Copyright 2018-2024, Alon Grinberg Dana
+        &copy; Copyright 2018-2025, Alon Grinberg Dana
 
     </p>
   </div>
