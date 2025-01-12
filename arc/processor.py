@@ -2,6 +2,7 @@
 Processor module for computing thermodynamic properties and rate coefficients using statistical mechanics.
 """
 
+import math
 import os
 import shutil
 from typing import Optional
@@ -17,6 +18,8 @@ logger = get_logger()
 
 THERMO_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_thermo.py')
 KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py')
+R = 8.31446261815324  # J/(mol*K)
+EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 
 def process_arc_project(thermo_adapter: str,
@@ -143,7 +146,10 @@ def process_arc_project(thermo_adapter: str,
             plotter.save_kinetics_lib(rxn_list=rxns_for_kinetics_lib,
                                       path=libraries_path,
                                       name=project,
-                                      lib_long_desc=lib_long_desc)
+                                      lib_long_desc=lib_long_desc,
+                                      T_min=T_min,
+                                      T_max=T_max,
+                                      )
 
     # 2. Thermo
     if compute_thermo:
@@ -237,12 +243,12 @@ def compare_thermo(species_for_thermo_lib: list,
         plotter.draw_thermo_parity_plots(species_list=species_to_compare, path=output_directory)
 
 
-def compare_rates(rxns_for_kinetics_lib: list,  # todo: draw kinetics plot need updaye
+def compare_rates(rxns_for_kinetics_lib: list,
                   output_directory: str,
                   T_min: tuple = None,
                   T_max: tuple = None,
                   T_count: int = 50,
-                  ) -> None:
+                  ) -> list:
     """
     Compare the calculated rates with RMG's estimations or libraries.
 
@@ -252,33 +258,43 @@ def compare_rates(rxns_for_kinetics_lib: list,  # todo: draw kinetics plot need 
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
+
+    Returns:
+        list: Reactions for which a rate was both calculated and estimated.
+              Returning this list for testing purposes.
     """
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
     save_yaml_file(path=reactions_kinetics_path,
-                     content=[{'label': rxn.label,
-                              'reactants': [spc.label for spc in rxn.r_species],
-                              'products': [spc.label for spc in rxn.p_species],
-                              'dh_rxn298': rxn.dh_rxn298} for rxn in rxns_for_kinetics_lib])
+                   content=[{'label': rxn.label,
+                             'reactants': [spc.mol.to_adjacency_list() for spc in rxn.r_species],
+                             'products': [spc.mol.to_adjacency_list() for spc in rxn.p_species],
+                             'dh_rxn298': rxn.dh_rxn298,
+                             'family': rxn.family,
+                             } for rxn in rxns_for_kinetics_lib],
+                   )
     command = f'python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}'
     execute_command(command=command, no_fail=True)
-    reactions_list = read_yaml_file(path=reactions_kinetics_path)
-    for original_rxn, rmg_rxn in zip(rxns_for_kinetics_lib, reactions_list):
+    reactions_list_w_rmg_kinetics = read_yaml_file(path=reactions_kinetics_path)
+    for original_rxn, rxn_w_rmg_kinetics in zip(rxns_for_kinetics_lib, reactions_list_w_rmg_kinetics):
         original_rxn.rmg_kinetics = original_rxn.rmg_kinetics or list()
-        for kinetics_entry in rmg_rxn['kinetics']:
+        if 'kinetics' not in rxn_w_rmg_kinetics:
+            continue
+        for kinetics_entry in rxn_w_rmg_kinetics['kinetics']:
             if 'A' in kinetics_entry and 'n' in kinetics_entry and 'Ea' in kinetics_entry:
                 original_rxn.rmg_kinetics.append({'A': kinetics_entry['A'],
                                                   'n': kinetics_entry['n'],
                                                   'Ea': kinetics_entry['Ea'],
                                                   'comment': kinetics_entry['comment'],
                                                   })
-                reactions_to_compare.append(original_rxn)
+        reactions_to_compare.append(original_rxn)
     if reactions_to_compare:
         plotter.draw_kinetics_plots(reactions_to_compare,
                                     T_min=T_min,
                                     T_max=T_max,
                                     T_count=T_count,
                                     path=output_directory)
+    return reactions_to_compare
 
 
 def compare_transport(species_for_transport_lib: list,
