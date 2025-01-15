@@ -205,7 +205,7 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     """
     if isinstance(coords, dict) and 'coords' in coords:
         coords = coords['coords']
-    if not isinstance(coords, (list, tuple)):
+    if not isinstance(coords, (list, tuple, np.ndarray)):
         raise TypeError(f'coords must be a list or a tuple, got\n{coords}\nwhich is a {type(coords)}')
     if index not in [0, 1]:
         raise VectorsError(f'index must be either 0 or 1, got {index}')
@@ -230,6 +230,25 @@ def calculate_dihedral_angle(coords: Union[list, tuple, dict],
     v2 = coords[new_torsion[2]] - coords[new_torsion[1]]
     v3 = coords[new_torsion[3]] - coords[new_torsion[2]]
     return get_dihedral(v1, v2, v3, units=units)
+
+
+def calculate_ring_dihedral_angles(coords: Union[list, tuple, dict], 
+                                   ring: list, 
+                                   index: int = 0
+                                   ) -> list:
+    if isinstance(coords, dict) and 'coords' in coords:
+        coords = coords['coords']
+    if not isinstance(coords, (list, tuple)):
+        raise TypeError(f'coords must be a list or a tuple, got {type(coords)}')
+
+    coords = np.array(coords, dtype=np.float32)
+    ring = [atom - index for atom in ring]  # Adjusting for zero-indexed
+    angles = []
+    for i in range(len(ring)):
+        angle_deg = calculate_dihedral_angle(coords, [ring[i%len(ring)], ring[(i + 1)%len(ring)], ring[(i + 2)%len(ring)], ring[(i + 3)%len(ring)]])
+        angles.append(angle_deg)
+
+    return angles
 
 
 def calculate_param(coords: Union[list, tuple, dict],

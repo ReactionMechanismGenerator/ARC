@@ -1014,12 +1014,15 @@ def plot_torsion_angles(torsion_angles,
     """
     num_comb = None
     torsions = list(torsion_angles.keys()) if torsions_sampling_points is None \
-        else list(torsions_sampling_points.keys())
+        else list(torsions_sampling_points.keys())    
+    torsions = [torsion for torsion in torsions if not (isinstance(torsion, tuple) and all(isinstance(sub_t, tuple) for sub_t in torsion))]
+
     ticks = [0, 60, 120, 180, 240, 300, 360]
     sampling_points = dict()
     if torsions_sampling_points is not None:
         for tor, points in torsions_sampling_points.items():
-            sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
+            if not isinstance(points[0],list):
+                sampling_points[tor] = [point if point <= 360 else point - 360 for point in points]
     if not torsions:
         return
     if len(torsions) == 1:
@@ -1048,6 +1051,8 @@ def plot_torsion_angles(torsion_angles,
         fig.dpi = 120
         num_comb = 1
         for i, torsion in enumerate(torsions):
+            if tuple(torsion) not in torsion_angles:
+                continue
             axs[i].plot(np.array(torsion_angles[tuple(torsion)]),
                         np.zeros_like(np.arange(len(torsion_angles[tuple(torsion)]))), 'g.')
             if wells_dict is not None:
@@ -1119,6 +1124,76 @@ def plot_torsion_angles(torsion_angles,
         plt.show()
     plt.close(fig)
     return num_comb
+
+
+def plot_ring_torsion_angles(conformers, plot_path=None, tolerance=15):
+    """
+    Plot the torsion angles of the generated conformers for each ring,
+    considering torsion similarity within a given tolerance.
+
+    Args:
+        conformers (list): A list of conformers, each containing a 'puckering' key with ring torsion angles.
+        plot_path (str, optional): The path for saving the plot.
+        tolerance (float, optional): The angular tolerance to consider two torsion angle sets as similar.
+    """
+    if 'puckering' not in conformers[0]:
+        return
+
+    # Dictionary to store unique angle sets for each ring
+    ring_angle_data = {}
+    
+    # Process each conformer
+    for conformer in conformers:
+        rings = conformer['puckering']  # Retrieve the puckering angles for rings
+        for torsions, angle_set in rings.items():
+            rounded_angle_set = tuple(round(angle) for angle in angle_set)  # Round angles
+            if torsions not in ring_angle_data:
+                ring_angle_data[torsions] = []
+
+            # Check for similarity within the current ring
+            is_similar = False
+            for i, (existing_set, count) in enumerate(ring_angle_data[torsions]):
+                if all(abs(a1 - a2) <= tolerance for a1, a2 in zip(rounded_angle_set, existing_set)):
+                    # If similar, increment count
+                    ring_angle_data[torsions][i] = (existing_set, count + 1)
+                    is_similar = True
+                    break
+            if not is_similar:
+                # Add unique angle set with a count
+                ring_angle_data[torsions].append((rounded_angle_set, 1))
+
+    
+    # Plot data for each ring
+    for ring, angle_counts in ring_angle_data.items():
+        # Extract and sort data
+        angles, counts = zip(*angle_counts)
+        angles_counts_sorted = sorted(zip(angles, counts), key=lambda x: x[1], reverse=True)
+        angles_sorted, counts_sorted = zip(*angles_counts_sorted)
+        
+        # Create bar plot for this ring
+        fig, ax = plt.subplots(figsize=(10, 5))
+        x = np.arange(len(angles_sorted))  # Label positions
+        ax.bar(x, counts_sorted, color='blue')
+        ax.set_xlabel('Rounded Angle Sets (Nearest Integer)')
+        ax.set_ylabel('Frequency')
+        ax.set_title(f'Frequency of Different Angle Sets for Ring {ring}')
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'{angle}' for angle in angles_sorted], rotation=45, ha='right')
+        
+        # Save or display the plot
+        if plot_path is not None:
+            ring_plot_path = os.path.join(plot_path, f'conformer_ring_torsions_{ring}.png')
+            if not os.path.isdir(plot_path):
+                os.makedirs(plot_path)
+            try:
+                plt.savefig(ring_plot_path, bbox_inches='tight')
+            except FileNotFoundError:
+                pass
+        if is_notebook():
+            plt.show()
+        plt.close(fig)
+    
+    return ring_angle_data
 
 
 def plot_1d_rotor_scan(angles: Optional[Union[list, tuple, np.array]] = None,
