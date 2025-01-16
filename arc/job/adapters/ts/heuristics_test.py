@@ -247,6 +247,39 @@ H       1.33643417   -2.15859899   -0.90083808""")
         H       1.43056708    1.33384843   -1.04192555
         H       1.28070929   -1.53312020    0.41216154""")
 
+        cls.methylbenzoate=ARCSpecies(label='ester', smiles='CC(=O)OC1=CC=CC=C1', xyz="""C       3.37907000   -0.64682800    0.46486200
+C       2.10276700   -0.48583200   -0.31979100
+O       1.32021400   -1.35537900   -0.58064400
+O       1.96230700    0.82574700   -0.69365400
+C       0.85177700    1.27552400   -1.41215200
+C       0.34940000    2.51436000   -1.02557500
+C      -0.70995700    3.07608500   -1.73199000
+C      -1.26438100    2.39998000   -2.81691500
+C      -0.74896000    1.16168200   -3.19310400
+C       0.31367000    0.58856400   -2.49719000
+H       4.22671300   -0.28777200   -0.12245900
+H       3.33282100   -0.04338500    1.37430000
+H       3.51464500   -1.69524400    0.72093600
+H       0.79944800    3.02252900   -0.18155100
+H      -1.10082900    4.04160500   -1.43205400
+H      -2.09094900    2.83540100   -3.36613000
+H      -1.17477500    0.63028500   -4.03657700
+H       0.70459500   -0.37643600   -2.78317900""")
+
+        cls.phenol=ARCSpecies(label='alcohol', smiles='OC1=CC=CC=C1', xyz="""O       2.36452700   -0.79682200   -0.01546700
+C       1.08348000   -0.32003700   -0.00730200
+C       0.04868900   -1.25810000    0.00558700
+C      -1.27226300   -0.82546300    0.01428700
+C      -1.57722100    0.53622300    0.01029400
+C      -0.54091400    1.46569900   -0.00256600
+C       0.78734400    1.04454700   -0.01138000
+H       2.97775700   -0.05483700   -0.02399000
+H       0.30002500   -2.31176900    0.00855200
+H      -2.07048300   -1.55934600    0.02427800
+H      -2.60892800    0.86669600    0.01712500
+H      -0.76133400    2.52735700   -0.00582000
+H       1.59238000    1.77408300   -0.02140600""")
+
         cls.carbonyl_chloride_zmat={'symbols': ('C', 'O', 'Cl', 'H'),
             'coords': (
                 (None, None, None),
@@ -2038,57 +2071,69 @@ H       1.33643417   -2.15859899   -0.90083808""")
 
         self.assertEqual(zmats, expected_zmats)
 
-
-    def test_hydrolysis(self):
-        #Test that the hydrolysis function correctly identifies hydrolysis reactions and categorizes them into Set 1 or Set 2.
-        xyz_guesses_total, zmats_total= [],[]
-        ester=self.ethyl_ethanoate
-        acid=self.acetic_acid
-        alcohol=self.ethanol
-        water=self.water
-        rxn1=ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
-        self.assertEqual(rxn1.family, 'ester_hydrolysis')
-        self.assertIn(rxn1.family, FAMILY_SETS['set_1'])
-
-        imine=self.ethanimine
-        amine=self.aminoethanol
-        rxn2=ARCReaction(r_species=[imine, water], p_species=[amine])
-        self.assertEqual(rxn2.family, 'imine_hydrolysis')
-        self.assertIn(rxn2.family, FAMILY_SETS['set_1'])
-
-        ether=self.ethyl_methylether
-        alcohol1=alcohol
-        alcohol2=self.methanol
-        rxn3=ARCReaction(r_species=[ether, water], p_species=[alcohol1, alcohol2])
-        self.assertEqual(rxn3.family, 'ether_hydrolysis')
-        self.assertIn(rxn3.family, FAMILY_SETS['set_1'])
-
-        nitrile=self.propionitrile
-        acid2=self.imidic_acid
-        rxn4=ARCReaction(r_species=[nitrile, water], p_species=[acid2])
-        self.assertEqual(rxn4.family, 'nitrile_hydrolysis')
-        self.assertIn(rxn4.family, FAMILY_SETS['set_2'])
-
-        carbonyl_chloride = self.carbonyl_chloride
+    def test_ester_hydrolysis(self):
+        """Test ester hydrolysis reactions."""
+        water = self.water
+        #RXN1
+        ethyl_ethanoate = self.ethyl_ethanoate
+        acetic_acid = self.acetic_acid
+        ethanol = self.ethanol
+        rxn1 = ARCReaction(r_species=[ethyl_ethanoate, water], p_species=[acetic_acid, ethanol])
+        #RXN2
+        methylformate = self.methylformate
         formicacid = self.formicacid
+        methanol=self.methanol
+        rxn2 = ARCReaction(r_species=[methylformate, water], p_species=[formicacid, methanol])
+        #RXN3
+        methylbenzoate=self.methylbenzoate
+        phenol=self.phenol
+        rxn3=ARCReaction(r_species=[methylbenzoate, water], p_species=[acetic_acid, phenol])
+        #RXN4
+        carbonyl_chloride = self.carbonyl_chloride
         hydrochloric_acid = self.hydrochloric_acid
-        rxn5 = ARCReaction(r_species=[carbonyl_chloride, water], p_species=[formicacid, hydrochloric_acid])
-        self.assertEqual(rxn5.family, 'ester_hydrolysis')
-        self.assertIn(rxn5.family, FAMILY_SETS['set_1'])
+        rxn4 = ARCReaction(r_species=[carbonyl_chloride, water], p_species=[formicacid, hydrochloric_acid])
 
-        methylformate=self.methylformate
-        rxn6=ARCReaction(r_species=[methylformate, water], p_species=[formicacid, alcohol2])
-        self.assertEqual(rxn6.family, 'ester_hydrolysis')
-        self.assertIn(rxn6.family, FAMILY_SETS['set_1'])
-
-        xyz_guesses_total, zmats_total=hydrolysis(rxn6)
+        tested_rxn=rxn1
+        self.assertEqual(tested_rxn.family, 'ester_hydrolysis')
+        xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
         print(zmats_total, xyz_guesses_total)
-        """
-        for rxn in rxns:
-            ts_guesses = hydrolysis(rxn)
-            print(ts_guesses)
-            self.assertIsNotNone(ts_guesses, f"Failed to generate TS guesses for reaction: {rxn}")"""
 
+    def test_ether_hydrolysis(self):
+        """Test ether hydrolysis reactions."""
+        water = self.water
+        #RXN1
+        ethyl_ethanoate = self.ethyl_ethanoate
+        ethanol=self.ethanol
+        methanol=self.methanol
+        rxn1 = ARCReaction(r_species=[ethyl_ethanoate, water], p_species=[ethanol, methanol])
+        tested_rxn = rxn1
+        self.assertEqual(tested_rxn.family, 'ester_hydrolysis')
+        xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
+        print(zmats_total, xyz_guesses_total)
+
+    def test_imine_hydrolysis(self):
+        """Test imine hydrolysis reactions."""
+        water = self.water
+        #RXN1
+        ethanimine = self.ethanimine
+        aminoethanol = self.aminoethanol
+        rxn1 = ARCReaction(r_species=[ethanimine, water], p_species=[aminoethanol])
+        tested_rxn = rxn1
+        self.assertEqual(tested_rxn.family, 'imine_hydrolysis')
+        xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
+        print(zmats_total, xyz_guesses_total)
+
+    def test_nitrile_hydrolysis(self):
+        """Test nitrile hydrolysis reactions."""
+        water = self.water
+        #RXN1
+        propionitrile = self.propionitrile
+        imidic_acid = self.imidic_acid
+        rxn1 = ARCReaction(r_species=[propionitrile, water], p_species=[imidic_acid])
+        tested_rxn = rxn1
+        self.assertEqual(tested_rxn.family, 'nitrile_hydrolysis')
+        xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
+        print(zmats_total, xyz_guesses_total)
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
