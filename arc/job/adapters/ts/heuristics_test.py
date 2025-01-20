@@ -31,9 +31,9 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
-from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz, compare_zmats
+from arc.species.converter import str_to_xyz, zmat_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies
-from arc.species.zmat import _compare_zmats, xyz_to_zmat
+from arc.species.zmat import _compare_zmats
 
 FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
                'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
@@ -279,6 +279,73 @@ H      -2.07048300   -1.55934600    0.02427800
 H      -2.60892800    0.86669600    0.01712500
 H      -0.76133400    2.52735700   -0.00582000
 H       1.59238000    1.77408300   -0.02140600""")
+
+        cls.ethyleneoxide=ARCSpecies(label='ether', smiles='C1CO1', xyz="""C      -0.73103000   -0.04646300    0.06435400
+C       0.72760500    0.10564700    0.01160200
+O       0.04187500   -0.72362100   -0.92868600
+H      -1.36764100    0.75367000   -0.30587200
+H      -1.17678900   -0.68478600    0.82356100
+H       1.15756500    1.01700400   -0.39719600
+H       1.34841600   -0.42145200    0.73223700""")
+
+        cls.ethyleneglycol=ARCSpecies(label='alcohol', smiles='C(CO)O', xyz="""O      -1.53938900    0.86956400    0.16926200
+C      -0.90062800   -0.37363000   -0.14226000
+C      -1.78595900   -1.46045700    0.43864000
+O      -1.91351700   -1.32061800    1.84404200
+H      -0.90863900    1.58212100    0.03809800
+H       0.09166600   -0.42853000    0.32293400
+H      -0.79439500   -0.50559300   -1.22812100
+H      -1.34671000   -2.44297700    0.24952500
+H      -2.76759800   -1.42346700   -0.05607100
+H      -2.15881000   -0.39901700    1.98917200""")
+
+        cls.dimethoxymethane=ARCSpecies(label='ether', smiles='COCCOC', xyz="""C       2.86354300   -0.39186500   -0.16580500
+O       1.53629100   -0.21080600   -0.63967100
+C       0.57563800    0.04473000    0.36761300
+C       0.04295100   -1.20189900    1.05653000
+O       1.01245800   -1.71246500    1.95696200
+C       0.58960800   -2.89329300    2.60811300
+H       2.96018200   -1.28710600    0.45456700
+H       3.19513600    0.47774300    0.41980400
+H       3.49843500   -0.48412400   -1.04813200
+H       0.97559300    0.73339500    1.12630300
+H      -0.26126000    0.53918100   -0.13467400
+H      -0.21083900   -1.95504500    0.29547900
+H      -0.88063300   -0.94446000    1.60201300
+H       0.39275700   -3.70337400    1.89139400
+H       1.39301600   -3.19995300    3.27851200
+H      -0.32193900   -2.72263100    3.19942500""")
+
+        cls.dimethoxyethane=ARCSpecies(label='ether', smiles='COCCO', xyz="""C       2.06422100   -0.24119900   -0.29429000
+O       1.07705600   -0.86921100   -1.08805200
+C       0.80021600   -0.17861200   -2.29901900
+C      -0.16014600   -1.04806700   -3.08935700
+O       0.41309700   -2.31095800   -3.38743100
+H       1.75052300    0.76578000    0.01487700
+H       2.20416500   -0.85608400    0.59524300
+H       3.02097800   -0.16078900   -0.82922000
+H       1.72920500   -0.03295100   -2.86965500
+H       0.35679200    0.80791600   -2.09244700
+H      -1.09406500   -1.15888200   -2.51985900
+H      -0.39710500   -0.56909300   -4.04239100
+H       0.74240600   -2.65205600   -2.54773100""")
+
+        cls.anisole=ARCSpecies(label='ether', smiles='COc1ccccc1', xyz="""C      -2.66128424   -0.19139626    0.38919360
+O      -1.55045303   -1.04919549    0.16206193
+C      -1.33636219   -2.03866324    1.08201654
+C      -0.30930260   -2.98326084    1.04916114
+C      -0.20675445   -3.94471546    2.05988838
+C      -1.12822951   -3.96623222    3.10555730
+C      -2.15481846   -3.02608405    3.14309449
+C      -2.25619208   -2.06701749    2.13385902
+H      -2.54664371    0.36368058    1.32612957
+H      -2.81619834    0.48665013   -0.45659387
+H      -3.55392044   -0.81769324    0.48096261
+H       0.42731990   -3.00036277    0.25337075
+H       0.59495124   -4.67823156    2.02977368
+H      -1.04600175   -4.71445745    3.88944474
+H      -2.87654841   -3.03708113    3.95524988
+H      -3.05877878   -1.33438277    2.16598004""")
 
         cls.carbonyl_chloride_zmat={'symbols': ('C', 'O', 'Cl', 'H'),
             'coords': (
@@ -2107,12 +2174,21 @@ H       1.59238000    1.77408300   -0.02140600""")
         """Test ether hydrolysis reactions."""
         water = self.water
         #RXN1
-        ethyl_ethanoate = self.ethyl_ethanoate
+        ethyl_methylether = self.ethyl_methylether
         ethanol=self.ethanol
         methanol=self.methanol
-        rxn1 = ARCReaction(r_species=[ethyl_ethanoate, water], p_species=[ethanol, methanol])
-        tested_rxn = rxn1
-        self.assertEqual(tested_rxn.family, 'ester_hydrolysis')
+        rxn1 = ARCReaction(r_species=[ethyl_methylether, water], p_species=[ethanol, methanol])
+        #RXN2
+        dimethylether = self.dimethoxymethane
+        dimethoxyethane=self.dimethoxyethane
+        rxn2= ARCReaction(r_species=[dimethylether, water], p_species=[methanol, dimethoxyethane])
+        #RXN3
+        anisole=self.anisole
+        phenol=self.phenol
+        rxn3=ARCReaction(r_species=[anisole, water], p_species=[phenol, methanol])
+
+        tested_rxn = rxn2
+        self.assertEqual(tested_rxn.family, 'ether_hydrolysis')
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
         for i in xyz_guesses_total:
             print(i['family'])
