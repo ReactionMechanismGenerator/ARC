@@ -2096,7 +2096,12 @@ H       1.59238000    1.77408300   -0.02140600""")
         tested_rxn=rxn1
         self.assertEqual(tested_rxn.family, 'ester_hydrolysis')
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        print(zmats_total, xyz_guesses_total)
+        for i in xyz_guesses_total:
+            print(i['family'])
+            for j in i['xyz_guesses']:
+                xyz_str = xyz_to_str(j)
+                print(xyz_str)
+                print()
 
     def test_ether_hydrolysis(self):
         """Test ether hydrolysis reactions."""
@@ -2109,7 +2114,12 @@ H       1.59238000    1.77408300   -0.02140600""")
         tested_rxn = rxn1
         self.assertEqual(tested_rxn.family, 'ester_hydrolysis')
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        print(zmats_total, xyz_guesses_total)
+        for i in xyz_guesses_total:
+            print(i['family'])
+            for j in i['xyz_guesses']:
+                xyz_str = xyz_to_str(j)
+                print(xyz_str)
+                print()
 
     def test_imine_hydrolysis(self):
         """Test imine hydrolysis reactions."""
@@ -2121,7 +2131,12 @@ H       1.59238000    1.77408300   -0.02140600""")
         tested_rxn = rxn1
         self.assertEqual(tested_rxn.family, 'imine_hydrolysis')
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        print(zmats_total, xyz_guesses_total)
+        for i in xyz_guesses_total:
+            print(i['family'])
+            for j in i['xyz_guesses']:
+                xyz_str = xyz_to_str(j)
+                print(xyz_str)
+                print()
 
     def test_nitrile_hydrolysis(self):
         """Test nitrile hydrolysis reactions."""
@@ -2133,7 +2148,12 @@ H       1.59238000    1.77408300   -0.02140600""")
         tested_rxn = rxn1
         self.assertEqual(tested_rxn.family, 'nitrile_hydrolysis')
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        print(zmats_total, xyz_guesses_total)
+        for i in xyz_guesses_total:
+            print(i['family'])
+            for j in i['xyz_guesses']:
+                xyz_str = xyz_to_str(j)
+                print(xyz_str)
+                print()
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
