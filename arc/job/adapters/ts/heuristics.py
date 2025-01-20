@@ -1183,9 +1183,9 @@ def generate_zmats(initial_xyz: dict,
                     r_value=r_value[i],
                     a_value=a_value[i],
                     d_value=d_value[i])
-            #zmat_guess= zmat_from_xyz(xyz_guess)
-            #duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmat_guesses)
-            if xyz_guess is not None and not colliding_atoms(xyz_guess):
+            zmat_guess= xyz_to_zmat(xyz_guess)
+            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmat_guesses)
+            if xyz_guess is not None and not colliding_atoms(xyz_guess)and not duplicate:
                 xyz_guesses.append(xyz_guess)
                 #zmat_guesses.append(zmat_guess)
             else:
