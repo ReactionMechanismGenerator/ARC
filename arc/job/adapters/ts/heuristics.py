@@ -1150,7 +1150,8 @@ def generate_zmats(initial_xyz: dict,
                    d_atoms: List[List[int]],
                    r_value: List[float],
                    a_value: List[float],
-                   d_values: List[List[float]],) \
+                   d_values: List[List[float]],
+                   zmats_total: List[dict]) \
                    -> Tuple[List[dict], List[dict]]:
         """
         Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
@@ -1164,13 +1165,14 @@ def generate_zmats(initial_xyz: dict,
             r_value (List[float]): Bond distances corresponding to each atom pair in `r_atoms`.
             a_value (List[float]): Bond angles corresponding to each atom triplet in `a_atoms`.
             d_values (List[List[float]]): Dihedral angle sets for each TS guess.
+            zmats_total (List[dict]): A list of existing Z-matrices to avoid duplicates.
 
         Returns:
             Tuple[List[dict], List[dict]]: A tuple containing:
                 - List[dict]: Unique Z-matrices for TS guesses without colliding atoms.
                 - List[dict]: Corresponding Cartesian coordinates for the TS guesses.
         """
-        zmat_guesses,xyz_guesses = [], []
+        xyz_guesses = []
         for d_value in d_values:
             xyz_guess = copy.deepcopy(initial_xyz)
             for i in range(3):
@@ -1184,14 +1186,14 @@ def generate_zmats(initial_xyz: dict,
                     a_value=a_value[i],
                     d_value=d_value[i])
             zmat_guess= xyz_to_zmat(xyz_guess)
-            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmat_guesses)
+            duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
             if xyz_guess is not None and not colliding_atoms(xyz_guess)and not duplicate:
                 xyz_guesses.append(xyz_guess)
-                #zmat_guesses.append(zmat_guess)
+                zmats_total.append(zmat_guess)
             else:
                 print(f"Colliding atoms or existing guess: {xyz_guess}")
 
-        return xyz_guesses,zmat_guesses
+        return xyz_guesses, zmats_total
 
 def hydrolysis(arc_reaction: 'ARCReaction'):
     """
