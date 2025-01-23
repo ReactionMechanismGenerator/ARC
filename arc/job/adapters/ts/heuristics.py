@@ -1225,6 +1225,42 @@ def find_matching_dihedral(zmat: dict,
                 if a in indices and b in indices and f in indices:
                     return indices
     return None
+
+
+def push_up_dihedral(zmat: Dict,
+                     indices: Tuple[int, int, int, int],
+                     factor: float) -> None:
+    """
+    Adjust the value of a dihedral angle in the Z-matrix based on its current value.
+
+    - If the angle is approximately 0° (cis conformation), multiply by 1.3.
+    - If the angle is approximately ±180° (trans conformation), multiply by 0.7.
+
+    Args:
+        zmat (Dict): The initial Z-matrix.
+        indices (Tuple[int, int, int, int]): The indices defining the dihedral angle.
+
+    Returns:
+        None
+    """
+    param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
+    dihedral_value = zmat['vars'].get(param, 0)
+    print(f"Current dihedral value for {param}: {dihedral_value}")
+    if abs(dihedral_value) < 10:
+        factor +=1
+    elif 170 <= abs(dihedral_value) <= 180 or 180 <= dihedral_value <= 190:
+        factor = 1-factor
+    else:
+        print(f"No adjustment needed for {param} (not close to 0 or ±180 degrees)")
+        return
+    if abs(dihedral_value) < 1e-3:  # Handle near-zero values to avoid multiplication by zero
+        new_value = (dihedral_value + 360) * factor - 360
+    else:
+        new_value = dihedral_value * factor
+    new_value = (new_value + 180) % 360 - 180
+    zmat['vars'][param] = new_value
+
+    print(f"Updated dihedral value for {param}: {zmat['vars'][param]}")
 def hydrolysis(arc_reaction: 'ARCReaction'):
     """
     Generate TS guesses for reactions of the ARC "hydrolysis" families.
