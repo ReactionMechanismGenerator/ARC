@@ -1195,6 +1195,36 @@ def generate_zmats(initial_xyz: dict,
 
         return xyz_guesses, zmats_total
 
+def find_matching_dihedral(zmat: dict,
+                           a: int,
+                           b: int,
+                           f: int,
+                           d: int) -> Optional[List[int]]:
+    """
+    Find the dihedral angle in the Z-matrix that matches the given atom indices.
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        f (int): The third atom index (one of the possible matches).
+        d (int): The fourth atom index (one of the possible matches).
+
+    Returns:
+        Optional[List[int]]: A list of matching indices if found, otherwise None.
+    """
+    for key, value in zmat['vars'].items():
+        if key.startswith('D_') or key.startswith('DX_'):
+            if '|' in key:
+                continue
+            indices = [int(idx) for idx in key.split('_')[1:]]
+            if d is not None:
+                if a in indices and b in indices and (f in indices or d in indices):
+                    return indices
+            else:
+                if a in indices and b in indices and f in indices:
+                    return indices
+    return None
 def hydrolysis(arc_reaction: 'ARCReaction'):
     """
     Generate TS guesses for reactions of the ARC "hydrolysis" families.
