@@ -1187,7 +1187,7 @@ def generate_zmats(initial_xyz: dict,
                     d_value=d_value[i])
             zmat_guess= xyz_to_zmat(xyz_guess)
             duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
-            if xyz_guess is not None and not colliding_atoms(xyz_guess)and not duplicate:
+            if xyz_guess is not None and not colliding_atoms(xyz_guess, threshold=0.8)and not duplicate:
                 xyz_guesses.append(xyz_guess)
                 zmats_total.append(zmat_guess)
             else:
