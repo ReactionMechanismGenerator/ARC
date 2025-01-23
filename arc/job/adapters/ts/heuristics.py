@@ -1101,34 +1101,31 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies, atom_index: int, exclud
         spc (ARCSpecies): The species containing the atom and its neighbors.
         atom_index (int): The index of the atom whose neighbors are being evaluated.
         exclude_index (int): The index of the neighbor to exclude from consideration.
+        two_neighbors (bool): Whether the specie has two neighbors or not.
 
     Returns:
         List[int]: A list of the indices of the top two neighbors in the global `spc.atoms` list,
-                   sorted based on the rules above.
+                   sorted based on the rules above. If the species has only one neighbor, the list will contain only one index.
 
     Raises:
         ValueError: If the atom has no neighbors or if all neighbors are excluded.
     """
     atom = spc.atoms[atom_index]
     neighbors = list(atom.edges.keys())
-
     # Exclude the specified neighbor
     neighbors = [neighbor for neighbor in neighbors if spc.atoms.index(neighbor) != exclude_index]
 
     if not neighbors:
         raise ValueError(f"Atom at index {atom_index} has no valid neighbors after excluding index {exclude_index}.")
-
     # Load electronegativity data
     yaml_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'data', 'electronegativity.yml')
     electronegativity = load_electronegativity(yaml_file_path)
-
     effective_electronegativities = []
     for neighbor in neighbors:
         electro_value = electronegativity[neighbor.symbol]
         bond_order = atom.edges[neighbor].order
         effective_electronegativity = electro_value * bond_order
         effective_electronegativities.append((effective_electronegativity, neighbor))
-
     effective_electronegativities.sort(
         key=lambda x: (
             x[0],
@@ -1136,7 +1133,6 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies, atom_index: int, exclud
         ),
         reverse=True
     )
-
     sorted_neighbors = [spc.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
     if two_neighbors:
         return sorted_neighbors[:2]
@@ -1157,7 +1153,7 @@ def generate_zmats(initial_xyz: dict,
         Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
         Args:
-            initial_zmat (dict): The initial Z-matrix of the reactant.
+            initial_xyz (dict): The initial coordinates of the reactant.
             water ('ARCSpecies'): The water molecule involved in the reaction.
             r_atoms (List[List[int]]): Atom pairs for defining bond distances.
             a_atoms (List[List[int]]): Atom triplets for defining bond angles.
