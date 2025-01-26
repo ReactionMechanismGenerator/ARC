@@ -1335,12 +1335,14 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
 
         initial_xyz = arc_reactant.get_xyz()
         initial_zmat = zmat_from_xyz(initial_xyz)
-        map_dict = initial_zmat.get('map', {})
-        a = product_dict['label_map']['*1']
-        b = product_dict['label_map']['*2']
-        real_a = key_by_val(map_dict, a)
-        real_b = key_by_val(map_dict, b)
-        O = len(arc_reactant.mol.atoms)
+                map_dict = initial_zmat.get('map', {})
+                a = product_dict['label_map']['*1']
+                b = product_dict['label_map']['*2']
+                real_a = key_by_val(map_dict, a)
+                real_b = key_by_val(map_dict, b)
+                same_sign_reg=a<b
+                same_sign_real=real_a<real_b
+                O = len(arc_reactant.mol.atoms)
         H1 = O + 1
         H2 = H1 + 1
         r_value = [1.85, 1.21, 0.97]
@@ -1358,11 +1360,21 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
             a_value = [77.4, 70, 111]
             d_atoms = [[f, d, a], [b, a, O], [a, H1, O]]
             if arc_reaction.family == 'ether_hydrolysis':
-                a_value [0]=65
-                d_values = [[98.25, -0.72, 103], [-98.25, -0.72, 103], [98.25, -0.72, -103], [-98.25, -0.72, -103]]
-            elif arc_reaction.family == 'imine_hydrolysis':
+                        if int(same_sign_real)+int(same_sign_reg)==1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.5)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.5)
+                    elif arc_reaction.family == 'imine_hydrolysis':
+                        if int(same_sign_real) + int(same_sign_reg) == 1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
                 d_values = [[108, 12, 113], [-108, 12, 113], [108, 12, -113], [-108, 12, -113]]
-            else:
+                    else:
+                        if int(same_sign_real) + int(same_sign_reg) == 1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
                 d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
             xyz_guesses, zmat_guesses = generate_zmats(
                 initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values
@@ -1370,7 +1382,10 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
 
 
         elif product_dict['family'] in FAMILY_SETS['set_2']:
-            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.1)
+                    if int(same_sign_real) + int(same_sign_reg) == 1:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.1)
+                    else:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.1)
             initial_xyz = zmat_to_xyz(initial_zmat)
             two_neighbors = product_dict['family'] in FAMILY_SETS['set_2']
             f= get_neighbors_by_electronegativity(arc_reactant.mol, a, b, two_neighbors)[0]
