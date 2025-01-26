@@ -1195,20 +1195,24 @@ def find_matching_dihedral(zmat: dict,
                            a: int,
                            b: int,
                            f: int,
-                           d: int) -> Optional[List[int]]:
+                           d: int,
+                           counter: int) -> Optional[List[List[int]]]:
     """
-    Find the dihedral angle in the Z-matrix that matches the given atom indices.
+        Find dihedral angles in the Z-matrix that match the given atom indices, with a limit on the number of matches.
 
-    Args:
-        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
-        a (int): The first atom index to match.
-        b (int): The second atom index to match.
-        f (int): The third atom index (one of the possible matches).
-        d (int): The fourth atom index (one of the possible matches).
+        Args:
+            zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+            a (int): The first atom index to match.
+            b (int): The second atom index to match.
+            f (int): The third atom index (one of the possible matches).
+            d (int): The fourth atom index (one of the possible matches).
+            counter (int): The maximum number of dihedral matches to return.
 
-    Returns:
-        Optional[List[int]]: A list of matching indices if found, otherwise None.
-    """
+        Returns:
+            Optional[List[List[int]]]: A list of matching dihedral indices up to the specified limit, or None if no matches are found.
+        """
+    indices_list = []
+    count=0
     for key, value in zmat['vars'].items():
         if key.startswith('D_') or key.startswith('DX_'):
             if '|' in key:
@@ -1216,11 +1220,19 @@ def find_matching_dihedral(zmat: dict,
             indices = [int(idx) for idx in key.split('_')[1:]]
             if d is not None:
                 if a in indices and b in indices and (f in indices or d in indices):
-                    return indices
+                    if count < counter:
+                        indices_list.append(indices)
+                        count += 1
+                    else:
+                        break
             else:
                 if a in indices and b in indices and f in indices:
-                    return indices
-    return None
+                    if count < counter:
+                        indices_list.append(indices)
+                        count += 1
+                    else:
+                        break
+    return indices_list if indices_list else None
 
 def count_all_possible_dihedrals(zmat: dict, a: int, b: int, f: int, d: Optional[int] = None) -> int:
     """
