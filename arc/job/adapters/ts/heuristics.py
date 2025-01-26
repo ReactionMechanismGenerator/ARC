@@ -1360,6 +1360,10 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
                     if counter > total_dihedrals:
                         print("All possible dihedral adjustments have been tried.")
                         return xyz_guesses_total, zmats_total
+                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f, real_d,counter)
+                    for indices in indices_list:
+                        if indices is not None:
+                            push_up_dihedral(zmat=initial_zmat, indices=indices, factor=0.3)
             if arc_reaction.family == 'ether_hydrolysis':
                         if int(same_sign_real)+int(same_sign_reg)==1:
                             stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.5)
@@ -1383,9 +1387,13 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
 
 
         elif product_dict['family'] in FAMILY_SETS['set_2']:
+                    total_dihedrals = count_all_possible_dihedrals(initial_zmat, real_a, real_b, real_f, None)
                     if counter > total_dihedrals:
                         print("All possible dihedral adjustments have been tried.")
                         return xyz_guesses_total, zmats_total
+                    indices = find_matching_dihedral(initial_zmat, real_a, real_b, real_f,None)
+                    if indices is not None:
+                        push_up_dihedral(zmat=initial_zmat, indices=indices, factor=0.3)
                     if int(same_sign_real) + int(same_sign_reg) == 1:
                         stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.1)
                     else:
