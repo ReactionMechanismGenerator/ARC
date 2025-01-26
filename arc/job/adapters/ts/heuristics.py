@@ -1222,6 +1222,35 @@ def find_matching_dihedral(zmat: dict,
                     return indices
     return None
 
+def count_all_possible_dihedrals(zmat: dict, a: int, b: int, f: int, d: Optional[int] = None) -> int:
+    """
+    Count all possible dihedrals in the Z-matrix that match the given atom indices.
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        f (int): The third atom index (one of the possible matches).
+        d (Optional[int]): The fourth atom index (optional for matching).
+
+    Returns:
+        int: The total count of matching dihedrals.
+    """
+    count = 0
+    for key, value in zmat['vars'].items():
+        if key.startswith('D_') or key.startswith('DX_'):
+            if '|' in key:
+                continue  # Skip invalid keys with pipe character
+
+            indices = [int(idx) for idx in key.split('_')[1:]]
+            if d is not None:
+                if a in indices and b in indices and (f in indices or d in indices):
+                    count += 1
+            else:
+                if a in indices and b in indices and f in indices:
+                    count += 1
+
+    return count
 
 def push_up_dihedral(zmat: Dict,
                      indices: Tuple[int, int, int, int],
