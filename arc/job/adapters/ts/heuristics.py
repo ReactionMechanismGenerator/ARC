@@ -1315,16 +1315,23 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
         consider_rmg_families=False,
         consider_arc_families=True
     )
-    for product_dict in product_dicts:
-        arc_reactants, _ = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
-        arc_reactant, water = None, None
-        for spc in arc_reactants:
-            if not is_water(spc):
-                arc_reactant = spc
-            else:
-                water = spc
-        if not arc_reactant or not water:
-            raise ValueError("Reactants must include a non-water molecule and water.")
+    x = False
+    if any('ester_hydrolysis' in d.get('family', []) for d in product_dicts) and \
+            any('ether_hydrolysis' in d.get('family', []) for d in product_dicts):
+        x = True
+    counter=0
+    while not xyz_guesses_total or (x and not any(item['family'] == 'ester_hydrolysis' for item in xyz_guesses_total)):
+        counter+=1
+        for product_dict in product_dicts:
+                arc_reactants, _ = arc_reaction.get_reactants_and_products(arc=True, return_copies=False)
+                arc_reactant, water = None, None
+                for spc in arc_reactants:
+                    if not is_water(spc):
+                        arc_reactant = spc
+                    else:
+                        water = spc
+                if not arc_reactant or not water:
+                    raise ValueError("Reactants must include a non-water molecule and water.")
 
         initial_xyz = arc_reactant.get_xyz()
         initial_zmat = zmat_from_xyz(initial_xyz)
