@@ -147,8 +147,8 @@ def process_arc_project(thermo_adapter: str,
                                       path=libraries_path,
                                       name=project,
                                       lib_long_desc=lib_long_desc,
-                                      T_min=T_min,
-                                      T_max=T_max,
+                                      T_min=T_min[0],
+                                      T_max=T_max[0],
                                       )
 
     # 2. Thermo
@@ -274,7 +274,8 @@ def compare_rates(rxns_for_kinetics_lib: list,
                              } for rxn in rxns_for_kinetics_lib],
                    )
     command = f'python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}'
-    execute_command(command=command, no_fail=True)
+    o, e = execute_command(command=command, no_fail=True)
+    print(f'output: {o}\nerror: {e}')
     reactions_list_w_rmg_kinetics = read_yaml_file(path=reactions_kinetics_path)
     for original_rxn, rxn_w_rmg_kinetics in zip(rxns_for_kinetics_lib, reactions_list_w_rmg_kinetics):
         original_rxn.rmg_kinetics = original_rxn.rmg_kinetics or list()

@@ -110,6 +110,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
             kinetics.change_rate(deg_rxn.degeneracy)
             kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius
             deg_rxn.kinetics = kinetics
+            print(f'family: {family.label}, kinetics: {kinetics}')
             deg_rxn.comment = f'Family: {deg_rxn.family}'
             deg_rxn.reactants = reaction.reactants
             deg_rxn.products = reaction.products
@@ -166,11 +167,12 @@ def get_kinetics_from_reactions(reactions: List[Reaction]) -> List[dict]:
     """
     kinetics_list = list()
     for rxn in reactions:
+        print(f'rxn: {rxn}, kinetics: {rxn.kinetics}, comment: {rxn.comment}')
         kinetics_list.append({
             'kinetics': rxn.kinetics.__repr__(),
             'comment': rxn.comment,
-            'A': rxn.kinetics.A.value_si if hasattr(rxn.kinetics, 'A') else None,
-            'n': rxn.kinetics.n.value_si if hasattr(rxn.kinetics, 'n') else None,
+            'A': rxn.kinetics.A.value if hasattr(rxn.kinetics, 'A') else None,
+            'n': rxn.kinetics.n.value if hasattr(rxn.kinetics, 'n') else None,
             'Ea': rxn.kinetics.Ea.value_si * 0.001 if hasattr(rxn.kinetics, 'Ea') else None,  # kJ/mol
             'T_min': rxn.kinetics.Tmin.value_si if hasattr(rxn.kinetics, 'Tmin') and rxn.kinetics.Tmin is not None else None,
             'T_max': rxn.kinetics.Tmax.value_si if hasattr(rxn.kinetics, 'Tmax') and rxn.kinetics.Tmax is not None else None,
