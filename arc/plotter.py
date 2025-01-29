@@ -57,6 +57,9 @@ from arc.species.species import ARCSpecies
 
 
 R = 8.31446261815324  # J/(mol*K)
+PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
+                '(cm^3/(mol*s))': r' (cm$^3$/(mol s))',
+                '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
 
 
 logger = get_logger()
@@ -554,7 +557,7 @@ def draw_kinetics_plots(rxn_list: list,
                     temps = np.linspace(kinetics['T_min'].value_si, kinetics['T_max'].value_si, T_count)
                 rmg_rxns.append({'label': kinetics['comment'],
                                  'T': temps,
-                                 'k': [calculate_arrhenius_rate_coefficient(A=kinetics['A'] * conversion_factor,
+                                 'k': [calculate_arrhenius_rate_coefficient(A=kinetics['A'],# * conversion_factor,
                                                                             n=kinetics['n'],
                                                                             Ea=kinetics['Ea'],
                                                                             T=T,
@@ -608,7 +611,7 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
             plotted_rmg_rxns.append(i)
     plt.xlabel(r'1000 / T (K$^-$$^1$)')
-    plt.ylabel(f'Rate coefficient{units}')
+    plt.ylabel(f'Rate coefficient{PRETTY_UNITS[units]}')
     plt.legend()
     plt.tight_layout()
     if pp is not None:
@@ -893,13 +896,14 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
-    kinetics = Arrhenius(A=({rxn.kinetics['A']}, '{units}'), n={rxn.kinetics['n']}, Ea=({rxn.kinetics['Ea']}, 'kJ/mol'),
+    kinetics = Arrhenius(A=({rxn.kinetics['A']:.2e}, '{units}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea']:.2f}, 'kJ/mol'),
                          T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
     longDesc = 
 \"\"\"
 {long_desc}
 \"\"\",
 )
+
 """
         reactions_txt += rxn_txt
 
@@ -1670,9 +1674,9 @@ def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> Tuple[str, float]
     units = ''
     conversion_factors = {1: 1, 2: 1e6, 3: 1e12}
     if reaction_order == 1:
-        units = r' (s$^-1$)'
+        units = '(s^-1)'
     elif reaction_order == 2:
-        units = r' (cm$^3$/(mol s))'
+        units = '(cm^3/(mol*s))'
     elif reaction_order == 3:
-        units = r' (cm$^6$/(mol$^2$ s))'
+        units = '(cm^6/(mol^2*s))'
     return units, conversion_factors[reaction_order]
