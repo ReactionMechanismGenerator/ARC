@@ -1403,9 +1403,10 @@ def hydrolysis(arc_reaction: 'ARCReaction'):
                     if (counter > total_dihedrals) and (total_dihedrals!=0):
                         print("All possible dihedral adjustments have been tried.")
                         return xyz_guesses_total, zmats_total
-                    indices = find_matching_dihedral(initial_zmat, real_a, real_b, real_f,None, counter)
-                    if indices is not None:
-                        push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
+                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f,None, counter)
+                    for indices in indices_list:
+                        if indices is not None:
+                            push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
                     if int(same_sign_real) + int(same_sign_reg) == 1:
                         stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.1)
                     else:
