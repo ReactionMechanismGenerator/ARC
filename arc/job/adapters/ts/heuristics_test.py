@@ -26,6 +26,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_new_map_based_on_zmat_1,
                                             get_new_zmat_2_map,
                                             stretch_zmat_bond,
+                                            is_water,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz
@@ -121,6 +122,20 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                                      H      -1.02943316   -0.30449156    1.00193709
                                                                      H      -0.60052507   -0.86954495   -0.63086438
                                                                      H       0.30391344    2.59629139    0.17435159""")
+
+        cls.water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00032700    0.39565700    0.00000000
+        H      -0.75690800   -0.19845300    0.00000000
+        H       0.75723500   -0.19720400    0.00000000""")
+        cls.ethanol = ARCSpecies(label='alcohol', smiles='OCC', xyz="""O       1.19051468    0.74721872    0.55745278
+        C       0.42396685   -0.33421819    0.04897215
+        C      -0.98542075    0.14578863   -0.22414249
+        H       2.08706846    0.40878057    0.72232827
+        H       0.41841326   -1.14061638    0.78839856
+        H       0.89171403   -0.69551584   -0.87175392
+        H      -0.97955985    0.96896352   -0.94625607
+        H      -1.44657152    0.52976777    0.69182626
+        H      -1.60463449   -0.66494303   -0.61804700""")
+
         cls.zmat_1 = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
                       'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
                                  ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4_0', 'A_4_0_1', 'D_4_0_1_3'),
@@ -1732,6 +1747,16 @@ class TestHeuristicsAdapter(unittest.TestCase):
         """
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics_1'), ignore_errors=True)
+
+    def test_is_water(self):
+        """Test the is_water() function."""
+        water= self.water
+        self.assertTrue(is_water(water))
+        methane= 'C'
+        methane_species = ARCSpecies(label='methane', smiles=methane)
+        self.assertFalse(is_water(methane_species))
+        ethanol= self.ethanol
+        self.assertFalse(is_water(ethanol))
 
 
 if __name__ == '__main__':
