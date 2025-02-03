@@ -929,4 +929,23 @@ def h_abstraction(reaction: 'ARCReaction',
     return xyz_guesses
 
 
+def is_water(spc: ARCSpecies) -> bool:
+    """
+    Determine whether the species is water.
+
+    Args:
+        spc (ARCSpecies): The species to check.
+
+    Returns:
+        bool: Whether the species is water.
+    """
+    if len(spc.mol.atoms)!=3:
+        return (False)
+    O_counter, H_counter = 0, 0
+    for atom in spc.mol.atoms:
+        if atom.is_oxygen():
+            O_counter+=1
+        if atom.is_hydrogen():
+            H_counter+=1
+    return (O_counter==1 and H_counter==2)
 register_job_adapter('heuristics', HeuristicsAdapter)
