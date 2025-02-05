@@ -1758,6 +1758,48 @@ class TestHeuristicsAdapter(unittest.TestCase):
         ethanol= self.ethanol
         self.assertFalse(is_water(ethanol))
 
+    def test_get_neighbors_by_electronegativity(self):
+        """Test the get_neighbors_by_electronegativity() function."""
+        global ELECTRONEGATIVITY
+        ELECTRONEGATIVITY = {'H': 2.2, 'C': 2.55, 'N': 3.04, 'O': 3.44, 'F': 3.98, 'Cl': 3.16, 'Br': 2.96, 'I': 2.66,
+                             'S': 2.58, 'P': 2.19, 'Si': 1.9, 'B': 2.04}
+
+        # Test Case 1: Atom with no neighbors
+        spc = ARCSpecies(label='H', smiles='[H]')
+        with self.assertRaises(ValueError) as cm:
+            get_neighbors_by_electronegativity(spc, 0, 0, False)
+        self.assertEqual(str(cm.exception), "Atom at index 0 has no valid neighbors.")
+
+        # Test Case 2: Atom with two neighbors having the same effective electronegativity
+        spc = ARCSpecies(label='carbonyl',smiles='C=O')
+        atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
+        exclude=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
+        neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())  # First hydrogen
+        neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen()  and i != neighbor1)  # Second hydrogen
+        self.assertEqual(
+            get_neighbors_by_electronegativity(spc, atom_index, exclude), [neighbor1, neighbor2]
+        )
+
+        # Test Case 3: Atom with multiple neighbors of different effective electronegativities
+        spc = ARCSpecies(label='NH3C(=O)H', smiles='NC(=O)')
+        atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
+        exclude= next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
+        highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() )
+        second_highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_nitrogen())
+        self.assertEqual(
+            get_neighbors_by_electronegativity(spc, atom_index,exclude),[highest, second_highest]
+        )
+
+        # Test Case 4: Atom with neighbors that have their own neighbors (tie-breaking test)
+        spc = ARCSpecies(label='ClOCH2OH', smiles='ClOCO')
+        atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
+        first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())  # First oxygen
+        second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)  # Second oxygen
+        self.assertEqual(
+            get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen]
+        )
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
