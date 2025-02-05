@@ -17,6 +17,9 @@ Todo:
 
 import datetime
 import itertools
+import copy
+import os
+import yaml
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -948,4 +951,80 @@ def is_water(spc: ARCSpecies) -> bool:
         if atom.is_hydrogen():
             H_counter+=1
     return (O_counter==1 and H_counter==2)
+
+def load_electronegativity(yaml_path: str) -> Dict[str, float]:
+    """
+    Load electronegativity values from a YAML file.
+
+    Args:
+        yaml_path (str): The path to the YAML file.
+
+    Returns:
+        Dict[str, float]: A dictionary of electronegativity values.
+    """
+    with open(yaml_path, 'r') as f:
+        electronegativity = yaml.safe_load(f)
+    return electronegativity
+
+def get_neighbors_by_electronegativity( spc: ARCSpecies,
+                                        atom_index: int,
+                                        exclude_index: int,
+                                        two_neighbors: bool = True
+                                    ) -> List[int]:
+    """
+    Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
+    excluding a specified neighbor.
+
+    Effective electronegativity is calculated as:
+        Effective Electronegativity = Electronegativity of the neighbor * Bond order.
+
+    Sorting rules:
+    1. Neighbors are sorted in descending order of their effective electronegativity.
+    2. If two neighbors have the same effective electronegativity, the tie is broken by comparing the
+       sum of the effective electronegativities of their own bonded neighbors.
+       The neighbor with the higher sum will be ranked first.
+
+    Args:
+        spc (ARCSpecies): The species containing the atom and its neighbors.
+        atom_index (int): The index of the atom whose neighbors are being evaluated.
+        exclude_index (int): The index of the neighbor to exclude from consideration.
+        two_neighbors (bool): Whether the specie has two neighbors or not.
+
+    Returns:
+        List[int]: A list of the indices of the top two neighbors in the global `spc.atoms` list,
+                   sorted based on the rules above. If the species has only one neighbor, the list will contain only one index.
+
+    Raises:
+        ValueError: If the atom has no neighbors or if all neighbors are excluded.
+    """
+    atom = spc.mol.atoms[atom_index]
+    neighbors = list(atom.edges.keys())
+    neighbors = [neighbor for neighbor in neighbors if spc.mol.atoms.index(neighbor) != exclude_index]
+    if not neighbors:
+        raise ValueError(f"Atom at index {atom_index} has no valid neighbors.")
+    yaml_file_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),
+        'data',
+        'electronegativity.yml'
+    )
+    electronegativity = load_electronegativity(yaml_file_path)
+    effective_electronegativities = []
+    for neighbor in neighbors:
+        electro_value = electronegativity[neighbor.symbol]
+        bond_order = atom.edges[neighbor].order
+        effective_electronegativity = electro_value * bond_order
+        effective_electronegativities.append((effective_electronegativity, neighbor))
+    effective_electronegativities.sort(
+        key=lambda neighbor_data: (
+            neighbor_data[0],
+            sum(electronegativity[n.symbol] * neighbor_data[1].edges[n].order for n in neighbor_data[1].edges.keys())
+        ),
+        reverse=True
+    )
+    sorted_neighbors = [spc.mol.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
+    if two_neighbors:
+        return sorted_neighbors[:2]
+    else:
+        return sorted_neighbors[0]
+
 register_job_adapter('heuristics', HeuristicsAdapter)
