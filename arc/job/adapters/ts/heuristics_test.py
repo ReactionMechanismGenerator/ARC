@@ -27,6 +27,10 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_new_zmat_2_map,
                                             stretch_zmat_bond,
                                             is_water,
+                                            get_neighbors_by_electronegativity,
+                                            get_matching_dihedrals,
+                                            find_matching_dihedral,
+                                            count_all_possible_dihedrals,
                                             )
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz
@@ -1799,6 +1803,47 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(
             get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen]
         )
+
+    def test_dihedral_functions(self):
+        """
+        Test get_matching_dihedrals, find_matching_dihedral, and count_all_possible_dihedrals.
+        """
+        zmat = {
+            'vars': {
+                'D_1_2_3_4': 60,
+                'D_1_2_5_6': 120,
+                'D_2_3_4_5': 180,
+                'DX_1_2_4_7': 90,
+                'DX_3_4_5_6': -60,
+                'D_2_3_5_6': 150
+            }
+        }
+        matches_with_d = get_matching_dihedrals(zmat, a=1, b=2, f=3, d=4)
+        expected_matches_with_d = [[1, 2, 3, 4], [1, 2, 4, 7]]
+        self.assertEqual(matches_with_d, expected_matches_with_d,
+                         "get_matching_dihedrals with 'd' provided failed.")
+        matches_without_d = get_matching_dihedrals(zmat, a=1, b=2, f=3, d=None)
+        expected_matches_without_d = [[1, 2, 3, 4]]
+        self.assertEqual(matches_without_d, expected_matches_without_d,
+                         "get_matching_dihedrals without 'd' provided failed.")
+        limited_matches = find_matching_dihedral(zmat, a=1, b=2, f=3, d=4, counter=1)
+        expected_limited_matches = [[1, 2, 3, 4]]
+        self.assertEqual(limited_matches, expected_limited_matches,
+                         "find_matching_dihedral with counter limit failed.")
+        no_matches = find_matching_dihedral(zmat, a=9, b=10, f=11, d=12, counter=2)
+        self.assertIsNone(no_matches, "find_matching_dihedral should return None for no matches.")
+        count_with_d = count_all_possible_dihedrals(zmat, a=2, b=3, f=5, d=4)
+        expected_count_with_d = 3
+        self.assertEqual(count_with_d, expected_count_with_d,
+                         "count_all_possible_dihedrals with 'd' provided failed.")
+        count_without_d = count_all_possible_dihedrals(zmat, a=2, b=3, f=5, d=None)
+        expected_count_without_d = 2
+        self.assertEqual(count_without_d, expected_count_without_d,
+                         "count_all_possible_dihedrals without 'd' provided failed.")
+        count_no_matches = count_all_possible_dihedrals(zmat, a=8, b=9, f=10, d=None)
+        expected_count_no_matches = 0
+        self.assertEqual(count_no_matches, expected_count_no_matches,
+                         "count_all_possible_dihedrals should return 0 for no matches.")
 
 
 if __name__ == '__main__':
