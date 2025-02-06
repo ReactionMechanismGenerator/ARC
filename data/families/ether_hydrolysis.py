@@ -30,12 +30,9 @@ entry(
     label = "ether",
     group = 
 """
-1 *1  C        u0  {2,S} {4,S} {5,S} {6,S} 
+1 *1  C        u0  {2,S} 
 2 *2  O        u0  {1,S} {3,S}
 3     C        u0  {2,S}
-4     R        u0  {1,S}
-5     R        u0  {1,S}
-6     R        u0  {1,S} 
 """,
     kinetics = None,
 )
