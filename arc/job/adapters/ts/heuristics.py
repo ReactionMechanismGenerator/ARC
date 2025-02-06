@@ -1027,4 +1027,119 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies,
     else:
         return sorted_neighbors[0]
 
+def get_matching_dihedrals(zmat: dict,
+                           a: int,
+                           b: int,
+                           f: int,
+                           d: Optional[int]) -> List[List[int]]:
+    """
+    Retrieve all dihedral angles in the Z-matrix that match the given atom indices.
+    This function scans the Z-matrix for dihedral parameters (keys starting with 'D_' or 'DX_')
+    and collects those whose indices match the specified atoms. The matching criteria are:
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        f (int): The third atom index to match.
+        d (Optional[int]): The fourth atom index to match (optional).
+
+    Returns:
+        List[List[int]]: A list of lists, where each sublist contains the indices of a matching dihedral.
+                         Returns an empty list if no matches are found.
+    """
+    matches = []
+    for key in zmat['vars']:
+        if key.startswith('D_') or key.startswith('DX_'):
+            indices = [int(idx) for idx in key.split('_')[1:]]
+            if d is not None:
+                if a in indices and b in indices and (f in indices or d in indices):
+                    matches.append(indices)
+            else:
+                if a in indices and b in indices and f in indices:
+                    matches.append(indices)
+    return matches
+
+def find_matching_dihedral(zmat: dict,
+                           a: int,
+                           b: int,
+                           f: int,
+                           d: int,
+                           counter: int) -> Optional[List[List[int]]]:
+    """
+    Find dihedral angles in the Z-matrix that match the given atom indices,
+    with a limit on the number of matches returned.
+    This function uses `get_matching_dihedrals` to identify all possible matching dihedrals,
+    but only returns up to the specified number (`counter`) of matches. If no matches are found, it returns None.
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        f (int): The third atom index (one of the possible matches).
+        d (int): The fourth atom index (one of the possible matches).
+        counter (int): The maximum number of dihedral matches to return.
+
+    Returns:
+        Optional[List[List[int]]]: A list of matching dihedral indices up to the specified limit,
+                                   or None if no matches are found.
+    """
+    matches = get_matching_dihedrals(zmat, a, b, f, d)
+    return matches[:counter] if matches else None
+
+def count_all_possible_dihedrals(zmat: dict,
+                                 a: int,
+                                 b: int,
+                                 f: int,
+                                 d: Optional[int]) -> int:
+    """
+    Count all possible dihedral angles in the Z-matrix that match the given atom indices.
+
+    This function uses `get_matching_dihedrals` to identify all possible matching dihedrals
+    and returns the total count of these matches.
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        f (int): The third atom index (one of the possible matches).
+        d (Optional[int]): The fourth atom index (optional for matching).
+
+    Returns:
+        int: The total number of matching dihedral angles found in the Z-matrix.
+    """
+    return len(get_matching_dihedrals(zmat, a, b, f, d))
+
+
+def push_up_dihedral(zmat: Dict,
+                     indices: Tuple[int, int, int, int],
+                     base_adjustment_factor: float) -> None:
+    """
+    Adjust the value of a dihedral angle in the Z-matrix based on its current value.
+
+    Args:
+        zmat (Dict): The initial Z-matrix.
+        indices (Tuple[int, int, int, int]): The indices defining the dihedral angle.
+        base_adjustment_factor (float): Base factor for adjustment.
+
+    Returns:
+        None
+    """
+    param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
+    dihedral_value = zmat['vars'].get(param, 0)
+    print(f"Current dihedral value for {param}: {dihedral_value}")
+    if abs(dihedral_value) < 10:
+        adjustment_factor = base_adjustment_factor + 1
+    elif 170 <= abs(dihedral_value) <= 190:
+        adjustment_factor = 1-base_adjustment_factor
+    else:
+        print(f"No adjustment needed for {param} (not close to 0 or ±180 degrees)")
+        return
+    # apply adjustment and normalize the angle
+    new_value = (dihedral_value + 360) * adjustment_factor - 360 if abs(dihedral_value) < 1e-3 else dihedral_value * adjustment_factor
+    new_value = (new_value + 180) % 360 - 180
+    zmat['vars'][param] = new_value
+    print(f"Updated dihedral value for {param}: {zmat['vars'][param]}")
+
+
 register_job_adapter('heuristics', HeuristicsAdapter)
