@@ -28,25 +28,27 @@ from rmgpy.molecule.molecule import Molecule
 from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
-from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
-from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
+from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz , add_atom_to_xyz_using_internal_coords
 from arc.mapping.engine import map_two_species
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
-from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
+from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param, xyz_to_zmat
+from arc.family.family import  get_reaction_family_products
 
 if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
 
 
+FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
+               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
+
 DIHEDRAL_INCREMENT = 30
 
 logger = get_logger()
-
 
 class HeuristicsAdapter(JobAdapter):
     """
@@ -261,6 +263,12 @@ class HeuristicsAdapter(JobAdapter):
                 tsg = TSGuess(method='Heuristics')
                 tsg.tic()
                 xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment)
+                tsg.tok()
+
+            if rxn.family in FAMILY_SETS['set_1'] or rxn.family in FAMILY_SETS['set_2']:
+                tsg = TSGuess(method='Heuristics')
+                tsg.tic()
+                xyzs = hydrolysis(reaction=rxn)
                 tsg.tok()
 
             for method_index, xyz in enumerate(xyzs):
@@ -1027,6 +1035,62 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies,
     else:
         return sorted_neighbors[0]
 
+def generate_ts_guess(initial_xyz: dict,
+                      water: 'ARCSpecies',
+                      r_atoms: List[int],
+                      a_atoms: List[List[int]],
+                      d_atoms: List[List[int]],
+                      r_value: List[float],
+                      a_value: List[float],
+                      d_values: List[List[float]],
+                      zmats_total: List[dict],
+                      threshold: float = 0.8
+                      ) -> Tuple[List[dict], List[dict]]:
+    """
+    Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
+
+    Args:
+        initial_xyz (dict): The initial coordinates of the reactant.
+        water ('ARCSpecies'): The water molecule involved in the reaction.
+        r_atoms (List[int]): Atom pairs for defining bond distances.
+        a_atoms (List[List[int]]): Atom triplets for defining bond angles.
+        d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
+        r_value (List[float]): Bond distances corresponding to each atom pair in `r_atoms`.
+        a_value (List[float]): Bond angles corresponding to each atom triplet in `a_atoms`.
+        d_values (List[List[float]]): Dihedral angle sets for each TS guess.
+        zmats_total (List[dict]): A list of existing Z-matrices to avoid duplicates.
+        threshold (float): Threshold to check for atom collisions.
+
+    Returns:
+        Tuple[List[dict], List[dict]]: A tuple containing:
+            - List[dict]: Unique Z-matrices for TS guesses without colliding atoms.
+            - List[dict]: Corresponding Cartesian coordinates for the TS guesses.
+    """
+    xyz_guesses = []
+
+    for d_value in d_values:
+        xyz_guess = copy.deepcopy(initial_xyz)
+        for i in range(3):
+            xyz_guess = add_atom_to_xyz_using_internal_coords(
+                xyz=xyz_guess,
+                element=water.mol.atoms[i].element.symbol,
+                r_index=r_atoms[i],
+                a_indices=a_atoms[i],
+                d_indices=d_atoms[i],
+                r_value=r_value[i],
+                a_value=a_value[i],
+                d_value=d_value[i]
+            )
+
+        zmat_guess = xyz_to_zmat(xyz_guess)
+        duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
+        if xyz_guess is not None and not colliding_atoms(xyz_guess, threshold=threshold) and not duplicate:
+            xyz_guesses.append(xyz_guess)
+            zmats_total.append(zmat_guess)
+        else:
+            print(f"Colliding atoms or existing guess: {xyz_guess}")
+    return xyz_guesses, zmats_total
+
 def get_matching_dihedrals(zmat: dict,
                            a: int,
                            b: int,
@@ -1142,4 +1206,132 @@ def push_up_dihedral(zmat: Dict,
     print(f"Updated dihedral value for {param}: {zmat['vars'][param]}")
 
 
+def hydrolysis(reaction: 'ARCReaction'):
+    """
+    Generate TS guesses for reactions of the ARC "hydrolysis" families.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        List[dict]: Cartesian coordinates of TS guesses for all reactions.
+    """
+    xyz_guesses_total, zmats_total= [], []
+    product_dicts = get_reaction_family_products(
+        rxn=reaction,
+        rmg_family_set = 'default',
+        consider_rmg_families = False,
+        consider_arc_families = True,
+        )
+    ester_and_ether_families = False
+    if any('ester_hydrolysis' in d.get('family', []) for d in product_dicts) and \
+            any('ether_hydrolysis' in d.get('family', []) for d in product_dicts):
+        ester_and_ether_families = True
+    counter=0
+    while not xyz_guesses_total or (ester_and_ether_families and not any(item['family'] == 'ester_hydrolysis' for item in xyz_guesses_total)):
+        counter+=1
+        for product_dict in product_dicts:
+                arc_reactants, _ = reaction.get_reactants_and_products(arc=True, return_copies=False)
+                arc_reactant, water = None, None
+                for spc in arc_reactants:
+                    if not is_water(spc):
+                        arc_reactant = spc
+                    else:
+                        water = spc
+                if not arc_reactant or not water:
+                    raise ValueError("Reactants must include a non-water molecule and water.")
+                initial_xyz = arc_reactant.get_xyz()
+                initial_zmat = zmat_from_xyz(initial_xyz,consolidate=False)
+                print(initial_zmat)
+                map_dict = initial_zmat.get('map', {})
+                a = product_dict['r_label_map']['*1']
+                b = product_dict['r_label_map']['*2']
+                real_a = key_by_val(map_dict, a)
+                real_b = key_by_val(map_dict, b)
+                same_sign_reg=a<b
+                same_sign_real=real_a<real_b
+                O = len(arc_reactant.mol.atoms)
+                H1 = O + 1
+                r_atoms = [a, O, O]
+                r_value = [1.8, 1.21, 0.97]
+                a_atoms = [[b, a], [a, O], [H1, O]]
+                family = product_dict['family']
+                if family in FAMILY_SETS['set_1']:
+                    f, d = get_neighbors_by_electronegativity(arc_reactant, a, b, True)
+                    print(a,b,f,d)
+                    real_f= key_by_val(map_dict, f)
+                    real_d = key_by_val(map_dict, d)
+                    total_dihedrals = count_all_possible_dihedrals(initial_zmat, real_a, real_b, real_f, real_d)
+                    if (counter > total_dihedrals) and (total_dihedrals!=0):
+                        print("All possible dihedral adjustments have been tried.")
+                        return xyz_guesses_total, zmats_total
+                    d_atoms = [[f, d, a], [b, a, O], [a, H1, O]]
+                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f, real_d,counter)
+                    for indices in indices_list:
+                        if indices is not None:
+                            push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
+
+                    if family == 'ether_hydrolysis':
+                        if int(same_sign_real)+int(same_sign_reg)==1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.5)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.5)
+                        r_value[0]=2.1
+                        a_value = [65, 72, 106]
+                        d_values = [[98.25, -0.72, 103], [-98.25, -0.72, 103], [98.25, -0.72, -103], [-98.25, -0.72, -103]]
+                    elif family == 'imine_hydrolysis':
+                        if int(same_sign_real) + int(same_sign_reg) == 1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
+                        a_value = [78, 70, 111]
+                        d_values = [[108, 12, 113], [-108, 12, 113], [108, 12, -113], [-108, 12, -113]]
+                    else:
+                        if int(same_sign_real) + int(same_sign_reg) == 1:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
+                        else:
+                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
+                        a_value = [77, 71, 111]
+                        d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
+                    initial_xyz = zmat_to_xyz(initial_zmat)
+                    xyz_guesses, zmats_total = generate_ts_guess(
+                        initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total
+                    )
+
+                elif family in FAMILY_SETS['set_2']:
+                    f, d= get_neighbors_by_electronegativity(arc_reactant, a, b, False), None
+                    real_f = key_by_val(map_dict, f)
+                    total_dihedrals = count_all_possible_dihedrals(initial_zmat, real_a, real_b, real_f, None)
+                    if (counter > total_dihedrals) and (total_dihedrals!=0):
+                        print("All possible dihedral adjustments have been tried.")
+                        return xyz_guesses_total, zmats_total
+                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f,None, counter)
+                    for indices in indices_list:
+                        if indices is not None:
+                            push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
+                    if int(same_sign_real) + int(same_sign_reg) == 1:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.1)
+                    else:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.1)
+                    a_atoms = [[b, a], [a, O], [H1, O]]
+                    a_value = [97, 58, 111]
+                    d_atoms = [[f, b, a], [b, a, O], [a, H1, O]]
+                    d_values = [[174, -0.0154, 104], [-174, -0.0154, 104], [174, -0.0154, -104], [-174, -0.0154, -104]]
+                    initial_xyz = zmat_to_xyz(initial_zmat)
+                    xyz_guesses, zmats_total = generate_ts_guess(
+                        initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total,threshold=0.6
+                    )
+
+                else:
+                    raise ValueError(f"Family {product_dict['family']} not supported for hydrolysis TS guess generation")
+
+                if xyz_guesses:
+                    xyz_guesses_total.append({'family': product_dict['family'], 'indices': [a,b,f,d,O,H1], 'xyz_guesses': xyz_guesses})
+
+    return xyz_guesses_total, zmats_total
+
+
 register_job_adapter('heuristics', HeuristicsAdapter)
+        
+
+
