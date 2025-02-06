@@ -9,13 +9,10 @@ import os
 import shutil
 import unittest
 
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.autotst_ts import AutoTSTAdapter, HAS_AUTOTST
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only
+from arc.species import ARCSpecies
 
 
 class TestAutoTSTAdapter(unittest.TestCase):
@@ -29,22 +26,20 @@ class TestAutoTSTAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
 
     def test_has_autotst(self):
         """Test that AutoTST was successfully imported"""
         self.assertTrue(HAS_AUTOTST)
+
     @unittest.skip("This test is deprecated and will be removed in future versions.")
     def test_autotst_h_abstraction(self):
         """Test AutoTST for H Abstraction reactions"""
         rxn1 = ARCReaction(reactants=['CCC', 'HO2'], products=['C3H7', 'H2O2'],
-                           rmg_reaction=Reaction(reactants=[Species(label='CCC', smiles='CCC'),
-                                                            Species(label='HO2', smiles='O[O]')],
-                                                 products=[Species(label='C3H7', smiles='[CH2]CC'),
-                                                           Species(label='H2O2', smiles='OO')]))
-        rxn1.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn1.family.label, 'H_Abstraction')
+                           r_species=[ARCSpecies(label='CCC', smiles='CCC'),
+                                      ARCSpecies(label='HO2', smiles='O[O]')],
+                           p_species=[ARCSpecies(label='C3H7', smiles='[CH2]CC'),
+                                      ARCSpecies(label='H2O2', smiles='OO')])
+        self.assertEqual(rxn1.family, 'H_Abstraction')
         atst1 = AutoTSTAdapter(job_type='tsg',
                                reactions=[rxn1],
                                testing=True,
@@ -67,12 +62,11 @@ class TestAutoTSTAdapter(unittest.TestCase):
         self.assertTrue(rxn1.ts_species.ts_guesses[3].success)
 
         rxn2 = ARCReaction(reactants=['CCCOH', 'OH'], products=['CCCO', 'H2O'],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('CCCO'),
-                                                            Species().from_smiles('[OH]')],
-                                                 products=[Species().from_smiles('CCC[O]'),
-                                                           Species().from_smiles('O')]))
-        rxn2.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn2.family.label, 'H_Abstraction')
+                           r_species=[ARCSpecies(label='CCCO', smiles='CCCO'),
+                                      ARCSpecies(label='OH', smiles='[OH]')],
+                           p_species=[ARCSpecies(label='CCC[O]', smiles='CCC[O]'),
+                                      ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn2.family, 'H_Abstraction')
         atst2 = AutoTSTAdapter(job_type='tsg',
                                reactions=[rxn2],
                                testing=True,
@@ -89,12 +83,11 @@ class TestAutoTSTAdapter(unittest.TestCase):
         self.assertEqual(len(rxn2.ts_species.ts_guesses[1].initial_xyz['coords']), 14)
 
         rxn3 = ARCReaction(reactants=['C=COH', 'H'], products=['C=CO', 'H2'],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('C=CO'),
-                                                            Species().from_smiles('[H]')],
-                                                 products=[Species().from_smiles('C=C[O]'),
-                                                           Species().from_smiles('[H][H]')]))
-        rxn3.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn3.family.label, 'H_Abstraction')
+                           r_species=[ARCSpecies(label='C=CO', smiles='C=CO'),
+                                      ARCSpecies(label='H', smiles='[H]')],
+                           p_species=[ARCSpecies(label='C=C[O]', smiles='C=C[O]'),
+                                      ARCSpecies(label='H2', smiles='[H][H]')])
+        self.assertEqual(rxn3.family, 'H_Abstraction')
         atst3 = AutoTSTAdapter(job_type='tsg',
                                reactions=[rxn3],
                                testing=True,
@@ -115,10 +108,9 @@ class TestAutoTSTAdapter(unittest.TestCase):
     def test_autotst_intra_h_migration(self):
         """Test AutoTST for intra-H migration reactions"""
         rxn1 = ARCReaction(reactants=['[CH2]CO'], products=['CC[O]'],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('[CH2]CO')],
-                                                 products=[Species().from_smiles('CC[O]')]))
-        rxn1.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn1.family.label, 'intra_H_migration')
+                           r_species=[ARCSpecies(label='[CH2]CO', smiles='[CH2]CO')],
+                           p_species=[ARCSpecies(label='CC[O]', smiles='CC[O]')])
+        self.assertEqual(rxn1.family, 'intra_H_migration')
         atst1 = AutoTSTAdapter(job_type='tsg',
                                reactions=[rxn1],
                                testing=True,
@@ -154,11 +146,10 @@ class TestAutoTSTAdapter(unittest.TestCase):
     def test_autotst_r_addition_multiple_bond(self):
         """Test AutoTST for R addition multiple bond reactions"""
         rxn1 = ARCReaction(reactants=['C#C', '[OH]'], products=['[CH]=CO'],
-                           rmg_reaction=Reaction(reactants=[Species().from_smiles('C#C'),
-                                                            Species().from_smiles('[OH]')],
-                                                 products=[Species().from_smiles('[CH]=CO')]))
-        rxn1.determine_family(rmg_database=self.rmgdb)
-        self.assertEqual(rxn1.family.label, 'R_Addition_MultipleBond')
+                           r_species=[ARCSpecies(label='C#C', smiles='C#C'),
+                                      ARCSpecies(label='[OH]', smiles='[OH]')],
+                           p_species=[ARCSpecies(label='[CH]=CO', smiles='[CH]=CO')])
+        self.assertEqual(rxn1.family, 'R_Addition_MultipleBond')
         atst1 = AutoTSTAdapter(job_type='tsg',
                                reactions=[rxn1],
                                testing=True,

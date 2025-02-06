@@ -1901,6 +1901,25 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
     return False
 
 
+def check_molecule_list_order(mols_1: List[Molecule], mols_2: List[Molecule]):
+    """
+    Check if the order of molecules in two lists is the same.
+
+    Args:
+        mols_1 (List[Molecule]): A list of RMG Molecule objects.
+        mols_2 (List[Molecule]): A list of RMG Molecule objects.
+
+    Returns:
+        bool: Whether the order of molecules in the two lists is the same.
+    """
+    if len(mols_1) != len(mols_2):
+        return False
+    for mol1, mol2 in zip(mols_1, mols_2):
+        if not check_isomorphism(mol1, mol2):
+            return False
+    return True
+
+
 def get_center_of_mass(xyz):
     """
     Get the center of mass of xyz coordinates.
