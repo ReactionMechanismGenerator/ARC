@@ -2375,7 +2375,7 @@ def distance_constraint(reference_coord: tuple, distance: float):
 def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
     """
     Generate the angle constraint for a new atom with two other atoms in Cartesian space.
-    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)
+    This constants atom X to a circle defined by a certain height on a cone (looking for half angle).
 
     Args:
         atom_a (tuple): Cartesian coordinates of the first reference atom (A).
