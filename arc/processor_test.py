@@ -5,10 +5,13 @@
 This module contains unit tests for the arc.processor module
 """
 
+import os
 import unittest
 
 import arc.processor as processor
-from arc.species.species import ARCSpecies
+from arc.common import ARC_PATH
+from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 
 
 class TestProcessor(unittest.TestCase):
@@ -30,13 +33,34 @@ class TestProcessor(unittest.TestCase):
         cls.ch4.bdes = [(1, 2)]
 
     def test_process_bdes(self):
-        """Test the process_bdes method"""
+        """Test the process_bdes() method"""
         bde_report = processor.process_bdes(label='CH4',
                                             species_dict={'CH4': self.ch4,
                                                           'NH3': self.nh3,
                                                           'H': self.h,
                                                           'CH4_BDE_1_2_A': self.ch4_bde_1_2_a})
         self.assertEqual(bde_report, {(1, 2): 50})
+
+    def test_compare_rates(self):
+        """Test the compare_rates() method"""
+        rxn_1 = ARCReaction(r_species=[self.ch4, self.h],
+                            p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                       ARCSpecies(label='H2', smiles='[H][H]')],
+                            kinetics={'A': 4.79e+05, 'n': 2.5, 'Ea': 40.12},
+                            )
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
+                            p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')],
+                            # kinetics={'A': 2.14e13, 'n': -0.40, 'Ea': 163.8},
+                            kinetics={'A': 7.18e5, 'n': 2.05, 'Ea': 151.88},
+                            )
+        reactions_to_compare = processor.compare_rates(rxns_for_kinetics_lib=[rxn_1, rxn_2],
+                                                       output_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'process_kinetics'),
+                                                       )
+        print('\n********')
+        print(f'reactions_to_compare: {reactions_to_compare}')
+        raise
+
+
 
 
 if __name__ == '__main__':
