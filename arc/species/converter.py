@@ -1730,13 +1730,15 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     Adopted from rmgpy/molecule/converter.py
 
     Args:
-        mol (Molecule): An RMG Molecule object for the conversion.
+        mol (Molecule, ARCSpecies): An ARCSpecies or RMG Molecule object for the conversion.
         remove_h (bool, optional): Whether to remove hydrogen atoms from the molecule, ``True`` to remove.
         sanitize (bool, optional): Whether to sanitize the RDKit molecule, ``True`` to sanitize.
 
     Returns:
         RDMol: An RDKit molecule object corresponding to the input RMG Molecule object.
     """
+    if type(mol) == ARCSpecies:
+        mol = mol.mol
     atom_id_map = dict()
 
     # only manipulate a copy of ``mol``
