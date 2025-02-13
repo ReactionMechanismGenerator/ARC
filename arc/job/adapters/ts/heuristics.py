@@ -42,8 +42,8 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
 
 
-FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
-               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
+FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'ether_hydrolysis', 'imine_hydrolysis'],
+               'set_2': ['nitrile_hydrolysis']}
 
 DIHEDRAL_INCREMENT = 30
 
@@ -1018,17 +1018,17 @@ def get_neighbors_by_electronegativity(spc: ARCSpecies,
         return sorted_neighbors[0]
 
 
-def generate_ts_guess(initial_xyz: dict,
-                      water: 'ARCSpecies',
-                      r_atoms: List[int],
-                      a_atoms: List[List[int]],
-                      d_atoms: List[List[int]],
-                      r_value: List[float],
-                      a_value: List[float],
-                      d_values: List[List[float]],
-                      zmats_total: List[dict],
-                      threshold: float = 0.8
-                      ) -> Tuple[List[dict], List[dict]]:
+def generate_hydrolysis_ts_guess(initial_xyz: dict,
+                                 water: 'ARCSpecies',
+                                 r_atoms: List[int],
+                                 a_atoms: List[List[int]],
+                                 d_atoms: List[List[int]],
+                                 r_value: List[float],
+                                 a_value: List[float],
+                                 d_values: List[List[float]],
+                                 zmats_total: List[dict],
+                                 threshold: float = 0.8
+                                 ) -> Tuple[List[dict], List[dict]]:
     """
     Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
@@ -1074,15 +1074,17 @@ def generate_ts_guess(initial_xyz: dict,
             print(f"Colliding atoms or existing guess: {xyz_guess}")
     return xyz_guesses, zmats_total
 
+
 def get_matching_dihedrals(zmat: dict,
                            a: int,
                            b: int,
                            f: int,
-                           d: Optional[int]) -> List[List[int]]:
+                           d: Optional[int],
+                           ) -> List[List[int]]:
     """
     Retrieve all dihedral angles in the Z-matrix that match the given atom indices.
     This function scans the Z-matrix for dihedral parameters (keys starting with 'D_' or 'DX_')
-    and collects those whose indices match the specified atoms. The matching criteria are:
+    and collects those whose indices match the specified atoms. The matching criteria are:  # todo: the sentence is incomplete
 
     Args:
         zmat (dict): The Z-matrix containing atomic coordinates and parameters.
@@ -1100,18 +1102,16 @@ def get_matching_dihedrals(zmat: dict,
         if key.startswith('D_') or key.startswith('DX_'):
             indices = [int(idx) for idx in key.split('_')[1:]]
             if d is not None:
-                if a in indices and b in indices and (f in indices or d in indices):
-                    matches.append(indices)
-            else:
-                if a in indices and b in indices and f in indices:
+                if a in indices and b in indices and (f in indices or d is not None and d in indices):
                     matches.append(indices)
     return matches
+
 
 def find_matching_dihedral(zmat: dict,
                            a: int,
                            b: int,
                            f: int,
-                           d: int,
+                           d: Optional[int],
                            counter: int) -> Optional[List[List[int]]]:
     """
     Find dihedral angles in the Z-matrix that match the given atom indices,
@@ -1133,6 +1133,7 @@ def find_matching_dihedral(zmat: dict,
     """
     matches = get_matching_dihedrals(zmat, a, b, f, d)
     return matches[:counter] if matches else None
+
 
 def count_all_possible_dihedrals(zmat: dict,
                                  a: int,
@@ -1159,14 +1160,14 @@ def count_all_possible_dihedrals(zmat: dict,
 
 
 def push_up_dihedral(zmat: Dict,
-                     indices: Tuple[int, int, int, int],
+                     indices: List[int],
                      base_adjustment_factor: float) -> None:
     """
     Adjust the value of a dihedral angle in the Z-matrix based on its current value.
 
     Args:
         zmat (Dict): The initial Z-matrix.
-        indices (Tuple[int, int, int, int]): The indices defining the dihedral angle.
+        indices (List[int]): The indices defining the dihedral angle.
         base_adjustment_factor (float): Base factor for adjustment.
 
     Returns:
@@ -1210,106 +1211,106 @@ def hydrolysis(reaction: 'ARCReaction'):
     if any('ester_hydrolysis' in d.get('family', []) for d in product_dicts) and \
             any('ether_hydrolysis' in d.get('family', []) for d in product_dicts):
         ester_and_ether_families = True
-    counter=0
-    while not xyz_guesses_total or (ester_and_ether_families and not any(item['family'] == 'ester_hydrolysis' for item in xyz_guesses_total)):
-        counter+=1
+    counter = 0
+    while not xyz_guesses_total \
+            or (ester_and_ether_families and not any(item['family'] == 'ester_hydrolysis' for item in xyz_guesses_total)):
+        counter += 1
         for product_dict in product_dicts:
-                arc_reactants, _ = reaction.get_reactants_and_products(arc=True, return_copies=False)
-                arc_reactant, water = None, None
-                for spc in arc_reactants:
-                    if not is_water(spc):
-                        arc_reactant = spc
-                    else:
-                        water = spc
-                if not arc_reactant or not water:
-                    raise ValueError("Reactants must include a non-water molecule and water.")
-                initial_xyz = arc_reactant.get_xyz()
-                initial_zmat = zmat_from_xyz(initial_xyz,consolidate=False)
-                print(initial_zmat)
-                map_dict = initial_zmat.get('map', {})
-                a = product_dict['r_label_map']['*1']
-                b = product_dict['r_label_map']['*2']
-                real_a = key_by_val(map_dict, a)
-                real_b = key_by_val(map_dict, b)
-                same_sign_reg=a<b
-                same_sign_real=real_a<real_b
-                O = len(arc_reactant.mol.atoms)
-                H1 = O + 1
-                r_atoms = [a, O, O]
-                r_value = [1.8, 1.21, 0.97]
-                a_atoms = [[b, a], [a, O], [H1, O]]
-                family = product_dict['family']
-                if family in FAMILY_SETS['set_1']:
-                    f, d = get_neighbors_by_electronegativity(arc_reactant, a, b, True)
-                    print(a,b,f,d)
-                    real_f= key_by_val(map_dict, f)
-                    real_d = key_by_val(map_dict, d)
-                    total_dihedrals = count_all_possible_dihedrals(initial_zmat, real_a, real_b, real_f, real_d)
-                    if (counter > total_dihedrals) and (total_dihedrals!=0):
-                        print("All possible dihedral adjustments have been tried.")
-                        return xyz_guesses_total, zmats_total
-                    d_atoms = [[f, d, a], [b, a, O], [a, H1, O]]
-                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f, real_d,counter)
-                    for indices in indices_list:
-                        if indices is not None:
-                            push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
-
-                    if family == 'ether_hydrolysis':
-                        if int(same_sign_real)+int(same_sign_reg)==1:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.5)
-                        else:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.5)
-                        r_value[0]=2.1
-                        a_value = [65, 72, 106]
-                        d_values = [[98.25, -0.72, 103], [-98.25, -0.72, 103], [98.25, -0.72, -103], [-98.25, -0.72, -103]]
-                    elif family == 'imine_hydrolysis':
-                        if int(same_sign_real) + int(same_sign_reg) == 1:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
-                        else:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
-                        a_value = [78, 70, 111]
-                        d_values = [[108, 12, 113], [-108, 12, 113], [108, 12, -113], [-108, 12, -113]]
-                    else:
-                        if int(same_sign_real) + int(same_sign_reg) == 1:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.3)
-                        else:
-                            stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.3)
-                        a_value = [77, 71, 111]
-                        d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
-                    initial_xyz = zmat_to_xyz(initial_zmat)
-                    xyz_guesses, zmats_total = generate_ts_guess(
-                        initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total
-                    )
-
-                elif family in FAMILY_SETS['set_2']:
-                    f, d= get_neighbors_by_electronegativity(arc_reactant, a, b, False), None
-                    real_f = key_by_val(map_dict, f)
-                    total_dihedrals = count_all_possible_dihedrals(initial_zmat, real_a, real_b, real_f, None)
-                    if (counter > total_dihedrals) and (total_dihedrals!=0):
-                        print("All possible dihedral adjustments have been tried.")
-                        return xyz_guesses_total, zmats_total
-                    indices_list = find_matching_dihedral(initial_zmat, real_a, real_b, real_f,None, counter)
-                    for indices in indices_list:
-                        if indices is not None:
-                            push_up_dihedral(zmat=initial_zmat, indices=indices, adjustment_factor=0.3)
-                    if int(same_sign_real) + int(same_sign_reg) == 1:
-                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a, b), max(a, b)), stretch=1.1)
-                    else:
-                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a, b), min(a, b)), stretch=1.1)
-                    a_atoms = [[b, a], [a, O], [H1, O]]
-                    a_value = [97, 58, 111]
-                    d_atoms = [[f, b, a], [b, a, O], [a, H1, O]]
-                    d_values = [[174, -0.0154, 104], [-174, -0.0154, 104], [174, -0.0154, -104], [-174, -0.0154, -104]]
-                    initial_xyz = zmat_to_xyz(initial_zmat)
-                    xyz_guesses, zmats_total = generate_ts_guess(
-                        initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total,threshold=0.6
-                    )
-
+            arc_reactants, _ = reaction.get_reactants_and_products(arc=True, return_copies=True)
+            arc_reactant, water = None, None
+            for spc in arc_reactants:
+                if not is_water(spc):
+                    arc_reactant = spc
                 else:
-                    raise ValueError(f"Family {product_dict['family']} not supported for hydrolysis TS guess generation")
+                    water = spc
+            if arc_reactant is None or water is None:
+                raise ValueError("Reactants must include a non-water molecule and water.")
+            initial_xyz = arc_reactant.get_xyz()
+            initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+            print(initial_zmat)
+            map_dict = initial_zmat.get('map', {})
+            a_xyz_index, b_xyz_index = product_dict['r_label_map']['*1'], product_dict['r_label_map']['*2']
+            a_zmat_index, b_zmat_index = key_by_val(map_dict, a_xyz_index), key_by_val(map_dict, b_xyz_index)
+            a_before_b_xyz, a_before_b_zmat = a_xyz_index < b_xyz_index, a_zmat_index < b_zmat_index
+            o_index = len(arc_reactant.mol.atoms)
+            h1_index = o_index + 1
+            r_atoms = [a_xyz_index, o_index, o_index]
+            r_value = [1.8, 1.21, 0.97]  # todo: take all hard-coded numbers from this function into a designated YAML file
+            a_atoms = [[b_xyz_index, a_xyz_index], [a_xyz_index, o_index], [h1_index, o_index]]
+            family = product_dict['family']
+            if family in FAMILY_SETS['set_1']:
+                f_xyz_index, d_xyz_index = get_neighbors_by_electronegativity(arc_reactant, a_xyz_index, b_xyz_index, True)
+                print(a_xyz_index, b_xyz_index, f_xyz_index, d_xyz_index)
+                f_zmat_index, d_zmat_index = key_by_val(map_dict, f_xyz_index), key_by_val(map_dict, d_xyz_index)
+                total_dihedrals = count_all_possible_dihedrals(initial_zmat, a_zmat_index, b_zmat_index, f_zmat_index, d_zmat_index)
+                if (counter > total_dihedrals) and (total_dihedrals != 0):
+                    print("All possible dihedral adjustments have been tried.")
+                    return xyz_guesses_total, zmats_total
+                d_atoms = [[f_xyz_index, d_xyz_index, a_xyz_index], [b_xyz_index, a_xyz_index, o_index], [a_xyz_index, h1_index, o_index]]
+                indices_list = find_matching_dihedral(initial_zmat, a_zmat_index, b_zmat_index, f_zmat_index, d_zmat_index,counter)
+                for indices in indices_list:
+                    if indices is not None:
+                        push_up_dihedral(zmat=initial_zmat, indices=indices, base_adjustment_factor=0.3)
 
-                if xyz_guesses:
-                    xyz_guesses_total.append({'family': product_dict['family'], 'indices': [a,b,f,d,O,H1], 'xyz_guesses': xyz_guesses})
+                if family == 'ether_hydrolysis':
+                    if int(a_before_b_zmat) + int(a_before_b_xyz) == 1:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a_xyz_index, b_xyz_index), max(a_xyz_index, b_xyz_index)), stretch=1.5)
+                    else:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a_xyz_index, b_xyz_index), min(a_xyz_index, b_xyz_index)), stretch=1.5)
+                    r_value[0] = 2.1
+                    a_value = [65, 72, 106]
+                    d_values = [[98.25, -0.72, 103], [-98.25, -0.72, 103], [98.25, -0.72, -103], [-98.25, -0.72, -103]]
+                elif family == 'imine_hydrolysis':
+                    if int(a_before_b_zmat) + int(a_before_b_xyz) == 1:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a_xyz_index, b_xyz_index), max(a_xyz_index, b_xyz_index)), stretch=1.3)
+                    else:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a_xyz_index, b_xyz_index), min(a_xyz_index, b_xyz_index)), stretch=1.3)
+                    a_value = [78, 70, 111]
+                    d_values = [[108, 12, 113], [-108, 12, 113], [108, 12, -113], [-108, 12, -113]]
+                else:
+                    if int(a_before_b_zmat) + int(a_before_b_xyz) == 1:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(min(a_xyz_index, b_xyz_index), max(a_xyz_index, b_xyz_index)), stretch=1.3)
+                    else:
+                        stretch_zmat_bond(zmat=initial_zmat, indices=(max(a_xyz_index, b_xyz_index), min(a_xyz_index, b_xyz_index)), stretch=1.3)
+                    a_value = [77, 71, 111]
+                    d_values = [[140, 1.64, 103], [-140, 1.64, 103], [140, 1.64, -103], [-140, 1.64, -103]]
+                initial_xyz = zmat_to_xyz(initial_zmat)
+                xyz_guesses, zmats_total = generate_hydrolysis_ts_guess(
+                    initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total
+                )
+
+            elif family in FAMILY_SETS['set_2']:
+                f_xyz_index, d_xyz_index= get_neighbors_by_electronegativity(arc_reactant, a_xyz_index, b_xyz_index, False), None
+                f_zmat_index = key_by_val(map_dict, f_xyz_index)
+                total_dihedrals = count_all_possible_dihedrals(initial_zmat, a_zmat_index, b_zmat_index, f_zmat_index, None)
+                if (counter > total_dihedrals) and (total_dihedrals != 0):
+                    print("All possible dihedral adjustments have been tried.")
+                    return xyz_guesses_total, zmats_total
+                indices_list = find_matching_dihedral(initial_zmat, a_zmat_index, b_zmat_index, f_zmat_index,None, counter)
+                for indices in indices_list:
+                    if indices is not None:
+                        push_up_dihedral(zmat=initial_zmat, indices=indices, base_adjustment_factor=0.3)
+                if int(a_before_b_zmat) + int(a_before_b_xyz) == 1:
+                    stretch_zmat_bond(zmat=initial_zmat, indices=(min(a_xyz_index, b_xyz_index), max(a_xyz_index, b_xyz_index)), stretch=1.1)
+                else:
+                    stretch_zmat_bond(zmat=initial_zmat, indices=(max(a_xyz_index, b_xyz_index), min(a_xyz_index, b_xyz_index)), stretch=1.1)
+                a_atoms = [[b_xyz_index, a_xyz_index], [a_xyz_index, o_index], [h1_index, o_index]]
+                a_value = [97, 58, 111]
+                d_atoms = [[f_xyz_index, b_xyz_index, a_xyz_index], [b_xyz_index, a_xyz_index, o_index], [a_xyz_index, h1_index, o_index]]
+                d_values = [[174, -0.0154, 104], [-174, -0.0154, 104], [174, -0.0154, -104], [-174, -0.0154, -104]]
+                initial_xyz = zmat_to_xyz(initial_zmat)
+                xyz_guesses, zmats_total = generate_hydrolysis_ts_guess(
+                    initial_xyz, water, r_atoms, a_atoms, d_atoms, r_value, a_value, d_values, zmats_total,threshold=0.6
+                )
+
+            else:
+                raise ValueError(f_xyz_index, "Family {product_dict['family']} not supported for hydrolysis TS guess generation")
+
+            if xyz_guesses:
+                xyz_guesses_total.append({'family': product_dict['family'],
+                                          'indices': [a_xyz_index, b_xyz_index, f_xyz_index, d_xyz_index, o_index, h1_index],
+                                          'xyz_guesses': xyz_guesses},
+                                         )
 
     return xyz_guesses_total, zmats_total
 
