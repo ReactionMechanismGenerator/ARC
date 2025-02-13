@@ -26,7 +26,7 @@ import numpy as np
 from rmgpy.molecule.molecule import Molecule
 from arkane.statmech import is_linear
 
-from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val, read_yaml_file
+from arc.common import ARC_PATH, almost_equal_coords, get_logger, is_angle_linear, key_by_val, read_yaml_file
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
@@ -959,11 +959,12 @@ def is_water(spc: ARCSpecies) -> bool:
             H_counter += 1
     return O_counter == 1 and H_counter == 2
 
-def get_neighbors_by_electronegativity( spc: ARCSpecies,
-                                        atom_index: int,
-                                        exclude_index: int,
-                                        two_neighbors: bool = True
-                                    ) -> List[int]:
+
+def get_neighbors_by_electronegativity(spc: ARCSpecies,
+                                       atom_index: int,
+                                       exclude_index: int,
+                                       two_neighbors: bool = True
+                                       ) -> List[int]:
     """
     Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
     excluding a specified neighbor.
@@ -995,22 +996,18 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies,
     neighbors = [neighbor for neighbor in neighbors if spc.mol.atoms.index(neighbor) != exclude_index]
     if not neighbors:
         raise ValueError(f"Atom at index {atom_index} has no valid neighbors.")
-    yaml_file_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),
-        'data',
-        'electronegativity.yml'
-    )
-    electronegativity = read_yaml_file(yaml_file_path)
+    yaml_file_path = os.path.join(ARC_PATH, 'data', 'electronegativity.yml')
+    electronegativities = read_yaml_file(yaml_file_path)
     effective_electronegativities = []
     for neighbor in neighbors:
-        electro_value = electronegativity[neighbor.symbol]
+        electro_value = electronegativities[neighbor.symbol]
         bond_order = atom.edges[neighbor].order
         effective_electronegativity = electro_value * bond_order
         effective_electronegativities.append((effective_electronegativity, neighbor))
     effective_electronegativities.sort(
         key=lambda neighbor_data: (
             neighbor_data[0],
-            sum(electronegativity[n.symbol] * neighbor_data[1].edges[n].order for n in neighbor_data[1].edges.keys())
+            sum(electronegativities[n.symbol] * neighbor_data[1].edges[n].order for n in neighbor_data[1].edges.keys())
         ),
         reverse=True
     )
@@ -1019,6 +1016,7 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies,
         return sorted_neighbors[:2]
     else:
         return sorted_neighbors[0]
+
 
 def generate_ts_guess(initial_xyz: dict,
                       water: 'ARCSpecies',
