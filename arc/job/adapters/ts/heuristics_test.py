@@ -2366,20 +2366,16 @@ H      -1.80338391    2.35173651    1.62264865""")
         second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)  # Second oxygen
         self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen])
 
-    def test_dihedral_functions(self):
+    def test_get_matching_dihedrals(self):
         """
-        Test get_matching_dihedrals, find_matching_dihedral, and count_all_possible_dihedrals.
+        Test get_matching_dihedrals.
         """
-        zmat = {
-            'vars': {
-                'D_1_2_3_4': 60,
-                'D_1_2_5_6': 120,
-                'D_2_3_4_5': 180,
-                'DX_1_2_4_7': 90,
-                'DX_3_4_5_6': -60,
-                'D_2_3_5_6': 150
-            }
-        }
+        zmat = {'vars': {'D_1_2_3_4': 60,
+                         'D_1_2_5_6': 120,
+                         'D_2_3_4_5': 180,
+                         'DX_1_2_4_7': 90,
+                         'DX_3_4_5_6': -60,
+                         'D_2_3_5_6': 150}}
         matches_with_d = get_matching_dihedrals(zmat, a=1, b=2, f=3, d=4)
         expected_matches_with_d = [[1, 2, 3, 4], [1, 2, 4, 7]]
         self.assertEqual(matches_with_d, expected_matches_with_d,
@@ -2388,6 +2384,17 @@ H      -1.80338391    2.35173651    1.62264865""")
         expected_matches_without_d = [[1, 2, 3, 4]]
         self.assertEqual(matches_without_d, expected_matches_without_d,
                          "get_matching_dihedrals without 'd' provided failed.")
+
+    def test_find_matching_dihedral(self):
+        """
+        Test find_matching_dihedral.
+        """
+        zmat = {'vars': {'D_1_2_3_4': 60,
+                         'D_1_2_5_6': 120,
+                         'D_2_3_4_5': 180,
+                         'DX_1_2_4_7': 90,
+                         'DX_3_4_5_6': -60,
+                         'D_2_3_5_6': 150}}
         limited_matches = find_matching_dihedral(zmat, a=1, b=2, f=3, d=4, counter=1)
         expected_limited_matches = [[1, 2, 3, 4]]
         self.assertEqual(limited_matches, expected_limited_matches,
@@ -2398,6 +2405,17 @@ H      -1.80338391    2.35173651    1.62264865""")
         expected_count_with_d = 3
         self.assertEqual(count_with_d, expected_count_with_d,
                          "count_all_possible_dihedrals with 'd' provided failed.")
+
+    def test_count_all_possible_dihedrals(self):
+        """
+        Test count_all_possible_dihedrals.
+        """
+        zmat = {'vars': {'D_1_2_3_4': 60,
+                         'D_1_2_5_6': 120,
+                         'D_2_3_4_5': 180,
+                         'DX_1_2_4_7': 90,
+                         'DX_3_4_5_6': -60,
+                         'D_2_3_5_6': 150}}
         count_without_d = count_all_possible_dihedrals(zmat, a=2, b=3, f=5, d=None)
         expected_count_without_d = 2
         self.assertEqual(count_without_d, expected_count_without_d,
