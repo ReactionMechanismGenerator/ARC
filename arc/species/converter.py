@@ -2181,7 +2181,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                                           a_value: float,
                                           d_value: float,
                                           opt_method: str = 'Nelder-Mead',
-                                          ) -> Optional[dict]:
+                                          ) -> Tuple[Optional[dict], Optional[dict]]:
     """
     Add an atom to XYZ. The new atom may have random r, a, and d index parameters
     (not necessarily defined for the same respective atoms).
@@ -2200,11 +2200,19 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
                                     Additional options include 'trust-constr' and 'BFGS'.
 
-    Returns:
-        Optional[dict]: The updated xyz coordinates.
+     Returns:
+        xyz_guess: Optional[dict]
+            The updated xyz coordinates dictionary if successful, None if no solution found
+        deviations: Optional[dict]
+            A dictionary of precision deviations if criteria weren't met:
+            {
+                'distance': {'index': tuple, 'desired': float, 'error': float},  # distance error in Angstroms
+                'angle': {'indices': tuple, 'desired': float, 'error': float},  # angle error in degrees
+                'dihedral': {'indices': tuple, 'desired': float, 'error': float}  # dihedral error in degrees
+            }
+            Returns None if precision criteria were met or no solution found.
     """
     xyz = check_xyz_dict(xyz)
-
     def calculate_errors(result_coords):
         r_error = np.abs(np.sqrt(np.sum((np.array(result_coords) - np.array(xyz['coords'][r_index]))**2)) - r_value)
         a_error = np.sqrt(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
@@ -2213,7 +2221,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
 
     def meets_precision(result_coords):
         r_error, a_error, d_error = calculate_errors(result_coords)
-        return r_error < 0.01 and a_error < 0.1 and d_error < 0.1
+        return r_error < 0.1 and a_error < 0.05236 and d_error < 0.05236
 
     guess_functions = [
         generate_initial_guess_r_a,
@@ -2249,22 +2257,44 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
 
             if meets_precision(new_coord):
                 print("Precision criteria met. Returning result.")
-                return updated_xyz
+                return updated_xyz, None
 
             if total_error < closest_error:
                 print(f"Updating closest result. Previous closest_error={closest_error}, new total_error={total_error}")
                 closest_result = updated_xyz
+                closest_errors = (r_error, a_error, d_error)
                 closest_error = total_error
 
         except Exception as e:
             print(f"Attempt {attempt} with {guess_func.__name__} failed due to exception: {e}")
 
     if closest_result is not None:
-        print("Returning closest result as no guess met precision criteria.")
-        return closest_result
+        r_error, a_error, d_error = closest_errors
+        print(d_indices)
+        deviations = {}
+        last_index= len(updated_xyz['coords']) - 1
+        if r_error >= 0.1:
+            deviations['distance'] = {
+                'index': (r_index, last_index),
+                'desired': r_value,
+                'error': r_error
+            }
+        if a_error >= 0.05236:
+            deviations['angle'] = {
+                'indices': (a_indices[0], a_indices[1], last_index),
+                'desired': a_value,
+                'error': np.degrees(a_error)
+            }
+        if d_error >= 0.05236:
+            deviations['dihedral'] = {
+                'indices': (d_indices[0], d_indices[1], d_indices[2], last_index),
+                'desired': np.degrees(d_value),
+                'error': np.degrees(d_error)
+            }
+        return closest_result, deviations
 
     print("No valid solution was found.")
-    return None
+    return None, None
 
 
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
