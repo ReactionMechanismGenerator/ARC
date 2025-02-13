@@ -19,7 +19,6 @@ import datetime
 import itertools
 import copy
 import os
-import yaml
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -27,7 +26,7 @@ import numpy as np
 from rmgpy.molecule.molecule import Molecule
 from arkane.statmech import is_linear
 
-from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val, read_yaml_file
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
@@ -960,20 +959,6 @@ def is_water(spc: ARCSpecies) -> bool:
             H_counter += 1
     return O_counter == 1 and H_counter == 2
 
-def load_electronegativity(yaml_path: str) -> Dict[str, float]:
-    """
-    Load electronegativity values from a YAML file.
-
-    Args:
-        yaml_path (str): The path to the YAML file.
-
-    Returns:
-        Dict[str, float]: A dictionary of electronegativity values.
-    """
-    with open(yaml_path, 'r') as f:
-        electronegativity = yaml.safe_load(f)
-    return electronegativity
-
 def get_neighbors_by_electronegativity( spc: ARCSpecies,
                                         atom_index: int,
                                         exclude_index: int,
@@ -1015,7 +1000,7 @@ def get_neighbors_by_electronegativity( spc: ARCSpecies,
         'data',
         'electronegativity.yml'
     )
-    electronegativity = load_electronegativity(yaml_file_path)
+    electronegativity = read_yaml_file(yaml_file_path)
     effective_electronegativities = []
     for neighbor in neighbors:
         electro_value = electronegativity[neighbor.symbol]
