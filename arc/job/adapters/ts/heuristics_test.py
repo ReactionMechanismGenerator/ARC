@@ -2336,10 +2336,6 @@ H      -1.80338391    2.35173651    1.62264865""")
 
     def test_get_neighbors_by_electronegativity(self):
         """Test the get_neighbors_by_electronegativity() function."""
-        global ELECTRONEGATIVITY
-        ELECTRONEGATIVITY = {'H': 2.2, 'C': 2.55, 'N': 3.04, 'O': 3.44, 'F': 3.98, 'Cl': 3.16, 'Br': 2.96, 'I': 2.66,
-                             'S': 2.58, 'P': 2.19, 'Si': 1.9, 'B': 2.04}
-
         # Test Case 1: Atom with no neighbors
         spc = ARCSpecies(label='H', smiles='[H]')
         with self.assertRaises(ValueError) as cm:
@@ -2352,9 +2348,7 @@ H      -1.80338391    2.35173651    1.62264865""")
         exclude=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
         neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())  # First hydrogen
         neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen()  and i != neighbor1)  # Second hydrogen
-        self.assertEqual(
-            get_neighbors_by_electronegativity(spc, atom_index, exclude), [neighbor1, neighbor2]
-        )
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [neighbor1, neighbor2])
 
         # Test Case 3: Atom with multiple neighbors of different effective electronegativities
         spc = ARCSpecies(label='NH3C(=O)H', smiles='NC(=O)')
@@ -2362,9 +2356,7 @@ H      -1.80338391    2.35173651    1.62264865""")
         exclude= next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
         highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() )
         second_highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_nitrogen())
-        self.assertEqual(
-            get_neighbors_by_electronegativity(spc, atom_index,exclude),[highest, second_highest]
-        )
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index,exclude),[highest, second_highest])
 
         # Test Case 4: Atom with neighbors that have their own neighbors (tie-breaking test)
         spc = ARCSpecies(label='ClOCH2OH', smiles='ClOCO')
@@ -2372,9 +2364,7 @@ H      -1.80338391    2.35173651    1.62264865""")
         exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
         first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())  # First oxygen
         second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)  # Second oxygen
-        self.assertEqual(
-            get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen]
-        )
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen])
 
     def test_dihedral_functions(self):
         """
