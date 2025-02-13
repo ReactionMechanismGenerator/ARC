@@ -8,7 +8,7 @@ Where:
 - B can be O, N, or a halide (X).
 - R represents substituent groups or hydrogen depending on the structure of the ester.
 
-RA(*1)(=O)B(*2) + H(*3)O(*4)H <=> RA(*1)(=C)O(*4)H + B(*2)H(*3)
+RA(*1)(=O)B(*2) + H(*3)O(*4)H <=> RA(*1)(=O)O(*4)H + B(*2)H(*3)
 
 
 This family encompasses hydrolysis reactions for a range of ester types, including carboxylic, phosphoric, and thioester variants.
@@ -32,10 +32,10 @@ entry(
     label = "ester",
     group = 
 """
-1    R    u0 {2,S}
-2 *1 [C,P]    u0 {1,S} {3,D} {4,S}
-3    O    u0 {2,D}
-4 *2 [O,N,Cl,Br,F]    u0 {2,S}
+1    R               u0 {2,S}
+2 *1 [C,P]           u0 {1,S} {3,D} {4,S}
+3    O               u0 {2,D}
+4 *2 [O,N,Cl,Br,F,I] u0 {2,S}
 """,
     kinetics = None,
 )
