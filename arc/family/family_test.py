@@ -644,7 +644,8 @@ H      -0.83821148   -0.26602407    0.00000000"""
         self.assertIn('intra_OH_migration', families)
         families = get_all_families(consider_rmg_families=False)
         self.assertIsInstance(families, list)
-        self.assertIn('hydrolysis', families)
+        self.assertIn('ester_hydrolysis', families)
+        self.assertIn('ether_hydrolysis', families)
         families = get_all_families(rmg_family_set=['H_Abstraction'])
         self.assertEqual(families, ['H_Abstraction'])
 
