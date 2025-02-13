@@ -950,15 +950,15 @@ def is_water(spc: ARCSpecies) -> bool:
     Returns:
         bool: Whether the species is water.
     """
-    if len(spc.mol.atoms)!=3:
-        return (False)
+    if len(spc.mol.atoms) != 3:
+        return False
     O_counter, H_counter = 0, 0
     for atom in spc.mol.atoms:
         if atom.is_oxygen():
-            O_counter+=1
+            O_counter += 1
         if atom.is_hydrogen():
-            H_counter+=1
-    return (O_counter==1 and H_counter==2)
+            H_counter += 1
+    return O_counter == 1 and H_counter == 2
 
 def load_electronegativity(yaml_path: str) -> Dict[str, float]:
     """
