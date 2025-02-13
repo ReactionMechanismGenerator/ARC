@@ -2180,8 +2180,8 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                                           r_value: float,
                                           a_value: float,
                                           d_value: float,
-                                          opt_method: str = 'SLSQP',
-                                          ) -> Optional[dict]:
+                                          opt_method: str = 'Nelder-Mead',
+                                          ) -> Tuple[Optional[dict], Optional[dict]]:
     """
     Add an atom to an XYZ structure based on distance, angle, and dihedral constraints.
     The new atom may have random r, a, and d index parameters (not necessarily defined for the same respective atoms).
@@ -2200,11 +2200,19 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
                                     Additional options include 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
-    Returns:
-        Optional[dict]: The updated xyz coordinates.
+     Returns:
+        xyz_guess: Optional[dict]
+            The updated xyz coordinates dictionary if successful, None if no solution found
+        deviations: Optional[dict]
+            A dictionary of precision deviations if criteria weren't met:
+            {
+                'distance': {'index': tuple, 'desired': float, 'error': float},  # distance error in Angstroms
+                'angle': {'indices': tuple, 'desired': float, 'error': float},  # angle error in degrees
+                'dihedral': {'indices': tuple, 'desired': float, 'error': float}  # dihedral error in degrees
+            }
+            Returns None if precision criteria were met or no solution found.
     """
     xyz = check_xyz_dict(xyz)
-
     def calculate_errors(result_coords):
         """Calculate constraint errors for distance, angle, and dihedral"""
         r_error = np.abs(np.linalg.norm(np.array(result_coords) - np.array(xyz['coords'][r_index])) - r_value)
@@ -2245,7 +2253,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
 
             if meets_precision(new_coord):
                 print("Precision criteria met. Returning result.")
-                return updated_xyz
+                return updated_xyz, None
 
             if total_error < best_error:
                 print(f"Updating closest result. Previous best_error={best_error}, new total_error={total_error}")
@@ -2255,7 +2263,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
             print(f"Optimization failed with {guess_func.__name__}: {e}")
 
     print("No valid solution was found.")
-    return None
+    return None, None
 
 
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
