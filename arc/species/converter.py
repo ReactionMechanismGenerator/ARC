@@ -2175,8 +2175,8 @@ def ics_to_scan_constraints(ics: list,
 def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                                           element: str,
                                           r_index: int,
-                                          a_indices: tuple,
-                                          d_indices: tuple,
+                                          a_indices: Union[tuple, list],
+                                          d_indices: Union[tuple, list],
                                           r_value: float,
                                           a_value: float,
                                           d_value: float,
@@ -2192,8 +2192,8 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         xyz (dict): The xyz coordinates to process in a dictionary format.
         element (str): The chemical element of the atom to add.
         r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.
-        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
-        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
+        a_indices (Union[tuple, list]): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
+        d_indices (Union[tuple, list]): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
         r_value (float): The value of the R-X distance parameter, r.
         a_value (float): The value of the A-B-X angle parameter, a.
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
@@ -2375,7 +2375,7 @@ def distance_constraint(reference_coord: tuple, distance: float):
 def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
     """
     Generate the angle constraint for a new atom with two other atoms in Cartesian space.
-    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)
+    This constants atom X to a circle defined by a certain height on a cone (looking for half angle).
 
     Args:
         atom_a (tuple): Cartesian coordinates of the first reference atom (A).
