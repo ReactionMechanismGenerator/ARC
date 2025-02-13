@@ -2316,7 +2316,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
     atom_n_coord = coords[d_indices[2]]
 
     sphere_eq = distance_constraint(reference_coord=atom_r_coord, distance=r_value)
-    angle_eq = angle_constraint(atom_a=atom_a_coord, atom_b=atom_b_coord, angle=a_value)
+    plane_eq = angle_constraint(atom_a=atom_a_coord, atom_b=atom_b_coord, angle=a_value)
     dihedral_eq = dihedral_constraint(atom_a=atom_l_coord, atom_b=atom_m_coord, atom_c=atom_n_coord, dihedral=d_value)
 
     def objective_func(coord: Tuple[float, float, float]) -> float:
@@ -2329,18 +2329,13 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         Returns:
             float: The sum of the squared differences between the constraints and their desired values.
         """
-        x, y, z = coord
-        distance_constraint_ = sphere_eq(x, y, z)
-        angle_constraint_ = angle_eq(x, y, z)
-        dihedral_constraint_ = dihedral_eq(x, y, z)
-
         sphere_error = sphere_eq(*coord)
-        angle_error = angle_eq(*coord)
+        angle_error = plane_eq(*coord)
         dihedral_error = dihedral_eq(*coord)
 
-        total_error = ((distance_constraint_ / r_value) ** 2 +
-                       (angle_constraint_ / math.radians(a_value)) ** 2 +
-                       (dihedral_constraint_ / math.radians(d_value)) ** 2)
+        total_error = ((sphere_error / r_value) ** 2 +
+                       (angle_error / math.radians(a_value)) ** 2 +
+                       (dihedral_error / math.radians(d_value)) ** 2)
 
         return total_error
 
@@ -2389,7 +2384,7 @@ def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
     x_b, y_b, z_b = atom_b
     target_angle = math.radians(angle)
 
-    def angle_eq(x, y, z):
+    def plane_eq(x, y, z):
         """
         Calculate the angle between the vectors AB and BX, and compare it to the desired angle.
 
@@ -2410,9 +2405,9 @@ def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
         cross_product_length = np.linalg.norm(np.cross(BA, BX))
         dot_product = np.dot(BA, BX)
         calc_angle = math.atan2(cross_product_length, dot_product)
-        return (calc_angle - target_angle) ** 2
+        return abs(calc_angle - target_angle)
 
-    return angle_eq
+    return plane_eq
 
 
 def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: float):
@@ -2431,8 +2426,7 @@ def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: f
     x1, y1, z1 = atom_a
     x2, y2, z2 = atom_b
     x3, y3, z3 = atom_c
-    cos_d = math.cos(math.radians(dihedral))
-    sin_d = math.sin(math.radians(dihedral))
+    target_angle = math.radians(dihedral)
 
     def dihedral_eq(x, y, z):
         """
@@ -2456,9 +2450,15 @@ def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: f
         N1_norm = np.linalg.norm(N1)
         N2_norm = np.linalg.norm(N2)
         BC_norm = np.linalg.norm(BC)
+
+        if N1_norm == 0 or N2_norm == 0 or BC_norm == 0:
+            raise ValueError("Zero-length vector encountered in dihedral angle calculation.")
+
         cos_calc = np.dot(N1, N2) / (N1_norm * N2_norm)
         sin_calc = np.dot(BC, np.cross(N1, N2)) / (BC_norm * N1_norm * N2_norm)
-        return (cos_calc - cos_d) ** 2 + (sin_calc - sin_d) ** 2
+        computed_angle = math.atan2(sin_calc, cos_calc)
+
+        return abs(computed_angle - target_angle)
 
     return dihedral_eq
 
