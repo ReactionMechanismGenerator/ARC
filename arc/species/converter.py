@@ -2180,11 +2180,11 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                                           r_value: float,
                                           a_value: float,
                                           d_value: float,
-                                          opt_method: str = 'Nelder-Mead',
-                                          ) -> Tuple[Optional[dict], Optional[dict]]:
+                                          opt_method: str = 'SLSQP',
+                                          ) -> Optional[dict]:
     """
-    Add an atom to XYZ. The new atom may have random r, a, and d index parameters
-    (not necessarily defined for the same respective atoms).
+    Add an atom to an XYZ structure based on distance, angle, and dihedral constraints.
+    The new atom may have random r, a, and d index parameters (not necessarily defined for the same respective atoms).
     This function will compute the coordinates for the new atom.
     This function assumes that the original xyz has at least 3 atoms.
 
@@ -2198,44 +2198,36 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         a_value (float): The value of the A-B-X angle parameter, a.
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
-                                    Additional options include 'trust-constr' and 'BFGS'.
+                                    Additional options include 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
-     Returns:
-        xyz_guess: Optional[dict]
-            The updated xyz coordinates dictionary if successful, None if no solution found
-        deviations: Optional[dict]
-            A dictionary of precision deviations if criteria weren't met:
-            {
-                'distance': {'index': tuple, 'desired': float, 'error': float},  # distance error in Angstroms
-                'angle': {'indices': tuple, 'desired': float, 'error': float},  # angle error in degrees
-                'dihedral': {'indices': tuple, 'desired': float, 'error': float}  # dihedral error in degrees
-            }
-            Returns None if precision criteria were met or no solution found.
+    Returns:
+        Optional[dict]: The updated xyz coordinates.
     """
     xyz = check_xyz_dict(xyz)
+
     def calculate_errors(result_coords):
-        r_error = np.abs(np.sqrt(np.sum((np.array(result_coords) - np.array(xyz['coords'][r_index]))**2)) - r_value)
-        a_error = np.sqrt(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
-        d_error = np.sqrt(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords))
+        """Calculate constraint errors for distance, angle, and dihedral"""
+        r_error = np.abs(np.linalg.norm(np.array(result_coords) - np.array(xyz['coords'][r_index])) - r_value)
+        a_error = np.abs(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
+        d_error = np.abs(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords))
         return r_error, a_error, d_error
 
     def meets_precision(result_coords):
+        """Check if all constraints meet precision requirements"""
         r_error, a_error, d_error = calculate_errors(result_coords)
-        return r_error < 0.1 and a_error < 0.05236 and d_error < 0.05236
+        return r_error < 0.01 and a_error < 0.05 and d_error < 0.05
 
     guess_functions = [
         generate_initial_guess_r_a,
         generate_midpoint_initial_guess,
         generate_perpendicular_initial_guess,
         generate_bond_length_initial_guess,
-        generate_random_initial_guess,
         generate_shifted_initial_guess,
     ]
 
-    closest_result = None
-    closest_error = float('inf')
+    best_error = float('inf')
 
-    for attempt, guess_func in enumerate(guess_functions, start=1):
+    for guess_func in guess_functions:
         initial_guess = guess_func(
             atom_r_coord=xyz['coords'][r_index],
             r_value=r_value,
@@ -2246,55 +2238,24 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
 
         try:
             updated_xyz = _add_atom_to_xyz_using_internal_coords(
-                xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method,
-            )
+                xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method)
             new_coord = updated_xyz['coords'][-1]
-
             r_error, a_error, d_error = calculate_errors(new_coord)
             total_error = r_error + a_error + d_error
 
-            print(f"Attempt {attempt}: r_error={r_error}, a_error={a_error}, d_error={d_error}, total_error={total_error}")
-
             if meets_precision(new_coord):
                 print("Precision criteria met. Returning result.")
-                return updated_xyz, None
+                return updated_xyz
 
-            if total_error < closest_error:
-                print(f"Updating closest result. Previous closest_error={closest_error}, new total_error={total_error}")
-                closest_result = updated_xyz
-                closest_errors = (r_error, a_error, d_error)
-                closest_error = total_error
+            if total_error < best_error:
+                print(f"Updating closest result. Previous best_error={best_error}, new total_error={total_error}")
+                best_error = total_error
 
         except Exception as e:
-            print(f"Attempt {attempt} with {guess_func.__name__} failed due to exception: {e}")
-
-    if closest_result is not None:
-        r_error, a_error, d_error = closest_errors
-        print(d_indices)
-        deviations = {}
-        last_index= len(updated_xyz['coords']) - 1
-        if r_error >= 0.1:
-            deviations['distance'] = {
-                'index': (r_index, last_index),
-                'desired': r_value,
-                'error': r_error
-            }
-        if a_error >= 0.05236:
-            deviations['angle'] = {
-                'indices': (a_indices[0], a_indices[1], last_index),
-                'desired': a_value,
-                'error': np.degrees(a_error)
-            }
-        if d_error >= 0.05236:
-            deviations['dihedral'] = {
-                'indices': (d_indices[0], d_indices[1], d_indices[2], last_index),
-                'desired': np.degrees(d_value),
-                'error': np.degrees(d_error)
-            }
-        return closest_result, deviations
+            print(f"Optimization failed with {guess_func.__name__}: {e}")
 
     print("No valid solution was found.")
-    return None, None
+    return None
 
 
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
@@ -2306,10 +2267,12 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                            a_value: float,
                                            d_value: float,
                                            initial_guess: np.ndarray,
-                                           opt_method: str = 'Nelder-Mead',
+                                           opt_method: str = 'SLSQP',
                                            ) -> dict:
     """
-    Add an atom to XYZ. The new atom may have random r, a, and d index parameters
+    Optimize the placement of a new atom in an XYZ structure while satisfying
+    distance, angle, and dihedral constraints.
+    The new atom may have random r, a, and d index parameters
     (not necessarily defined for the same respective atoms).
     This function will compute the coordinates for the new atom.
     This function assumes that the original xyz has at least 3 atoms.
@@ -2325,7 +2288,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
         initial_guess (np.ndarray): The initial guess for the new atom's coordinates.
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
-                                    Additional options include 'trust-constr' and 'BFGS'.
+                                    Additional options include 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
     Returns:
         dict: The updated xyz coordinates.
@@ -2359,15 +2322,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         Returns:
             float: The sum of the squared differences between the constraints and their desired values.
         """
-        sphere_error = sphere_eq(*coord)
-        angle_error = plane_eq(*coord)
-        dihedral_error = dihedral_eq(*coord)
-
-        total_error = ((sphere_error / r_value) ** 2 +
-                       (angle_error / math.radians(a_value)) ** 2 +
-                       (dihedral_error / math.radians(d_value)) ** 2)
-
-        return total_error
+        sphere_error = abs(sphere_eq(*coord))
+        angle_error = abs(plane_eq(*coord))
+        dihedral_error = abs(dihedral_eq(*coord))
+        return sphere_error + angle_error + dihedral_error
 
     result = minimize(objective_func, initial_guess, method=opt_method,
                       options={'maxiter': 1e+4, 'ftol': 1e-10, 'xtol': 1e-10})
@@ -2549,11 +2507,6 @@ def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, at
     perpendicular_vector = np.cross(BA_unit, arbitrary_vector)
     perpendicular_vector /= np.linalg.norm(perpendicular_vector)
     return np.array(atom_r_coord) + r_value * perpendicular_vector
-
-def generate_random_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
-    perturbation = np.random.uniform(-0.1, 0.1, 3)
-    base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
-    return base_guess + perturbation
 
 def generate_shifted_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     shift = np.array([0.1, -0.1, 0.1])  # A deterministic shift
