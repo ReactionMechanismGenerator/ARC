@@ -584,42 +584,42 @@ H       0.63003260   -0.63003260   -0.63003260
         Note: If these tests fail, we should update the notebook as well
         """
         zmat = {'symbols': ('N', 'C', 'C', 'C', 'N', 'O', 'C', 'O', 'X', 'C', 'X', 'C', 'X', 'N', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None), 
-                            ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4_3', 'A_4_3_2', 'D_4_3_2_1'), 
-                            ('R_5_3', 'A_5_3_2', 'D_5_3_2_1'), ('R_6_4', 'A_6_4_3', 'D_6_4_3_2'), 
-                            ('R_7_5', 'A_7_5_3', 'D_7_5_3_2'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_9_6', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_11_9', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_13_11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_14_0', 'A_14_0_1', 'D_14_0_1_2'), ('R_15_0', 'A_15_0_1', 'D_15_0_1_2'), 
-                            ('R_16_1', 'A_16_1_2', 'D_16_1_2_15'), ('R_17_1', 'A_17_1_2', 'D_17_1_2_16'), ('R_18_2', 'A_18_2_1', 'D_18_2_1_17'), 
-                            ('R_19_2', 'A_19_2_1', 'D_19_2_1_18'), ('R_20_3', 'A_20_3_2', 'D_20_3_2_1'), ('R_21_7', 'A_21_7_5', 'D_21_7_5_3'), 
-                            ('R_22_4', 'A_22_4_6', 'D_22_4_6_21')), 
-                'vars': {'R_1_0': 1.4604942751011212, 'R_2_1': 1.527922849799549, 'A_2_1_0': 110.3065082939501, 
-                        'R_3_2': 1.528953932777341, 'A_3_2_1': 111.18144649602384, 'D_3_2_1_0': 182.82580139682537, 
-                        'R_4_3': 1.4513236745554712, 'A_4_3_2': 110.1816515421551, 'D_4_3_2_1': 178.77234190887103, 
-                        'R_5_3': 1.4324895363736756, 'A_5_3_2': 108.87342377052293, 'D_5_3_2_1': 296.5360670758954, 
-                        'R_6_4': 1.45471039292036, 'A_6_4_3': 119.52044799360947, 'D_6_4_3_2': 267.385789076988, 
-                        'R_7_5': 1.463961241323698, 'A_7_5_3': 106.24609505276611, 'D_7_5_3_2': 169.47632562217643, 
-                        'R_9_6': 1.2003625639923046, 'R_11_9': 1.5409261196430282, 'R_13_11': 1.1601896955504991, 
-                        'R_14_0': 1.0199706201435979, 'A_14_0_1': 109.82434650817126, 'D_14_0_1_2': 298.4471183049676, 
-                        'R_15_0': 1.0203338036642535, 'A_15_0_1': 109.29256268947609, 'D_15_0_1_2': 182.748124244299, 
-                        'R_16_1': 1.0953359821757327, 'A_16_1_2': 110.03394606716385, 'D_16_1_2_15': 121.92752893614716, 
-                        'R_17_1': 1.095192530179795, 'A_17_1_2': 110.84866373393122, 'D_17_1_2_16': 119.08345045450586, 
-                        'R_18_2': 1.098313538677341, 'A_18_2_1': 109.08968835777581, 'D_18_2_1_17': 300.70048659688996, 
-                        'R_19_2': 1.0975897283522487, 'A_19_2_1': 109.86987657387881, 'D_19_2_1_18': 242.83679879428865, 
+                'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                            ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4_3', 'A_4_3_2', 'D_4_3_2_1'),
+                            ('R_5_3', 'A_5_3_2', 'D_5_3_2_1'), ('R_6_4', 'A_6_4_3', 'D_6_4_3_2'),
+                            ('R_7_5', 'A_7_5_3', 'D_7_5_3_2'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_9_6', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_11_9', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_13_11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_14_0', 'A_14_0_1', 'D_14_0_1_2'), ('R_15_0', 'A_15_0_1', 'D_15_0_1_2'),
+                            ('R_16_1', 'A_16_1_2', 'D_16_1_2_15'), ('R_17_1', 'A_17_1_2', 'D_17_1_2_16'), ('R_18_2', 'A_18_2_1', 'D_18_2_1_17'),
+                            ('R_19_2', 'A_19_2_1', 'D_19_2_1_18'), ('R_20_3', 'A_20_3_2', 'D_20_3_2_1'), ('R_21_7', 'A_21_7_5', 'D_21_7_5_3'),
+                            ('R_22_4', 'A_22_4_6', 'D_22_4_6_21')),
+                'vars': {'R_1_0': 1.4604942751011212, 'R_2_1': 1.527922849799549, 'A_2_1_0': 110.3065082939501,
+                        'R_3_2': 1.528953932777341, 'A_3_2_1': 111.18144649602384, 'D_3_2_1_0': 182.82580139682537,
+                        'R_4_3': 1.4513236745554712, 'A_4_3_2': 110.1816515421551, 'D_4_3_2_1': 178.77234190887103,
+                        'R_5_3': 1.4324895363736756, 'A_5_3_2': 108.87342377052293, 'D_5_3_2_1': 296.5360670758954,
+                        'R_6_4': 1.45471039292036, 'A_6_4_3': 119.52044799360947, 'D_6_4_3_2': 267.385789076988,
+                        'R_7_5': 1.463961241323698, 'A_7_5_3': 106.24609505276611, 'D_7_5_3_2': 169.47632562217643,
+                        'R_9_6': 1.2003625639923046, 'R_11_9': 1.5409261196430282, 'R_13_11': 1.1601896955504991,
+                        'R_14_0': 1.0199706201435979, 'A_14_0_1': 109.82434650817126, 'D_14_0_1_2': 298.4471183049676,
+                        'R_15_0': 1.0203338036642535, 'A_15_0_1': 109.29256268947609, 'D_15_0_1_2': 182.748124244299,
+                        'R_16_1': 1.0953359821757327, 'A_16_1_2': 110.03394606716385, 'D_16_1_2_15': 121.92752893614716,
+                        'R_17_1': 1.095192530179795, 'A_17_1_2': 110.84866373393122, 'D_17_1_2_16': 119.08345045450586,
+                        'R_18_2': 1.098313538677341, 'A_18_2_1': 109.08968835777581, 'D_18_2_1_17': 300.70048659688996,
+                        'R_19_2': 1.0975897283522487, 'A_19_2_1': 109.86987657387881, 'D_19_2_1_18': 242.83679879428865,
                         'R_20_3': 1.0977229848103394, 'A_20_3_2': 110.25024873242359, 'D_20_3_2_1': 55.735631534996074,
-                        'R_21_7': 0.9770937580834932, 'A_21_7_5': 96.48404094647259, 'D_21_7_5_3': 73.0418671453161, 
-                        'R_22_4': 1.0156335096736346, 'A_22_4_6': 120.95423666407609, 'D_22_4_6_21': 114.47617942015948, 
-                        'RX_8|10|12_6|9|11': 1.0, 
-                        'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12': 90.0, 
-                        'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9': 180.0}, 
-                'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 6, 5: 4, 6: 7, 7: 5, 8: 'X20', 9: 8, 10: 'X21', 11: 9, 12: 'X22', 
+                        'R_21_7': 0.9770937580834932, 'A_21_7_5': 96.48404094647259, 'D_21_7_5_3': 73.0418671453161,
+                        'R_22_4': 1.0156335096736346, 'A_22_4_6': 120.95423666407609, 'D_22_4_6_21': 114.47617942015948,
+                        'RX_8|10|12_6|9|11': 1.0,
+                        'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12': 90.0,
+                        'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9': 180.0},
+                'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 6, 5: 4, 6: 7, 7: 5, 8: 'X20', 9: 8, 10: 'X21', 11: 9, 12: 'X22',
                         13: 10, 14: 11, 15: 12, 16: 13, 17: 14, 18: 15, 19: 16, 20: 17, 21: 18, 22: 19}}
-        
+
         expected_xyz = {'coords': ((-0.8213900082688513, -2.10323641901248, -3.4787571562478665),
                                 (-0.8213900082688513, -2.10323641901248, -2.0182628811467453),
                                 (-0.8213900082688513, -0.6702747081300946, -1.488009196497028),
@@ -4767,7 +4767,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                           fragments=fragments,
                                           )
         self.assertAlmostEqual(calculate_dihedral_angle(coords=new_xyz, torsion=indices, index=1), 200, places=3)
-        
+
         coords={'coords': ((-0.7862825353221515, -0.28824023055636216, 0.4782944637692894),
                            (0.21968869054702736, 0.40094256193652866, -0.2919820499085219),
                            (-0.07796443595084417, 0.5692847962524797, -1.6621913220858304),
@@ -5124,63 +5124,33 @@ H      -0.81291200   -0.46933500   -0.31111876"""
 
     def test_add_atom_to_xyz_using_internal_coords(self):
         """Test the add_atom_to_xyz_using_internal_coords() function."""
-        def check_distance(coords, atoms, expected, distance, places=0):
+        def check_distance(coords, atoms, expected, places=0):
             """
             Checks if the calculated distance between atoms is close to the expected value.
             """
             value = calculate_param(coords=coords, atoms=atoms)
-            try:
-                self.assertAlmostEqual(value, expected, places=places)
-            except AssertionError:
-                if distance == 0:
-                    self.assertAlmostEqual(value, expected, places=places)
-                else:
-                    print(
-                        f"Distance deviation detected: The distance between atoms {distance['indices']} deviates from the expected value ({expected}) by {distance['error']:.2f} units.")
+            self.assertAlmostEqual(value, expected, places=places)
 
-        def check_angle(coords, atoms, expected, angle, places=None, delta=None):
+        def check_angle(coords, atoms, expected, places=None, delta=None):
             """
             Checks if the calculated angle is within the acceptable deviation (delta) from the expected angle.
             """
             value = calculate_param(coords=coords, atoms=atoms)
-            try:
-                if delta:
-                    self.assertAlmostEqual(value, expected, delta=delta)
-                elif places:
-                    self.assertAlmostEqual(value, expected, places=places)
-            except AssertionError:
-                if angle == 0:
-                    if delta:
-                        self.assertAlmostEqual(value, expected, delta=delta)
-                    elif places:
-                        self.assertAlmostEqual(value, expected, places=places)
-                else:
-                    print(
-                        f"Angle deviation detected: The angle between atoms {angle['indices']} deviates from the expected value ({expected}°) "
-                        f"by {angle['error']:.2f}°."
-                    )
+            if delta:
+                self.assertAlmostEqual(value, expected, delta=delta)
+            elif places:
+                self.assertAlmostEqual(value, expected, places=places)
 
-        def check_dihedral(coords, atoms, expected, dihedral, places=None, delta=None):
+        def check_dihedral(coords, atoms, expected, places=None, delta=None):
             """
             Checks if the calculated dihedral angle (normalized) is within the acceptable deviation (delta) from the expected angle.
             """
             value = calculate_param(coords=coords, atoms=atoms)
             normalized = abs((value + 180) % 360 - 180)
-            try:
-                if delta:
-                    self.assertAlmostEqual(normalized, expected, delta=delta)
-                elif places:
-                    self.assertAlmostEqual(normalized, expected, places=places)
-            except AssertionError:
-                if dihedral == 0:
-                    if delta:
-                        self.assertAlmostEqual(normalized, expected, delta=delta)
-                    elif places:
-                        self.assertAlmostEqual(normalized, expected, places=places)
-                else:
-                    print(
-                        f"Dihedral deviation detected: The dihedral angle between atoms {dihedral['indices']} deviates from the expected value ({expected}°) "
-                        f"by {dihedral['error']:.2f}°.")
+            if delta:
+                self.assertAlmostEqual(normalized, expected, delta=delta)
+            elif places:
+                self.assertAlmostEqual(normalized, expected, places=places)
 
         xyz_1 = """ C                 -3.63243985   -0.48299420   -0.05541310
                     H                 -3.27244945   -1.49054926   -0.06723326
@@ -5192,7 +5162,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                     C                 -1.63624745    0.21425655    1.30595531
                     H                 -1.24509731    0.74268637    0.46176133
                     H                 -1.31833530    0.69604590    2.20690531"""
-        new_xyz_1, deviations = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
+        new_xyz_1 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
                                                                     element='Cl',
                                                                     r_index=7,
                                                                     a_indices=(4, 7),
@@ -5201,19 +5171,11 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     a_value=109.5,
                                                                     d_value=-60.0,
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance= deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_1['coords'], atoms=[7, 10], expected=1.77, distance=distance,places=2)
-        check_angle(coords=new_xyz_1['coords'], atoms=[4, 7, 10], expected=109.5, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10], expected=60, dihedral=dihedral, delta=5)
+        check_distance(coords=new_xyz_1['coords'], atoms=[7, 10], expected=1.77, places=0)
+        check_angle(coords=new_xyz_1['coords'], atoms=[4, 7, 10], expected=109.5, delta=4)
+        check_dihedral(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10], expected=60, delta=5)
 
-        new_xyz_2, deviations = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
+        new_xyz_2 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
                                                                     element='Cl',
                                                                     r_index=4,
                                                                     a_indices=(4, 0),
@@ -5221,19 +5183,10 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     r_value=2.70,
                                                                     a_value=61.46,
                                                                     d_value=-60.0,
-                                                                    opt_method='BFGS',
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_2['coords'], atoms=[4, 10], expected=2.70, distance=distance, places=1)
-        check_angle(coords=new_xyz_2['coords'], atoms=[4, 0, 10], expected=61.46, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_2['coords'], atoms=[0, 4, 7, 10], expected=60, dihedral=dihedral, delta=5)
+        check_distance(coords=new_xyz_2['coords'], atoms=[4, 10], expected=2.70, places=2)
+        check_angle(coords=new_xyz_2['coords'], atoms=[4, 0, 10], expected=61.46, delta=5)
+        check_dihedral(coords=new_xyz_2['coords'], atoms=[0, 4, 7, 10], expected=60, delta=5)
 
         xyz_3 = """C      -1.01765390   -0.08355112    0.05206009
                    O       0.22303684   -0.79051481    0.05294172
@@ -5243,7 +5196,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                    H      -1.06962462    0.60119223    0.90442455
                    H      -1.14968688    0.45844916   -0.88969505
                    H       1.33643417   -2.15859899   -0.90083808"""
-        new_xyz_3, deviations = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_3,
+        new_xyz_3 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_3,
                                                                     element='O',
                                                                     r_index=2,
                                                                     a_indices=(1, 2),
@@ -5252,17 +5205,10 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     a_value=77.4,
                                                                     d_value=140,
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_3['coords'], atoms=[2, 8], expected=1.85, distance=distance, places=2)
-        check_angle(coords=new_xyz_3['coords'], atoms=[1, 2, 8], expected=77.4, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8], expected=140, dihedral=dihedral, delta=5)
+
+        check_distance(coords=new_xyz_3['coords'], atoms=[2, 8], expected=1.85, places=0)
+        check_angle(coords=new_xyz_3['coords'], atoms=[1, 2, 8], expected=77.4, delta=5)
+        check_dihedral(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8], expected=140, delta=5)
 
         xyz_4 = """C       2.44505336    0.33426556   -0.05839486
                    C       1.22268719   -0.52813666    0.01896600
@@ -5278,7 +5224,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                    H      -2.28059310    1.18899674   -0.44763085
                    H      -3.21043340   -0.02017141    0.47000585
                    H      -2.11200849    1.10694712    1.30175876"""
-        new_xyz_4, deviations = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_4,
+        new_xyz_4 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_4,
                                                                     element='O',
                                                                     r_index=1,
                                                                     a_indices=(3, 1),
@@ -5287,17 +5233,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     a_value=77.4,
                                                                     d_value=140,
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_4['coords'], atoms=[1, 14], expected=1.85, distance=distance, places=2)
-        check_angle(coords=new_xyz_4['coords'], atoms=[3, 1, 14], expected=77.4, angle=angle, places=0)
-        check_dihedral(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14], expected=140, dihedral=dihedral, places=0)
+        check_distance(coords=new_xyz_4['coords'], atoms=[1, 14], expected=1.85, places=0)
+        check_angle(coords=new_xyz_4['coords'], atoms=[3, 1, 14], expected=77.4, delta=5)
+        check_dihedral(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14], expected=140, delta=5)
 
         xyz_5="""C      -1.01765390   -0.08355112    0.05206009
                  O       0.22303684   -0.79051481    0.05294172
@@ -5307,7 +5245,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                  H      -1.06962462    0.60119223    0.90442455
                  H      -1.14968688    0.45844916   -0.88969505
                  H       1.33643417   -2.15859899   -0.90083808"""
-        new_xyz_5, deviations = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_5,
+        new_xyz_5= converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_5,
                                                                     element='O',
                                                                     r_index=2,
                                                                     a_indices=(1, 2),
@@ -5315,19 +5253,11 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     r_value=1.8,
                                                                     a_value=77,
                                                                     d_value=140,
-                                                                    opt_method='BFGS',
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_5['coords'], atoms=[2, 8], expected=1.8, distance=distance, places=2)
-        check_angle(coords=new_xyz_5['coords'], atoms=[1, 2, 8], expected=77, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_5['coords'], atoms=[3, 7, 2, 8], expected=140, dihedral=dihedral,delta=5)
+
+        check_distance(coords=new_xyz_5['coords'], atoms=[2, 8], expected=1.8, places=0)
+        check_angle(coords=new_xyz_5['coords'], atoms=[1, 2, 8], expected=77, delta=5)
+        check_dihedral(coords=new_xyz_5['coords'], atoms=[3, 7, 2, 8], expected=140,delta=5)
 
         xyz_6 = """C      -1.79090496    0.16195344    0.54586762
         C      -0.29750770    0.40075866    0.64716134
@@ -5341,7 +5271,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         H       2.13363258   -0.50935390    1.07451700
         H       2.24870467   -1.34913122   -0.48708664
         H       2.08904465    0.42028683   -0.45980377"""
-        new_xyz_6,deviations=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_6,
+        new_xyz_6=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_6,
                                                                   element='O',
                                                                   r_index=1,
                                                                   a_indices=(2, 1),
@@ -5349,18 +5279,11 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                   r_value=2.1,
                                                                   a_value=65,
                                                                   d_value=98.25
-                                          )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_6['coords'], atoms=[1, 12], expected=2.1, distance=distance, places=0)
-        check_angle(coords=new_xyz_6['coords'], atoms=[2, 1, 12], expected=65, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_6['coords'], atoms=[0, 7, 1, 12], expected=98.25, dihedral=dihedral, delta=5)
+                                                                    )
+
+        check_distance(coords=new_xyz_6['coords'], atoms=[1, 12], expected=2.1, places=0)
+        check_angle(coords=new_xyz_6['coords'], atoms=[2, 1, 12], expected=65, delta=5)
+        check_dihedral(coords=new_xyz_6['coords'], atoms=[0, 7, 1, 12], expected=98.25, delta=5)
 
         xyz_7= """C       2.97058781   -0.21070737   -0.09207851
 O       1.61612389   -0.30531019   -0.51325496
@@ -5378,7 +5301,7 @@ H      -0.86376919    0.59860060   -0.83290320
 H      -3.21193982   -0.81434774    0.37443570
 H      -3.61206186    0.50385697    1.49651591
 H      -3.15982655    0.89272913   -0.17713488"""
-        new_xyz_7,deviation=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_7,
+        new_xyz_7=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_7,
                                                                             element='O',
                                                                             r_index=0,
                                                                             a_indices=(1, 0),
@@ -5387,17 +5310,9 @@ H      -3.15982655    0.89272913   -0.17713488"""
                                                                             a_value=65,
                                                                             d_value=-98.25
                                                                          )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_7['coords'], atoms=[0, 16], expected=2.1, distance=distance, places=0)
-        check_angle(coords=new_xyz_7['coords'], atoms=[1, 0, 16], expected=65, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_7['coords'], atoms=[6, 7, 0, 16], expected=98.25, dihedral=dihedral, delta=5)
+        check_distance(coords=new_xyz_7['coords'], atoms=[0, 16], expected=2.1, places=0)
+        check_angle(coords=new_xyz_7['coords'], atoms=[1, 0, 16], expected=65, delta=5)
+        check_dihedral(coords=new_xyz_7['coords'], atoms=[6, 7, 0, 16], expected=98.25, delta=5)
 
         xyz_8="""C       2.24051202    1.04153068    0.19486347
 C       1.10659712    0.58234118    0.74083019
@@ -5412,7 +5327,7 @@ H      -0.80072247    0.12806836   -0.08052245
 H      -0.49138857   -2.84032162   -0.54006077
 H      -0.98849098   -3.27013487    1.11037749
 H      -1.88123946   -2.00923795    0.23313156"""
-        new_xyz_8, deviation=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_8,
+        new_xyz_8=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_8,
                                                                     element='O',
                                                                     r_index=2,
                                                                     a_indices=(3, 2),
@@ -5421,17 +5336,9 @@ H      -1.88123946   -2.00923795    0.23313156"""
                                                                     a_value=65,
                                                                     d_value=98.25
                                                                     )
-        distance, angle, dihedral = 0, 0, 0
-        if deviations:
-            if 'distance' in deviations:
-                distance = deviations['distance']
-            if 'angle' in deviations:
-                angle = deviations['angle']
-            if 'dihedral' in deviations:
-                dihedral = deviations['dihedral']
-        check_distance(coords=new_xyz_8['coords'], atoms=[2, 13], expected=2.1, distance=distance, places=0)
-        check_angle(coords=new_xyz_8['coords'], atoms=[3, 2, 13], expected=65, angle=angle, delta=4)
-        check_dihedral(coords=new_xyz_8['coords'], atoms=[1, 8, 2, 13], expected=98.25, dihedral=dihedral, delta=5)
+        check_distance(coords=new_xyz_8['coords'], atoms=[2, 13], expected=2.1, places=0)
+        check_angle(coords=new_xyz_8['coords'], atoms=[3, 2, 13], expected=65, delta=5)
+        check_dihedral(coords=new_xyz_8['coords'], atoms=[1, 8, 2, 13], expected=98.25, delta=5)
 
     @classmethod
     def tearDownClass(cls):
