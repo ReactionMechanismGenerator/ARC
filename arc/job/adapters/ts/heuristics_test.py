@@ -31,14 +31,10 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
-from arc.species.converter import str_to_xyz, zmat_to_xyz, xyz_to_str,zmat_from_xyz
+from arc.species.converter import str_to_xyz, zmat_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies
-from arc.species.zmat import _compare_zmats
 from arc.species.vectors import calculate_param
-
-FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'imine_hydrolysis','ether_hydrolysis'],
-               'set_2': ['nitrile_hydrolysis']} #sub-groups of hydrolysis reaction families
-
+from arc.species.zmat import _compare_zmats
 
 class TestHeuristicsAdapter(unittest.TestCase):
     """
@@ -2325,17 +2321,6 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertFalse(r_reversed)
         self.assertFalse(p_reversed)
 
-
-
-    @classmethod
-    def tearDownClass(cls):
-        """
-        A function that is run ONCE after all unit tests in this class.
-        Delete all project directories created during these unit tests.
-        """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics_1'), ignore_errors=True)
-
     def test_is_water(self):
         """Test the is_water() function."""
         water = self.water
@@ -2372,34 +2357,30 @@ H       1.18773917   -1.27609387   -0.39480684""")
 
     def test_get_neighbors_by_electronegativity(self):
         """Test the get_neighbors_by_electronegativity() function."""
-        # Test Case 1: Atom with no neighbors
         spc = ARCSpecies(label='H', smiles='[H]')
         with self.assertRaises(ValueError) as cm:
             get_neighbors_by_electronegativity(spc, 0, 0, False)
         self.assertEqual(str(cm.exception), "Atom at index 0 has no valid neighbors.")
 
-        # Test Case 2: Atom with two neighbors having the same effective electronegativity
-        spc = ARCSpecies(label='carbonyl',smiles='C=O')
+        spc = ARCSpecies(label='carbonyl', smiles='C=O')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
-        exclude=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
-        neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())  # First hydrogen
-        neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen()  and i != neighbor1)  # Second hydrogen
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
+        neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
+        neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and i != neighbor1)
         self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [neighbor1, neighbor2])
 
-        # Test Case 3: Atom with multiple neighbors of different effective electronegativities
         spc = ARCSpecies(label='NH3C(=O)H', smiles='NC(=O)')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
-        exclude= next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
-        highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() )
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
+        highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
         second_highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_nitrogen())
-        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index,exclude),[highest, second_highest])
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [highest, second_highest])
 
-        # Test Case 4: Atom with neighbors that have their own neighbors (tie-breaking test)
         spc = ARCSpecies(label='ClOCH2OH', smiles='ClOCO')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
         exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
-        first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())  # First oxygen
-        second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)  # Second oxygen
+        first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
+        second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)
         self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen])
 
     def test_setup_zmat_indices(self):
@@ -2541,27 +2522,26 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertIn('ester_hydrolysis', families)
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
 
-        for i in xyz_guesses_total:
-            family=i['family']
+        for guess_block in xyz_guesses_total:
+            family=guess_block['family']
             print(family)
-            a,b,f,d,O,H1= i['indices'][0], i['indices'][1], i['indices'][2], i['indices'][3], i['indices'][4], i['indices'][5]
-            for j in i['xyz_guesses']:
-                xyz_str = xyz_to_str(j)
+            a,b,f,d,O,H1= guess_block['indices'][0], guess_block['indices'][1], guess_block['indices'][2], guess_block['indices'][3], guess_block['indices'][4], guess_block['indices'][5]
+            for guess in guess_block['xyz_guesses']:
+                xyz_str = xyz_to_str(guess)
                 print(xyz_str)
                 print()
                 if family== 'ester_hydrolysis':#the parameters of ether hydrolysis are checked in the following test section
                     distance_ab=(calculate_param(coords=initial_xyz['coords'], atoms=[b, a]))*1.3
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a]), distance_ab, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O]), 1.8, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1]), 1.21, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1+1]), 0.97, places=2)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O]), 77, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O, H1]), 71, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[H1, O, H1+1]), 111, places=0)
-                    self.assertAlmostEqual(abs((calculate_param(coords=j['coords'], atoms=[f, d, a, O]) + 180) % 360 - 180), 140, places=0)
-                    self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O, H1]), 1.64, places=1)
-                    self.assertAlmostEqual(abs((calculate_param(coords=j['coords'], atoms=[a, H1, O, H1+1]) + 180) % 360 - 180), 103, places=0)
-
+                    self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
+                    self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
+                    self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+                    self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97,places=0)
+                    self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=77, delta=5)
+                    self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=71, delta=5)
+                    self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
+                    self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=140, delta=5)
+                    self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=1.64, delta=3)
+                    self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103, delta=5)
     def test_ether_hydrolysis(self):
         """Test ether hydrolysis reactions."""
         water = self.water
@@ -2583,7 +2563,7 @@ H       1.18773917   -1.27609387   -0.39480684""")
         allylalcohol=self.allylalcohol
         rxn4=ARCReaction(r_species=[allylmethylether, water], p_species=[allylalcohol, methanol])
 
-        tested_rxn = rxn4
+        tested_rxn = rxn2
         reactant = tested_rxn.r_species[0]
         initial_xyz = reactant.get_xyz()
         product_dicts = get_reaction_family_products(
@@ -2595,27 +2575,25 @@ H       1.18773917   -1.27609387   -0.39480684""")
         families = [entry['family'] for entry in product_dicts]
         self.assertIn('ether_hydrolysis', families)
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        for i in xyz_guesses_total:
-            print(i['family'])
-            a, b, f, d, O, H1 = i['indices'][0], i['indices'][1], i['indices'][2], i['indices'][3], i['indices'][4], i['indices'][5]
+        for guess_block in xyz_guesses_total:
+            print(guess_block['family'])
+            a, b, f, d, O, H1 = guess_block['indices'][0], guess_block['indices'][1], guess_block['indices'][2], guess_block['indices'][3], guess_block['indices'][4], guess_block['indices'][5]
             print(a, b, f, d, O, H1)
-            for j in i['xyz_guesses']:
-                xyz_str = xyz_to_str(j)
+            for guess in guess_block['xyz_guesses']:
+                xyz_str = xyz_to_str(guess)
                 print(xyz_str)
                 print()
                 distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.5
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a]), distance_ab, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O]), 2.1, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1]), 1.21, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1 + 1]), 0.97, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O]), 65, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O, H1]), 72, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[H1, O, H1 + 1]), 106, places=0)
-                self.assertAlmostEqual(abs((calculate_param(coords=j['coords'], atoms=[f, d, a, O]) + 180) % 360 - 180),
-                                       98.25, places=0)
-                self.assertAlmostEqual((calculate_param(coords=j['coords'], atoms=[b, a, O, H1]) + 180) % 360 - 180, -0.72, places=1)
-                self.assertAlmostEqual(
-                    abs((calculate_param(coords=j['coords'], atoms=[a, H1, O, H1 + 1]) + 180) % 360 - 180), 103, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[a, O], expected=2.1, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=65, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=72, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=106, delta=6)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=98.25, delta=10)
+                self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.72, delta=10)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103, delta=10)
 
     def test_imine_hydrolysis(self):
         """Test imine hydrolysis reactions."""
@@ -2649,28 +2627,25 @@ H       1.18773917   -1.27609387   -0.39480684""")
         families = [entry['family'] for entry in product_dicts]
         self.assertIn('imine_hydrolysis', families)
         xyz_guesses_total, zmats_total = hydrolysis(reaction=tested_rxn)
-        for i in xyz_guesses_total:
-            print(i['family'])
-            a, b, f, d, O, H1 = i['indices'][0], i['indices'][1], i['indices'][2], i['indices'][3], i['indices'][4], i['indices'][5]
+        for block in xyz_guesses_total:
+            print(block['family'])
+            a, b, f, d, O, H1 = block['indices'][0], block['indices'][1], block['indices'][2], block['indices'][3], block['indices'][4], block['indices'][5]
             print(a, b, f, d, O, H1)
-            for j in i['xyz_guesses']:
-                xyz_str = xyz_to_str(j)
+            for guess in block['xyz_guesses']:
+                xyz_str = xyz_to_str(guess)
                 print(xyz_str)
                 print()
                 distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.3
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a]), distance_ab, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O]), 1.8, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1]), 1.21, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1 + 1]), 0.97, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O]), 78, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O, H1]), 70, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[H1, O, H1 + 1]), 111, places=0)
-                self.assertAlmostEqual(abs((calculate_param(coords=j['coords'], atoms=[f, d, a, O]) + 180) % 360 - 180),
-                                       108, places=0)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O, H1]),12, places=0)
-                self.assertAlmostEqual(
-                    abs((calculate_param(coords=j['coords'], atoms=[a, H1, O, H1 + 1]) + 180) % 360 - 180), 113,
-                    places=0)
+                self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=78, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=70, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=108, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=12, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=113, delta=5)
 
     def test_nitrile_hydrolysis(self):
         """Test nitrile hydrolysis reactions."""
@@ -2704,27 +2679,35 @@ H       1.18773917   -1.27609387   -0.39480684""")
         families = [entry['family'] for entry in product_dicts]
         self.assertIn('nitrile_hydrolysis', families)
         xyz_guesses_total, zmats_total = hydrolysis(tested_rxn)
-        for i in xyz_guesses_total:
-            a, b, f, O, H1 = i['indices'][0], i['indices'][1], i['indices'][2], i['indices'][4], i['indices'][5]
-            print(i['family'])
-            for j in i['xyz_guesses']:
-                xyz_str = xyz_to_str(j)
+        for block in xyz_guesses_total:
+            a, b, f, O, H1 = block['indices'][0], block['indices'][1], block['indices'][2], block['indices'][4], block['indices'][5]
+            print(block['family'])
+            for guess in block['xyz_guesses']:
+                xyz_str = xyz_to_str(guess)
                 print(xyz_str)
                 print()
                 distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.1
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a]), distance_ab, places=2)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O]), 1.8, places=2)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1]), 1.21, places=2)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[O, H1 + 1]), 0.97, places=2)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[b, a, O]), 97, places=1)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[a, O, H1]), 58, places=1)
-                self.assertAlmostEqual(calculate_param(coords=j['coords'], atoms=[H1, O, H1 + 1]), 111, places=1)
-                self.assertAlmostEqual(abs((calculate_param(coords=j['coords'], atoms=[f, b, a, O]) + 180) % 360 - 180),
-                                       174, places=1)
-                self.assertAlmostEqual((calculate_param(coords=j['coords'], atoms=[b, a, O, H1]) + 180) % 360 - 180, -0.0154, places=1)
-                self.assertAlmostEqual(
-                    abs((calculate_param(coords=j['coords'], atoms=[a, H1, O, H1 + 1]) + 180) % 360 - 180), 104,
-                    places=1)
+                self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+                self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=97, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=58, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, b, a, O], expected=174, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.0154, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, O, H1, H1 + 1], expected=104, delta=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        A function that is run ONCE after all unit tests in this class.
+        Delete all project directories created during these unit tests.
+        """
+        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics_1'), ignore_errors=True)
+
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
