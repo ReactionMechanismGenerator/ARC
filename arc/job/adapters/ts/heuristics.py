@@ -1106,17 +1106,17 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     }
 
     return main_reactant, water, initial_xyz, xyz_indices
+
+
+def get_neighbors_by_electronegativity(spc: 'ARCSpecies',
                                        atom_index: int,
                                        exclude_index: int,
-                                       two_neighbors: bool = True
-                                       ) -> List[int]:
+                                       two_neighbors: bool = True) -> List[int]:
     """
     Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
     excluding a specified neighbor.
-
     Effective electronegativity is calculated as:
         Effective Electronegativity = Electronegativity of the neighbor * Bond order.
-
     Sorting rules:
     1. Neighbors are sorted in descending order of their effective electronegativity.
     2. If two neighbors have the same effective electronegativity, the tie is broken by comparing the
@@ -1124,43 +1124,40 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
        The neighbor with the higher sum will be ranked first.
 
     Args:
-        spc (ARCSpecies): The species containing the atom and its neighbors.
-        atom_index (int): The index of the atom whose neighbors are being evaluated.
-        exclude_index (int): The index of the neighbor to exclude from consideration.
-        two_neighbors (bool): Whether the specie has two neighbors or not.
+        spc (ARCSpecies): The species containing the atoms.
+        atom_index (int): Index of the central atom.
+        exclude_index (int): Index of atom to exclude from neighbors list.
+        two_neighbors (bool): Whether to return two neighbors (True) or one (False).
 
     Returns:
-        List[int]: A list of the indices of the top two neighbors in the global `spc.atoms` list,
-                   sorted based on the rules above. If the species has only one neighbor, the list will contain only one index.
+        List[int]: Indices of the most electronegative neighbors (one or two based on two_neighbors parameter).
 
     Raises:
-        ValueError: If the atom has no neighbors or if all neighbors are excluded.
+        ValueError: If the atom has no valid neighbors.
     """
-    atom = spc.mol.atoms[atom_index]
-    neighbors = list(atom.edges.keys())
-    neighbors = [neighbor for neighbor in neighbors if spc.mol.atoms.index(neighbor) != exclude_index]
+    neighbors = [neighbor for neighbor in spc.mol.atoms[atom_index].edges.keys()
+                 if spc.mol.atoms.index(neighbor) != exclude_index]
+
     if not neighbors:
         raise ValueError(f"Atom at index {atom_index} has no valid neighbors.")
-    yaml_file_path = os.path.join(ARC_PATH, 'data', 'electronegativity.yml')
-    electronegativities = read_yaml_file(yaml_file_path)
-    effective_electronegativities = []
-    for neighbor in neighbors:
-        electro_value = electronegativities[neighbor.symbol]
-        bond_order = atom.edges[neighbor].order
-        effective_electronegativity = electro_value * bond_order
-        effective_electronegativities.append((effective_electronegativity, neighbor))
-    effective_electronegativities.sort(
-        key=lambda neighbor_data: (
-            neighbor_data[0],
-            sum(electronegativities[n.symbol] * neighbor_data[1].edges[n].order for n in neighbor_data[1].edges.keys())
-        ),
-        reverse=True
-    )
-    sorted_neighbors = [spc.mol.atoms.index(neighbor) for _, neighbor in effective_electronegativities]
-    if two_neighbors:
-        return sorted_neighbors[:2]
-    else:
-        return sorted_neighbors[0]
+    electronegativities = read_yaml_file(os.path.join(ARC_PATH, 'data', 'electronegativity.yml'))
+    def get_neighbor_total_electronegativity(neighbor: 'Atom') -> float:
+        """
+        Calculate the total electronegativity of a neighbor based on its bonded neighbors.
+        Args:
+            neighbor (Atom): The atom to calculate the total electronegativity for.
+        Returns:
+            float: The total electronegativity of the neighbor
+        """
+        return sum(
+            electronegativities[n.symbol] * neighbor.edges[n].order
+            for n in neighbor.edges.keys()
+        )
+    effective_electronegativities = [(electronegativities[n.symbol] * spc.mol.atoms[atom_index].edges[n].order,
+            get_neighbor_total_electronegativity(n), n ) for n in neighbors]
+    effective_electronegativities.sort(reverse=True, key=lambda x: (x[0], x[1]))
+    sorted_neighbors = [spc.mol.atoms.index(n[2]) for n in effective_electronegativities]
+    return sorted_neighbors[:2] if two_neighbors else [sorted_neighbors[0]]
 
 def setup_zmat_indices(initial_xyz: dict,
                        xyz_indices: dict) -> Tuple[dict, dict]:
