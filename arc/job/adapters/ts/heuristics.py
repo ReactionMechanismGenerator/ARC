@@ -957,6 +957,7 @@ def is_water(spc: ARCSpecies) -> bool:
             main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
                                                                                           product_dict,
                                                                                           is_set_1)
+            initial_zmat, zmat_indices = setup_zmat_indices(initial_xyz, xyz_indices)
 def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
     """
     Get all reaction products and determine if both ester and ether hydrolysis families are present.
@@ -1161,41 +1162,52 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     else:
         return sorted_neighbors[0]
 
-
-def generate_hydrolysis_ts_guess(initial_xyz: dict,
-                                 water: 'ARCSpecies',
-                                 r_atoms: List[int],
-                                 a_atoms: List[List[int]],
-                                 d_atoms: List[List[int]],
-                                 r_value: List[float],
-                                 a_value: List[float],
-                                 d_values: List[List[float]],
-                                 zmats_total: List[dict],
-                                 threshold: float = 0.8
-                                 ) -> Tuple[List[dict], List[dict]]:
+def setup_zmat_indices(initial_xyz: dict,
+                       xyz_indices: dict) -> Tuple[dict, dict]:
     """
-    Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
+    Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
 
     Args:
-        initial_xyz (dict): The initial coordinates of the reactant.
-        water ('ARCSpecies'): The water molecule involved in the reaction.
-        r_atoms (List[int]): Atom pairs for defining bond distances.
-        a_atoms (List[List[int]]): Atom triplets for defining bond angles.
-        d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
-        r_value (List[float]): Bond distances corresponding to each atom pair in `r_atoms`.
-        a_value (List[float]): Bond angles corresponding to each atom triplet in `a_atoms`.
-        d_values (List[List[float]]): Dihedral angle sets for each TS guess.
-        zmats_total (List[dict]): A list of existing Z-matrices to avoid duplicates.
-        threshold (float): Threshold to check for atom collisions.
+        initial_xyz (dict): XYZ coordinates of the molecule.
+        xyz_indices (dict): Dictionary mapping atom types to their XYZ indices.
 
     Returns:
-        Tuple[List[dict], List[dict]]: A tuple containing:
-            - List[dict]: Unique Z-matrices for TS guesses without colliding atoms.
-            - List[dict]: Corresponding Cartesian coordinates for the TS guesses.
+        tuple: A tuple containing:
+            - dict: Z-matrix representation of the molecule
+            - dict: Dictionary mapping atom types to their Z-matrix indices
     """
-    xyz_guesses = []
+    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+    zmat_indices = {
+        'a': key_by_val(initial_zmat.get('map', {}), xyz_indices['a']),
+        'b': key_by_val(initial_zmat.get('map', {}), xyz_indices['b']),
+        'f': key_by_val(initial_zmat.get('map', {}), xyz_indices['f']),
+        'd': key_by_val(initial_zmat.get('map', {}), xyz_indices['d']) if xyz_indices['d'] is not None else None
+    }
+    return initial_zmat, zmat_indices
 
-    for d_value in d_values:
+def setup_zmat_indices(initial_xyz: dict,
+                       xyz_indices: dict) -> Tuple[dict, dict]:
+    """
+    Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
+
+    Args:
+        initial_xyz: XYZ coordinates of the molecule.
+        xyz_indices: Dictionary mapping atom types to their XYZ indices.
+
+    Returns:
+        Tuple containing:
+            - dict: Z-matrix representation of the molecule
+            - dict: Dictionary mapping atom types to their Z-matrix indices
+    """
+    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+    zmat_indices = {
+        "a": key_by_val(initial_zmat.get("map", {}), xyz_indices["a"]),
+        "b": key_by_val(initial_zmat.get("map", {}), xyz_indices["b"]),
+        "f": key_by_val(initial_zmat.get("map", {}), xyz_indices["f"]),
+        "d": key_by_val(initial_zmat.get("map", {}), xyz_indices["d"]) if xyz_indices["d"] is not None else None
+    }
+
+    return initial_zmat, zmat_indices
         xyz_guess = copy.deepcopy(initial_xyz)
         for i in range(3):
             xyz_guess = add_atom_to_xyz_using_internal_coords(
