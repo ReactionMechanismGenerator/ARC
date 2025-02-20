@@ -950,6 +950,10 @@ def is_water(spc: ARCSpecies) -> bool:
         bool: Whether the species is water.
     product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
     hydrolysis_parameters = load_hydrolysis_parameters()
+    dihedrals_to_change_num = 0
+
+    while not xyz_guesses_total or (ester_and_ether_families and not has_ester_hydrolysis(xyz_guesses_total)):
+        dihedrals_to_change_num += 1
 def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
     """
     Get all reaction products and determine if both ester and ether hydrolysis families are present.
@@ -989,6 +993,20 @@ def load_hydrolysis_parameters() -> dict:
               family sets and specific parameters for different reaction types.
     """
     return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
+
+
+def has_ester_hydrolysis(xyz_guesses_total: List[dict]) -> bool:
+    """
+    Check if ester hydrolysis is present in the generated transition state guesses.
+
+    Args:
+        xyz_guesses_total: List of dictionaries containing transition state guesses
+                          and their family information.
+
+    Returns:
+        bool: True if ester hydrolysis is present in any of the transition state guesses.
+    """
+    return any(item["family"] == "ester_hydrolysis" for item in xyz_guesses_total)
 
     """
     if len(spc.mol.atoms) != 3:
