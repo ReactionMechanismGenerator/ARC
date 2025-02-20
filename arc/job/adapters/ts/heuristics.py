@@ -1011,6 +1011,46 @@ def has_ester_hydrolysis(xyz_guesses_total: List[dict]) -> bool:
     """
     return any(item["family"] == "ester_hydrolysis" for item in xyz_guesses_total)
 
+
+def process_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple[ARCSpecies, ARCSpecies]:
+    """
+    Process a hydrolysis reaction by recognizing main reactant and water species.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The main reactant
+            - ARCSpecies: The water molecule
+
+    Raises:
+        ValueError: If reactants don't include both water and a non-water molecule.
+    """
+    arc_reactants, _ = reaction.get_reactants_and_products(arc=True, return_copies=True)
+    arc_reactant, water = None, None
+
+    for spc in arc_reactants:
+        if not is_water(spc):
+            arc_reactant = spc
+        else:
+            water = spc
+
+    if arc_reactant is None or water is None:
+        raise ValueError("Reactants must include a non-water molecule and water.")
+
+    return arc_reactant, water
+
+
+def is_water(spc: 'ARCSpecies') -> bool:
+    """
+    Check if a given species is a water molecule.
+
+    Args:
+        spc: The species to check.
+
+    Returns:
+        bool: True if the species is water (H2O), False otherwise.
     """
     if len(spc.mol.atoms) != 3:
         return False
