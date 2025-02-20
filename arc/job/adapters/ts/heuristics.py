@@ -954,6 +954,9 @@ def is_water(spc: ARCSpecies) -> bool:
 
     while not xyz_guesses_total or (ester_and_ether_families and not has_ester_hydrolysis(xyz_guesses_total)):
         dihedrals_to_change_num += 1
+            main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
+                                                                                          product_dict,
+                                                                                          is_set_1)
 def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
     """
     Get all reaction products and determine if both ester and ether hydrolysis families are present.
@@ -1020,7 +1023,48 @@ def has_ester_hydrolysis(xyz_guesses_total: List[dict]) -> bool:
     return O_counter == 1 and H_counter == 2
 
 
-def get_neighbors_by_electronegativity(spc: ARCSpecies,
+def extract_reactant_and_indices(reaction: 'ARCReaction',
+                                 product_dict: dict,
+                                 is_set_1: bool) -> Tuple[ARCSpecies, ARCSpecies, dict, dict]:
+    """
+    Extract the reactant molecules and relevant atomic indices (a,b,f,d) for the hydrolysis reaction.
+
+    Args:
+        reaction: An ARCReaction instance.
+        product_dict: Dictionary containing reaction product information and atom mappings.
+        is_set_1: Whether the reaction is in the first set of hydrolysis families.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The main reactant molecule
+            - ARCSpecies: The water molecule
+            - dict: Initial XYZ coordinates of the main reactant
+            - dict: Dictionary mapping atom types to their indices
+    """
+    main_reactant, water = process_hydrolysis_reaction(reaction)
+    a_xyz_index = product_dict["r_label_map"]["*1"]
+    b_xyz_index = product_dict["r_label_map"]["*2"]
+    two_neighbors = is_set_1
+    f_xyz_index, d_xyz_index = get_neighbors_by_electronegativity(
+        main_reactant,
+        a_xyz_index,
+        b_xyz_index,
+        two_neighbors
+    )
+    o_index = len(main_reactant.mol.atoms)
+    h1_index = o_index + 1
+
+    initial_xyz = main_reactant.get_xyz()
+    xyz_indices = {
+        "a": a_xyz_index,
+        "b": b_xyz_index,
+        "f": f_xyz_index,
+        "d": d_xyz_index,
+        "o": o_index,
+        "h1": h1_index
+    }
+
+    return main_reactant, water, initial_xyz, xyz_indices
                                        atom_index: int,
                                        exclude_index: int,
                                        two_neighbors: bool = True
