@@ -24,10 +24,10 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             stretch_zmat_bond,
                                             is_water,
                                             process_hydrolysis_reaction,
+                                            setup_zmat_indices,
+                                            adjust_dihedral_angles,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
-                                            find_matching_dihedral,
-                                            count_all_possible_dihedrals,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
@@ -2424,9 +2424,7 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertIsNone(zmat_indices['d'])
 
     def test_get_matching_dihedrals(self):
-        """
-        Test get_matching_dihedrals.
-        """
+        """Test get_matching_dihedrals."""
         zmat = {'vars': {'D_1_2_3_4': 60,
                          'D_1_2_5_6': 120,
                          'D_2_3_4_5': 180,
@@ -2442,45 +2440,50 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertEqual(matches_without_d, expected_matches_without_d,
                          "get_matching_dihedrals without 'd' provided failed.")
 
-    def test_find_matching_dihedral(self):
-        """
-        Test find_matching_dihedral.
-        """
-        zmat = {'vars': {'D_1_2_3_4': 60,
-                         'D_1_2_5_6': 120,
-                         'D_2_3_4_5': 180,
-                         'DX_1_2_4_7': 90,
-                         'DX_3_4_5_6': -60,
-                         'D_2_3_5_6': 150}}
-        limited_matches = find_matching_dihedral(zmat, a=1, b=2, f=3, d=4, counter=1)
-        expected_limited_matches = [[1, 2, 3, 4]]
-        self.assertEqual(limited_matches, expected_limited_matches,
-                         "find_matching_dihedral with counter limit failed.")
-        no_matches = find_matching_dihedral(zmat, a=9, b=10, f=11, d=12, counter=2)
-        self.assertIsNone(no_matches, "find_matching_dihedral should return None for no matches.")
-        count_with_d = count_all_possible_dihedrals(zmat, a=2, b=3, f=5, d=4)
-        expected_count_with_d = 3
-        self.assertEqual(count_with_d, expected_count_with_d,
-                         "count_all_possible_dihedrals with 'd' provided failed.")
+    def test_adjust_dihedral_angles(self):
+        """Test the adjust_dihedral_angles() function."""
+        initial_zmat = {
+            'vars': {
+                'D_1_2_3_4': 180.0,
+                'D_2_3_4_5': 60.0,
+                'D_1_2_4_6': 120.0
+            },
+            'map': {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
+        }
+        zmat_indices = {'a': 1, 'b': 2, 'f': 3, 'd': 4}
+        result = adjust_dihedral_angles(initial_zmat, zmat_indices, 1)
+        self.assertTrue(result)
+        self.assertNotEqual(initial_zmat['vars']['D_1_2_3_4'], 60.0)
 
-    def test_count_all_possible_dihedrals(self):
-        """
-        Test count_all_possible_dihedrals.
-        """
-        zmat = {'vars': {'D_1_2_3_4': 60,
-                         'D_1_2_5_6': 120,
-                         'D_2_3_4_5': 180,
-                         'DX_1_2_4_7': 90,
-                         'DX_3_4_5_6': -60,
-                         'D_2_3_5_6': 150}}
-        count_without_d = count_all_possible_dihedrals(zmat, a=2, b=3, f=5, d=None)
-        expected_count_without_d = 2
-        self.assertEqual(count_without_d, expected_count_without_d,
-                         "count_all_possible_dihedrals without 'd' provided failed.")
-        count_no_matches = count_all_possible_dihedrals(zmat, a=8, b=9, f=10, d=None)
-        expected_count_no_matches = 0
-        self.assertEqual(count_no_matches, expected_count_no_matches,
-                         "count_all_possible_dihedrals should return 0 for no matches.")
+        empty_zmat = {'vars': {}, 'map': {}}
+        result = adjust_dihedral_angles(empty_zmat, zmat_indices, 1)
+        self.assertTrue(result)
+
+        result = adjust_dihedral_angles(initial_zmat, zmat_indices, 5)
+        self.assertFalse(result)
+
+    # Validation Helper Functions
+    def check_distance(self, coords, atoms, expected, places=0):
+        """Checks if the calculated distance between atoms is close to the expected value."""
+        value = calculate_param(coords=coords, atoms=atoms)
+        self.assertAlmostEqual(value, expected, places=places)
+
+    def check_angle(self, coords, atoms, expected, places=None, delta=None):
+        """Checks if the calculated angle is within the acceptable deviation."""
+        value = calculate_param(coords=coords, atoms=atoms)
+        if delta:
+            self.assertAlmostEqual(value, expected, delta=delta)
+        elif places:
+            self.assertAlmostEqual(value, expected, places=places)
+
+    def check_dihedral(self, coords, atoms, expected, places=None, delta=None):
+        """Checks if the calculated dihedral angle is within the acceptable deviation."""
+        value = calculate_param(coords=coords, atoms=atoms)
+        normalized = abs((value + 180) % 360 - 180)
+        if delta:
+            self.assertAlmostEqual(normalized, expected, delta=delta)
+        elif places:
+            self.assertAlmostEqual(normalized, expected, places=places)+180
 
     def test_ester_hydrolysis(self):
         """Test ester hydrolysis reactions."""
