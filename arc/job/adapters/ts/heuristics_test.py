@@ -23,6 +23,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_new_zmat_2_map,
                                             stretch_zmat_bond,
                                             is_water,
+                                            process_hydrolysis_reaction,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
                                             find_matching_dihedral,
@@ -711,6 +712,17 @@ H      -2.22374627    0.55182022   -0.83201966
 H      -0.92939620    2.54047355    0.09222318
 H      -0.05326147    2.22580131    1.60075386
 H      -1.80338391    2.35173651    1.62264865""")
+
+        cls.ethylamine=ARCSpecies(label='amine', smiles='CCN', xyz="""C      -1.14264899   -0.06058026   -0.03332469
+C       0.26912880    0.49496284    0.03304382
+N       1.21966642   -0.56664747    0.33628965
+H      -1.43371056   -0.51780317    0.91844437
+H      -1.23525080   -0.81736666   -0.81966584
+H      -1.85393441    0.74205986   -0.25306388
+H       0.32681273    1.26512119    0.80885729
+H       0.53039286    0.96148310   -0.92252276
+H       2.16545120   -0.18719811    0.32509986
+H       1.18773917   -1.27609387   -0.39480684""")
 
         cls.zmat_1 = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
                       'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
@@ -2326,13 +2338,37 @@ H      -1.80338391    2.35173651    1.62264865""")
 
     def test_is_water(self):
         """Test the is_water() function."""
-        water= self.water
+        water = self.water
         self.assertTrue(is_water(water))
-        methane= 'C'
+        methane = 'C'
         methane_species = ARCSpecies(label='methane', smiles=methane)
         self.assertFalse(is_water(methane_species))
-        ethanol= self.ethanol
+        ethanol = self.ethanol
         self.assertFalse(is_water(ethanol))
+
+    def test_process_hydrolysis_reaction(self):
+        """Test the process_hydrolysis_reaction() function."""
+        acetamide = self.acetamide
+        water = self.water
+        acetic_acid = self.acetic_acid
+        ammonia = self.ammonia
+        rxn = ARCReaction(r_species=[acetamide, water], p_species=[acetic_acid, ammonia])
+        main_reactant, water_mol = process_hydrolysis_reaction(rxn)
+        self.assertEqual(main_reactant.label, acetamide.label)
+
+        benzoyl = self.benzoyl
+        ethylamine = self.ethylamine
+        benzamide = self.benzamide
+        ethanol = self.ethanol
+        rxn_no_water = ARCReaction(r_species=[benzoyl, ethylamine], p_species=[benzamide, ethanol])
+        with self.assertRaises(ValueError) as cm:
+            process_hydrolysis_reaction(rxn_no_water)
+        self.assertEqual(str(cm.exception), "Reactants must include a non-water molecule and water.")
+
+        rxn_only_water = ARCReaction(r_species=[water, water], p_species=[water, water])
+        with self.assertRaises(ValueError) as cm:
+            process_hydrolysis_reaction(rxn_only_water)
+        self.assertEqual(str(cm.exception), "Reactants must include a non-water molecule and water.")
 
     def test_get_neighbors_by_electronegativity(self):
         """Test the get_neighbors_by_electronegativity() function."""
