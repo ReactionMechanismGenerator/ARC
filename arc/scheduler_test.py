@@ -9,7 +9,6 @@ import unittest
 import os
 import shutil
 
-import arc.rmgdb as rmgdb
 import arc.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
@@ -69,7 +68,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                species=[cls.spc1], xyz=xyz1, job_type='scan', torsions=[[3, 1, 2, 6]], rotor_index=0,
                                level=Level(repr={'method': 'b3lyp', 'basis': 'cbsb7'}),
                                project_directory=cls.project_directory, job_num=104)
-        cls.rmg_database = rmgdb.make_rmg_database_object()
         cls.job_types1 = {'conf_opt': True,
                           'conf_sp': False,
                           'opt': True,
@@ -97,7 +95,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                sp_level=Level(repr=default_levels_of_theory['sp']),
                                scan_level=Level(repr=default_levels_of_theory['scan']),
                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               rmg_database=cls.rmg_database,
                                project_directory=cls.project_directory,
                                testing=True,
                                job_types=cls.job_types1,
@@ -113,7 +110,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                sp_level=Level(repr=default_levels_of_theory['sp']),
                                scan_level=Level(repr=default_levels_of_theory['scan']),
                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               rmg_database=cls.rmg_database,
                                project_directory=cls.project_directory,
                                testing=True,
                                job_types=cls.job_types1,
@@ -128,7 +124,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                freq_level=Level(repr=default_levels_of_theory['freq_for_composite']),
                                scan_level=Level(repr=default_levels_of_theory['scan_for_composite']),
                                ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
-                               rmg_database=cls.rmg_database,
                                project_directory=cls.project_directory,
                                testing=True,
                                job_types=cls.job_types2,
@@ -229,7 +224,6 @@ H      -1.82570782    0.42754384   -0.56130718"""
                            sp_level=default_levels_of_theory['sp'],
                            scan_level=default_levels_of_theory['scan'],
                            ts_guess_level=default_levels_of_theory['ts_guesses'],
-                           rmg_database=self.rmg_database,
                            project_directory=self.project_directory,
                            testing=True, job_types=self.job_types1,
                            orbitals_level=default_levels_of_theory['orbitals'],

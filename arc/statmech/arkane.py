@@ -289,7 +289,10 @@ class ArkaneAdapter(StatmechAdapter):
                         logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
                     success = False
                 if success:
-                    self.reaction.kinetics = kinetics_job.reaction.kinetics
+                    self.reaction.kinetics = {'A': kinetics_job.reaction.kinetics.A.value,
+                                              'n': kinetics_job.reaction.kinetics.n.value,
+                                              'Ea': kinetics_job.reaction.kinetics.Ea.value,
+                                              }
                     plotter.log_kinetics(ts_species.label, path=arkane_output_path)
 
         # Initialize the Arkane species_dict in case another reaction uses the same species.
