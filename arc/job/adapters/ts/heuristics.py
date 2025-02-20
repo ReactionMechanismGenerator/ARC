@@ -939,21 +939,30 @@ def h_abstraction(reaction: 'ARCReaction',
     return xyz_guesses
 
 
-def is_water(spc: ARCSpecies) -> bool:
+def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
     """
-    Determine whether the species is water.
+    Generate TS guesses for reactions of the ARC "hydrolysis" families.
 
     Args:
-        spc (ARCSpecies): The species to check.
+        reaction: An ARCReaction instance.
 
     Returns:
-        bool: Whether the species is water.
+        Tuple containing:
+            - List[dict]: Cartesian coordinates of TS guesses
+            - List[dict]: Z-matrices of TS guesses
+    """
+    xyz_guesses_total, zmats_total = [], []
     product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
     hydrolysis_parameters = load_hydrolysis_parameters()
     dihedrals_to_change_num = 0
 
     while not xyz_guesses_total or (ester_and_ether_families and not has_ester_hydrolysis(xyz_guesses_total)):
         dihedrals_to_change_num += 1
+        for product_dict in product_dicts:
+            reaction_family = product_dict["family"]
+            is_set_1 = reaction_family in hydrolysis_parameters["family_sets"]["set_1"]
+            is_set_2 = reaction_family in hydrolysis_parameters["family_sets"]["set_2"]
+
             main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
                                                                                           product_dict,
                                                                                           is_set_1)
@@ -1421,12 +1430,6 @@ def process_family_specific_adjustments(is_set_1: bool,
                                             r_value, a_value, d_values, zmats_total, threshold=0.6)
     else:
         raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
-        return
-    # apply adjustment and normalize the angle
-    new_value = (dihedral_value + 360) * adjustment_factor - 360 if abs(dihedral_value) < 1e-3 else dihedral_value * adjustment_factor
-    new_value = (new_value + 180) % 360 - 180
-    zmat['vars'][param] = new_value
-    print(f"Updated dihedral value for {param}: {zmat['vars'][param]}")
 
 
 def generate_hydrolysis_ts_guess(initial_xyz: dict,
