@@ -2554,7 +2554,7 @@ def average_best_guesses_from_all_methods(atom_r_coord, r_value, atom_a_coord, a
     global BEST_GUESSES
     if not BEST_GUESSES:
         return generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
-    coords = np.array([xyz['coords'][-1] for xyz in BEST_GUESSES])
+    coords = np.array([xyz['coords'][-1] for xyz in BEST_GUESSES if xyz is not None])
     return np.mean(coords, axis=0)
 
 def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
