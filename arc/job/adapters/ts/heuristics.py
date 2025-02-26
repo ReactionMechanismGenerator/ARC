@@ -1221,31 +1221,6 @@ def setup_zmat_indices(initial_xyz: dict,
     }
     return initial_zmat, zmat_indices
 
-def setup_zmat_indices(initial_xyz: dict,
-                       xyz_indices: dict) -> Tuple[dict, dict]:
-    """
-    Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
-
-    Args:
-        initial_xyz: XYZ coordinates of the molecule.
-        xyz_indices: Dictionary mapping atom types to their XYZ indices.
-
-    Returns:
-        Tuple containing:
-            - dict: Z-matrix representation of the molecule
-            - dict: Dictionary mapping atom types to their Z-matrix indices
-    """
-    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
-    zmat_indices = {
-        "a": key_by_val(initial_zmat.get("map", {}), xyz_indices["a"]),
-        "b": key_by_val(initial_zmat.get("map", {}), xyz_indices["b"]),
-        "f": key_by_val(initial_zmat.get("map", {}), xyz_indices["f"]),
-        "d": key_by_val(initial_zmat.get("map", {}), xyz_indices["d"]) if xyz_indices["d"] is not None else None
-    }
-
-    return initial_zmat, zmat_indices
-
-
 def adjust_dihedral_angles(initial_zmat: dict,
                            zmat_indices: dict,
                            dihedrals_to_change_num: int) -> bool:
@@ -1263,10 +1238,8 @@ def adjust_dihedral_angles(initial_zmat: dict,
     matches = get_matching_dihedrals(initial_zmat, zmat_indices['a'], zmat_indices['b'],
                                     zmat_indices['f'], zmat_indices['d'])
     total_dihedrals_num = len(matches)
-
     if (dihedrals_to_change_num > total_dihedrals_num) and (total_dihedrals_num != 0):
         return False
-
     indices_list = matches[:dihedrals_to_change_num] if matches else None
 
     if indices_list:
@@ -1412,19 +1385,17 @@ def process_family_specific_adjustments(is_set_1: bool,
     d_atoms = ([[f_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
                if d_xyz is not None else
                [[f_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]])
-
     r_value = hydrolysis_parameters['default_parameters']['r_value']
     a_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['a_value']
     d_values = hydrolysis_parameters['family_parameters'][str(reaction_family)]['d_values']
 
     if is_set_1:
         if reaction_family == 'ether_hydrolysis':
-            r_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
+            r_value[0] = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
                                             r_value, a_value, d_values, zmats_total, is_set_1)
     elif is_set_2:
-        d_atoms[0] = [f_xyz, b_xyz, a_xyz]
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
                                             r_value, a_value, d_values, zmats_total, is_set_1, threshold=0.6)
