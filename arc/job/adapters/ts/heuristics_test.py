@@ -28,6 +28,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             adjust_dihedral_angles,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
+                                            check_dao_angle,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
@@ -2442,6 +2443,31 @@ H       1.18773917   -1.27609387   -0.39480684""")
 
         result = adjust_dihedral_angles(initial_zmat, zmat_indices, 5)
         self.assertFalse(result)
+
+    def test_check_dao_angle(self):
+        """Test the check_dao_angle() function."""
+        initial_xyz = {'coords': ((0.30355829, -0.66195506, -1.72681105),
+            (-0.43699079, 0.12678172, -0.66520607),
+            (-0.43699079, 0.12678172, 0.76025877),
+            (-0.43699079, 1.54424376, 1.2153343),
+            (-1.51651197, -1.74230895, -0.7476734),
+            (0.22760699, -1.92765268, -0.60796871),
+            (-0.48269046, -1.432306, -2.16308677),
+            (-1.2382232, 0.71323739, -1.12821542),
+            (0.53171526, 0.5251499, -0.98644288),
+            (-1.24394344, 2.15646467, 0.80128544),
+            (-0.52457078, 1.54152685, 2.30509001),
+            (0.53491089, 1.96742818, 0.94377345),
+            (1.09881554, -0.99733851, 0.22229234)),
+ 'isotopes': (12, 12, 16, 12, 1, 1, 1, 1, 1, 1, 1, 1, 16),
+ 'symbols': ('C', 'C', 'O', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O')}
+        d1_indices = [0, 7, 1, 12]
+        d2_indices=[0, 8, 1, 12]
+        result = check_dao_angle(d1_indices, initial_xyz)
+        self.assertTrue(result)
+        result = check_dao_angle(d2_indices, initial_xyz)
+        self.assertFalse(result)
+
 
     # Validation Helper Functions
     def check_distance(self, coords, atoms, expected, places=0):
