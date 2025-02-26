@@ -1422,12 +1422,12 @@ def process_family_specific_adjustments(is_set_1: bool,
             r_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
-                                            r_value, a_value, d_values, zmats_total)
+                                            r_value, a_value, d_values, zmats_total, is_set_1)
     elif is_set_2:
         d_atoms[0] = [f_xyz, b_xyz, a_xyz]
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
-                                            r_value, a_value, d_values, zmats_total, threshold=0.6)
+                                            r_value, a_value, d_values, zmats_total, is_set_1, threshold=0.6)
     else:
         raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
 
@@ -1441,6 +1441,7 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                                  a_value: List[float],
                                  d_values: List[List[float]],
                                  zmats_total: List[dict],
+                                 is_set_1: bool,
                                  threshold: float = 0.8
                                  ) -> Tuple[List[dict], List[dict]]:
     """
@@ -1456,6 +1457,7 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
         a_value (List[float]): Bond angles for each atom triplet.
         d_values (List[List[float]]): Sets of dihedral angles for TS guesses.
         zmats_total (List[dict]): Existing Z-matrices to avoid duplicates.
+        is_set_1 (bool): Whether the reaction belongs to parameter set 1.
         threshold (float): Threshold for atom collision checking.
 
     Returns:
@@ -1463,7 +1465,7 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
     """
     xyz_guesses = []
 
-    for d_value in d_values:
+    for index, d_value in enumerate(d_values):
         xyz_guess = copy.deepcopy(initial_xyz)
 
         for i in range(3):
@@ -1477,7 +1479,9 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                 a_value=a_value[i],
                 d_value=d_value[i]
             )
-
+        if is_set_1:
+            if check_dao_angle(d_atoms[0] , xyz_guess):
+                continue
         zmat_guess = xyz_to_zmat(xyz_guess)
         duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
 
@@ -1488,6 +1492,27 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
             print(f"Colliding atoms or existing guess: {xyz_guess}")
 
     return xyz_guesses, zmats_total
+
+def check_dao_angle(d_indices: List[int], xyz_guess: dict) -> bool:
+    """
+    Check if the angle DAO is close to 0 or 180 degrees in the given XYZ coordinates.
+
+    Args:
+        d_indices (List[int]): The indices of atoms defining the angle.
+        xyz_guess (dict): The XYZ coordinates of the molecule.
+
+    Returns:
+        bool: True if DAO angle is close to 0 or 180 degrees, False otherwise.
+    """
+    angle_indices = [d_indices[1], d_indices[2], len(xyz_guess['symbols']) - 3]
+    angle_value = calculate_angle(xyz_guess, angle_indices)
+    from arc.species.converter import xyz_to_str
+    print(xyz_to_str(xyz_guess))
+    print(f"DAO angle indices: {angle_indices}")
+    print(f"DAO angle value: {angle_value}")
+    return abs((angle_value + 180) % 180 - 90) > 80
+
+
 
 register_job_adapter('heuristics', HeuristicsAdapter)
         
