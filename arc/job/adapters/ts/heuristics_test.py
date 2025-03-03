@@ -2372,35 +2372,35 @@ H       1.18773917   -1.27609387   -0.39480684""")
 
     def test_get_neighbors_by_electronegativity(self):
         """Test the get_neighbors_by_electronegativity() function."""
-        # Test Case 1: Atom with no neighbors
         spc = ARCSpecies(label='H', smiles='[H]')
         with self.assertRaises(ValueError) as cm:
             get_neighbors_by_electronegativity(spc, 0, 0, False)
         self.assertEqual(str(cm.exception), "Atom at index 0 has no valid neighbors.")
 
-        # Test Case 2: Atom with two neighbors having the same effective electronegativity
-        spc = ARCSpecies(label='carbonyl',smiles='C=O')
+        spc = ARCSpecies(label='carbonyl', smiles='C=O')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
-        exclude=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
-        neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())  # First hydrogen
-        neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen()  and i != neighbor1)  # Second hydrogen
-        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [neighbor1, neighbor2])
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
+        neighbor1 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
+        neighbor2 = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and i != neighbor1)
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), (neighbor1, [neighbor2]))
 
-        # Test Case 3: Atom with multiple neighbors of different effective electronegativities
-        spc = ARCSpecies(label='NH3C(=O)H', smiles='NC(=O)')
+        spc = ARCSpecies(label='NH2C(=O)H', smiles='NC(=O)')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
-        exclude= next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
-        highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() )
+        neighbors = [neighbor for neighbor in spc.mol.atoms[atom_index].edges.keys()]
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and atom in neighbors)
+        highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
         second_highest = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_nitrogen())
-        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index,exclude),[highest, second_highest])
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), (highest, [second_highest]))
 
-        # Test Case 4: Atom with neighbors that have their own neighbors (tie-breaking test)
         spc = ARCSpecies(label='ClOCH2OH', smiles='ClOCO')
         atom_index = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_carbon())
-        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen())
-        first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())  # First oxygen
-        second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)  # Second oxygen
-        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), [first_oxygen, second_oxygen])
+        neighbors = [neighbor for neighbor in spc.mol.atoms[atom_index].edges.keys()]
+        exclude = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and atom in neighbors)
+        first_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen())
+        second_oxygen = next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_oxygen() and i != first_oxygen)
+        second_hydrogen=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and i != exclude)
+        self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), (first_oxygen, [second_oxygen, second_hydrogen]))
+
 
     def test_get_matching_dihedrals(self):
         """
