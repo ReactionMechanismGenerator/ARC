@@ -1038,6 +1038,49 @@ def has_ester_hydrolysis(xyz_guesses_total: List[dict]) -> bool:
     """
     return any(item["family"] == "ester_hydrolysis" for item in xyz_guesses_total)
 
+def extract_reactant_and_indices(reaction: 'ARCReaction',
+                                 product_dict: dict,
+                                 is_set_1: bool) -> Tuple[ARCSpecies, ARCSpecies, dict, dict]:
+    """
+    Extract the reactant molecules and relevant atomic indices (a,b,f,d,o,h1) for the hydrolysis reaction.
+
+    Args:
+        reaction: An ARCReaction instance.
+        product_dict: Dictionary containing reaction product information and atom mappings.
+        is_set_1: Whether the reaction is in the first set of hydrolysis families.
+
+    Returns:
+        Tuple containing:
+            - main_reactant(ARCSpecies): The main reactant molecule
+            - water(ARCSpecies): The water molecule
+            - initial_xyz(dict): Initial XYZ coordinates of the main reactant
+            - xyz_indices(dict): Dictionary mapping a, b, f, d , o, h1 atoms to their indices in the xyz dictionary
+    """
+    main_reactant, water = process_hydrolysis_reaction(reaction)
+    a_xyz_index = product_dict["r_label_map"]["*1"]
+    b_xyz_index = product_dict["r_label_map"]["*2"]
+    two_neighbors = is_set_1
+    f_xyz_index, d_xyz_indices = get_neighbors_by_electronegativity(
+        main_reactant,
+        a_xyz_index,
+        b_xyz_index,
+        two_neighbors
+    )
+    o_index = len(main_reactant.mol.atoms)
+    h1_index = o_index + 1
+
+    initial_xyz = main_reactant.get_xyz()
+    xyz_indices = {
+        "a": a_xyz_index,
+        "b": b_xyz_index,
+        "f": f_xyz_index,
+        "d": d_xyz_indices,
+        "o": o_index,
+        "h1": h1_index
+    }
+
+    return main_reactant, water, initial_xyz, xyz_indices
+
     """
     if len(spc.mol.atoms) != 3:
         return False
