@@ -1025,6 +1025,19 @@ def load_hydrolysis_parameters() -> dict:
     """
     return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
 
+def has_ester_hydrolysis(xyz_guesses_total: List[dict]) -> bool:
+    """
+    Check if ester hydrolysis is present in the generated transition state guesses.
+
+    Args:
+        xyz_guesses_total: List of dictionaries containing transition state guesses
+                          and their family information.
+
+    Returns:
+        bool: True if ester hydrolysis is present in any of the transition state guesses.
+    """
+    return any(item["family"] == "ester_hydrolysis" for item in xyz_guesses_total)
+
     """
     if len(spc.mol.atoms) != 3:
         return False
