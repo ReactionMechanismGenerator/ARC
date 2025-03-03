@@ -985,6 +985,36 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
                 })
 
     return xyz_guesses_total, zmats_total
+
+def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
+    """
+    Get all reaction products and determine if both ester and ether hydrolysis families are present.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        Tuple containing:
+            - List[dict]: Product dictionaries with reaction family information
+            - bool: True if both ester and ether hydrolysis families are present
+    """
+    product_dicts = get_reaction_family_products(
+        rxn=reaction,
+        rmg_family_set="default",
+        consider_rmg_families=False,
+        consider_arc_families=True,
+    )
+    ester_present = any(
+        "ester_hydrolysis" in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
+        for d in product_dicts
+    )
+    ether_present = any(
+        "ether_hydrolysis" in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
+        for d in product_dicts
+    )
+
+    return product_dicts, (ester_present and ether_present)
+
     """
     if len(spc.mol.atoms) != 3:
         return False
