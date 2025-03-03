@@ -1015,6 +1015,16 @@ def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict]
 
     return product_dicts, (ester_present and ether_present)
 
+def load_hydrolysis_parameters() -> dict:
+    """
+    Load parameters for hydrolysis reactions from the YAML configuration file.
+
+    Returns:
+        dict: Hydrolysis parameters loaded from the configuration file containing
+              family sets and specific parameters for different reaction types.
+    """
+    return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
+
     """
     if len(spc.mol.atoms) != 3:
         return False
