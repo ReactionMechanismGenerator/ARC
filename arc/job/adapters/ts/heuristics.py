@@ -973,7 +973,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
                 "o": xyz_indices["o"],
                 "h1": xyz_indices["h1"],
             }
-            chosen_xyz_indices, xyz_guesses, zmats_total= process_dihedral_indices(
+            chosen_xyz_indices, xyz_guesses, zmats_total= process_chosen_d_indices(
                 initial_xyz, base_xyz_indices, xyz_indices, hydrolysis_parameters,
                 reaction_family, water, zmats_total, is_set_1, is_set_2,dihedrals_to_change_num)
 
@@ -1080,6 +1080,54 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     }
 
     return main_reactant, water, initial_xyz, xyz_indices
+
+def process_chosen_d_indices(initial_xyz: dict,
+                             base_xyz_indices: dict,
+                             xyz_indices: dict,
+                             hydrolysis_parameters: dict,
+                             reaction_family: str,
+                             water: 'ARCSpecies',
+                             zmats_total: List[dict],
+                             is_set_1: bool,
+                             is_set_2: bool,
+                             dihedrals_to_change_num: int
+                             ) -> Tuple[dict[str, int], List[dict[str, Any]], List[dict[str, Any]]]:
+    """
+    Iterates over the 'd' indices to process TS guess generation.
+
+    Args:
+        initial_xyz (dict): Initial Cartesian coordinates.
+        base_xyz_indices (Dict[str, int]): Base indices for TS generation.
+        xyz_indices (Dict[str, List[int]]): All relevant indices including 'd'.
+        hydrolysis_parameters (Dict[str, Any]): Hydrolysis-specific parameters.
+        reaction_family (str): The reaction family.
+        water ('ARCSpecies'): Water molecule info.
+        zmats_total (List[Dict[str, Any]]): List to accumulate Z-matrices.
+        is_set_1 (bool): Flag indicating if reaction_family is in set 1.
+        is_set_2 (bool): Flag indicating if reaction_family is in set 2.
+        dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
+
+    Returns:
+        Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
+            - Chosen indices for TS generation.
+            - List of generated transition state (TS) guesses.
+            - Updated list of Z-matrices.
+    """
+    for d_index in xyz_indices.get("d", []):
+        chosen_xyz_indices = {**base_xyz_indices, "d": d_index}
+        current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, chosen_xyz_indices)
+
+        stretch_ab_bond(current_zmat, chosen_xyz_indices, zmat_indices,hydrolysis_parameters, reaction_family)
+        if not adjust_dihedral_angles(current_zmat, zmat_indices, dihedrals_to_change_num):
+            continue
+
+        ts_guesses, zmats_total = process_family_specific_adjustments(is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
+                                                                      current_zmat, water, chosen_xyz_indices, zmats_total
+                                                                      )
+
+        if ts_guesses:
+            return chosen_xyz_indices, ts_guesses, zmats_total
+    return {}, [], zmats_total
 
     """
     if len(spc.mol.atoms) != 3:
