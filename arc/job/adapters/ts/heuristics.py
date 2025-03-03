@@ -939,15 +939,52 @@ def h_abstraction(reaction: 'ARCReaction',
     return xyz_guesses
 
 
-def is_water(spc: ARCSpecies) -> bool:
+def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
     """
-    Determine whether the species is water.
+    Generate TS guesses for reactions of the ARC "hydrolysis" families.
 
     Args:
-        spc (ARCSpecies): The species to check.
+        reaction: An ARCReaction instance.
 
     Returns:
-        bool: Whether the species is water.
+        Tuple containing:
+            - List[dict]: Cartesian coordinates of TS guesses
+            - List[dict]: Z-matrices of TS guesses
+    """
+    xyz_guesses_total, zmats_total = [], []
+    product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
+    hydrolysis_parameters = load_hydrolysis_parameters()
+    dihedrals_to_change_num = 0
+
+    while not xyz_guesses_total or (ester_and_ether_families and not has_ester_hydrolysis(xyz_guesses_total)):
+        dihedrals_to_change_num += 1
+        for product_dict in product_dicts:
+            reaction_family = product_dict["family"]
+            is_set_1 = reaction_family in hydrolysis_parameters["family_sets"]["set_1"]
+            is_set_2 = reaction_family in hydrolysis_parameters["family_sets"]["set_2"]
+
+            main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
+                                                                                          product_dict,
+                                                                                          is_set_1)
+            base_xyz_indices = {
+                "a": xyz_indices["a"],
+                "b": xyz_indices["b"],
+                "f": xyz_indices["f"],
+                "o": xyz_indices["o"],
+                "h1": xyz_indices["h1"],
+            }
+            chosen_xyz_indices, xyz_guesses, zmats_total= process_dihedral_indices(
+                initial_xyz, base_xyz_indices, xyz_indices, hydrolysis_parameters,
+                reaction_family, water, zmats_total, is_set_1, is_set_2,dihedrals_to_change_num)
+
+            if xyz_guesses:
+                xyz_guesses_total.append({
+                    "family": reaction_family,
+                    "indices": list(chosen_xyz_indices),
+                    "xyz_guesses": xyz_guesses
+                })
+
+    return xyz_guesses_total, zmats_total
     """
     if len(spc.mol.atoms) != 3:
         return False
