@@ -24,6 +24,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             stretch_zmat_bond,
                                             is_water,
                                             process_hydrolysis_reaction,
+                                            setup_zmat_indices,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
                                             find_matching_dihedral,
@@ -2401,6 +2402,26 @@ H       1.18773917   -1.27609387   -0.39480684""")
         second_hydrogen=next(i for i, atom in enumerate(spc.mol.atoms) if atom.is_hydrogen() and i != exclude)
         self.assertEqual(get_neighbors_by_electronegativity(spc, atom_index, exclude), (first_oxygen, [second_oxygen, second_hydrogen]))
 
+    def test_setup_zmat_indices(self):
+        """Test the setup_zmat_indices() function."""
+        initial_xyz = {'coords': ((-0.36862686, -0.00871354, 0.04292587),
+                                  (0.98182901, -0.0490201, 0.46594709),
+                                  (-0.57257378, 0.95163086, -0.43693396),
+                                  (-0.55632373, -0.82564527, -0.65815446),
+                                  (-1.01755588, -0.12311763, 0.91437513),
+                                  (1.10435907, 0.67758465, 1.10037299)),
+                       'isotopes': (12, 16, 1, 1, 1, 1),
+                       'symbols': ('C', 'O', 'H', 'H', 'H', 'H')}
+        xyz_indices = {'a': 0, 'b': 1, 'f': 2, 'd': 3}
+        initial_zmat, zmat_indices = setup_zmat_indices(initial_xyz, xyz_indices)
+        self.assertIsNotNone(zmat_indices['a'])
+        self.assertIsNotNone(zmat_indices['b'])
+        self.assertIsNotNone(zmat_indices['f'])
+        self.assertIsNotNone(zmat_indices['d'])
+
+        xyz_indices_no_d = {'a': 0, 'b': 1, 'f': 2, 'd': None}
+        initial_zmat, zmat_indices = setup_zmat_indices(initial_xyz, xyz_indices_no_d)
+        self.assertIsNone(zmat_indices['d'])
 
     def test_get_matching_dihedrals(self):
         """
