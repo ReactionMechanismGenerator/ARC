@@ -1234,6 +1234,29 @@ def get_neighbors_by_electronegativity(spc: 'ARCSpecies',
     remaining_neighbors = sorted_neighbors[1:] if two_neighbors else []
     return most_electronegative, remaining_neighbors
 
+def setup_zmat_indices(initial_xyz: dict,
+                       xyz_indices: dict) -> Tuple[dict, dict]:
+    """
+    Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
+
+    Args:
+        initial_xyz (dict): XYZ coordinates of the molecule.
+        xyz_indices (dict): Dictionary mapping atom types to their XYZ indices.
+
+    Returns:
+        tuple: A tuple containing:
+            - dict: Z-matrix representation of the molecule
+            - dict: Dictionary mapping atom types to their Z-matrix indices
+    """
+    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+    zmat_indices = {
+        'a': key_by_val(initial_zmat.get('map', {}), xyz_indices['a']),
+        'b': key_by_val(initial_zmat.get('map', {}), xyz_indices['b']),
+        'f': key_by_val(initial_zmat.get('map', {}), xyz_indices['f']),
+        'd': key_by_val(initial_zmat.get('map', {}), xyz_indices['d']) if xyz_indices['d'] is not None else None
+    }
+    return initial_zmat, zmat_indices
+
 
 def generate_hydrolysis_ts_guess(initial_xyz: dict,
                                  water: 'ARCSpecies',
