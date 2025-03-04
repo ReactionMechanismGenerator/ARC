@@ -1349,34 +1349,39 @@ def get_matching_dihedrals(zmat: dict,
                     matches.append(indices)
     return matches
 
-
-def find_matching_dihedral(zmat: dict,
-                           a: int,
-                           b: int,
-                           f: int,
-                           d: Optional[int],
-                           counter: int) -> Optional[List[List[int]]]:
+def stretch_ab_bond(initial_zmat: 'dict',
+                    xyz_indices: 'dict',
+                    zmat_indices: 'dict',
+                    hydrolysis_parameters: 'dict',
+                    reaction_family: str) -> None:
     """
-    Find dihedral angles in the Z-matrix that match the given atom indices,
-    with a limit on the number of matches returned.
-    This function uses `get_matching_dihedrals` to identify all possible matching dihedrals,
-    but only returns up to the specified number (`counter`) of matches. If no matches are found, it returns None.
+    Stretch the bond between atoms a and b in the Z-matrix based on the reaction family parameters.
 
     Args:
-        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
-        a (int): The first atom index to match.
-        b (int): The second atom index to match.
-        f (int): The third atom index (one of the possible matches).
-        d (int): The fourth atom index (one of the possible matches).
-        counter (int): The maximum number of dihedral matches to return.
+        initial_zmat (dict): The Z-matrix to modify.
+        xyz_indices (dict): Dictionary containing atom indices in XYZ coordinates.
+        zmat_indices (dict): Dictionary containing atom indices in Z-matrix coordinates.
+        hydrolysis_parameters (dict): Parameters for hydrolysis reactions.
+        reaction_family (str): The type of reaction family, used to get specific stretch parameters.
 
     Returns:
-        Optional[List[List[int]]]: A list of matching dihedral indices up to the specified limit,
-                                   or None if no matches are found.
-    """
-    matches = get_matching_dihedrals(zmat, a, b, f, d)
-    return matches[:counter] if matches else None
+        None: Modifies the Z-matrix in place.
 
+    Note:
+        The stretching direction is determined by comparing atom positions in both
+        coordinate systems to ensure consistent bond modifications. The stretch degree
+        is obtained from the hydrolysis parameters for the specific reaction family.
+    """
+    a_before_b_xyz = xyz_indices['a'] < xyz_indices['b']
+    a_before_b_zmat = zmat_indices['a'] < zmat_indices['b']
+    stretch_degree = hydrolysis_parameters['family_parameters'][str(reaction_family)]['stretch']
+
+    if int(a_before_b_zmat) + int(a_before_b_xyz) == 1:
+        indices = (min(xyz_indices['a'], xyz_indices['b']), max(xyz_indices['a'], xyz_indices['b']))
+    else:
+        indices = (max(xyz_indices['a'], xyz_indices['b']), min(xyz_indices['a'], xyz_indices['b']))
+
+    stretch_zmat_bond(zmat=initial_zmat, indices=indices, stretch=stretch_degree)
 
 def count_all_possible_dihedrals(zmat: dict,
                                  a: int,
