@@ -1383,29 +1383,55 @@ def stretch_ab_bond(initial_zmat: 'dict',
 
     stretch_zmat_bond(zmat=initial_zmat, indices=indices, stretch=stretch_degree)
 
-def count_all_possible_dihedrals(zmat: dict,
-                                 a: int,
-                                 b: int,
-                                 f: int,
-                                 d: Optional[int]) -> int:
+def process_family_specific_adjustments(is_set_1: bool,
+                                        is_set_2: bool,
+                                        reaction_family: str,
+                                        hydrolysis_parameters: dict,
+                                        initial_zmat: dict,
+                                        water: 'ARCSpecies',
+                                        xyz_indices: dict,
+                                        zmats_total: List[dict]) -> Tuple[List[dict], List[dict]]:
     """
-    Count all possible dihedral angles in the Z-matrix that match the given atom indices.
-
-    This function uses `get_matching_dihedrals` to identify all possible matching dihedrals
-    and returns the total count of these matches.
+    Process specific adjustments for different hydrolysis reaction families if needed, then generate TS guesses .
 
     Args:
-        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
-        a (int): The first atom index to match.
-        b (int): The second atom index to match.
-        f (int): The third atom index (one of the possible matches).
-        d (Optional[int]): The fourth atom index (optional for matching).
+        is_set_1 (bool): Whether the reaction belongs to parameter set 1.
+        is_set_2 (bool): Whether the reaction belongs to parameter set 2.
+        reaction_family (str): Type of hydrolysis reaction ('ether_hydrolysis' or others).
+        hydrolysis_parameters (dict): Parameters for different hydrolysis families.
+        initial_zmat (dict): Initial Z-matrix of the molecule.
+        water (ARCSpecies): Water molecule for the reaction.
+        xyz_indices (dict): Dictionary of atom indices in XYZ coordinates.
+        zmats_total (List[dict]): List of existing Z-matrices.
 
     Returns:
-        int: The total number of matching dihedral angles found in the Z-matrix.
-    """
-    return len(get_matching_dihedrals(zmat, a, b, f, d))
+        Tuple[List[dict], List[dict]]: Generated XYZ guesses and updated Z-matrices list.
 
+    Raises:
+        ValueError: If the reaction family is not supported.
+    """
+    a_xyz, b_xyz, f_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices.values()
+    r_atoms = [a_xyz, o_xyz, o_xyz]
+    a_atoms = [[b_xyz, a_xyz], [a_xyz, o_xyz], [h1_xyz, o_xyz]]
+    d_atoms = ([[f_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
+               if d_xyz is not None else
+               [[f_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]])
+    r_value = hydrolysis_parameters['default_parameters']['r_value']
+    a_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['a_value']
+    d_values = hydrolysis_parameters['family_parameters'][str(reaction_family)]['d_values']
+
+    if is_set_1:
+        if reaction_family == 'ether_hydrolysis':
+            r_value[0] = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
+        initial_xyz = zmat_to_xyz(initial_zmat)
+        return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
+                                            r_value, a_value, d_values, zmats_total, is_set_1)
+    elif is_set_2:
+        initial_xyz = zmat_to_xyz(initial_zmat)
+        return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
+                                            r_value, a_value, d_values, zmats_total, is_set_1, threshold=0.6)
+    else:
+        raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
 
 def push_up_dihedral(zmat: Dict,
                      indices: List[int],
