@@ -981,7 +981,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
             if xyz_guesses:
                 xyz_guesses_total.append({
                     "family": reaction_family,
-                    "indices": list(chosen_xyz_indices),
+                    "indices": list(chosen_xyz_indices.values()),
                     "xyz_guesses": xyz_guesses
                 })
 
@@ -1092,7 +1092,7 @@ def process_chosen_d_indices(initial_xyz: dict,
                              is_set_1: bool,
                              is_set_2: bool,
                              dihedrals_to_change_num: int
-                             ) -> Tuple[dict[str, int], List[dict[str, Any]], List[dict[str, Any]]]:
+                             ) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Iterates over the 'd' indices to process TS guess generation.
 
@@ -1130,7 +1130,7 @@ def process_chosen_d_indices(initial_xyz: dict,
             return chosen_xyz_indices, ts_guesses, zmats_total
     return {}, [], zmats_total
 
-def process_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple[ARCSpecies, ARCSpecies]:
+def process_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple['ARCSpecies', 'ARCSpecies']:
     """
     Process a hydrolysis reaction by recognizing main reactant and water species.
 
