@@ -2421,7 +2421,7 @@ Cl      2.38846685    0.24054066    0.55443324
 
     def test_get_top_element_count(self):
         """Test getting an element and isotope count for top atoms in a molecule"""
-        mol = Molecule(smiles='[2H]N[3H]CCCS')
+        mol = Molecule(smiles='[2H]N([3H])CCCS')
         top = list(range(10))
         top_element_count = conformers.get_top_element_count(mol, top)
         expected_top_element_count = {('C', -1): 3, ('H', -1): 3, ('H', 2): 1, ('H', 3): 1, ('N', -1): 1, ('S', -1): 1}
