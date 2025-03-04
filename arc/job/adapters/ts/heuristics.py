@@ -1433,36 +1433,66 @@ def process_family_specific_adjustments(is_set_1: bool,
     else:
         raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
 
-def push_up_dihedral(zmat: Dict,
-                     indices: List[int],
-                     base_adjustment_factor: float) -> None:
+def generate_hydrolysis_ts_guess(initial_xyz: dict,
+                                 water: 'ARCSpecies',
+                                 r_atoms: List[int],
+                                 a_atoms: List[List[int]],
+                                 d_atoms: List[List[int]],
+                                 r_value: List[float],
+                                 a_value: List[float],
+                                 d_values: List[List[float]],
+                                 zmats_total: List[dict],
+                                 is_set_1: bool,
+                                 threshold: float = 0.8
+                                 ) -> Tuple[List[dict], List[dict]]:
     """
-    Adjust the value of a dihedral angle in the Z-matrix based on its current value.
+    Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
     Args:
-        zmat (Dict): The initial Z-matrix.
-        indices (List[int]): The indices defining the dihedral angle.
-        base_adjustment_factor (float): Base factor for adjustment.
+        initial_xyz (dict): The initial coordinates of the reactant.
+        water (ARCSpecies): The water molecule involved in the reaction.
+        r_atoms (List[int]): Atom pairs for defining bond distances.
+        a_atoms (List[List[int]]): Atom triplets for defining bond angles.
+        d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
+        r_value (List[float]): Bond distances for each atom pair.
+        a_value (List[float]): Bond angles for each atom triplet.
+        d_values (List[List[float]]): Sets of dihedral angles for TS guesses.
+        zmats_total (List[dict]): Existing Z-matrices to avoid duplicates.
+        is_set_1 (bool): Whether the reaction belongs to parameter set 1.
+        threshold (float): Threshold for atom collision checking.
 
     Returns:
-        None
+        Tuple[List[dict], List[dict]]: Unique TS guesses (XYZ coords and Z-matrices).
     """
-    param = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
-    dihedral_value = zmat['vars'].get(param, 0)
-    print(f"Current dihedral value for {param}: {dihedral_value}")
-    if abs(dihedral_value) < 10:
-        adjustment_factor = base_adjustment_factor + 1
-    elif 170 <= abs(dihedral_value) <= 190:
-        adjustment_factor = 1-base_adjustment_factor
-    else:
-        print(f"No adjustment needed for {param} (not close to 0 or ±180 degrees)")
-        return
-    # apply adjustment and normalize the angle
-    new_value = (dihedral_value + 360) * adjustment_factor - 360 if abs(dihedral_value) < 1e-3 else dihedral_value * adjustment_factor
-    new_value = (new_value + 180) % 360 - 180
-    zmat['vars'][param] = new_value
-    print(f"Updated dihedral value for {param}: {zmat['vars'][param]}")
+    xyz_guesses = []
 
+    for index, d_value in enumerate(d_values):
+        xyz_guess = copy.deepcopy(initial_xyz)
+
+        for i in range(3):
+            xyz_guess = add_atom_to_xyz_using_internal_coords(
+                xyz=xyz_guess,
+                element=water.mol.atoms[i].element.symbol,
+                r_index=r_atoms[i],
+                a_indices=a_atoms[i],
+                d_indices=d_atoms[i],
+                r_value=r_value[i],
+                a_value=a_value[i],
+                d_value=d_value[i]
+            )
+        if is_set_1:
+            if check_dao_angle(d_atoms[0] , xyz_guess):
+                continue
+        zmat_guess = xyz_to_zmat(xyz_guess)
+        duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
+
+        if xyz_guess is not None and not colliding_atoms(xyz_guess, threshold=threshold) and not duplicate:
+            xyz_guesses.append(xyz_guess)
+            zmats_total.append(zmat_guess)
+        else:
+            print(f"Colliding atoms or existing guess: {xyz_guess}")
+
+    return xyz_guesses, zmats_total
 
 def hydrolysis(reaction: 'ARCReaction'):
     """
