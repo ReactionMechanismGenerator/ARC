@@ -2,7 +2,6 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
-import math
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -20,13 +19,10 @@ import py3Dmol as p3D
 import qcelemental as qcel
 from rdkit import Chem
 
-from rmgpy.data.base import Entry
-from rmgpy.data.kinetics.library import KineticsLibrary
 from rmgpy.data.thermo import ThermoLibrary
 from rmgpy.data.transport import TransportLibrary
 from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
 from rmgpy.quantity import ScalarQuantity
-from rmgpy.species import Species
 
 from arc.common import (calculate_arrhenius_rate_coefficient,
                         extremum_list,
@@ -57,6 +53,9 @@ from arc.species.species import ARCSpecies
 
 
 R = 8.31446261815324  # J/(mol*K)
+PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
+                '(cm^3/(mol*s))': r' (cm$^3$/(mol s))',
+                '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
 
 
 logger = get_logger()
@@ -446,7 +445,7 @@ def draw_thermo_parity_plots(species_list: list,
         h298_rmg.append(spc.rmg_thermo['H298'])
         s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
         s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K
-        comments.append(spc.rmg_thermo.comment)
+        comments.append(spc.rmg_thermo['comment'] if 'comment' in spc.rmg_thermo else '')
     var_units_h = r"$\left(\frac{J}{mol}\right)$"
     var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
     label_h = r"$\Delta H ^{298_K} _f}$"
@@ -507,11 +506,11 @@ def draw_kinetics_plots(rxn_list: list,
                         ) -> None:
     """
     Draws plots of calculated rate coefficients and RMG's estimates.
-    `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.
+    `rxn_list` has a .kinetics attribute calculated by ARC and an .rmg_kinetics list with RMG rates.
 
     Args:
         rxn_list (list): Reactions with a .kinetics attribute calculated by ARC
-                         and an .rmg_reactions list with RMG rates.
+                         and an .rmg_kinetics list with RMG rates.
         T_min (tuple): The minimum temperature to consider, e.g., (500, 'K').
         T_max (tuple): The maximum temperature to consider, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
@@ -540,15 +539,7 @@ def draw_kinetics_plots(rxn_list: list,
 
     for rxn in rxn_list:
         if rxn.kinetics is not None:
-            reaction_order = len(rxn.reactants)
-            units = ''
-            conversion_factor = {1: 1, 2: 1e6, 3: 1e12}
-            if reaction_order == 1:
-                units = r' (s$^-1$)'
-            elif reaction_order == 2:
-                units = r' (cm$^3$/(mol s))'
-            elif reaction_order == 3:
-                units = r' (cm$^6$/(mol$^2$ s))'
+            units, conversion_factor = get_rxn_units_and_conversion_factor(rxn)
             arc_k = [calculate_arrhenius_rate_coefficient(A=rxn.kinetics['A'],
                                                           n=rxn.kinetics['n'],
                                                           Ea=rxn.kinetics['Ea'],
@@ -562,7 +553,7 @@ def draw_kinetics_plots(rxn_list: list,
                     temps = np.linspace(kinetics['T_min'].value_si, kinetics['T_max'].value_si, T_count)
                 rmg_rxns.append({'label': kinetics['comment'],
                                  'T': temps,
-                                 'k': [calculate_arrhenius_rate_coefficient(A=kinetics['A'] * conversion_factor[reaction_order],
+                                 'k': [calculate_arrhenius_rate_coefficient(A=kinetics['A'],# * conversion_factor,
                                                                             n=kinetics['n'],
                                                                             Ea=kinetics['Ea'],
                                                                             T=T,
@@ -616,7 +607,7 @@ def _draw_kinetics_plots(rxn_label, arc_k, temperature, rmg_rxns, units, pp, max
             ax.semilogy(inverse_temp, rmg_rxn['k'], label=rmg_rxn['label'])
             plotted_rmg_rxns.append(i)
     plt.xlabel(r'1000 / T (K$^-$$^1$)')
-    plt.ylabel(f'Rate coefficient{units}')
+    plt.ylabel(f'Rate coefficient{PRETTY_UNITS[units]}')
     plt.legend()
     plt.tight_layout()
     if pp is not None:
@@ -851,61 +842,80 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
         transport_library.save(lib_path)
 
 
-def save_kinetics_lib(rxn_list, path, name, lib_long_desc):
+def save_kinetics_lib(rxn_list: list,
+                      path: str,
+                      name: str,
+                      lib_long_desc:str,
+                      T_min: float = 300,
+                      T_max: float = 3000,
+                      ) -> None:
     """
-    Save an RMG kinetics library of all reactions in `rxn_list` in the supplied `path`.
-    `rxn_list` is a list of ARCReaction objects.
-    `name` is the library's name (or project's name).
-    `long_desc` is a multiline string with level of theory description.
+    Save a valid RMG kinetics library of all reactions in `rxn_list` in the supplied `path`.
+
+    Args:
+        rxn_list (list): Entries are ARCReaction objects to be saved in the library.
+        path (str): The file path where the library should be created.
+        name (str): The library's name (or project's name).
+        lib_long_desc (str): A multiline string with level of theory description.
+        T_min (float, optional): The minimum temperature for the kinetics fit.
+        T_max (float, optional): The maximum temperature for the kinetics fit.
     """
-    entries = dict()
-    if rxn_list:
-        for i, rxn in enumerate(rxn_list):
-            if rxn.kinetics is not None:
-                if len(rxn.rmg_reaction.reactants):
-                    reactants = rxn.rmg_reaction.reactants
-                    products = rxn.rmg_reaction.products
-                elif rxn.r_species.mol_list is not None:
-                    reactants = [Species(molecule=arc_spc.mol_list) for arc_spc in rxn.r_species]
-                    products = [Species(molecule=arc_spc.mol_list) for arc_spc in rxn.p_species]
-                elif rxn.r_species.mol is not None:
-                    reactants = [Species(molecule=[arc_spc.mol]) for arc_spc in rxn.r_species]
-                    products = [Species(molecule=[arc_spc.mol]) for arc_spc in rxn.p_species]
-                else:
-                    reactants = [Species(molecule=[arc_spc.xyz_mol]) for arc_spc in rxn.r_species]
-                    products = [Species(molecule=[arc_spc.xyz_mol]) for arc_spc in rxn.p_species]
-                rxn.rmg_reaction.reactants = reactants
-                rxn.rmg_reaction.products = products
-                entry = Entry(
-                    index=i,
-                    item=rxn.rmg_reaction,
-                    data=rxn.kinetics,
-                    label=rxn.label)
-                rxn.ts_species.make_ts_report()
-                if 'rotors' not in rxn.ts_species.long_thermo_description:
-                    rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
-                entry.long_desc = f'{rxn.ts_species.ts_report}\n\n' \
-                                  f'TS external symmetry: {rxn.ts_species.external_symmetry}, ' \
-                                  f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
-                                  f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
-                                  f'{rxn.ts_species.long_thermo_description}'
-                rxn.rmg_reaction.kinetics = rxn.kinetics
-                rxn.rmg_reaction.kinetics.comment = ''
-                entries[i + 1] = entry
-            else:
-                logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
-                               f'kinetics library.')
-        kinetics_library = KineticsLibrary(name=name, long_desc=lib_long_desc, auto_generated=True)
-        kinetics_library.entries = entries
-        lib_path = os.path.join(path, 'kinetics', '')
-        if os.path.exists(lib_path):
-            shutil.rmtree(lib_path, ignore_errors=True)
-        try:
-            os.makedirs(lib_path)
-        except OSError:
-            pass
-        kinetics_library.save(os.path.join(lib_path, 'reactions.py'))
-        kinetics_library.save_dictionary(os.path.join(lib_path, 'dictionary.txt'))
+    reactions_txt = f"""
+#!/usr/bin/env python
+# encoding: utf-8
+
+name = "{name}"
+shortDesc = ""
+longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
+"""
+    species_dict = dict()
+    if len(rxn_list) == 0 or not any([rxn.kinetics for rxn in rxn_list]):
+        logger.warning('No reactions to save in the kinetics library.')
+    for i, rxn in enumerate(rxn_list):
+        if rxn.kinetics is not None:
+            for spc in rxn.r_species + rxn.p_species:
+                if spc.label not in species_dict:
+                    species_dict[spc.label] = spc.mol.to_adjacency_list()
+        else:
+            logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
+                           f'kinetics library.')
+            continue
+        units = get_rxn_units_and_conversion_factor(rxn)[0]
+        rxn.ts_species.make_ts_report()
+        if 'rotors' not in rxn.ts_species.long_thermo_description:
+            rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
+        long_desc = f'{rxn.ts_species.ts_report}\n\n' \
+                    f'TS external symmetry: {rxn.ts_species.external_symmetry}, ' \
+                    f'TS optical isomers: {rxn.ts_species.optical_isomers}\n\n' \
+                    f'Optimized TS geometry:\n{xyz_to_str(rxn.ts_species.final_xyz)}\n\n' \
+                    f'{rxn.ts_species.long_thermo_description}'
+        rxn_txt = f"""entry(
+    index = {i},
+    label = "{rxn.label}",
+    kinetics = Arrhenius(A=({rxn.kinetics['A']:.2e}, '{units}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea']:.2f}, 'kJ/mol'),
+                         T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
+    longDesc = 
+\"\"\"
+{long_desc}
+\"\"\",
+)
+
+"""
+        reactions_txt += rxn_txt
+
+    lib_path = os.path.join(path, 'kinetics', '')
+    if os.path.exists(lib_path):
+        shutil.rmtree(lib_path, ignore_errors=True)
+    try:
+        os.makedirs(lib_path)
+    except OSError as e:
+        logger.error(f"Failed to create directory {lib_path}: {e}")
+    with open(os.path.join(lib_path, 'reactions.py'), 'w') as f:
+        f.write(reactions_txt)
+    species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
+    with open(species_dict_path, 'w') as f:
+        for label, adjlist in species_dict.items():
+            f.write(f'{label}:\n{adjlist}\n\n')
 
 
 def save_conformers_file(project_directory: str,
@@ -1634,13 +1644,35 @@ def delete_multi_species_output_file(species_list: List['ARCSpecies'],
                                      multi_species_path_dict: dict,
                                      ):
     """
-    Delete all the individual multi species output file sliced fromthe the big cluster output file.
+    Delete all the individual multi species output file sliced from the big cluster output file.
     
     Args:
         species_list: The species list to be processed.
         label (str): The multi_species label.
-        multi_species_path: The dict of all the paths to the relevant species.
+        multi_species_path_dict (dict): The dict of all the paths to the relevant species.
     """
     species_label_list = [spc.label for spc in species_list if spc.multi_species == label]
     for spc_label in species_label_list:
         os.remove(multi_species_path_dict[spc_label])
+
+
+def get_rxn_units_and_conversion_factor(rxn: 'ARCReaction') -> Tuple[str, float]:  # todo: add tests
+    """
+    Get the units and conversion factor for the reaction rate coefficient.
+
+    Args:
+        rxn (ARCReaction): The reaction object.
+
+    Returns:
+        Tuple[str, float]: The units and conversion factor from m^3 units to cm^3 units.
+    """
+    reaction_order = len(rxn.get_reactants_and_products()[0])
+    units = ''
+    conversion_factors = {1: 1, 2: 1e6, 3: 1e12}
+    if reaction_order == 1:
+        units = '(s^-1)'
+    elif reaction_order == 2:
+        units = '(cm^3/(mol*s))'
+    elif reaction_order == 3:
+        units = '(cm^6/(mol^2*s))'
+    return units, conversion_factors[reaction_order]
