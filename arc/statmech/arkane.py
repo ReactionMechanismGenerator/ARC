@@ -181,7 +181,7 @@ class ArkaneAdapter(StatmechAdapter):
                                         skip_rotors: bool = False,
                                         estimate_dh_rxn: bool = False,
                                         require_ts_convergence: bool = True,
-                                        verbose: bool = True,
+                                        verbose: bool = False,
                                         ) -> None:
         """
         Generate a high pressure rate coefficient for a reaction.
