@@ -252,7 +252,7 @@ def compare_rates(rxns_for_kinetics_lib: list,
                   T_count: int = 50,
                   ) -> None:
     """
-    Compare the calculates rates with RMG's estimations.
+    Compare the calculates rates with RMG's estimations.dd
 
     Args:
         rxns_for_kinetics_lib (list): Reactions for which rate coefficients were computed.
