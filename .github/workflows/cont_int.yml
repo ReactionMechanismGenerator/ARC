@@ -36,7 +36,7 @@ jobs:
 
     - name: Cache RMG-Py
       id: cache-rmg-py
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: RMG-Py
         key: ${{ runner.os }}-rmg-main
@@ -54,7 +54,7 @@ jobs:
 
     - name: Cache RMG-database
       id: cache-rmg-db
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: RMG-database
           key: ${{ runner.os }}-rmgdb-main
@@ -71,7 +71,7 @@ jobs:
 
     - name: Cache AutoTST
       id: cache-autotst
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: AutoTST
           key: ${{ runner.os }}-autotst-main
@@ -88,7 +88,7 @@ jobs:
 
     - name: Cache TS-GCN
       id: cache-tsgcn
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: TS-GCN
           key: ${{ runner.os }}-tsgcn-main
@@ -105,7 +105,7 @@ jobs:
     
     - name: Cache KinBot
       id: cache-kinbot
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: KinBot
           key: ${{ runner.os }}-kinbot-2.0.6
@@ -122,7 +122,7 @@ jobs:
         fetch-depth: 1
 
     - name: Cache Packages
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         CACHE_NUMBER: 0
       with:
@@ -140,7 +140,7 @@ jobs:
           conda-solver: libmamba
 
     - name: Cache ARC env
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ env.CONDA }}/envs/arc_env
         key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ env.CACHE_NUMBER}}
