@@ -53,6 +53,8 @@ class ARCReaction(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
+        kinetics (Dict[str, float], optional): The high pressure limit rate coefficient calculated by ARC.
+                                               Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
 
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
@@ -64,10 +66,12 @@ class ARCReaction(object):
         r_species (List[ARCSpecies]): A list of reactants :ref:`ARCSpecies <species>` objects.
         p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
-        dh_rxn298 (float): The heat of reaction at 298K.
-        kinetics (Arrhenius): The high pressure limit rate coefficient calculated by ARC.
-        rmg_kinetics (List[dict]): The Arrhenius kinetics from RMG's libraries and families. Each dict has 'A', 'n', amd 'Ea'
-                                   parameters as keys, and a 'comment' key with a description of the source of the kinetics.
+        dh_rxn298 (float): The heat of reaction at 298K in J/mol.
+        kinetics (Dict[str, float]): The high pressure limit rate coefficient calculated by ARC.
+                                     Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
+        rmg_kinetics (List[Dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
+                                               Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
+                                               and a 'comment' key with a description of the source of the kinetics.
         long_kinetic_description (str): A description for the species entry in the thermo library outputted.
         ts_xyz_guess (list): A list of TS XYZ user guesses, each in a string format.
         multiplicity (int): The reaction surface multiplicity. A trivial guess will be made unless provided.
@@ -96,12 +100,13 @@ class ARCReaction(object):
                  reaction_dict: Optional[dict] = None,
                  species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
+                 kinetics: Dict[str, float] = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
         self.r_species = r_species or list()
         self.p_species = p_species or list()
-        self.kinetics = None
+        self.kinetics = kinetics
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
         self._family = None
@@ -137,10 +142,6 @@ class ARCReaction(object):
                                 f'reactants and {len(self.products)} products for reaction {self.label}.')
         if not isinstance(self.ts_xyz_guess, list):
             self.ts_xyz_guess = [self.ts_xyz_guess]
-        for spc in r_species + p_species:
-            if not isinstance(spc, ARCSpecies):
-                raise InputError(f'All reactants and products must be ARCSpecies objects. Got {spc} which is a '
-                                 f'{type(spc)} object.')
         self.remove_dup_species()
         self.check_atom_balance()
 
