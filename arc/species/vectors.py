@@ -72,7 +72,7 @@ def get_dihedral(v1: List[float],
          units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
 
     Raises:
-        VectorsError: If either ``v1`` or ``v2`` have lengths different than three.
+        VectorsError: If either ``v1`` or ``v2`` have lengths different from three.
 
     Returns: float
         The dihedral angle between ``v1`` and ``v2`` in the desired units.
