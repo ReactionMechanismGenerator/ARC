@@ -267,7 +267,7 @@ class GaussianAdapter(JobAdapter):
             self.level.method = 'cbs-qb3'
 
         # Job type specific options
-        max_c = 100
+        max_c = 1000
         if 'trsh' in self.args and 'trsh' in self.args['trsh']:
             for item in self.args['trsh']['trsh']:
                 match = re.search(r'maxcycle=(\d+)', item)
