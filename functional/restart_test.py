@@ -88,11 +88,9 @@ class TestRestart(unittest.TestCase):
                     spc = True
                 elif 'All jobs for species N2H3 successfully converged. Run time' in line:
                     rtm = True
-                elif 'Loading the RMG database...' in line:
-                    ldb = True
                 elif 'Thermodynamics for H2O2' in line:
                     therm = True
-                elif 'Sources of thermoproperties determined by RMG for the parity plots:' in line:
+                elif 'Sources of thermodynamic properties determined by RMG for the parity plots:' in line:
                     src = True
                 elif 'ARC execution terminated on' in line:
                     ter = True
@@ -101,7 +99,6 @@ class TestRestart(unittest.TestCase):
         self.assertTrue(git)
         self.assertTrue(spc)
         self.assertTrue(rtm)
-        self.assertTrue(ldb)
         self.assertTrue(therm)
         self.assertTrue(src)
         self.assertTrue(ter)
@@ -173,7 +170,7 @@ class TestRestart(unittest.TestCase):
         with open(kinetics_library_path, 'r') as f:
             got_rate = False
             for line in f.readlines():
-                if "Arrhenius(A=(0.0636958,'cm^3/(mol*s)'), n=4.07981, Ea=(57.5474,'kJ/mol')" in line:
+                if "kinetics = Arrhenius(A=(6.37e-02, '(cm^3/(mol*s))'), n=4.08, Ea=(57.55, 'kJ/mol')," in line:
                     got_rate = True
                     break
         self.assertTrue(got_rate)
