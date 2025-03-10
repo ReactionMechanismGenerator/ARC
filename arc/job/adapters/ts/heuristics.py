@@ -1506,9 +1506,10 @@ def check_dao_angle(d_indices: List[int], xyz_guess: dict) -> bool:
     Returns:
         bool: True if DAO angle is close to 0 or 180 degrees, False otherwise.
     """
-    angle_indices = [d_indices[1], d_indices[2], len(xyz_guess['symbols']) - 3]
+    angle_indices = [d_indices[1], d_indices[2], d_indices[3]]
     angle_value = calculate_angle(xyz_guess, angle_indices)
-    return abs((angle_value + 180) % 180 - 90) > 80
+    norm_value=(angle_value + 180) % 180
+    return (norm_value < 10) or (norm_value > 170)
 
 
 
