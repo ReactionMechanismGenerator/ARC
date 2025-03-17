@@ -152,6 +152,7 @@ class ARC(object):
                                        format (``True``, default) or classical two-parameter Arrhenius equation format
                                        (``False``).
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        trsh_rotors (bool, optional): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
                                  Only used for restarting.
         output_multi_spc (dict, optional): Output dictionary with status and final QM file paths for the multi species. 
@@ -227,6 +228,7 @@ class ARC(object):
         three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
                              format (``True``) or classical two-parameter Arrhenius equation format (``False``).
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        trsh_rotors (bool): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
         skip_nmd (bool): Whether to skip normal mode displacement check.
@@ -279,6 +281,7 @@ class ARC(object):
                  thermo_adapter: str = 'Arkane',
                  three_params: bool = True,
                  trsh_ess_jobs: bool = True,
+                 trsh_rotors: bool = True,
                  ts_adapters: List[str] = None,
                  ts_guess_level: Optional[Union[str, dict, Level]] = None,
                  verbose=logging.INFO,
@@ -317,6 +320,7 @@ class ARC(object):
         self.compute_rates = compute_rates
         self.three_params = three_params
         self.trsh_ess_jobs = trsh_ess_jobs
+        self.trsh_rotors = trsh_rotors
         self.compute_transport = compute_transport
         self.thermo_adapter = StatmechEnum(thermo_adapter.lower()).value
         self.kinetics_adapter = StatmechEnum(kinetics_adapter.lower()).value
@@ -440,6 +444,10 @@ class ARC(object):
             logger.info('\n')
             logger.warning('Not troubleshooting ESS jobs!')
             logger.info('\n')
+        elif not self.trsh_rotors:
+            logger.info('\n')
+            logger.warning('Not troubleshooting rotor scan jobs!')
+            logger.info('\n')
 
         self.scheduler = None
         self.restart_dict = self.as_dict()
@@ -544,6 +552,8 @@ class ARC(object):
             restart_dict['three_params'] = self.three_params
         if not self.trsh_ess_jobs:
             restart_dict['trsh_ess_jobs'] = self.trsh_ess_jobs
+        if not self.trsh_rotors:
+            restart_dict['trsh_rotors'] = self.trsh_rotors
         if self.ts_guess_level is not None and str(self.ts_guess_level).split()[0] != default_levels_of_theory['ts_guesses']:
             restart_dict['ts_guess_level'] = self.ts_guess_level.as_dict() \
                 if not isinstance(self.ts_guess_level, (dict, str)) else self.ts_guess_level
@@ -617,6 +627,7 @@ class ARC(object):
                                    e_confs=self.e_confs,
                                    dont_gen_confs=self.dont_gen_confs,
                                    trsh_ess_jobs=self.trsh_ess_jobs,
+                                   trsh_rotors=self.trsh_rotors,
                                    fine_only=self.fine_only,
                                    ts_adapters=self.ts_adapters,
                                    report_e_elect=self.report_e_elect,

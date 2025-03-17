@@ -162,6 +162,7 @@ class Scheduler(object):
         kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        trsh_rotors (bool, optional): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
@@ -219,6 +220,7 @@ class Scheduler(object):
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         freq_scale_factor (float): The harmonic frequencies scaling factor.
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
+        trsh_rotors (bool): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
         skip_nmd (bool): Whether to skip normal mode displacement check.
@@ -253,6 +255,7 @@ class Scheduler(object):
                  e_confs: Optional[float] = 5,
                  fine_only: Optional[bool] = False,
                  trsh_ess_jobs: Optional[bool] = True,
+                 trsh_rotors: Optional[bool] = True,
                  kinetics_adapter: str = 'arkane',
                  freq_scale_factor: float = 1.0,
                  ts_adapters: List[str] = None,
@@ -284,6 +287,7 @@ class Scheduler(object):
         self.job_types = job_types if job_types is not None else default_job_types
         self.fine_only = fine_only
         self.trsh_ess_jobs = trsh_ess_jobs
+        self.trsh_rotors = trsh_rotors
         self.kinetics_adapter = kinetics_adapter
         self.freq_scale_factor = freq_scale_factor
         self.ts_adapters = ts_adapters if ts_adapters is not None else default_ts_adapters
@@ -2888,7 +2892,7 @@ class Scheduler(object):
 
                 if len(list(actions.keys())) \
                         and 'pivTS' not in self.species_dict[label].rotors_dict[job.rotor_index]['invalidation_reason'] \
-                        and self.trsh_ess_jobs:
+                        and self.trsh_ess_jobs and self.trsh_rotors:
                     # The rotor scan is problematic (and does not block a TS reaction zone), troubleshooting is required.
                     logger.info(f'Trying to troubleshoot rotor '
                                 f'{self.species_dict[label].rotors_dict[job.rotor_index]["pivots"]} '
@@ -3219,9 +3223,9 @@ class Scheduler(object):
             - ``True`` if the troubleshooting is valid.
             - The actions are applied in the troubleshooting.
         """
-        if not self.trsh_ess_jobs:
+        if not self.trsh_ess_jobs or not self.trsh_rotors:
             logger.warning(f'Not troubleshooting failed scan job {job.job_name}. To enable troubleshooting, '
-                           f'set the "trsh_ess_jobs" to "True".')
+                           f'set the "trsh_ess_jobs" and the "trsh_rotors" arguments to "True".')
             return False, dict()
 
         label = job.species_label
@@ -3413,7 +3417,7 @@ class Scheduler(object):
             level_of_theory (Level, dict, str): The level of theory to use.
             conformer (int, optional): The conformer index.
         """
-        if not self.trsh_ess_jobs:
+        if not self.trsh_ess_jobs or not self.trsh_rotors and job.job_type == 'scan':
             logger.warning(f'Not troubleshooting failed {label} job {job.job_name}. '
                            f'To enable troubleshooting, set the "trsh_ess_jobs" argument to "True".')
             return None
