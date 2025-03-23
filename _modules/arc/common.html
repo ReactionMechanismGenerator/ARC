@@ -173,6 +173,7 @@
 <span class="kn">import</span> <span class="nn">ast</span>
 <span class="kn">import</span> <span class="nn">datetime</span>
 <span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">math</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">pprint</span>
 <span class="kn">import</span> <span class="nn">re</span>
@@ -183,7 +184,6 @@
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">import</span> <span class="nn">yaml</span>
 <span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">deque</span>
-<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">chain</span>
 <span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
@@ -191,7 +191,6 @@
 <span class="kn">import</span> <span class="nn">qcelemental</span> <span class="k">as</span> <span class="nn">qcel</span>
 
 <span class="kn">from</span> <span class="nn">arkane.ess</span> <span class="kn">import</span> <span class="n">ess_factory</span><span class="p">,</span> <span class="n">GaussianLog</span><span class="p">,</span> <span class="n">MolproLog</span><span class="p">,</span> <span class="n">OrcaLog</span><span class="p">,</span> <span class="n">QChemLog</span><span class="p">,</span> <span class="n">TeraChemLog</span>
-<span class="kn">import</span> <span class="nn">rmgpy</span>
 <span class="kn">from</span> <span class="nn">rmgpy.exceptions</span> <span class="kn">import</span> <span class="n">AtomTypeError</span><span class="p">,</span> <span class="n">ILPSolutionError</span><span class="p">,</span> <span class="n">ResonanceError</span>
 <span class="kn">from</span> <span class="nn">rmgpy.molecule.atomtype</span> <span class="kn">import</span> <span class="n">ATOMTYPES</span>
 <span class="kn">from</span> <span class="nn">rmgpy.molecule.element</span> <span class="kn">import</span> <span class="n">get_element</span>
@@ -204,9 +203,7 @@
 
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">rmgpy.reaction</span> <span class="kn">import</span> <span class="n">Reaction</span>
     <span class="kn">from</span> <span class="nn">rmgpy.species</span> <span class="kn">import</span> <span class="n">Species</span>
-    <span class="kn">from</span> <span class="nn">arc.reaction</span> <span class="kn">import</span> <span class="n">ARCReaction</span>
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s1">&#39;arc&#39;</span><span class="p">)</span>
@@ -214,13 +211,11 @@
 
 <span class="c1"># Absolute path to the ARC folder.</span>
 <span class="n">ARC_PATH</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)))</span>
-<span class="c1"># Absolute path to RMG-Py folder.</span>
-<span class="n">RMG_PATH</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">rmgpy</span><span class="o">.</span><span class="vm">__file__</span><span class="p">)))</span>
-<span class="c1"># Absolute path to RMG-database folder.</span>
-<span class="n">RMG_DATABASE_PATH</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">rmgpy</span><span class="o">.</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;database.directory&#39;</span><span class="p">]))</span>
 
 <span class="n">VERSION</span> <span class="o">=</span> <span class="s1">&#39;1.1.0&#39;</span>
 
+<span class="n">R</span> <span class="o">=</span> <span class="mf">8.31446261815324</span>  <span class="c1"># J/(mol*K)</span>
+<span class="n">EA_UNIT_CONVERSION</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;J/mol&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;kJ/mol&#39;</span><span class="p">:</span> <span class="mf">1e+3</span><span class="p">,</span> <span class="s1">&#39;cal/mol&#39;</span><span class="p">:</span> <span class="mf">4.184</span><span class="p">,</span> <span class="s1">&#39;kcal/mol&#39;</span><span class="p">:</span> <span class="mf">4.184e+3</span><span class="p">}</span>
 
 <span class="n">default_job_types</span><span class="p">,</span> <span class="n">servers</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;default_job_types&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;supported_ess&#39;</span><span class="p">]</span>
 
@@ -442,7 +437,7 @@
     <span class="n">logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="s1">&#39;###############################################################&#39;</span><span class="p">)</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
 
-    <span class="n">paths_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;ARC&#39;</span><span class="p">:</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">&#39;RMG-Py&#39;</span><span class="p">:</span> <span class="n">RMG_PATH</span><span class="p">,</span> <span class="s1">&#39;RMG-database&#39;</span><span class="p">:</span> <span class="n">RMG_DATABASE_PATH</span><span class="p">}</span>
+    <span class="n">paths_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;ARC&#39;</span><span class="p">:</span> <span class="n">ARC_PATH</span><span class="p">}</span>
     <span class="k">for</span> <span class="n">repo</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">paths_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="c1"># Extract HEAD git commit.</span>
         <span class="n">head</span><span class="p">,</span> <span class="n">date</span> <span class="o">=</span> <span class="n">get_git_commit</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
@@ -1226,6 +1221,24 @@
         <span class="k">return</span> <span class="kc">False</span></div>
 
 
+<div class="viewcode-block" id="clean_text"><a class="viewcode-back" href="../../api/common.html#arc.common.clean_text">[docs]</a><span class="k">def</span> <span class="nf">clean_text</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Clean a text string from leading and trailing whitespaces, newline characters, and double quotes.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        text (str): The text to clean.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        str: The cleaned text.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;&quot;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">text</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">text</span></div>
+
+
 <div class="viewcode-block" id="time_lapse"><a class="viewcode-back" href="../../api/common.html#arc.common.time_lapse">[docs]</a><span class="k">def</span> <span class="nf">time_lapse</span><span class="p">(</span><span class="n">t0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function returning the elapsed time since t0.</span>
@@ -1713,50 +1726,6 @@
     <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">rmsd</span><span class="p">)</span></div>
 
 
-<span class="k">def</span> <span class="nf">_check_r_n_p_symbols_between_rmg_and_arc_rxns</span><span class="p">(</span><span class="n">arc_reaction</span><span class="p">:</span> <span class="s1">&#39;ARCReaction&#39;</span><span class="p">,</span>
-                                                  <span class="n">rmg_reactions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;Reaction&#39;</span><span class="p">],</span>
-                                                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A helper function to check that atom symbols are in the correct order between an ARC reaction</span>
-<span class="sd">    and its corresponding RMG reactions generated by the get_rmg_reactions_from_arc_reaction() function.</span>
-<span class="sd">    Used internally for testing.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        arc_reaction (ARCReaction): The ARCReaction object to inspect.</span>
-<span class="sd">        rmg_reactions (List[&#39;Reaction&#39;]): Entries are RMG Reaction objects to inspect.</span>
-<span class="sd">                                          Could contain either Species or Molecule object as reactants/products.</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        bool: Whether atom symbols are in the same respective order.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="n">num_rs</span><span class="p">,</span> <span class="n">num_ps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">arc_reaction</span><span class="o">.</span><span class="n">r_species</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">arc_reaction</span><span class="o">.</span><span class="n">p_species</span><span class="p">)</span>
-    <span class="n">arc_r_symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">element</span><span class="o">.</span><span class="n">symbol</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">arc_reaction</span><span class="o">.</span><span class="n">r_species</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_rs</span><span class="p">)))]</span>
-    <span class="n">arc_p_symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">element</span><span class="o">.</span><span class="n">symbol</span> <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">arc_reaction</span><span class="o">.</span><span class="n">p_species</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_ps</span><span class="p">)))]</span>
-    <span class="k">for</span> <span class="n">rmg_reaction</span> <span class="ow">in</span> <span class="n">rmg_reactions</span><span class="p">:</span>
-        <span class="n">rmg_r_symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">element</span><span class="o">.</span><span class="n">symbol</span>
-                         <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">rmg_reaction</span><span class="o">.</span><span class="n">reactants</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">atoms</span>
-                                                  <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rmg_reaction</span><span class="o">.</span><span class="n">reactants</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">)</span>
-                                                  <span class="k">else</span> <span class="n">rmg_reaction</span><span class="o">.</span><span class="n">reactants</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">molecule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">atoms</span>
-                                                  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_rs</span><span class="p">)))]</span>
-        <span class="n">rmg_p_symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">atom</span><span class="o">.</span><span class="n">element</span><span class="o">.</span><span class="n">symbol</span>
-                         <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="n">chain</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">rmg_reaction</span><span class="o">.</span><span class="n">products</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">atoms</span>
-                                                  <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rmg_reaction</span><span class="o">.</span><span class="n">products</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">)</span>
-                                                  <span class="k">else</span> <span class="n">rmg_reaction</span><span class="o">.</span><span class="n">products</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">molecule</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">atoms</span>
-                                                  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_ps</span><span class="p">)))]</span>
-        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">symbol_1</span> <span class="o">!=</span> <span class="n">symbol_2</span> <span class="k">for</span> <span class="n">symbol_1</span><span class="p">,</span> <span class="n">symbol_2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">arc_r_symbols</span><span class="p">,</span> <span class="n">rmg_r_symbols</span><span class="p">)):</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Different element order in reactants between ARC and RMG:&#39;</span><span class="p">)</span>  <span class="c1"># Don&#39;t modify to logging.</span>
-            <span class="nb">print</span><span class="p">(</span><span class="n">arc_r_symbols</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="n">rmg_r_symbols</span><span class="p">)</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">symbol_1</span> <span class="o">!=</span> <span class="n">symbol_2</span> <span class="k">for</span> <span class="n">symbol_1</span><span class="p">,</span> <span class="n">symbol_2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">arc_p_symbols</span><span class="p">,</span> <span class="n">rmg_p_symbols</span><span class="p">)):</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Different element order in products between ARC and RMG:&#39;</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="n">arc_p_symbols</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="n">rmg_p_symbols</span><span class="p">)</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="k">return</span> <span class="n">result</span>
-
-
 <div class="viewcode-block" id="safe_copy_file"><a class="viewcode-back" href="../../api/common.html#arc.common.safe_copy_file">[docs]</a><span class="k">def</span> <span class="nf">safe_copy_file</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                    <span class="n">destination</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                    <span class="n">wait</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
@@ -1880,6 +1849,25 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">h</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">time_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">h</span> <span class="o">+</span> <span class="n">m</span> <span class="o">/</span> <span class="mi">60</span> <span class="o">+</span> <span class="n">s</span> <span class="o">/</span> <span class="mi">3600</span></div>
+
+
+<div class="viewcode-block" id="calculate_arrhenius_rate_coefficient"><a class="viewcode-back" href="../../api/common.html#arc.common.calculate_arrhenius_rate_coefficient">[docs]</a><span class="k">def</span> <span class="nf">calculate_arrhenius_rate_coefficient</span><span class="p">(</span><span class="n">A</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Ea</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">T</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">Ea_units</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;kJ/mol&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the Arrhenius rate coefficient.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        A (float): Pre-exponential factor in cm^3, mol, s units.</span>
+<span class="sd">        n (float): Temperature exponent.</span>
+<span class="sd">        Ea (float): Activation energy in J/mol.</span>
+<span class="sd">        T (float): Temperature in Kelvin.</span>
+<span class="sd">        Ea_units (str): Units of the rate coefficient.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        float: The rate coefficient at the specified temperature.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">Ea_units</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">EA_UNIT_CONVERSION</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unsupported Ea units: </span><span class="si">{</span><span class="n">Ea_units</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">A</span> <span class="o">*</span> <span class="p">(</span><span class="n">T</span> <span class="o">**</span> <span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">*</span> <span class="p">(</span><span class="n">Ea</span> <span class="o">*</span> <span class="n">EA_UNIT_CONVERSION</span><span class="p">[</span><span class="n">Ea_units</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">R</span> <span class="o">*</span> <span class="n">T</span><span class="p">))</span></div>
 </pre></div>
 
            </div>

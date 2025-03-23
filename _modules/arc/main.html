@@ -185,7 +185,6 @@
 <span class="kn">from</span> <span class="nn">rmgpy.reaction</span> <span class="kn">import</span> <span class="n">Reaction</span>
 <span class="kn">from</span> <span class="nn">rmgpy.species</span> <span class="kn">import</span> <span class="n">Species</span>
 
-<span class="kn">import</span> <span class="nn">arc.rmgdb</span> <span class="k">as</span> <span class="nn">rmgdb</span>
 <span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">VERSION</span><span class="p">,</span>
                         <span class="n">ARC_PATH</span><span class="p">,</span>
                         <span class="n">check_ess_settings</span><span class="p">,</span>
@@ -370,7 +369,6 @@
 <span class="sd">        T_max (tuple): The maximum temperature for kinetics computations, e.g., (3000, &#39;K&#39;).</span>
 <span class="sd">        T_count (int): The number of temperature points between ``T_min`` and ``T_max``.</span>
 <span class="sd">        max_job_time (float): The maximal allowed job time on the server in hours (can be fractional).</span>
-<span class="sd">        rmg_database (RMGDatabase): The RMG database object.</span>
 <span class="sd">        allow_nonisomorphic_2d (bool): Whether to optimize species even if they do not have a 3D conformer that is</span>
 <span class="sd">                                       isomorphic to the 2D graph representation.</span>
 <span class="sd">        memory (int): The total allocated job memory in GB (14 by default to be lower than 90% * 16 GB).</span>
@@ -473,7 +471,6 @@
                     <span class="n">job</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">str_to_xyz</span><span class="p">(</span><span class="n">job</span><span class="p">[</span><span class="s1">&#39;xyz&#39;</span><span class="p">])</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lib_long_desc</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">unique_species_labels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">rmg_database</span> <span class="o">=</span> <span class="n">rmgdb</span><span class="o">.</span><span class="n">make_rmg_database_object</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">max_job_time</span> <span class="o">=</span> <span class="n">max_job_time</span> <span class="ow">or</span> <span class="n">default_job_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;job_time_limit_hrs&#39;</span><span class="p">,</span> <span class="mi">120</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">allow_nonisomorphic_2d</span> <span class="o">=</span> <span class="n">allow_nonisomorphic_2d</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">memory</span> <span class="o">=</span> <span class="n">job_memory</span> <span class="ow">or</span> <span class="n">default_job_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;job_total_memory_gb&#39;</span><span class="p">,</span> <span class="mi">14</span><span class="p">)</span>
@@ -569,25 +566,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">reactions</span> <span class="o">=</span> <span class="n">reactions</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">()</span>
         <span class="n">converted_reactions</span><span class="p">,</span> <span class="n">indices_to_pop</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reactions</span><span class="p">):</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rxn</span><span class="p">,</span> <span class="n">Reaction</span><span class="p">):</span>
-                <span class="c1"># RMG Reaction</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">rxn</span><span class="o">.</span><span class="n">reactants</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">rxn</span><span class="o">.</span><span class="n">products</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="s1">&#39;Missing reactants and/or products in RMG Reaction object </span><span class="si">{0}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">rxn</span><span class="p">))</span>
-                <span class="n">indices_to_pop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
-                <span class="n">arc_rxn</span> <span class="o">=</span> <span class="n">ARCReaction</span><span class="p">(</span><span class="n">rmg_reaction</span><span class="o">=</span><span class="n">rxn</span><span class="p">)</span>
-                <span class="n">converted_reactions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arc_rxn</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">reactants</span> <span class="o">+</span> <span class="n">rxn</span><span class="o">.</span><span class="n">products</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spc</span><span class="p">,</span> <span class="n">Species</span><span class="p">):</span>
-                        <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;All reactants and products of an RMG Reaction have to be RMG Species &#39;</span>
-                                         <span class="sa">f</span><span class="s1">&#39;objects. Got: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">spc</span><span class="p">)</span><span class="si">}</span><span class="s1"> in reaction </span><span class="si">{</span><span class="n">rxn</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="ow">not</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing label on RMG Species object </span><span class="si">{</span><span class="n">spc</span><span class="si">}</span><span class="s1"> in reaction </span><span class="si">{</span><span class="n">rxn</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">unique_species_labels</span><span class="p">:</span>
-                        <span class="c1"># Add species participating in an RMG Reaction to ``species`` if not already there</span>
-                        <span class="c1"># We assume each species has a unique label</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ARCSpecies</span><span class="p">(</span><span class="n">is_ts</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">rmg_species</span><span class="o">=</span><span class="n">spc</span><span class="p">))</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">unique_species_labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rxn</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rxn</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
                 <span class="c1"># dict representation for ARCReaction as in a YAML input file</span>
                 <span class="n">indices_to_pop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
                 <span class="n">converted_reactions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ARCReaction</span><span class="p">(</span><span class="n">reaction_dict</span><span class="o">=</span><span class="n">rxn</span><span class="p">,</span> <span class="n">species_list</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">))</span>
@@ -792,7 +771,6 @@
                                    <span class="n">ess_settings</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">,</span>
                                    <span class="n">job_types</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">job_types</span><span class="p">,</span>
                                    <span class="n">bath_gas</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bath_gas</span><span class="p">,</span>
-                                   <span class="n">rmg_database</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rmg_database</span><span class="p">,</span>
                                    <span class="n">restart_dict</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">restart_dict</span><span class="p">,</span>
                                    <span class="n">project_directory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span>
                                    <span class="n">max_job_time</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_job_time</span><span class="p">,</span>
@@ -835,7 +813,6 @@
                             <span class="n">T_max</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">T_max</span><span class="p">,</span>
                             <span class="n">T_count</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">T_count</span> <span class="ow">or</span> <span class="mi">50</span><span class="p">,</span>
                             <span class="n">lib_long_desc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lib_long_desc</span><span class="p">,</span>
-                            <span class="n">rmg_database</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rmg_database</span><span class="p">,</span>
                             <span class="n">compare_to_rmg</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compare_to_rmg</span><span class="p">,</span>
                             <span class="n">three_params</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">three_params</span><span class="p">,</span>
                             <span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span>

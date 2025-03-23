@@ -2065,6 +2065,25 @@
     <span class="k">return</span> <span class="kc">False</span></div>
 
 
+<div class="viewcode-block" id="check_molecule_list_order"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.check_molecule_list_order">[docs]</a><span class="k">def</span> <span class="nf">check_molecule_list_order</span><span class="p">(</span><span class="n">mols_1</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">mols_2</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check if the order of molecules in two lists is the same.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mols_1 (List[Molecule]): A list of RMG Molecule objects.</span>
+<span class="sd">        mols_2 (List[Molecule]): A list of RMG Molecule objects.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: Whether the order of molecules in the two lists is the same.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mols_1</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mols_2</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">for</span> <span class="n">mol1</span><span class="p">,</span> <span class="n">mol2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">mols_1</span><span class="p">,</span> <span class="n">mols_2</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">check_isomorphism</span><span class="p">(</span><span class="n">mol1</span><span class="p">,</span> <span class="n">mol2</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span></div>
+
+
 <div class="viewcode-block" id="get_center_of_mass"><a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.get_center_of_mass">[docs]</a><span class="k">def</span> <span class="nf">get_center_of_mass</span><span class="p">(</span><span class="n">xyz</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the center of mass of xyz coordinates.</span>

@@ -260,13 +260,13 @@ extremely high energies by mistake.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.plotter.delete_multi_species_output_file">
 <span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">delete_multi_species_output_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">species_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multi_species_path_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#delete_multi_species_output_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.delete_multi_species_output_file" title="Permalink to this definition">¶</a></dt>
-<dd><p>Delete all the individual multi species output file sliced fromthe the big cluster output file.</p>
+<dd><p>Delete all the individual multi species output file sliced from the big cluster output file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>species_list</strong> – The species list to be processed.</p></li>
 <li><p><strong>label</strong> (<em>str</em>) – The multi_species label.</p></li>
-<li><p><strong>multi_species_path</strong> – The dict of all the paths to the relevant species.</p></li>
+<li><p><strong>multi_species_path_dict</strong> (<em>dict</em>) – The dict of all the paths to the relevant species.</p></li>
 </ul>
 </dd>
 </dl>
@@ -291,14 +291,14 @@ Saves an image if a species and <code class="docutils literal notranslate"><span
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.plotter.draw_kinetics_plots">
-<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_kinetics_plots</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_min</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_max</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#draw_kinetics_plots"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_kinetics_plots" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">draw_kinetics_plots</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#draw_kinetics_plots"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.draw_kinetics_plots" title="Permalink to this definition">¶</a></dt>
 <dd><p>Draws plots of calculated rate coefficients and RMG’s estimates.
-<cite>rxn_list</cite> has a .kinetics attribute calculated by ARC and an .rmg_reactions list with RMG rates.</p>
+<cite>rxn_list</cite> has a .kinetics attribute calculated by ARC and an .rmg_kinetics list with RMG rates.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>rxn_list</strong> (<em>list</em>) – Reactions with a .kinetics attribute calculated by ARC
-and an .rmg_reactions list with RMG rates.</p></li>
+and an .rmg_kinetics list with RMG rates.</p></li>
 <li><p><strong>T_min</strong> (<em>tuple</em>) – The minimum temperature to consider, e.g., (500, ‘K’).</p></li>
 <li><p><strong>T_max</strong> (<em>tuple</em>) – The maximum temperature to consider, e.g., (3000, ‘K’).</p></li>
 <li><p><strong>T_count</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of temperature points between <code class="docutils literal notranslate"><span class="pre">T_min</span></code> and <code class="docutils literal notranslate"><span class="pre">T_max</span></code>.</p></li>
@@ -354,6 +354,23 @@ Saves a thermo.info file if a <code class="docutils literal notranslate"><span c
 <li><p><strong>species_list</strong> (<em>list</em>) – Species to compare.</p></li>
 <li><p><strong>path</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the project’s output folder.</p></li>
 </ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.plotter.get_rxn_units_and_conversion_factor">
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">get_rxn_units_and_conversion_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ARCReaction</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#get_rxn_units_and_conversion_factor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.get_rxn_units_and_conversion_factor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the units and conversion factor for the reaction rate coefficient.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rxn</strong> (<em>ARCReaction</em>) – The reaction object.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The units and conversion factor from m^3 units to cm^3 units.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[str, float]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -688,11 +705,20 @@ Either <code class="docutils literal notranslate"><span class="pre">species</spa
 
 <dl class="py function">
 <dt class="sig sig-object py" id="arc.plotter.save_kinetics_lib">
-<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_kinetics_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/plotter.html#save_kinetics_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_kinetics_lib" title="Permalink to this definition">¶</a></dt>
-<dd><p>Save an RMG kinetics library of all reactions in <cite>rxn_list</cite> in the supplied <cite>path</cite>.
-<cite>rxn_list</cite> is a list of ARCReaction objects.
-<cite>name</cite> is the library’s name (or project’s name).
-<cite>long_desc</cite> is a multiline string with level of theory description.</p>
+<span class="sig-prename descclassname"><span class="pre">arc.plotter.</span></span><span class="sig-name descname"><span class="pre">save_kinetics_lib</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rxn_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lib_long_desc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">300</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T_max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">3000</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/plotter.html#save_kinetics_lib"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.plotter.save_kinetics_lib" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save a valid RMG kinetics library of all reactions in <cite>rxn_list</cite> in the supplied <cite>path</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rxn_list</strong> (<em>list</em>) – Entries are ARCReaction objects to be saved in the library.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The file path where the library should be created.</p></li>
+<li><p><strong>name</strong> (<em>str</em>) – The library’s name (or project’s name).</p></li>
+<li><p><strong>lib_long_desc</strong> (<em>str</em>) – A multiline string with level of theory description.</p></li>
+<li><p><strong>T_min</strong> (<em>float</em><em>, </em><em>optional</em>) – The minimum temperature for the kinetics fit.</p></li>
+<li><p><strong>T_max</strong> (<em>float</em><em>, </em><em>optional</em>) – The maximum temperature for the kinetics fit.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
