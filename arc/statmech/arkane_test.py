@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 """
-This module contains unit tests for ARC's statmech.arkane modele
+This module contains unit tests for ARC's statmech.arkane module
 """
 
 import os
@@ -11,7 +11,8 @@ import unittest
 
 from arc.common import ARC_PATH
 from arc.level import Level
-from arc.reaction import ARCReaction, ARCSpecies
+from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 from arc.statmech.arkane import ArkaneAdapter
 
 

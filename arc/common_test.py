@@ -21,10 +21,7 @@ from rmgpy.species import Species
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
-from arc.rmgdb import make_rmg_database_object, load_families_only
-from arc.mapping.engine import get_rmg_reactions_from_arc_reaction
 import arc.species.converter as converter
-from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
 
@@ -41,8 +38,6 @@ class TestCommon(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
         cls.default_job_types = {'conf_opt': True,
                                  'opt': True,
                                  'fine': True,
@@ -588,6 +583,19 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_int('125.84'))
         self.assertFalse(common.is_str_int('0.0'))
 
+    def test_clean_text(self):
+        """Test the clean_text() function"""
+        self.assertEqual(common.clean_text('R1'), 'R1')
+        self.assertEqual(common.clean_text('   D_3_5_7_4"\n'), 'D_3_5_7_4')
+        self.assertEqual(common.clean_text('"OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}",\n    '),
+                         'OR{Cd_Cdd, Cdd_Cd, Cd_Cd, Sd_Cd, N1dc_N5ddc, N3d_Cd}')
+        self.assertEqual(common.clean_text('\n"""\n1 *1 Cd        u0 {2,D} {3,S} {4,S}\n2 *2 Cdd       u0 {1,D} {5,D}\n3    H         u0 {1,S}\n4    H         u0 {1,S}\n5    [O2d,S2d] u0 {2,D}\n""",\n    '),
+                         """1 *1 Cd        u0 {2,D} {3,S} {4,S}
+2 *2 Cdd       u0 {1,D} {5,D}
+3    H         u0 {1,S}
+4    H         u0 {1,S}
+5    [O2d,S2d] u0 {2,D}""")
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
@@ -1075,27 +1083,26 @@ class TestCommon(unittest.TestCase):
                                    {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
                                     'props': {'inRing': False}, 'edges': {0: 1.0, 5: 1.0, 6: 1.0, 7: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
                                     'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
                                     'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
                                     'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
                                     'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
                                     'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
                                     'props': {'inRing': False}, 'edges': {1: 1.0}}],
                          'multiplicity': 1, 'props': {},
-                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7],
-                         }
+                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7]}
         self.assertEqual(representation, expected_repr)
 
         mol = Molecule(smiles='NCC')
@@ -1109,25 +1116,25 @@ class TestCommon(unittest.TestCase):
                                    {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
                                     'props': {'inRing': False}, 'edges': {1: 1.0, 7: 1.0, 8: 1.0, 9: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
                                     'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
                                     'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
                                     'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
                                     'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
                                     'props': {'inRing': False}, 'edges': {2: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 8,
                                     'props': {'inRing': False}, 'edges': {2: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                                     'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 9,
                                     'props': {'inRing': False}, 'edges': {2: 1.0}}],
                          'multiplicity': 1, 'props': {},
@@ -1147,25 +1154,25 @@ class TestCommon(unittest.TestCase):
                            {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32766,
                             'props': {'inRing': False}, 'edges': {-32767: 1.0, -32761: 1.0, -32760: 1.0, -32759: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32765,
                             'props': {'inRing': False}, 'edges': {-32768: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32764,
                             'props': {'inRing': False}, 'edges': {-32768: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32763,
                             'props': {'inRing': False}, 'edges': {-32767: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32762,
                             'props': {'inRing': False}, 'edges': {-32767: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32761,
                             'props': {'inRing': False}, 'edges': {-32766: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32760,
                             'props': {'inRing': False}, 'edges': {-32766: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H',
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
                             'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32759,
                             'props': {'inRing': False}, 'edges': {-32766: 1.0}}],
                           'multiplicity': 1, 'props': {},
@@ -1257,13 +1264,6 @@ class TestCommon(unittest.TestCase):
         mol = Molecule(smiles = "C")
         mol.atoms[0].label = "a"
         self.assertIsNone(common.sort_atoms_in_descending_label_order(mol=mol))
-
-    def test_check_r_n_p_symbols_between_rmg_and_arc_rxns(self):
-        """Test the _check_r_n_p_symbols_between_rmg_and_arc_rxns() function"""
-        arc_rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='OH', smiles='[OH]')],
-                              p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='H2O', smiles='O')])
-        rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=arc_rxn, db=self.rmgdb)
-        self.assertTrue(common._check_r_n_p_symbols_between_rmg_and_arc_rxns(arc_rxn, rmg_reactions))
 
     def test_almost_equal_coords(self):
         """Test the almost_equal_coords() function"""
@@ -1379,7 +1379,19 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.convert_to_hours(time_str), 3600.0)
         time_str = '190:40:10'
         self.assertAlmostEqual(common.convert_to_hours(time_str), 190.66944444444442)
-        
+
+    def test_calculate_arrhenius_rate_coefficient(self):
+        """
+        Test the calculate_arrhenius_rate() function.
+        """
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=30, T=1000, Ea_units='cal/mol') / 3.11e+13, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=30, T=1000, Ea_units='kcal/mol') / 8.78e+06, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=8.2, T=1000, Ea_units='kJ/mol') / 1.18e+13, 1.0, places=2)
+        self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
+            A=1e12, n=0.5, Ea=8200, T=1000, Ea_units='J/mol') / 1.18e+13, 1.0, places=2)
 
     @classmethod
     def tearDownClass(cls):

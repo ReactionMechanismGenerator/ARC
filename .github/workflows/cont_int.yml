@@ -36,7 +36,9 @@ jobs:
 
     - name: Cache RMG-Py
       id: cache-rmg-py
-      uses: actions/cache@v2
+      uses: actions/cache@v3
+      env:
+        CACHE_NUMBER: 2
       with:
         path: RMG-Py
         key: ${{ runner.os }}-rmg-main
@@ -54,7 +56,9 @@ jobs:
 
     - name: Cache RMG-database
       id: cache-rmg-db
-      uses: actions/cache@v2
+      uses: actions/cache@v3
+      env:
+        CACHE_NUMBER: 2
       with:
           path: RMG-database
           key: ${{ runner.os }}-rmgdb-main
@@ -71,7 +75,7 @@ jobs:
 
     - name: Cache AutoTST
       id: cache-autotst
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: AutoTST
           key: ${{ runner.os }}-autotst-main
@@ -86,26 +90,26 @@ jobs:
         ref: main
         fetch-depth: 1
 
-    - name: Cache TS-GCN
-      id: cache-tsgcn
-      uses: actions/cache@v2
-      with:
-          path: TS-GCN
-          key: ${{ runner.os }}-tsgcn-main
-          restore-keys: |
-            ${{ runner.os }}-tsgcn-
-    - name: Checkout TS-GCN
-      if: steps.cache-tsgcn.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/TS-GCN
-        path: TS-GCN
-        ref: main
-        fetch-depth: 1
-    
+#    - name: Cache TS-GCN
+#      id: cache-tsgcn
+#      uses: actions/cache@v3
+#      with:
+#          path: TS-GCN
+#          key: ${{ runner.os }}-tsgcn-main
+#          restore-keys: |
+#            ${{ runner.os }}-tsgcn-
+#    - name: Checkout TS-GCN
+#      if: steps.cache-tsgcn.outputs.cache-hit != 'true'
+#      uses: actions/checkout@v3
+#      with:
+#        repository: ReactionMechanismGenerator/TS-GCN
+#        path: TS-GCN
+#        ref: main
+#        fetch-depth: 1
+
     - name: Cache KinBot
       id: cache-kinbot
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
           path: KinBot
           key: ${{ runner.os }}-kinbot-2.0.6
@@ -122,14 +126,14 @@ jobs:
         fetch-depth: 1
 
     - name: Cache Packages
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       env:
         CACHE_NUMBER: 0
       with:
         path: ~/conda_pkgs_dir
         key:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
-    
+
     - name: Set up miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
@@ -140,7 +144,7 @@ jobs:
           conda-solver: libmamba
 
     - name: Cache ARC env
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ env.CONDA }}/envs/arc_env
         key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ env.CACHE_NUMBER}}
@@ -164,14 +168,14 @@ jobs:
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
         make
         cd ..
-  
+
     - name: Set ARC Path
       run: |
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
         echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-        
+
     - name: Install AutoTST
       run: |
         cd AutoTST
@@ -183,18 +187,18 @@ jobs:
         # install pyaml
         conda install -n tst_env -c conda-forge -y pyyaml
         cd ..
-    
-    - name: Install TS-GCN
-      run: |
-        cd TS-GCN
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-        bash devtools/create_env_cpu.sh
-        conda env update -n ts_gcn -f environment.yml
-        cd ..
-    
+
+#    - name: Install TS-GCN
+#      run: |
+#        cd TS-GCN
+#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
+#        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
+#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
+#        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+#        bash devtools/create_env_cpu.sh
+#        conda env update -n ts_gcn -f environment.yml
+#        cd ..
+
     - name: Install KinBot
       run: |
         cd KinBot
@@ -218,13 +222,13 @@ jobs:
     - name: Install Torch Ani
       run: |
         conda env create -f devtools/tani_environment.yml
-  
+
     - name: Install XTB
       run: |
         conda env create -f devtools/xtb_environment.yml
-    
+
     - name: Test with pytest
-      shell: bash -el {0} 
+      shell: bash -el {0}
       run: |
         source ~/.bashrc
         conda activate arc_env

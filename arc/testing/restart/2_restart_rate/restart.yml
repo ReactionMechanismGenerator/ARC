@@ -650,7 +650,6 @@ species:
         - H
         - N
         - H
-    rmg_reaction: '[NH2] + N[NH] <=> [NH] + NN'
     success: true
     t0: null
   - energy: null
@@ -709,7 +708,6 @@ species:
       - N
       - H
     method: user guess 0
-    rmg_reaction: '[NH2] + N[NH] <=> [NH] + NN'
     success: true
     t0: null
   - energy: null
@@ -768,7 +766,6 @@ species:
       - N
       - H
     method: user guess 0
-    rmg_reaction: '[NH2] + N[NH] <=> [NH] + NN'
     success: true
     t0: null
   - energy: null
@@ -827,7 +824,6 @@ species:
       - N
       - H
     method: user guess 0
-    rmg_reaction: '[NH2] + N[NH] <=> [NH] + NN'
     success: true
     t0: null
   ts_methods:

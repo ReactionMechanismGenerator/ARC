@@ -21,9 +21,8 @@ def parse_command_line_arguments(command_line_args=None):
         command_line_args: The command line arguments.
 
     Returns:
-        The parsed command-line arguments by key words.
+        The parsed command-line arguments by keywords.
     """
-
     parser = argparse.ArgumentParser(description='Automatic Rate Calculator (ARC)')
     parser.add_argument('file', metavar='FILE', type=str, nargs=1,
                         help='a file describing the job to execute')
@@ -45,7 +44,6 @@ def main():
     """
     The main ARC executable function
     """
-
     args = parse_command_line_arguments()
     input_file = args.file
     project_directory = os.path.abspath(os.path.dirname(args.file))
