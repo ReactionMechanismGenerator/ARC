@@ -676,6 +676,7 @@ class Scheduler(object):
                             self.timer = False
                             break
                     elif 'irc' in job_name:
+                        logger.info(f'S692 job name: {job_name}')
                         job = self.job_dict[label]['irc'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
                             successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
@@ -1452,6 +1453,7 @@ class Scheduler(object):
             label (str): The species label.
             irc_direction (str): The IRC job direction, either 'forward' or 'reverse'.
         """
+        logger.info('S1468 run_irc_job')
         self.run_job(label=label,
                      xyz=self.species_dict[label].get_xyz(generate=False),
                      level_of_theory=self.irc_level,
@@ -1513,6 +1515,7 @@ class Scheduler(object):
 
         # Spawn IRC if requested and if relevant.
         if label in self.output.keys() and self.job_types['irc'] and self.species_dict[label].is_ts:
+            logger.info('S1529 running IRC')
             self.run_irc_job(label=label, irc_direction='forward')
             self.run_irc_job(label=label, irc_direction='reverse')
 
@@ -1555,8 +1558,12 @@ class Scheduler(object):
             self.run_onedmin_job(label)
 
         # Spawn bde jobs.
+        logger.info('S1574 spawn BDE jobs')
         if label in self.output.keys() and self.job_types['bde'] and self.species_dict[label].bdes is not None:
             bde_species_list = self.species_dict[label].scissors()
+            logger.info(f'Creating BDE species for {label}')
+            logger.info(f'bde s list: {bde_species_list}')
+            raise
             for bde_species in bde_species_list:
                 if bde_species.label != 'H':
                     # H was added in main.
@@ -1886,7 +1893,10 @@ class Scheduler(object):
                 try:
                     b_mol = molecules_from_xyz(self.species_dict[label].initial_xyz,
                                                multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
+                                               charge=self.species_dict[label].charge,
+                                               original_molecule=self.species_dict[label].mol,
+                                               numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                               )[1]
                 except SanitizationError:
                     b_mol = None
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
@@ -2049,9 +2059,12 @@ class Scheduler(object):
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
                     try:
-                        b_mol = molecules_from_xyz(xyz,
+                        b_mol = molecules_from_xyz(xyz=xyz,
                                                    multiplicity=self.species_dict[label].multiplicity,
-                                                   charge=self.species_dict[label].charge)[1]
+                                                   charge=self.species_dict[label].charge,
+                                                   original_molecule=self.species_dict[label].mol,
+                                                   numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                   )[1]
                     except SanitizationError:
                         b_mol = None
                     if b_mol is not None:
@@ -2082,9 +2095,12 @@ class Scheduler(object):
                                 self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
-                                    mol = molecules_from_xyz(xyzs[0],
+                                    mol = molecules_from_xyz(xyz=xyzs[0],
                                                              multiplicity=self.species_dict[label].multiplicity,
-                                                             charge=self.species_dict[label].charge)[1]
+                                                             charge=self.species_dict[label].charge,
+                                                             original_molecule=self.species_dict[label].mol,
+                                                             numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                             )[1]
                                     smiles_1 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
                                         if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                     smiles_2 = mol.copy(deep=True).to_smiles() \
@@ -2121,7 +2137,10 @@ class Scheduler(object):
                         try:
                             b_mol = molecules_from_xyz(xyz,
                                                        multiplicity=self.species_dict[label].multiplicity,
-                                                       charge=self.species_dict[label].charge)[1]
+                                                       charge=self.species_dict[label].charge,
+                                                       original_molecule=self.species_dict[label].mol,
+                                                       numer_of_radicals=self.species_dict[label].number_of_radicals,
+                                                       )[1]
                             smiles_list.append(b_mol.copy(deep=True).to_smiles())
                         except (SanitizationError, AttributeError):
                             smiles_list.append('Could not perceive molecule')
@@ -2501,7 +2520,7 @@ class Scheduler(object):
                     if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
-                                 checks=['freq'],
+                                 checks=['NMD'],
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
@@ -2602,9 +2621,7 @@ class Scheduler(object):
                     before_optimization=False,
                 )
                 if not self.testing:
-                    # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                # Set the ts_checks attribute of the TS species:
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
@@ -2757,6 +2774,8 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The IRC job object.
         """
+        logger.info('S 2771 spawn_post_irc_jobs')
+        raise
         self.output[label]['paths']['irc'].append(job.local_path_to_output_file)
         index = 1
         if len(self.output[label]['paths']['irc']) == 2:
@@ -2813,6 +2832,7 @@ class Scheduler(object):
         Args:
             label (str): The label of one of the optimized IRC-resulting species.
         """
+        logger.info('S 2827 check_irc_species')
         ts_label = self.species_dict[label].irc_label
         if len(self.output[ts_label]['paths']['irc']) == 2:
             irc_species_labels = self.species_dict[ts_label].irc_label.split()
