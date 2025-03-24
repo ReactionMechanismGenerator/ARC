@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import qcelemental as qcel
 
-import arc.rmgdb as rmgdb
 from arc import parser
 from arc.common import get_logger
 from arc.species.converter import get_most_common_isotope_for_element, xyz_from_data, xyz_to_np_array
@@ -47,8 +46,6 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     """
     if job is None:
         return None
-    if reaction.family is None:
-        rmgdb.determine_family(reaction)
 
     ts_xyz = reaction.ts_species.get_xyz()
     try:
