@@ -1615,7 +1615,8 @@ class Scheduler(object):
                         if method in all_families_ts_adapters or \
                                 (rxn.family is not None
                                  and rxn.family in list(ts_adapters_by_rmg_family.keys())
-                                 and method in ts_adapters_by_rmg_family[rxn.family]):
+                                 and method in ts_adapters_by_rmg_family[rxn.family]) \
+                                or 'mock' in method:
                             self.run_job(job_type='tsg',
                                          job_adapter=method,
                                          reactions=[rxn],
