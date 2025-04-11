@@ -1035,7 +1035,9 @@ class ARCSpecies(object):
         """
         if self.mol is not None and len(self.mol.atoms):
             return len(self.mol.atoms) == 1
-        xyz = self.get_xyz()
+        if self.mol_list is not None and len(self.mol_list):
+            return len(self.mol_list[0].atoms) == 1
+        xyz = self.get_xyz(generate=False)
         if xyz is not None:
             return len(xyz['symbols']) == 1
         return None
