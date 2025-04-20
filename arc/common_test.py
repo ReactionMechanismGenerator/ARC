@@ -835,6 +835,29 @@ class TestCommon(unittest.TestCase):
         bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_2, np.float64), elements=elements)
         self.assertTrue(common.check_that_all_entries_are_in_list(
             bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))  # No (1, 5) bond.
+    def test_sorted_distances_of_atom(self):
+        """Test the test_sorted_distances_of_atom function"""
+        xyz_dict = {
+                    'symbols': ['O', 'H', 'H'],
+                    'isotopes': [16, 1, 1],
+                    'coords': [
+                        [0.0, 0.0, 0.0],  # O
+                        [0.758, 0.0, 0.504],  # H1
+                        [-0.758, 0.0, 0.504],  # H2
+                    ]
+                     }
+        result = common.sorted_distances_of_atom(xyz_dict, 0)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [1, 2])
+        self.assertAlmostEqual(result[0][1], result[1][1], delta=0.01)
+
+        result = common.sorted_distances_of_atom(xyz_dict, 1)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [0, 2])
+        self.assertLess(result[0][1], result[1][1])
+
+        with self.assertRaises(IndexError):
+            common.sorted_distances_of_atom(xyz_dict, 5)
 
     def test_determine_symmetry(self):
         """
