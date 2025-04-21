@@ -1299,64 +1299,54 @@ def setup_zmat_indices(initial_xyz: dict,
     }
     return initial_zmat, zmat_indices
 
-def adjust_dihedral_angles(initial_zmat: dict,
-                           zmat_indices: dict,
-                           dihedrals_to_change_num: int) -> bool:
+def generate_dihedral_variants(zmat: dict,
+                              indices: List[int],
+                              adjustment_factors: List[float]) -> List[dict]:
     """
-    Adjust dihedral angles in the Z-matrix based on given indices and number of dihedrals to change.
+   Create variants of a Z-matrix by adjusting dihedral angles using multiple adjustment factors.
+
+    This function creates variants of the Z-matrix using different adjustment factors:
+    1. For each factor in adjustment_factors, apply to the original dihedral
+    2. For each factor in adjustment_factors, apply to the flipped (180°) dihedral
 
     Args:
-        initial_zmat (dict): The Z-matrix to modify.
-        zmat_indices (dict): Dictionary containing Z-matrix indices for atoms 'a', 'b', 'f', 'd'.
-        dihedrals_to_change_num (int): Number of dihedral angles to adjust.
-
-    Returns:
-        bool: True if adjustments were made successfully, False if no more adjustments possible.
-    """
-    matches = get_matching_dihedrals(initial_zmat, zmat_indices['a'], zmat_indices['b'],
-                                    zmat_indices['f'], zmat_indices['d'])
-    total_dihedrals_num = len(matches)
-    if (dihedrals_to_change_num > total_dihedrals_num) and (total_dihedrals_num != 0):
-        return False
-    indices_list = matches[:dihedrals_to_change_num] if matches else None
-
-    if indices_list:
-        for indices in indices_list:
-            push_up_dihedral(zmat=initial_zmat, indices=indices, base_adjustment_factor=0.3)
-
-    return True
-
-def push_up_dihedral(zmat: dict,
-                     indices: List[int],
-                     base_adjustment_factor: float) -> None:
-    """
-    Adjust the value of a dihedral angle in the Z-matrix based on its current value.
-
-    Args:
-        zmat (Dict): The initial Z-matrix.
+        zmat (dict): The initial Z-matrix.
         indices (List[int]): The indices defining the dihedral angle.
-        base_adjustment_factor (float): Base factor for adjustment.
+        adjustment_factors (List[float], optional): List of factors to try.
 
     Returns:
-        None
+        List[dict]: List of Z-matrix variants with adjusted dihedral angles.
     """
+    variants = []
     parameter_name = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
     current_value = zmat['vars'].get(parameter_name, 0)
-    print(f"Current dihedral value for {parameter_name}: {current_value}")
+    normalized_value = get_angle_in_180_range(current_value)
 
-    if abs(current_value) < 10:
-        adjustment_factor = base_adjustment_factor + 1
-    elif 170 <= abs(current_value) <= 190:
-        adjustment_factor = 1 - base_adjustment_factor
+    def push_up_dihedral(val: float, adj_factor: float) -> float:
+        """Scale the dihedral away from 0°/180° using the given factor."""
+        if abs(val) < 10:
+            fac = 1 + adj_factor
+        else:
+            fac = 1 - adj_factor
+        new_value = (val + 360) * fac - 360 if abs(val) < 10 else val * fac
+        normalized_new_value = get_angle_in_180_range(new_value)
+        print(f"Updated dihedral value for {parameter_name} (factor {factor}): {normalized_new_value}")
+        return normalized_new_value
+
+    if abs(normalized_value) < 10 or 170 <= abs(normalized_value) <= 190:
+        for factor in adjustment_factors:
+            original_variant = deepcopy(zmat)
+            original_variant["vars"][parameter_name] = push_up_dihedral(normalized_value, factor)
+            variants.append(original_variant)
+
+            flipped = get_angle_in_180_range(normalized_value + 180.0)
+            flipped_variant = deepcopy(zmat)
+            flipped_variant["vars"][parameter_name] = push_up_dihedral(flipped, factor)
+            variants.append(flipped_variant)
     else:
         print(f"No adjustment needed for {parameter_name} (not close to 0 or ±180 degrees)")
-        return
-    # apply adjustment and normalize the angle
-    new_value = (current_value + 360) * adjustment_factor - 360 if abs(
-        current_value) < 1e-3 else current_value * adjustment_factor
-    normalized_value = (new_value + 180) % 360 - 180
-    zmat['vars'][parameter_name] = normalized_value
-    print(f"Updated dihedral value for {parameter_name}: {normalized_value}")
+
+    return variants
 
 def get_matching_dihedrals(zmat: dict,
                           a: int,
