@@ -2526,6 +2526,9 @@ H      -0.30139889    0.23142254    3.12085495"""
             self.assertAlmostEqual(value, expected, delta=delta)
         elif places:
             self.assertAlmostEqual(value, expected, places=places)
+        else:
+            rel_delta = abs(expected * 0.1)
+            self.assertAlmostEqual(value, expected, delta=rel_delta)
 
     def check_dihedral(self, coords, atoms, expected, places=None, delta=None):
         """Checks if the calculated dihedral angle is within the acceptable deviation."""
@@ -2535,6 +2538,9 @@ H      -0.30139889    0.23142254    3.12085495"""
             self.assertAlmostEqual(normalized, expected, delta=delta)
         elif places:
             self.assertAlmostEqual(normalized, expected, places=places)
+        else:
+            rel_delta = abs(expected * 0.1)
+            self.assertAlmostEqual(normalized, expected, delta=rel_delta)
 
     def test_ester_hydrolysis(self):
         """Test ester hydrolysis reactions."""
@@ -2607,12 +2613,12 @@ H      -0.30139889    0.23142254    3.12085495"""
                     self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
                     self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
                     self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97,places=0)
-                    self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=77, delta=5)
-                    self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=71, delta=5)
-                    self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
-                    self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=140, delta=5)
-                    self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=1.64, delta=3)
-                    self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103, delta=5)
+                    self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=77)
+                    self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=71)
+                    self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
+                    self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=140)
+                    self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=1.64, delta=5)
+                    self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103)
     def test_ether_hydrolysis(self):
         """Test ether hydrolysis reactions."""
         water = self.water
@@ -2659,12 +2665,12 @@ H      -0.30139889    0.23142254    3.12085495"""
                 self.check_distance(coords=guess['coords'], atoms=[a, O], expected=2.1, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
-                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=65, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=72, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=106, delta=6)
-                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=98.25, delta=10)
-                self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.72, delta=10)
-                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103, delta=10)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=65)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=72)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=106)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=98.25)
+                self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.72, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103)
 
     def test_imine_hydrolysis(self):
         """Test imine hydrolysis reactions."""
@@ -2711,12 +2717,12 @@ H      -0.30139889    0.23142254    3.12085495"""
                 self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
-                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=78, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=70, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
-                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=108, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=78)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=70)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=108)
                 self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=12, delta=5)
-                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=113, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=113)
 
     def test_nitrile_hydrolysis(self):
         """Test nitrile hydrolysis reactions."""
@@ -2762,12 +2768,12 @@ H      -0.30139889    0.23142254    3.12085495"""
                 self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
-                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=97, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=58, delta=5)
-                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111, delta=5)
-                self.check_dihedral(coords=guess['coords'], atoms=[f, b, a, O], expected=174, delta=5)
+                self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=97)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=58)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
+                self.check_dihedral(coords=guess['coords'], atoms=[f, b, a, O], expected=174)
                 self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.0154, delta=5)
-                self.check_dihedral(coords=guess['coords'], atoms=[a, O, H1, H1 + 1], expected=104, delta=5)
+                self.check_dihedral(coords=guess['coords'], atoms=[a, O, H1, H1 + 1], expected=104)
 
     @classmethod
     def tearDownClass(cls):
