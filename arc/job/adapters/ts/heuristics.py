@@ -955,13 +955,15 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
     xyz_guesses_total, zmats_total = [], []
     product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
     hydrolysis_parameters = load_hydrolysis_parameters()
-    dihedrals_to_change_num = 0
+    dihedrals_to_change_num, max_dihedrals_found = 0, 0
     if reaction._family is not None:
         product_dicts = [pd for pd in product_dicts if pd.get("family") == reaction._family]
         if not product_dicts:
             raise ValueError(f"Specified target family '{reaction._family}' not found in reaction products.")
     condition_met = False
     while not xyz_guesses_total or not condition_met:
+        if dihedrals_to_change_num >= max_dihedrals_found > 0:
+            break
         dihedrals_to_change_num += 1
         for product_dict in product_dicts:
             reaction_family = product_dict["family"]
@@ -978,16 +980,19 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
                 "o": xyz_indices["o"],
                 "h1": xyz_indices["h1"],
             }
-            chosen_xyz_indices, xyz_guesses, zmats_total= process_chosen_d_indices(
-                initial_xyz, base_xyz_indices, xyz_indices, hydrolysis_parameters,
-                reaction_family, water, zmats_total, is_set_1, is_set_2,dihedrals_to_change_num)
-
-            if xyz_guesses:
-                xyz_guesses_total.append({
-                    "family": reaction_family,
-                    "indices": list(chosen_xyz_indices.values()),
-                    "xyz_guesses": xyz_guesses
-                })
+            adjustments_to_try = [False, True] if dihedrals_to_change_num == 1 else [True]
+            for adjust_dihedral in adjustments_to_try:
+                chosen_xyz_indices, xyz_guesses, zmats_total, n_dihedrals_found = process_chosen_d_indices(initial_xyz, base_xyz_indices, xyz_indices,
+                                                                                     hydrolysis_parameters,reaction_family, water, zmats_total, is_set_1, is_set_2,
+                                                                                     dihedrals_to_change_num, want_to_adjust_dihedral=adjust_dihedral)
+                max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
+                if xyz_guesses:
+                    xyz_guesses_total.append({
+                        "family": reaction_family,
+                        "indices": list(chosen_xyz_indices.values()),
+                        "xyz_guesses": xyz_guesses,
+                        "adjust_dihedral": adjust_dihedral
+                    })
         if reaction._family is not None:
             condition_met = any(item["family"] == reaction._family for item in xyz_guesses_total)
         elif ester_and_ether_families:
@@ -1101,8 +1106,9 @@ def process_chosen_d_indices(initial_xyz: dict,
                              zmats_total: List[dict],
                              is_set_1: bool,
                              is_set_2: bool,
-                             dihedrals_to_change_num: int
-                             ) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
+                             dihedrals_to_change_num: int,
+                             want_to_adjust_dihedral: bool
+                             ) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]], int]:
     """
     Iterates over the 'd' indices to process TS guess generation.
 
@@ -1117,28 +1123,53 @@ def process_chosen_d_indices(initial_xyz: dict,
         is_set_1 (bool): Flag indicating if reaction_family is in set 1.
         is_set_2 (bool): Flag indicating if reaction_family is in set 2.
         dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
+        want_to_adjust_dihedral (bool): Whether to adjust dihedral angles.
 
     Returns:
         Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
             - Chosen indices for TS generation.
             - List of generated transition state (TS) guesses.
             - Updated list of Z-matrices.
+            - Integer indicating maximum number of dihedrals found.
     """
-    for d_index in xyz_indices.get("d", []):
-        chosen_xyz_indices = {**base_xyz_indices, "d": d_index}
+    max_dihedrals_found = 0
+    for d_index in xyz_indices.get("d", []) or [None]:
+        chosen_xyz_indices = {**base_xyz_indices, "d": d_index} if d_index is not None else {**base_xyz_indices,
+                                                                                             "d": None}
         current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, chosen_xyz_indices)
-
-        stretch_ab_bond(current_zmat, chosen_xyz_indices, zmat_indices,hydrolysis_parameters, reaction_family)
-        if not adjust_dihedral_angles(current_zmat, zmat_indices, dihedrals_to_change_num):
+        matches = get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
+                                         zmat_indices['f'], zmat_indices['d'])
+        max_dihedrals_found = max(max_dihedrals_found, len(matches))
+        if want_to_adjust_dihedral and dihedrals_to_change_num > len(matches):
             continue
 
-        ts_guesses, zmats_total = process_family_specific_adjustments(is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
-                                                                      current_zmat, water, chosen_xyz_indices, zmats_total
-                                                                      )
+        stretch_ab_bond(current_zmat, chosen_xyz_indices, zmat_indices, hydrolysis_parameters, reaction_family)
+        zmats_to_process = [current_zmat]
 
-        if ts_guesses:
-            return chosen_xyz_indices, ts_guesses, zmats_total
-    return {}, [], zmats_total
+        if want_to_adjust_dihedral:
+            adjustment_factors = hydrolysis_parameters['default_parameters']['dihedral_adjustment_factors']
+            indices_list = matches[:dihedrals_to_change_num]
+            adjusted_zmats = []
+            for indices in indices_list:
+                zmat_variants = generate_dihedral_variants(current_zmat, indices, adjustment_factors)
+                if zmat_variants:
+                    adjusted_zmats.extend(zmat_variants)
+            if not adjusted_zmats:
+                continue
+            zmats_to_process = adjusted_zmats
+
+        ts_guesses_list = []
+        for zmat_to_process in zmats_to_process:
+            ts_guesses, updated_zmats = process_family_specific_adjustments(
+                is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
+                zmat_to_process, water, chosen_xyz_indices, zmats_total)
+            zmats_total = updated_zmats
+            ts_guesses_list.extend(ts_guesses)
+
+        if ts_guesses_list:
+            return chosen_xyz_indices, ts_guesses_list, zmats_total, max_dihedrals_found
+
+    return {}, [], zmats_total, max_dihedrals_found
 
 def process_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple['ARCSpecies', 'ARCSpecies']:
     """
