@@ -956,8 +956,12 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
     product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
     hydrolysis_parameters = load_hydrolysis_parameters()
     dihedrals_to_change_num = 0
-
-    while not xyz_guesses_total or (ester_and_ether_families and not has_ester_hydrolysis(xyz_guesses_total)):
+    if reaction._family is not None:
+        product_dicts = [pd for pd in product_dicts if pd.get("family") == reaction._family]
+        if not product_dicts:
+            raise ValueError(f"Specified target family '{reaction._family}' not found in reaction products.")
+    condition_met = False
+    while not xyz_guesses_total or not condition_met:
         dihedrals_to_change_num += 1
         for product_dict in product_dicts:
             reaction_family = product_dict["family"]
@@ -984,6 +988,12 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict]]:
                     "indices": list(chosen_xyz_indices.values()),
                     "xyz_guesses": xyz_guesses
                 })
+        if reaction._family is not None:
+            condition_met = any(item["family"] == reaction._family for item in xyz_guesses_total)
+        elif ester_and_ether_families:
+            condition_met = has_ester_hydrolysis(xyz_guesses_total)
+        else:
+            condition_met = len(xyz_guesses_total) > 0
 
     return xyz_guesses_total, zmats_total
 
