@@ -30,6 +30,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             get_matching_dihedrals,
                                             generate_dihedral_variants,
                                             check_dao_angle,
+                                            check_ts_bonds,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
@@ -2495,6 +2496,22 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertTrue(result)
         result = check_dao_angle(d2_indices, initial_xyz)
         self.assertFalse(result)
+
+    def test_check_ts_bonds(self):
+        """Test the check_ts_bonds() function."""
+        initial_xyz_str1="""Cl     -0.53400971   -1.20319371   -1.44406381
+C      -0.53400971   -1.20319371    0.32841058
+C      -0.53400971    0.21902198    0.83449069
+O      -1.26462888    1.07894027    0.34668602
+Cl      1.53426851    1.14297915    0.85911118
+H      -0.45140709   -1.91562715    1.15398835
+H      -1.46761551   -1.40028827   -0.20631013
+O      -0.43514883    0.94568191    2.47832518
+H       0.58786134    1.18684413    1.87883293
+H      -0.30139889    0.23142254    3.12085495"""
+        initial_xyz=str_to_xyz(initial_xyz_str1)
+        result = check_ts_bonds(initial_xyz, [7, 8, 9, 2, 4])
+        self.assertTrue(result)
 
     # Validation Helper Functions
     def check_distance(self, coords, atoms, expected, places=0):
