@@ -10,6 +10,7 @@ import itertools
 import os
 import unittest
 import shutil
+from copy import deepcopy
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
@@ -25,17 +26,17 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             is_water,
                                             process_hydrolysis_reaction,
                                             setup_zmat_indices,
-                                            adjust_dihedral_angles,
                                             get_neighbors_by_electronegativity,
                                             get_matching_dihedrals,
+                                            generate_dihedral_variants,
                                             check_dao_angle,
                                             hydrolysis
                                             )
 from arc.reaction import ARCReaction
-from arc.species.converter import str_to_xyz, zmat_to_xyz, xyz_to_str
+from arc.species.converter import str_to_xyz, zmat_to_xyz, xyz_to_str, zmat_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_param
-from arc.species.zmat import _compare_zmats
+from arc.species.zmat import _compare_zmats, get_parameter_from_atom_indices
 
 class TestHeuristicsAdapter(unittest.TestCase):
     """
@@ -2427,27 +2428,49 @@ H       1.18773917   -1.27609387   -0.39480684""")
         self.assertEqual(matches_without_d, expected_matches_without_d,
                          "get_matching_dihedrals without 'd' provided failed.")
 
-    def test_adjust_dihedral_angles(self):
-        """Test the adjust_dihedral_angles() function."""
-        initial_zmat = {
-            'vars': {
-                'D_1_2_3_4': 180.0,
-                'D_2_3_4_5': 60.0,
-                'D_1_2_4_6': 120.0
-            },
-            'map': {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5}
-        }
-        zmat_indices = {'a': 1, 'b': 2, 'f': 3, 'd': 4}
-        result = adjust_dihedral_angles(initial_zmat, zmat_indices, 1)
-        self.assertTrue(result)
-        self.assertNotEqual(initial_zmat['vars']['D_1_2_3_4'], 60.0)
-
-        empty_zmat = {'vars': {}, 'map': {}}
-        result = adjust_dihedral_angles(empty_zmat, zmat_indices, 1)
-        self.assertTrue(result)
-
-        result = adjust_dihedral_angles(initial_zmat, zmat_indices, 5)
-        self.assertFalse(result)
+    def test_generate_dihedral_variants(self):
+        """
+        Test generate_dihedral_variants
+        """
+        formicacid=self.formicacid
+        formicacid_coords=formicacid.get_xyz()
+        zmat_formicacid_1 = zmat_from_xyz(formicacid_coords)
+        indices = [3, 1, 2, 0]
+        adjustment_factors = [0.1, 0.2]
+        parameter_name = get_parameter_from_atom_indices(zmat=zmat_formicacid_1, indices=indices, xyz_indexed=False)
+        #dihedral angle value is 180.0000034150946
+        variants_1 = generate_dihedral_variants(zmat_formicacid_1, indices, adjustment_factors)
+        variant_values_1 = [variant["vars"][parameter_name] for variant in variants_1]
+        expected_values_1 = [-162.0, 36.0, -144.0, 72.0]
+        self.assertEqual(variant_values_1, expected_values_1)
+        #dihedral angel value is 0
+        zmat_formicacid_2=deepcopy(zmat_formicacid_1)
+        zmat_formicacid_2["vars"][parameter_name] = 0
+        variants_values_2 = generate_dihedral_variants(zmat_formicacid_2, indices, adjustment_factors)
+        variant_values_2 = [variant["vars"][parameter_name] for variant in variants_values_2]
+        expected_values_2=[36.0, -162.0, 72.0, -144.0]
+        self.assertEqual(variant_values_2, expected_values_2)
+        #dihedral angle value is 90
+        zmat_formicacid_3=deepcopy(zmat_formicacid_1)
+        zmat_formicacid_3["vars"][parameter_name] = 90
+        variants_values_3 = generate_dihedral_variants(zmat_formicacid_3, indices, adjustment_factors)
+        variant_values_3 = [variant["vars"][parameter_name] for variant in variants_values_3]
+        expected_values_3=[]
+        self.assertEqual(variant_values_3, expected_values_3)
+        #dihedral angle value is 360
+        zmat_formicacid_4=deepcopy(zmat_formicacid_1)
+        zmat_formicacid_4["vars"][parameter_name] = 360
+        variants_values_4 = generate_dihedral_variants(zmat_formicacid_4, indices, adjustment_factors)
+        variant_values_4 = [variant["vars"][parameter_name] for variant in variants_values_4]
+        expected_values_4=[36.0, -162.0, 72.0, -144.0]
+        self.assertEqual(variant_values_4, expected_values_4)
+        #dihedral angle value is -9
+        zmat_formicacid_5=deepcopy(zmat_formicacid_1)
+        zmat_formicacid_5["vars"][parameter_name] = -9
+        variants_values_5 = generate_dihedral_variants(zmat_formicacid_5, indices, adjustment_factors)
+        variant_values_5 = [variant["vars"][parameter_name] for variant in variants_values_5]
+        expected_values_5=[26.1, 153.9, 61.2, 136.8]
+        self.assertEqual(variant_values_5, expected_values_5)
 
     def test_check_dao_angle(self):
         """Test the check_dao_angle() function."""
