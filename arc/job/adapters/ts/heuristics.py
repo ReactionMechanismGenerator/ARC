@@ -1546,6 +1546,36 @@ def check_dao_angle(d_indices: List[int], xyz_guess: dict) -> bool:
     norm_value=(angle_value + 180) % 180
     return (norm_value < 10) or (norm_value > 170)
 
+def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> bool:
+    """
+    Check if the transition state guess has the correct bonds between water atoms.
+
+    Args:
+        transition_state_xyz (dict): The transition state guess in XYZ format.
+        tested_atom_indices (list): the needed atom indices for the test.
+
+    Returns:
+        bool: Whether the transition state guess has the expected water-related bonds.
+    """
+    oxygen_index, h1_index, h2_index, a_index, b_index= tested_atom_indices
+    oxygen_bonds = sorted_distances_of_atom(transition_state_xyz, oxygen_index)
+    h1_bonds = sorted_distances_of_atom(transition_state_xyz, h1_index)
+    h2_bonds = sorted_distances_of_atom(transition_state_xyz, h2_index)
+    def check_oxygen_bonds(bonds):
+        bonded_atoms = [bonds[1][0], bonds[2][0]]
+        if h1_index in bonded_atoms and a_index in bonded_atoms:
+            return True
+        a_position = next((i for i, bond in enumerate(bonds) if bond[0] == a_index), None)
+        if a_position is not None:
+            if all(transition_state_xyz['symbols'][bonds[i][0]] == 'H' for i in range(2, a_position)):
+                rel_error = abs(bonds[a_position][1] - bonds[2][1]) / bonds[a_position][1]
+                return rel_error <= 0.1
+
+        return False
+    oxygen_has_valid_bonds = (oxygen_bonds[0][0] == h2_index and check_oxygen_bonds(oxygen_bonds))
+    h1_has_valid_bonds = (h1_bonds[0][0] in {oxygen_index, b_index}and h1_bonds[1][0] in {oxygen_index, b_index})
+    h2_has_valid_bonds = h2_bonds[0][0] == oxygen_index
+    return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
