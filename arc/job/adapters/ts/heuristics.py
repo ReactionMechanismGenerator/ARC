@@ -1457,13 +1457,14 @@ def process_family_specific_adjustments(is_set_1: bool,
         if reaction_family == 'ether_hydrolysis':
             r_value[0] = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
         initial_xyz = zmat_to_xyz(initial_zmat)
-        return generate_hydrolysis_ts_guess(initial_xyz, water, r_atoms, a_atoms, d_atoms,
+        return generate_hydrolysis_ts_guess(initial_xyz, xyz_indices.values(), water, r_atoms, a_atoms, d_atoms,
                                             r_value, a_value, d_values, zmats_total, is_set_1,
                                             threshold=0.6 if reaction_family == 'nitrile_hydrolysis' else 0.8)
     else:
         raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
 
 def generate_hydrolysis_ts_guess(initial_xyz: dict,
+                                 xyz_indices: List[int],
                                  water: 'ARCSpecies',
                                  r_atoms: List[int],
                                  a_atoms: List[List[int]],
@@ -1473,13 +1474,14 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                                  d_values: List[List[float]],
                                  zmats_total: List[dict],
                                  is_set_1: bool,
-                                 threshold: float = 0.8
+                                 threshold: float
                                  ) -> Tuple[List[dict], List[dict]]:
     """
     Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
 
     Args:
         initial_xyz (dict): The initial coordinates of the reactant.
+        xyz_indices (List[int]): The indices of the atoms in the initial coordinates.
         water (ARCSpecies): The water molecule involved in the reaction.
         r_atoms (List[int]): Atom pairs for defining bond distances.
         a_atoms (List[List[int]]): Atom triplets for defining bond angles.
@@ -1510,17 +1512,21 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                 a_value=a_value[i],
                 d_value=d_value[i]
             )
-        if is_set_1:
-            if check_dao_angle(d_atoms[0] , xyz_guess):
-                continue
-        zmat_guess = xyz_to_zmat(xyz_guess)
-        duplicate = any(compare_zmats(existing, zmat_guess) for existing in zmats_total)
 
-        if xyz_guess is not None and not colliding_atoms(xyz_guess, threshold=threshold) and not duplicate:
-            xyz_guesses.append(xyz_guess)
-            zmats_total.append(zmat_guess)
+        a_xyz, b_xyz, f_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices
+        are_valid_bonds=check_ts_bonds(xyz_guess, [o_xyz, h1_xyz, h1_xyz+1,  a_xyz, b_xyz])
+        colliding=colliding_atoms(xyz_guess, threshold=threshold)
+        duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
+        if is_set_1:
+            dihedral_fdao=[f_xyz, d_xyz, a_xyz, o_xyz]
+            dao_is_linear=check_dao_angle(dihedral_fdao, xyz_guess)
         else:
-            print(f"Colliding atoms or existing guess: {xyz_guess}")
+            dao_is_linear=False
+        if xyz_guess is not None and not colliding and not duplicate and are_valid_bonds and not dao_is_linear:
+            xyz_guesses.append(xyz_guess)
+            zmats_total.append(xyz_to_zmat(xyz_guess))
+        else:
+            print(f"Invalid TS guess: {xyz_guess}, duplicate: {duplicate}, collision: {colliding}, valid bonds: {are_valid_bonds}, DAO angle is linear: {dao_is_linear}")
 
     return xyz_guesses, zmats_total
 
