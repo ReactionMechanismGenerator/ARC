@@ -44,7 +44,6 @@ jobs:
         key: ${{ runner.os }}-rmg-main
         restore-keys: |
           ${{ runner.os }}-rmg-
-
     - name: Checkout RMG-py
       if: steps.cache-rmg-py.outputs.cache-hit != 'true'
       uses: actions/checkout@v3
@@ -90,23 +89,6 @@ jobs:
         ref: main
         fetch-depth: 1
 
-#    - name: Cache TS-GCN
-#      id: cache-tsgcn
-#      uses: actions/cache@v3
-#      with:
-#          path: TS-GCN
-#          key: ${{ runner.os }}-tsgcn-main
-#          restore-keys: |
-#            ${{ runner.os }}-tsgcn-
-#    - name: Checkout TS-GCN
-#      if: steps.cache-tsgcn.outputs.cache-hit != 'true'
-#      uses: actions/checkout@v3
-#      with:
-#        repository: ReactionMechanismGenerator/TS-GCN
-#        path: TS-GCN
-#        ref: main
-#        fetch-depth: 1
-
     - name: Cache KinBot
       id: cache-kinbot
       uses: actions/cache@v3
@@ -115,7 +97,6 @@ jobs:
           key: ${{ runner.os }}-kinbot-2.0.6
           restore-keys: |
             ${{ runner.os }}-kinbot-
-
     - name: Checkout Kinbot 2.0.6
       if: steps.cache-kinbot.outputs.cache-hit != 'true'
       uses: actions/checkout@v3
@@ -187,17 +168,6 @@ jobs:
         # install pyaml
         conda install -n tst_env -c conda-forge -y pyyaml
         cd ..
-
-#    - name: Install TS-GCN
-#      run: |
-#        cd TS-GCN
-#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-#        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-#        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-#        bash devtools/create_env_cpu.sh
-#        conda env update -n ts_gcn -f environment.yml
-#        cd ..
 
     - name: Install KinBot
       run: |
