@@ -123,6 +123,8 @@ jobs:
           activate-environment: arc_env
           miniconda-version: latest
           conda-solver: mamba
+          channels: conda-forge,defaults,rmg,cantera,anaconda
+          channel-priority: strict
 
     - name: Cache ARC env
       uses: actions/cache@v3
