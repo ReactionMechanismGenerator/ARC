@@ -115,14 +115,14 @@ jobs:
         key:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
 
-    - name: Set up miniconda
+    - name: Set up miniconda (with mamba)
       uses: conda-incubator/setup-miniconda@v3
       with:
           auto-update-conda: true
           environment-file: environment.yml
           activate-environment: arc_env
           miniconda-version: latest
-          conda-solver: libmamba
+          conda-solver: mamba
 
     - name: Cache ARC env
       uses: actions/cache@v3
