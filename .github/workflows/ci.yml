@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * *'
+
+env:
+  MOLECULE_REPO: https://github.com/ReactionMechanismGenerator/molecule
+  AUTOTST_REPO: https://github.com/ReactionMechanismGenerator/AutoTST
+  RMGDB_REPO: https://github.com/ReactionMechanismGenerator/RMG-database
+  KINBOT_REPO: https://github.com/zadorlab/KinBot
+
+jobs:
+  build-and-test:
+    name: CI and Functional Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v3
+        with:
+          path: ARC
+
+      - name: Cache micromamba packages
+        uses: actions/cache@v4
+        with:
+          path: ~/micromamba/pkgs
+          key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
+          restore-keys: micromamba-pkgs-${{ runner.os }}-
+
+      - name: Set up micromamba and create arc_env
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          create-args: --strict-channel-priority
+          generate-run-shell: true
+
+      - name: Clone external dependencies (excluding RDL)
+        run: |
+          git clone "$MOLECULE_REPO" molecule &
+          git clone "$AUTOTST_REPO" AutoTST &
+          git clone "$RMGDB_REPO" RMG-database &
+          git clone "$KINBOT_REPO" KinBot &
+          wait
+
+      - name: Install all external tools (including RDL)
+        working-directory: ARC
+        run: |
+          micromamba run -n arc_env make install-all
+
+      - name: Run Unit Tests
+        working-directory: ARC
+        run: |
+          echo "Running Unit Tests..."
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          micromamba run -n arc_env make test
+
+      - name: Run Functional Tests
+        working-directory: ARC
+        run: |
+          echo "Running Functional Tests..."
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          micromamba run -n arc_env make test-functional
+
+      - name: Upload coverage data
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ARC/coverage.xml
+          flags: unittests,functionaltests
+          name: codecov-umbrella
+          verbose: true
+          fail_ci_if_error: false
