@@ -597,62 +597,6 @@ def hartree_to_si(e: float,
     return e * constants.E_h * constants.Na * factor
 
 
-def rmg_conformer_to_xyz(conformer):
-    """
-    Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
-
-    Notes:
-        Only the xyz information (symbols and coordinates) will be taken from the Conformer object. Other properties
-        such as electronic energy will not be converted.
-
-        We also assume that we can get the isotope number by rounding the mass
-
-    Args:
-        conformer (Conformer): An rmgpy.statmech.Conformer object containing the desired xyz coordinates
-
-    Raises:
-        TypeError: If conformer is not an rmgpy.statmech.Conformer object
-
-    Returns:
-        dict: The ARC xyz format
-    """
-    if not isinstance(conformer, Conformer):
-        raise TypeError(f'Expected conformer to be an rmgpy.statmech.Conformer object but instead got {conformer}, '
-                        f'which is a {type(conformer)} object.')
-
-    symbols = tuple(symbol_by_number[n] for n in conformer.number.value)
-    isotopes = tuple(int(round(m)) for m in conformer.mass.value)
-    coords = tuple(tuple(coord) for coord in conformer.coordinates.value)
-
-    xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
-    return xyz_dict
-
-
-def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
-    """
-    Convert the Arc dict xyz style into an rmgpy.statmech.Conformer object containing these coordinates.
-
-    Notes:
-        Only the xyz information will be supplied to the newly created Conformer object
-
-    Args:
-        xyz_dict (dict): The ARC dict xyz style coordinates
-
-    Returns:
-        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates.
-    """
-    if xyz_dict is None:
-        return None
-    xyz_dict = check_xyz_dict(xyz_dict)
-    mass_and_number = (get_element_mass(*args) for args in zip(xyz_dict['symbols'], xyz_dict['isotopes']))
-    mass, number = zip(*mass_and_number)
-    mass = ArrayQuantity(mass, 'amu')
-    number = ArrayQuantity(number, '')
-    coordinates = ArrayQuantity(xyz_dict['coords'], 'angstroms')
-    conformer = Conformer(number=number, mass=mass, coordinates=coordinates)
-    return conformer
-
-
 def standardize_xyz_string(xyz_str, isotope_format=None):
     """
     A helper function to correct xyz string format input (string to string).
