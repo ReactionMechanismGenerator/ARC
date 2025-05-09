@@ -1,0 +1,24 @@
+project: MRCI_reaction_example
+
+level_of_theory: MP2_CASSCF_MRCI/aug-cc-pVTZ//B2PLYPD3/aug-cc-pVTZ
+
+ts_adapters: []
+
+job_memory: 50
+
+compute_thermo: false
+
+species:
+  - label: HNO
+    smiles: 'N=O'
+  - label: O2
+    smiles: '[O][O]'
+  - label: 'NO'
+    smiles: '[N]=O'
+  - label: HO2
+    smiles: 'O[O]'
+
+reactions:
+  - label: HNO + O2 <=> NO + HO2
+    multiplicity: 3
+    xyz: ['TS0.xyz']
