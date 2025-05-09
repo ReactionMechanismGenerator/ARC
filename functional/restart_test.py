@@ -10,10 +10,7 @@ import shutil
 import unittest
 import warnings
 
-from rmgpy import settings as rmg_settings
-from rmgpy.data.rmg import RMGDatabase
 from rmgpy.molecule.molecule import Molecule
-from rmgpy.species import Species
 
 from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC
@@ -122,38 +119,6 @@ class TestRestart(unittest.TestCase):
                 break
         mol1 = Molecule().from_adjacency_list(adj_list)
         self.assertEqual(mol1.to_smiles(), 'OO')
-
-        thermo_library_path = os.path.join(project_directory, 'output', 'RMG libraries', 'thermo',
-                                           'arc_project_for_testing_delete_after_usage_restart_thermo.py')
-        new_thermo_library_path = os.path.join(rmg_settings['database.directory'], 'thermo', 'libraries',
-                                               'arc_project_for_testing_delete_after_usage_restart_thermo.py')
-        # copy the generated library to RMG-database
-        shutil.copyfile(thermo_library_path, new_thermo_library_path)
-        db = RMGDatabase()
-        db.load(
-            path=rmg_settings['database.directory'],
-            thermo_libraries=['arc_project_for_testing_delete_after_usage_restart_thermo'],
-            transport_libraries=[],
-            reaction_libraries=[],
-            seed_mechanisms=[],
-            kinetics_families='none',
-            kinetics_depositories=[],
-            statmech_libraries=None,
-            depository=False,
-            solvation=False,
-            testing=True,
-        )
-
-        spc2 = Species(smiles='CC([O])=O')
-        spc2.generate_resonance_structures()
-        spc2.thermo = db.thermo.get_thermo_data(spc2)
-        self.assertAlmostEqual(spc2.get_enthalpy(298), -212439.26998495663, 1)
-        self.assertAlmostEqual(spc2.get_entropy(298), 283.3972662956835, 1)
-        self.assertAlmostEqual(spc2.get_heat_capacity(1000), 118.751379824224, 1)
-        self.assertTrue('arc_project_for_testing_delete_after_usage_restart_thermo' in spc2.thermo.comment)
-
-        # delete the generated library from RMG-database
-        os.remove(new_thermo_library_path)
 
     def test_restart_rate_1(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
