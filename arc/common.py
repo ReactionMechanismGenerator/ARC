@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import qcelemental as qcel
+from IPython import get_ipython
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
@@ -664,6 +665,27 @@ def get_bonds_from_dmat(dmat: np.ndarray,
             if i != j and e_1 == 'H' and i not in bonded_hydrogens and j not in bonded_hydrogens and bond not in bonds:
                 bonds.append(bond)
     return bonds
+
+def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int, float]]:
+    """
+    Given XYZ coordinates of a molecule and an atom index, return a list of
+    (other_atom_index, distance) tuples sorted from closest to farthest,
+    excluding the atom itself.
+
+    Args:
+        xyz_dict (dict): The XYZ coordinates of the molecule.
+        atom_index (int): Index of the reference atom.
+
+    Returns:
+        List[Tuple[int, float]]: Sorted list of (atom index, distance) tuples.
+    """
+    from arc.species.converter import xyz_to_dmat
+    d_matrix = xyz_to_dmat(xyz_dict)
+    if atom_index >= d_matrix.shape[0]:
+        raise IndexError(f"Atom index {atom_index} out of range for distance matrix of size {d_matrix .shape[0]}.")
+
+    distances = [(i, d_matrix[atom_index, i]) for i in range(d_matrix.shape[0]) if i != atom_index]
+    return sorted(distances, key=lambda x: x[1])
 
 
 def determine_symmetry(xyz: dict) -> Tuple[int, int]:
