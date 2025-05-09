@@ -11,9 +11,9 @@ from typing import List
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
-from rmgpy.data.rmg import RMGDatabase
-from rmgpy import settings as rmg_settings
-from rmgpy.species import Species
+from molecule.data.rmg import RMGDatabase
+from molecule import settings as rmg_settings
+from molecule.species import Species
 
 
 DB_PATH = rmg_settings['database.directory']
