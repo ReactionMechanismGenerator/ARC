@@ -83,6 +83,7 @@ def determine_ess_status(output_path: str,
             return 'errored', ['NoOutput'], 'Log file could not be read', ''
         forward_lines = tuple(lines)
         reverse_lines = tuple(lines[::-1])
+        len_reversed_lines = len(reverse_lines)
 
         if software == 'gaussian':
             for line in forward_lines[-1:-20:-1]:
@@ -93,7 +94,7 @@ def determine_ess_status(output_path: str,
                     if 'l9999.exe' in line or 'link 9999' in line:
                         cycle_issue = False
                         neg_eigenvalues = False
-                        for j in range(i,len(reverse_lines)):
+                        for j in range(i, len(reverse_lines)):
                             if 'Number of steps exceeded' in reverse_lines[j]:
                                 keywords = ['MaxOptCycles', 'GL9999']
                                 error = 'Maximum optimization cycles reached.'
@@ -132,7 +133,7 @@ def determine_ess_status(output_path: str,
                         # Check if Inaccurate quadrature in CalDSu
                         inacc_quad = False
                         for j in range(i + 300, i, -1):
-                            if 'Inaccurate quadrature in CalDSu' in reverse_lines[j]:
+                            if j < len_reversed_lines and 'Inaccurate quadrature in CalDSu' in reverse_lines[j]:
                                 inacc_quad = True
                                 keywords = ['InaccurateQuadrature', 'GL502']
                                 error = 'Inaccurate quadrature in CalDSu'
