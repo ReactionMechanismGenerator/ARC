@@ -18,8 +18,8 @@ from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
+from molecule.reaction import Reaction
+from molecule.species import Species
 
 from arc.common import (VERSION,
                         ARC_PATH,

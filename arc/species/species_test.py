@@ -9,10 +9,9 @@ import os
 import shutil
 import unittest
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.transport import TransportData
+from molecule.molecule.molecule import Molecule
+from molecule.species import Species
+from molecule.transport import TransportData
 
 from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.species.converter import check_xyz_dict

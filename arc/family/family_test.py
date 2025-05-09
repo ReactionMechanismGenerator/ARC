@@ -8,7 +8,7 @@ This module contains unit tests of the arc.reaction.family module
 import os
 import unittest
 
-from rmgpy.molecule import Group, Molecule
+from molecule.molecule import Group, Molecule
 
 from arc.common import generate_resonance_structures
 from arc.family.family import (ReactionFamily,
