@@ -18,12 +18,10 @@ from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
 from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-import rmgpy.constants as constants
-from rmgpy.exceptions import AtomTypeError
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-from rmgpy.statmech import Conformer
+import molecule.constants as constants
+from molecule.exceptions import AtomTypeError
+from molecule.molecule.molecule import Atom, Bond, Molecule
+from molecule.species import Species
 
 from arc.common import (almost_equal_lists,
                         calc_rmsd,

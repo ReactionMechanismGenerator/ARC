@@ -7,7 +7,7 @@ import ast
 import os
 import re
 
-from rmgpy.molecule import Bond, Group, Molecule
+from molecule.molecule import Bond, Group, Molecule
 
 from arc.common import clean_text, generate_resonance_structures, get_logger
 from arc.imports import settings

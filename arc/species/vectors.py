@@ -6,7 +6,7 @@ import math
 import numpy as np
 from typing import List, Union
 
-from rmgpy.molecule.molecule import Molecule
+from molecule.molecule.molecule import Molecule
 
 from arc.common import logger
 from arc.exceptions import VectorsError
