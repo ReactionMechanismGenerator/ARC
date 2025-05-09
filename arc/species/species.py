@@ -9,16 +9,15 @@ import os
 from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
-import rmgpy.molecule.element as elements
+import molecule.molecule.element as elements
 from arkane.common import ArkaneSpecies, symbol_by_number
 from arkane.statmech import is_linear
-from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError
-from rmgpy.molecule.molecule import Atom, Molecule
-from rmgpy.molecule.resonance import generate_kekule_structure
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.statmech import NonlinearRotor, LinearRotor
-from rmgpy.transport import TransportData
+from molecule.exceptions import AtomTypeError, InvalidAdjacencyListError
+from molecule.molecule.molecule import Atom, Molecule
+from molecule.molecule.resonance import generate_kekule_structure
+from molecule.species import Species
+from molecule.statmech import NonlinearRotor, LinearRotor
+from molecule.transport import TransportData
 
 from arc.common import (almost_equal_coords,
                         convert_list_index_0_to_1,

@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
-from rmgpy.molecule import Molecule
-from rmgpy.species import Species
+from molecule.molecule import Molecule
+from molecule.species import Species
 
 from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
 from arc.exceptions import SpeciesError
@@ -27,7 +27,7 @@ from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calcu
 from numpy import unique
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Atom
+    from molecule.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
 
