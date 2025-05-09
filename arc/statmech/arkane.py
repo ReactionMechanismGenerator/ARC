@@ -217,7 +217,7 @@ class ArkaneAdapter(StatmechAdapter):
             else:
                 ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # Convert to kJ/mol.
                 check_ts(reaction=self.reaction,
-                         checks=['energy', 'freq'],
+                         checks=['energy', 'NMD'],
                          rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
                          skip_nmd=self.skip_nmd,
                          )
