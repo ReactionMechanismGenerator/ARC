@@ -10,7 +10,6 @@ import os
 import shutil
 import unittest
 
-from rmgpy.reaction import Reaction
 from rmgpy.species import Species
 
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
