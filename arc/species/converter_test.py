@@ -13,9 +13,8 @@ from ase import Atoms
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
+from molecule.molecule.molecule import Molecule
+from molecule.species import Species
 
 import arc.species.converter as converter
 from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists

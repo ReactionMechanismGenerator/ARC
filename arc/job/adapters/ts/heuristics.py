@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from rmgpy.molecule.molecule import Molecule
+from molecule.molecule.molecule import Molecule
 from arkane.statmech import is_linear
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val

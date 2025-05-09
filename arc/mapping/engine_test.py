@@ -17,8 +17,8 @@ from arc.species.vectors import calculate_dihedral_angle
 
 from qcelemental.models.molecule import Molecule as QCMolecule
 
-from rmgpy.molecule import Molecule
-from rmgpy.species import Species
+from molecule.molecule import Molecule
+from molecule.species import Species
 
 
 class TestMappingEngine(unittest.TestCase):
