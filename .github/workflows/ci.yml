@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  build-and-test:
+    name: CI and Functional Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v4
+        with:
+          path: ARC
+
+      - name: Cache micromamba packages
+        uses: actions/cache@v4
+        with:
+          path: ~/micromamba/pkgs
+          key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
+          restore-keys: micromamba-pkgs-${{ runner.os }}-
+
+      - name: Set up micromamba and create arc_env
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          create-args: --strict-channel-priority
+          generate-run-shell: true
+
+      - name: Cache RMG-Py
+        uses: actions/cache@v4
+        with:
+          path: ../RMG-Py
+          key: rmg-py-${{ hashFiles('ARC/RMG_PY_COMMIT_HASH') }}
+          restore-keys: rmg-py-
+
+      - name: Install RMG-Py
+        working-directory: ARC
+        run: |
+          bash devtools/install_rmg.sh
+
+      - name: Install ARC external packages
+        working-directory: ARC
+        run: |
+          make install
+
+      - name: Run Unit Tests
+        working-directory: ARC
+        run: |
+          echo "Running Unit Tests..."
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest arc/ --cov --cov-report=xml -ra -vv
+
+      - name: Run Functional Tests
+        working-directory: ARC
+        run: |
+          echo "Running Functional Tests..."
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest functional/ -ra -vv
+
+      - name: Upload coverage data
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ARC/coverage.xml
+          flags: unittests,functionaltests
+          name: codecov-umbrella
+          verbose: true
+          fail_ci_if_error: false
