@@ -34,24 +34,24 @@ jobs:
         large-packages: true
         swap-storage: true
 
-    - name: Cache RMG-Py
-      id: cache-rmg-py
+    - name: Cache molecule
+      id: cache-molecule
       uses: actions/cache@v3
       env:
         CACHE_NUMBER: 2
       with:
-        path: RMG-Py
-        key: ${{ runner.os }}-rmg-main
+        path: molecule
+        key: ${{ runner.os }}-molecule-main
         restore-keys: |
-          ${{ runner.os }}-rmg-
+          ${{ runner.os }}-molecule-
 
-    - name: Checkout RMG-py
-      if: steps.cache-rmg-py.outputs.cache-hit != 'true'
+    - name: Checkout molecule
+      if: steps.cache-molecule.outputs.cache-hit != 'true'
       uses: actions/checkout@v3
       with:
-        repository: ReactionMechanismGenerator/RMG-Py
-        path: RMG-Py
-        ref: main
+        repository: ReactionMechanismGenerator/molecule
+        path: molecule
+        ref: May_25
         fetch-depth: 1
 
     - name: Cache RMG-database
@@ -159,9 +159,9 @@ jobs:
     - name: Install codecov
       run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
 
-    - name: Cythonize RMG-Py
+    - name: Cythonize molecule
       run: |
-        cd RMG-Py
+        cd molecule
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
         echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
