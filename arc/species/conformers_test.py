@@ -9,9 +9,9 @@ import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.group import GroupAtom, GroupBond, Group
-from rmgpy.molecule.molecule import Molecule
+from molecule.molecule.atomtype import ATOMTYPES
+from molecule.molecule.group import GroupAtom, GroupBond, Group
+from molecule.molecule.molecule import Molecule
 
 import arc.species.conformers as conformers
 import arc.species.converter as converter
