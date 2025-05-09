@@ -1,72 +1,47 @@
 name: arc_env
+
 channels:
-  - rmg          # RMG-specific wheels
-  - conda-forge  # modern science stack
-  - cantera      # cantera 2.6 build
-  - defaults     # only for legacy libs like libboost 1.67
+  - conda-forge
 
 dependencies:
-  # ——— hard pins ————————————————————————————————
-  - python=3.7.*
-  - numpy=1.20.1
+  # ─── core ─────────────────────────────────────
+  - conda-forge::python >=3.12.*
+  - conda-forge::numpy  >=2.1.*
+  - conda-forge::pip
 
-  # ——— chemistry / RMG stack ————————————————
-  - rmg::chemprop
-  - rmg::pydas>=1.0.3
-  - rmg::pydqed>=1.0.1
-  - rmg::pyrdl
-  - rmg::lpsolve55
-  - rmg::numdifftools
-  - rmg::quantities
-  - rmg::muq2
+  # ─── core networking (for Jupyter notebooks) ──
+  - conda-forge::urllib3
+  - conda-forge::requests
+  - conda-forge::six
 
-  # rdkit from conda-forge (links to boost-cpp ≥1.70, no missing libboost)
-  - conda-forge::rdkit>=2020.03.3.0
-
-  # ——— core numerics / plotting ——————————————
-  - scipy
-  - pandas
-  - scikit-learn
-  - matplotlib>=1.5
-  - h5py
-  - networkx
-  - cython>=0.25.2
-  - psutil
-  - mpmath
-  - pydot
-  - pyparsing
-  - pyyaml
-
-  # ——— thermo / quantum extras ——————————————
-  - cantera::cantera=2.6
-  - conda-forge::openbabel=3.*
-  - conda-forge::cclib>=1.7.0
-  - conda-forge::mopac
-  - conda-forge::qcelemental
-  - conda-forge::ase=3.22.1
-  - coolprop
-
-  # ——— utilities ————————————————————————————————
-  - cairo
-  - cairocffi
-  - ffmpeg
-  - graphviz
-  - xlrd
-  - xlwt
-  - jinja2
-  - markupsafe
-  - paramiko=2.6.*
-  - connie::symmetry
-  - pytables
-
-  # ——— docs / notebooks / tests (optional) ———————
-  - jupyter=1.0.*
-  - sphinx
-  - sphinx_rtd_theme
-  - sphinxcontrib-jsmath
-  - mako=1.2.3
-  - pytest
+  # ─── conda-forge packages ─────────────────────
+  - conda-forge::ase >=3.22.1
+  - conda-forge::cairo
+  - conda-forge::cairocffi
+  - conda-forge::cmake
+  - conda-forge::coverage
+  - conda-forge::cython >=3.0
+  - conda-forge::ffmpeg
+  - conda-forge::gprof2dot
+  - conda-forge::graphviz
+  - conda-forge::h5py
+  - conda-forge::ipython
+  - conda-forge::jupyter
+  - conda-forge::lpsolve55
+  - conda-forge::mako
+  - conda-forge::matplotlib
+  - conda-forge::networkx
+  - conda-forge::openbabel >=3
+  - conda-forge::pandas
+  - conda-forge::paramiko >=2.6.0
+  - conda-forge::py3dmol >=0.8.0
+  - conda-forge::pydot
+  - conda-forge::pytables
+  - conda-forge::pytest
   - conda-forge::pytest-cov
-  - conda-forge::py3dmol>=0.8.0
-  - coverage
-  - ipython
+  - conda-forge::pyyaml
+  - conda-forge::rdkit >=2025.03
+  - conda-forge::scipy
+  - conda-forge::sphinx
+  - conda-forge::sphinx_rtd_theme
+  - conda-forge::sphinxcontrib-jsmath
