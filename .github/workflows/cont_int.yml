@@ -112,16 +112,19 @@ jobs:
           path: ~/conda_pkgs_dir
           key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
 
-      - name: Set up Miniconda
+      # 7) Bootstrap Miniconda & CREATE arc_env
+      - name: Set up Miniconda & create arc_env
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           miniconda-version: latest
           conda-solver: libmamba
-          activate-environment: base
+          environment-file: environment.yml
+          activate-environment: arc_env
           channels: conda-forge,defaults,rmg,cantera,anaconda
           channel-priority: strict
 
+      # 8) Cache the fully-built arc_env
       - name: Cache ARC env
         id: cache-arc-env
         uses: actions/cache@v3
@@ -129,23 +132,17 @@ jobs:
           path: ${{ env.CONDA }}/envs/arc_env
           key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ hashFiles('environment.yml') }}
 
-      - name: Create arc_env via mamba
-        if: steps.cache-arc-env.outputs.cache-hit != 'true'
-        run: |
-          conda install -n base -c conda-forge mamba -y
-          mamba env create -n arc_env -f environment.yml --force
-        shell: bash -l {0}
-
-      - name: Activate arc_env
-        run: echo "conda activate arc_env" >> $GITHUB_ENV
-
+      # 9) Install Codecov in arc_env
       - name: Install codecov
         run: |
+          conda activate arc_env
           conda install --force-reinstall ld_impl_linux-64 -y
           conda install -y -c conda-forge codecov
 
+      # 10) Build RMG-Py
       - name: Cythonize RMG-Py
         run: |
+          conda activate arc_env
           cd RMG-Py
           echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
           echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
