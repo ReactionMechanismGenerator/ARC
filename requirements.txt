@@ -1,23 +1,39 @@
-# Required python packages. You can install them all via something like:
-#    pip install -r requirements.txt
+# ARC core requirements
 
-ase>=3.15.0
-cclib>=1.7.0
+python >=3.12
+numpy >=2.1
+ase >=3.22.1
 mako
-matplotlib>=2.2.2
-numpy==1.15.4
-openbabel
-pandas>=1.01
+matplotlib
+openbabel >=3
+pandas
 paramiko>=2.6.0
-psi4
 py3Dmol>=0.8.0
-pytables
 pyyaml
-qcelemental
-rdkit>=2019.09.2.0
-xtb
-torchani
+rdkit>=2025.3
+scipy
+networkx
+
+# Optional/extra (used by some features or for docs)
+cairo
+cairocffi
+cmake
+cython>=3.0
+ffmpeg
+gprof2dot
+graphviz
+h5py
+pydot
+pytables
+sphinx
+sphinx_rtd_theme
+sphinxcontrib-jsmath
 
 # For running the unit tests
-nose
+pytest
+pytest-cov
 coverage
+
+# For interactive use
+jupyter
+ipython
