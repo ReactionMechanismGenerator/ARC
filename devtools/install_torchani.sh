@@ -1,35 +1,58 @@
 #!/bin/bash -l
+set -e
 
-# Check if Micromamba is installed
-if [ -x "$(command -v micromamba)" ]; then
-    echo "Micromamba is installed."
+echo ">>> Checking available package manager..."
+
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
-# Check if Mamba is installed
-elif [ -x "$(command -v mamba)" ]; then
-    echo "Mamba is installed."
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-# Check if Conda is installed
-elif [ -x "$(command -v conda)" ]; then
-    echo "Conda is installed."
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
     COMMAND_PKG=conda
 else
-    echo "Micromamba, Mamba, and Conda are not installed. Please download and install one of them - we strongly recommend Micromamba or Mamba."
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
 fi
 
-# Set up Conda/Micromamba environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate base
-    BASE=$MAMBA_ROOT_PREFIX
-    # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/micromamba.sh"
 else
-    CONDA_BASE=$(conda info --base)
-    # shellcheck source=/dev/null
-    source "$CONDA_BASE/etc/profile.d/conda.sh"
+    BASE=$(conda info --base)
+    . "$BASE/etc/profile.d/conda.sh"
 fi
 
-$COMMAND_PKG clean -a -y
-echo creating tani_env
-$COMMAND_PKG env create -f devtools/tani_environment.yml
+ENV_FILE=devtools/tani_environment.yml
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ Environment file not found: $ENV_FILE"
+    exit 1
+fi
+
+echo ">>> Creating tani_env from $ENV_FILE..."
+$COMMAND_PKG env create -n tani_env -f "$ENV_FILE" || true
+
+echo ">>> Checking TorchANI installation..."
+
+# Activate environment temporarily for the check
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    micromamba activate tani_env
+else
+    conda activate tani_env
+fi
+
+if python -c 'import torchani'; then
+    echo "✔️ TorchANI is installed and importable."
+else
+    echo "❌ TorchANI is not importable. Please check the environment setup."
+    exit 1
+fi
+
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    micromamba deactivate
+else
+    conda deactivate
+fi
+
+echo "✅ Done installing TorchANI (tani_env)."
