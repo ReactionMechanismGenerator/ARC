@@ -4,16 +4,18 @@ on:
   push:
     branches:
       - '*'
+
   pull_request:
     branches:
       - main
     types: [opened, synchronize, reopened, ready_for_review, review_requested]
+
   schedule:
     - cron: '0 0 * * *'
 
-
 jobs:
-  build:
+  setup:
+    name: Setup Environments and Dependencies
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,7 +28,6 @@ jobs:
     - name: Clean Ubuntu Image
       uses: kfir4444/free-disk-space@main
       with:
-        # This may remove tools actually needed - currently does not
         tool-cache: true
         android: true
         dotnet: true
@@ -34,217 +35,120 @@ jobs:
         large-packages: true
         swap-storage: true
 
-    - name: Cache molecule
-      id: cache-molecule
-      uses: actions/cache@v3
-      env:
-        CACHE_NUMBER: 2
+    - name: Set up micromamba
+      uses: mamba-org/setup-micromamba@v1
       with:
-        path: molecule
-        key: ${{ runner.os }}-molecule-main
-        restore-keys: |
-          ${{ runner.os }}-molecule-
+        environment-name: arc_env
+        environment-file: environment.yml
+        cache-environment: true
+        cache-downloads: true
+        create-args: --strict-channel-priority
 
-    - name: Checkout molecule
-      if: steps.cache-molecule.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/molecule
-        path: molecule
-        ref: May_25
-        fetch-depth: 1
-
-    - name: Cache RMG-database
-      id: cache-rmg-db
-      uses: actions/cache@v3
-      env:
-        CACHE_NUMBER: 2
-      with:
-          path: RMG-database
-          key: ${{ runner.os }}-rmgdb-main
-          restore-keys: |
-            ${{ runner.os }}-rmgdb-
-    - name: Checkout RMG-database
-      if: steps.cache-rmg-db.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/RMG-database
-        path: RMG-database
-        ref: main
-        fetch-depth: 1
-
-    - name: Cache AutoTST
-      id: cache-autotst
-      uses: actions/cache@v3
-      with:
-          path: AutoTST
-          key: ${{ runner.os }}-autotst-main
-          restore-keys: |
-            ${{ runner.os }}-autotst-
-    - name: Checkout AutoTST
-      if: steps.cache-autotst.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/AutoTST
-        path: AutoTST
-        ref: main
-        fetch-depth: 1
-
-#    - name: Cache TS-GCN
-#      id: cache-tsgcn
-#      uses: actions/cache@v3
-#      with:
-#          path: TS-GCN
-#          key: ${{ runner.os }}-tsgcn-main
-#          restore-keys: |
-#            ${{ runner.os }}-tsgcn-
-#    - name: Checkout TS-GCN
-#      if: steps.cache-tsgcn.outputs.cache-hit != 'true'
-#      uses: actions/checkout@v3
-#      with:
-#        repository: ReactionMechanismGenerator/TS-GCN
-#        path: TS-GCN
-#        ref: main
-#        fetch-depth: 1
-
-    - name: Cache KinBot
-      id: cache-kinbot
-      uses: actions/cache@v3
-      with:
-          path: KinBot
-          key: ${{ runner.os }}-kinbot-2.0.6
-          restore-keys: |
-            ${{ runner.os }}-kinbot-
-
-    - name: Checkout Kinbot 2.0.6
-      if: steps.cache-kinbot.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: zadorlab/KinBot
-        path: KinBot
-        ref: v2.0.6
-        fetch-depth: 1
-
-    - name: Cache Packages
-      uses: actions/cache@v3
-      env:
-        CACHE_NUMBER: 0
-      with:
-        path: ~/conda_pkgs_dir
-        key:
-          ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
-
-    - name: Set up miniconda
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-          auto-update-conda: true
-          environment-file: environment.yml
-          activate-environment: arc_env
-          miniconda-version: latest
-          conda-solver: libmamba
-
-    - name: Cache ARC env
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.CONDA }}/envs/arc_env
-        key: conda-${{ runner.os }}--${{ runner.arch }}-arcenv-${{ env.CACHE_NUMBER}}
-      env:
-        # Increase this value to reset cache if etc/example-environment.yml has not changed
-        CACHE_NUMBER: 0
-      id: cache-arc-env
-    - name: Update environment
-      run: conda env update -n arc_env -f environment.yml
-      if: steps.cache-arc-env.outputs.cache-hit != 'true'
-
-    - name: Install codecov
-      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
-
-    - name: Cythonize molecule
+    - name: Clone external dependencies in parallel
       run: |
-        cd molecule
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        cd ..
+        git clone https://github.com/ReactionMechanismGenerator/molecule &
+        git clone https://github.com/ReactionMechanismGenerator/AutoTST &
+        git clone https://github.com/ReactionMechanismGenerator/RMG-database &
+        git clone https://github.com/zadorlab/KinBot &
+        wait
+        cd -
+
+    - name: Cythonize molecule within arc_env
+      run: |
+        micromamba activate arc_env
+        cd ../molecule
         make
-        cd ..
+        echo "PYTHONPATH=$(pwd):$PYTHONPATH" >> $GITHUB_ENV
 
-    - name: Set ARC Path
+    - name: Install AutoTST environment
       run: |
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        micromamba env create -f ../AutoTST/environment.yml --name tst_env || true
+        micromamba install -n tst_env pyyaml --yes
 
-    - name: Install AutoTST
+    - name: Install KinBot into arc_env
       run: |
-        cd AutoTST
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-        conda env create -f environment.yml
-        # install pyaml
-        conda install -n tst_env -c conda-forge -y pyyaml
-        cd ..
-
-#    - name: Install TS-GCN
-#      run: |
-#        cd TS-GCN
-#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-#        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-#        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-#        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
-#        bash devtools/create_env_cpu.sh
-#        conda env update -n ts_gcn -f environment.yml
-#        cd ..
-
-    - name: Install KinBot
-      run: |
-        cd KinBot
-        conda activate arc_env
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PATH=$PATH:'"$(pwd)" >> $GITHUB_ENV
-        echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-        echo 'export PATH=$PATH:'"$(pwd)" >> ~/.bashrc
+        micromamba activate arc_env
+        cd ../KinBot
         python setup.py build
         python setup.py install
+        echo "PYTHONPATH=$(pwd):$PYTHONPATH" >> $GITHUB_ENV
+
+    - name: Install extra conda environments
+      run: |
+        micromamba env create -f devtools/ob_environment.yml --name ob_env || true
+        micromamba env create -f devtools/sella_environment.yml --name sella_env || true
+        micromamba env create -f devtools/tani_environment.yml --name tani_env || true
+        micromamba env create -f devtools/xtb_environment.yml --name xtb_env || true
+
+    - name: Archive environment and dependencies
+      run: |
         cd ..
+        tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot
+        cd ARC
 
-    - name: Install OpenBabel
-      run: |
-        conda env create -f devtools/ob_environment.yml
+    - name: Upload environment bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: arc-ci-bundle
+        path: ../arc_bundle.tar.gz
 
-    - name: Install Sella
-      run: |
-        conda env create -f devtools/sella_environment.yml
+  unit-test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    defaults:
+      run:
+        shell: bash -el {0}
 
-    - name: Install Torch Ani
-      run: |
-        conda env create -f devtools/tani_environment.yml
+    steps:
+    - name: Download environment bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: arc-ci-bundle
 
-    - name: Install XTB
+    - name: Extract archive
       run: |
-        conda env create -f devtools/xtb_environment.yml
+        tar -xzf arc_bundle.tar.gz
 
-    - name: Test with pytest
-      shell: bash -el {0}
+    - name: Run Unit Tests
       run: |
-        source ~/.bashrc
-        conda activate arc_env
+        export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
+        micromamba activate arc_env
         make test
         codecov --token=f259713a-7f1d-4e9c-b140-bb3bb371d3ef
 
-    - name: Functional Test
-      run: |
-        source ~/.bashrc
-        conda activate arc_env
-        make test-functional
-    # Wait ten seconds before running the next step
-    - name: Wait
-      run: sleep 10
+  functional-test:
+    name: Run Functional Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    defaults:
+      run:
+        shell: bash -el {0}
 
-    - name: Code Coverage
+    steps:
+    - name: Download environment bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: arc-ci-bundle
+
+    - name: Extract archive
+      run: |
+        tar -xzf arc_bundle.tar.gz
+
+    - name: Run Functional Tests
+      run: |
+        export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
+        micromamba activate arc_env
+        make test-functional
+
+  codecov:
+    name: Upload Code Coverage
+    runs-on: ubuntu-latest
+    needs: unit-test
+
+    steps:
+    - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
         token: f259713a-7f1d-4e9c-b140-bb3bb371d3ef
