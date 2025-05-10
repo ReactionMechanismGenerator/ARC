@@ -1,70 +1,73 @@
 #!/bin/bash -l
+set -e
 
-# Check if Micromamba is installed
-if [ -x "$(command -v micromamba)" ]; then
-    echo "Micromamba is installed."
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
-# Check if Mamba is installed
-elif [ -x "$(command -v mamba)" ]; then
-    echo "Mamba is installed."
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-# Check if Conda is installed
-elif [ -x "$(command -v conda)" ]; then
-    echo "Conda is installed."
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
     COMMAND_PKG=conda
 else
-    echo "Micromamba, Mamba, and Conda are not installed. Please download and install one of them - we strongly recommend Micromamba or Mamba."
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
 fi
 
-# Set up Conda/Micromamba environment
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate base
-    BASE=$MAMBA_ROOT_PREFIX
-    # shellcheck source=/dev/null
-    . "$BASE/etc/profile.d/micromamba.sh"
 else
-    BASE=$(conda info --base)
-    # shellcheck source=/dev/null
-   . "$BASE/etc/profile.d/conda.sh"
+    BASE=$($COMMAND_PKG info --base)
+    source "$BASE/etc/profile.d/conda.sh"
 fi
 
-# temporarily change directory to install software, and move one directory up in the tree
-pushd .
-cd ..
-
-# clone the repo in the parent directory
-echo "Cloning/Updating AutoTST..."
-if [ -d "./AutoTST" ]; then
+pushd ..
+echo ">>> Cloning or updating AutoTST..."
+if [ -d AutoTST ]; then
     cd AutoTST
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin
+        git pull origin main
+    else
+        echo "⚠️ AutoTST is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     git clone https://github.com/ReactionMechanismGenerator/AutoTST
-    cd AutoTST || exit
+    cd AutoTST
 fi
-git fetch origin
-git checkout main
-git pull origin main
 
-# Add to PYTHONPATH
-echo "Adding AutoTST to PYTHONPATH..."
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-echo $PYTHONPATH
-
-# create the environment
-echo "Creating the AutoTST environment..."
-$COMMAND_PKG env create -f environment.yml
-# Activate the environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
-    micromamba activate tst_env
+AUTO_PATH_LINE="export PYTHONPATH=\$PYTHONPATH:$(pwd)"
+if ! grep -Fxq "$AUTO_PATH_LINE" ~/.bashrc; then
+    echo "$AUTO_PATH_LINE" >> ~/.bashrc
+    echo "✔️ Added AutoTST path to ~/.bashrc"
 else
-    conda activate tst_env
+    echo "ℹ️ AutoTST path already exists in ~/.bashrc"
 fi
 
-$COMMAND_PKG install -c conda-forge pyyaml
+if $COMMAND_PKG env list | grep -q '^tst_env\s'; then
+    echo ">>> Updating existing environment tst_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env update -n tst_env -f environment.yml --prune -y
+    else
+        $COMMAND_PKG env update -n tst_env -f environment.yml --prune
+    fi
+else
+    echo ">>> Creating new environment tst_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env create -n tst_env -f environment.yml -y
+    else
+        $COMMAND_PKG env create -n tst_env -f environment.yml
+    fi
+fi
 
-# Restore the original directory
-cd ../ARC || exit
-echo "Done installing AutoTST."
-popd || exit
+echo ">>> Installing extra dependencies into tst_env..."
+if [ "$COMMAND_PKG" != "conda" ]; then
+    $COMMAND_PKG install -n tst_env -c conda-forge pyyaml -y
+else
+    $COMMAND_PKG install -n tst_env -c conda-forge pyyaml
+fi
+
+popd > /dev/null
+echo "✅ Done installing AutoTST."
