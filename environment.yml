@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.8
+  - python >=3.8
   - cairocffi
   - coverage
   - cython >=0.25.2,<3
@@ -16,7 +16,6 @@ dependencies:
   - pandas
   - rmg::pydas >=1.0.2
   - pydot
-  - pyrdl
   - lpsolve55
   - pyyaml
   - quantities
