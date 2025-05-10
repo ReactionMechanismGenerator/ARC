@@ -1,11 +1,9 @@
 name: arc_env
 channels:
-  - defaults
   - conda-forge
-  - cantera
-  - anaconda
+  - defaults
 dependencies:
-  - cairo
+  - python=3.8
   - cairocffi
   - coverage
   - cython >=0.25.2,<3
@@ -14,26 +12,25 @@ dependencies:
   - matplotlib
   - networkx
   - numpy
-  - conda-forge::openbabel >= 3
+  - openbabel >=3
   - pandas
   - rmg::pydas >=1.0.2
   - pydot
   - pyrdl
   - lpsolve55
-  - python >=3.7
   - pyyaml
   - quantities
   - rdkit >=2020.03.3.0
   - scipy
   - scikit-learn
-  - anaconda::sphinx_rtd_theme
-  - anaconda::paramiko >=2.6.0
-  - conda-forge::py3dmol >= 0.8.0
-  - conda-forge::ase
-  - anaconda::ipython
-  - anaconda::sphinx
-  - anaconda::sphinxcontrib-jsmath
-  - conda-forge::qcelemental
+  - paramiko >=2.6.0
+  - py3dmol >=0.8.0
+  - ase
+  - ipython
+  - sphinx
+  - sphinx_rtd_theme
+  - sphinxcontrib-jsmath
+  - qcelemental
   - mako
-  - anaconda::pytest
-  - conda-forge::pytest-cov
+  - pytest
+  - pytest-cov
