@@ -8,9 +8,9 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
-import rmgpy.constants as constants
-from rmgpy.species import Species, TransitionState
-from rmgpy.statmech import Conformer, HarmonicOscillator, HinderedRotor, IdealGasTranslation, LinearRotor, NonlinearRotor
+import molecule.constants as constants
+from molecule.species import Species, TransitionState
+from rmgpy.statmech import Conformer, HarmonicOscillator, HinderedRotor, IdealGasTranslation, LinearRotor, NonlinearRotor  # !!!
 
 import arkane.input
 from arkane.encorr.data import data
