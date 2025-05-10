@@ -1,11 +1,17 @@
-#!/bin/bash
-# delete all the Test and unnecessary files
-pushd .
+#!/bin/bash -l
+set -e
 
-rm -rf functional
-rm -rf ipython
-rm -rf arc/testing
+echo ">>> Running lite installation script..."
 
-find "$PWD" -path '*Test.py' -type f -delete
+if [ ! -d arc ] || [ ! -f environment.yml ]; then
+    echo "❌ This script must be run from the ARC root directory."
+    exit 1
+fi
 
-popd || exit
+echo "🧹 Removing testing-related directories..."
+rm -rf functional ipython arc/testing
+
+echo "🧹 Removing test files matching '*Test.py'..."
+find arc -name '*Test.py' -type f -print -delete
+
+echo "✅ Lite installation complete."

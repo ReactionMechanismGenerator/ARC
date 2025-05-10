@@ -1,28 +1,35 @@
 #!/bin/bash -l
+set -e
 
-# Check if Micromamba is installed
-if [ -x "$(command -v micromamba)" ]; then
-    echo "Micromamba is installed."
+echo ">>> Checking available package manager..."
+
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
-# Check if Mamba is installed
-elif [ -x "$(command -v mamba)" ]; then
-    echo "Mamba is installed."
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-# Check if Conda is installed
-elif [ -x "$(command -v conda)" ]; then
-    echo "Conda is installed."
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
     COMMAND_PKG=conda
 else
-    echo "Micromamba, Mamba, and Conda are not installed. Please download and install one of them - we strongly recommend Micromamba or Mamba."
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
 fi
 
-$COMMAND_PKG clean -a -y
-$COMMAND_PKG env create -f devtools/ob_environment.yml
-# Activate the environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
-    micromamba activate ob_env
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    eval "$(micromamba shell hook --shell=bash)"
 else
-    conda activate ob_env
+    BASE=$(conda info --base)
+    . "$BASE/etc/profile.d/conda.sh"
 fi
 
+echo ">>> Creating ob_env from devtools/ob_environment.yml..."
+if [ ! -f devtools/ob_environment.yml ]; then
+    echo "❌ devtools/ob_environment.yml not found!"
+    exit 1
+fi
+
+$COMMAND_PKG env create -n ob_env -f devtools/ob_environment.yml || true
+
+echo "✅ OpenBabel environment (ob_env) ready."
