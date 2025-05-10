@@ -1,60 +1,41 @@
 #!/bin/bash -l
+set -eo pipefail
+ENV_NAME=arc_env
+KINBOT_VERSION=2.1.1
 
-# Check if Micromamba is installed
-if [ -x "$(command -v micromamba)" ]; then
-    echo "Micromamba is installed."
+echo "📦 Installing Kinbot..."
+
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
-# Check if Mamba is installed
-elif [ -x "$(command -v mamba)" ]; then
-    echo "Mamba is installed."
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-# Check if Conda is installed
-elif [ -x "$(command -v conda)" ]; then
-    echo "Conda is installed."
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
     COMMAND_PKG=conda
 else
-    echo "Micromamba, Mamba, and Conda are not installed. Please download and install one of them - we strongly recommend Micromamba or Mamba."
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
 fi
 
-# Set up Conda/Micromamba environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate base
-    BASE=$MAMBA_ROOT_PREFIX
-    # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/micromamba.sh"
 else
     BASE=$(conda info --base)
-    # shellcheck source=/dev/null
-    source "$BASE/etc/profile.d/conda.sh"
+    . "$BASE/etc/profile.d/conda.sh"
+    eval "$($COMMAND_PKG shell hook --shell=bash)"
 fi
 
-# temporarily change directory to install software, and move one directory up in the tree
-pushd .
-cd ..
 
-# clone the repo in the parent directory and update it
-echo "Cloning/Updating KinBot..."
-wget https://github.com/zadorlab/KinBot/archive/refs/tags/v2.0.6.tar.gz
-tar -xvf "v2.0.6.tar.gz"
-cd KinBot-2.0.6 || exit
-# Activate the environment
-if [ "$COMMAND_PKG" == "micromamba" ]; then
-    micromamba activate arc_env
-else
-    conda activate arc_env
+# Activate arc_env
+
+if ! $COMMAND_PKG env list | awk '{print $1}' | sed 's/^\*//' | grep -Fxq "$ENV_NAME"; then
+    echo "❌ Environment '$ENV_NAME' not found. Please create it first."
+    exit 1
 fi
-python setup.py build
-python setup.py install
 
-# Add to PYTHONPATH
-echo "Adding KinBot to PYTHONPATH"
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-echo $PYTHONPATH
+echo ">>> Installing KinBot version $KINBOT_VERSION in environment '$ENV_NAME'..."
+$COMMAND_PKG install -n "$ENV_NAME" -c conda-forge kinbot=$KINBOT_VERSION -y
 
-# Restore the original directory
-cd ../ARC || exit
-echo "Done installing Kinbot."
-popd || exit
+echo "✅ Done installing KinBot."
