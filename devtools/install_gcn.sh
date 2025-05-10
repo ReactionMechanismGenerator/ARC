@@ -1,31 +1,60 @@
-# Properly configure the shell to use 'conda activate'.
-CONDA_BASE=$(conda info --base)
-source $CONDA_BASE/etc/profile.d/conda.sh
+#!/bin/bash -l
+set -e
 
-# temporarily change directory to install software
-pushd .
-cd ..
+echo ">>> Checking available package manager..."
 
-# clone the repo in the parent directory and update it
-echo "Cloning/Updating GCN..."
-git clone https://github.com/ReactionMechanismGenerator/TS-GCN
-cd TS-GCN || exit
-git fetch origin
-git checkout main
-git pull origin main
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
+    COMMAND_PKG=micromamba
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
+    COMMAND_PKG=mamba
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
+    COMMAND_PKG=conda
+else
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
+    exit 1
+fi
 
-# Add to PYTHONPATH
-echo "Adding GCN to PYTHONPATH..."
-export PYTHONPATH=$PYTHONPATH:$(pwd)
-echo 'export PYTHONPATH=$PYTHONPATH:'"$(pwd)" >> ~/.bashrc
-echo $PYTHONPATH
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    eval "$(micromamba shell hook --shell=bash)"
+else
+    BASE=$(conda info --base)
+    . "$BASE/etc/profile.d/conda.sh"       # shellcheck source=/dev/null
+fi
 
-# create the environment
-echo "Creating the GCN environment..."
-source ~/.bashrc
-make conda_env
+pushd ..
 
-# Restore the original directory
-cd ../ARC || exit
-echo "Done installing GCN."
-popd || exit
+echo ">>> Cloning or updating TS-GCN..."
+if [ -d TS-GCN ]; then
+    cd TS-GCN
+    git fetch origin
+    git checkout main
+    git pull origin main
+else
+    git clone https://github.com/ReactionMechanismGenerator/TS-GCN
+    cd TS-GCN
+fi
+
+export PYTHONPATH="$PYTHONPATH:$(pwd)"
+
+GCN_LINE="export PYTHONPATH=\$PYTHONPATH:$(pwd)"
+if ! grep -Fxq "$GCN_LINE" ~/.bashrc; then
+    echo "$GCN_LINE" >> ~/.bashrc
+    echo "✔️ Added GCN path to ~/.bashrc"
+else
+    echo "ℹ️ GCN path already present in ~/.bashrc"
+fi
+echo "PYTHONPATH=$PYTHONPATH"
+
+if grep -q '^conda_env:' Makefile; then
+    echo ">>> Creating GCN conda environment via Makefile"
+    make conda_env
+else
+    echo "❌ Makefile target 'conda_env' not found. Please check TS-GCN repo."
+    exit 1
+fi
+
+popd > /dev/null
+echo "✅ Done installing GCN."
