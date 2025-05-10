@@ -1,0 +1,26 @@
+name: ts_gcn
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - h5py
+  - hyperopt
+  - ipython
+  - jupyter
+  - matplotlib
+  - numpy
+  - openbabel
+  - pandas
+  - pip
+  - psutil
+  - py3dmol
+  # - pymol
+  - pyyaml
+  - rdkit
+  - scikit-learn
+  - scipy
+  - seaborn
+  - tqdm
+  - xlrd
+  - xlwt
