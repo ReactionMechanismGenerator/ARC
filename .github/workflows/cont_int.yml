@@ -40,8 +40,8 @@ jobs:
       with:
         path: /home/runner/micromamba/pkgs
         key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('environment.yml') }}
-        restore-keys: |
-          micromamba-pkgs-${{ runner.os }}-
+        restore-keys:
+          - micromamba-pkgs-${{ runner.os }}-
 
     - name: Cache arc_env environment
       id: cache-arc-env
@@ -49,8 +49,8 @@ jobs:
       with:
         path: /home/runner/micromamba/envs/arc_env
         key: arc-env-${{ runner.os }}-${{ hashFiles('environment.yml') }}
-        restore-keys: |
-          arc-env-${{ runner.os }}-
+        restore-keys:
+          - arc-env-${{ runner.os }}-
 
     - name: Set up micromamba
       uses: mamba-org/setup-micromamba@v1
@@ -88,13 +88,11 @@ jobs:
         micromamba env create -f ../AutoTST/environment.yml --name tst_env || true
         micromamba install -n tst_env pyyaml --yes
 
-    - name: Install KinBot into arc_env
+    - name: Install KinBot with pip
       run: |
         micromamba activate arc_env
-        cd ../KinBot
-        python setup.py build
-        python setup.py install
-        echo "PYTHONPATH=$(pwd):$PYTHONPATH" >> $GITHUB_ENV
+        pip install -e ../KinBot
+        echo "PYTHONPATH=$(pwd)/../KinBot:$PYTHONPATH" >> $GITHUB_ENV
 
     - name: Install extra conda environments
       run: |
