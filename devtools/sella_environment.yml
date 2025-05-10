@@ -2,12 +2,13 @@ name: sella_env
 channels:
   - conda-forge
 dependencies:
-  - python>=3.8
+  - python >=3.8
   - xtb-python
   - pyyaml
   - pandas
   - ncurses
-  - numpy==1.26.4
+  - numpy >=1.26,<2.0
+  - typing-extensions
+  - pip
   - pip:
-    - sella
-    - typing-extensions
+      - sella
