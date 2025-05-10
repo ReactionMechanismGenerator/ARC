@@ -1,67 +1,74 @@
 #!/bin/bash -l
+set -eo pipefail
 
-# Check if Micromamba is installed
-if [ -x "$(command -v micromamba)" ]; then
-    echo "Micromamba is installed."
+if command -v micromamba &> /dev/null; then
+    echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
-# Check if Mamba is installed
-elif [ -x "$(command -v mamba)" ]; then
-    echo "Mamba is installed."
+elif command -v mamba &> /dev/null; then
+    echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-# Check if Conda is installed
-elif [ -x "$(command -v conda)" ]; then
-    echo "Conda is installed."
+elif command -v conda &> /dev/null; then
+    echo "✔️ Conda is installed."
     COMMAND_PKG=conda
 else
-    echo "Micromamba, Mamba, and Conda are not installed. Please download and install one of them - we strongly recommend Micromamba or Mamba."
+    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
 fi
 
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate base
-    BASE=$MAMBA_ROOT_PREFIX
-    # Verify if the micromamba profile script exists
-    if [ -f "$BASE/etc/profile.d/micromamba.sh" ]; then
-        . "$BASE/etc/profile.d/micromamba.sh"
-    else
-        echo "File not found: $BASE/etc/profile.d/micromamba.sh"
-        exit 1
-    fi
 else
     BASE=$(conda info --base)
-    echo "Conda base directory: $BASE"
-    # Verify if the conda profile script exists
-    if [ -f "$BASE/etc/profile.d/conda.sh" ]; then
-        . "$BASE/etc/profile.d/conda.sh"
+    . "$BASE/etc/profile.d/conda.sh"
+fi
+
+echo ">>> Creating or updating the Sella environment..."
+
+if [ ! -f devtools/sella_environment.yml ]; then
+    echo "❌ File not found: devtools/sella_environment.yml"
+    exit 1
+fi
+
+if $COMMAND_PKG env list | grep -q '^sella_env\s'; then
+    echo ">>> Updating existing sella_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune
     else
-        echo "File not found: $BASE/etc/profile.d/conda.sh"
-        exit 1
+        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune
+    fi
+else
+    echo ">>> Creating new sella_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml -y
+    else
+        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml 
     fi
 fi
 
-# clone the repo in the parent directory
-echo "Creating the Sella environment..."
-$COMMAND_PKG env create -f devtools/sella_environment.yml
-# Activate the environment
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba activate sella_env
-else
-    conda activate sella_env
+# Dynamically determine the sella_env install path
+ENV_PATH=$($COMMAND_PKG env list | awk '$1 == "sella_env" {print $2}' | head -n1)
+
+if [ -z "$ENV_PATH" ]; then
+    echo "❌ Could not locate path for sella_env"
+    exit 1
 fi
 
-cd $BASE/envs/sella_env || exit
-mkdir -p ./etc/conda/activate.d
-mkdir -p ./etc/conda/deactivate.d
-touch ./etc/conda/activate.d/env_vars.sh
-touch ./etc/conda/deactivate.d/env_vars.sh
+echo ">>> Configuring LD_LIBRARY_PATH for sella_env at: $ENV_PATH"
 
-#This sets up the LD_LIBRARY_PATH to include Sella_Env, but only when the environment is active
-echo 'export OLD_LD_LIBRARY_PATH=${LD_LIBRARY_PATH}' >> $BASE/envs/sella_env/etc/conda/activate.d/env_vars.sh
-echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:'"$BASE"'/envs/sella_env/lib' >> $BASE/envs/sella_env/etc/conda/activate.d/env_vars.sh
-#This will reset the LD_LIBRARY_PATH back to the original LD_LIBRARY_PATH when the environment is deactivated
-echo 'export LD_LIBRARY_PATH=${OLD_LD_LIBRARY_PATH}' >> $BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
-echo 'unset OLD_LD_LIBRARY_PATH' >> $BASE/envs/sella_env/etc/conda/deactivate.d/env_vars.sh
+ACTIVATE_HOOK="$ENV_PATH/etc/conda/activate.d/env_vars.sh"
+DEACTIVATE_HOOK="$ENV_PATH/etc/conda/deactivate.d/env_vars.sh"
 
-. ~/.bashrc
-echo "Done installing Sella."
+mkdir -p "$(dirname "$ACTIVATE_HOOK")"
+mkdir -p "$(dirname "$DEACTIVATE_HOOK")"
+
+cat <<EOF > "$ACTIVATE_HOOK"
+export OLD_LD_LIBRARY_PATH=\$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:$ENV_PATH/lib
+EOF
+
+cat <<EOF > "$DEACTIVATE_HOOK"
+export LD_LIBRARY_PATH=\$OLD_LD_LIBRARY_PATH
+unset OLD_LD_LIBRARY_PATH
+EOF
+
+echo "✅ Done installing Sella."

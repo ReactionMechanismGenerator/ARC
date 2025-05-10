@@ -2,7 +2,7 @@ name: xtb_env
 channels:
   - conda-forge
 dependencies:
-  - python=3.7
+  - python>=3.7
   - xtb=6.3.3
   - pyyaml
   - libgfortran=14.2.0
