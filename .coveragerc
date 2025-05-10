@@ -12,20 +12,12 @@ omit =
     */logo/*
 
 [report]
-show_missing = False
+show_missing = True
 exclude_lines =
     pragma: no cover
     def __repr__
     logger.warning
     if __name__ == .__main__.:
-omit =
-    *Test.py
-    */scripts/*
-    */testing/*
-    */docs/*
-    */examples/*
-    */ipython/*
-    */logo/*
 
 [html]
 directory = testing/coverage
