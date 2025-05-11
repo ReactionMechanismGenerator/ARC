@@ -1,18 +1,25 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+
+"""
+This module contains unit tests for the kinetic families defined under arc.data.families.
+"""
+
 import unittest
-import sys
 import os
 from arc.imports import settings
-ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
-sys.path.append(ARC_FAMILIES_PATH)
-
 from arc.family.family import ReactionFamily, get_reaction_family_products, get_recipe_actions
 from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies
+
+ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
+
 
 class TestEsterHydrolysisReactionFamily(unittest.TestCase):
     """
     Contains unit tests for the ester hydrolysis reaction family.
     """
+
     @classmethod
     def setUpClass(cls):
         """Set up the test by defining the ester hydrolysis reaction family."""
@@ -27,7 +34,7 @@ class TestEsterHydrolysisReactionFamily(unittest.TestCase):
         rxn = ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
         products = get_reaction_family_products(rxn)
         product_smiles = [p.to_smiles() for p in products[0]['products']]
-        expected_product_smiles = ['CO', 'CC(=O)O']
+        expected_product_smiles = ['CC(=O)O', 'CO']
         self.assertEqual(product_smiles, expected_product_smiles)
 
     def test_recipe_actions(self):
@@ -53,17 +60,20 @@ class TestEsterHydrolysisReactionFamily(unittest.TestCase):
         rxn = ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
         products = get_reaction_family_products(rxn)
         product_smiles = [p.to_smiles() for p in products[0]['products']]
-        expected_product_smiles = ['CO', 'CP(=O)(O)O']
+        expected_product_smiles = ['CP(=O)(O)O', 'CO']
         self.assertEqual(product_smiles, expected_product_smiles)
+
 
 class TestNitrileHydrolysisReactionFamily(unittest.TestCase):
     """
     Contains unit tests for the nitrile hydrolysis reaction family.
     """
+
     @classmethod
     def setUpClass(cls):
         """Set up the test by defining the nitrile hydrolysis reaction family."""
         cls.family = ReactionFamily('nitrile_hydrolysis')
+
     def test_nitrile_hydrolysis_reaction(self):
         """Test if nitrile hydrolysis products are correctly generated."""
         nitrile = ARCSpecies(label='nitrile', smiles='CC#N')
@@ -89,14 +99,17 @@ class TestNitrileHydrolysisReactionFamily(unittest.TestCase):
         ]
         self.assertEqual(actions, expected_actions)
 
+
 class TestImineHydrolysisReactionFamily(unittest.TestCase):
     """
     Contains unit tests for the imine hydrolysis reaction family.
     """
+
     @classmethod
     def setUpClass(cls):
         """Set up the test by defining the imine hydrolysis reaction family."""
         cls.family = ReactionFamily('imine_hydrolysis')
+
     def test_imine_hydrolysis_reaction(self):
         """Test if imine hydrolysis products are correctly generated."""
         imine = ARCSpecies(label='imine', smiles='CC(=N)C')
@@ -122,14 +135,17 @@ class TestImineHydrolysisReactionFamily(unittest.TestCase):
         ]
         self.assertEqual(actions, expected_actions)
 
+
 class TestEtherHydrolysisReactionFamily(unittest.TestCase):
     """
     Contains unit tests for the ether hydrolysis reaction family.
     """
+
     @classmethod
     def setUpClass(cls):
         """Set up the test by defining the ester hydrolysis reaction family."""
         cls.family = ReactionFamily('ether_hydrolysis')
+
     def test_ether_hydrolysis_reaction(self):
         """Test if ether hydrolysis products are correctly generated."""
         ether = ARCSpecies(label='ether', smiles='CCOC')
