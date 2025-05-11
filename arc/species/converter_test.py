@@ -5340,6 +5340,30 @@ H      -1.88123946   -2.00923795    0.23313156"""
         check_angle(coords=new_xyz_8['coords'], atoms=[3, 2, 13], expected=65, delta=5)
         check_dihedral(coords=new_xyz_8['coords'], atoms=[1, 8, 2, 13], expected=98.25, delta=5)
 
+    def test_sorted_distances_of_atom(self):
+        """Test the test_sorted_distances_of_atom function"""
+        xyz_dict = {
+                    'symbols': ['O', 'H', 'H'],
+                    'isotopes': [16, 1, 1],
+                    'coords': [
+                        [0.0, 0.0, 0.0],  # O
+                        [0.758, 0.0, 0.504],  # H1
+                        [-0.758, 0.0, 0.504],  # H2
+                    ]
+                     }
+        result = converter.sorted_distances_of_atom(xyz_dict, 0)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [1, 2])
+        self.assertAlmostEqual(result[0][1], result[1][1], delta=0.01)
+
+        result = converter.sorted_distances_of_atom(xyz_dict, 1)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [0, 2])
+        self.assertLess(result[0][1], result[1][1])
+
+        with self.assertRaises(IndexError):
+            converter.sorted_distances_of_atom(xyz_dict, 5)
+
     @classmethod
     def tearDownClass(cls):
         """
