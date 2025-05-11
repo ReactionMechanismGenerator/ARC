@@ -2567,3 +2567,24 @@ def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom
     direction = np.random.uniform(-1.0, 1.0, 3)  # Random direction
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
+
+
+def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int, float]]:
+    """
+    Given XYZ coordinates of a molecule and an atom index, return a list of
+    (other_atom_index, distance) tuples sorted from closest to farthest,
+    excluding the atom itself.
+
+    Args:
+        xyz_dict (dict): The XYZ coordinates of the molecule.
+        atom_index (int): Index of the reference atom.
+
+    Returns:
+        List[Tuple[int, float]]: Sorted list of (atom index, distance) tuples.
+    """
+    d_matrix = xyz_to_dmat(xyz_dict)
+    if atom_index >= d_matrix.shape[0]:
+        raise IndexError(f"Atom index {atom_index} out of range for distance matrix of size {d_matrix .shape[0]}.")
+
+    distances = [(i, d_matrix[atom_index, i]) for i in range(d_matrix.shape[0]) if i != atom_index]
+    return sorted(distances, key=lambda x: x[1])
