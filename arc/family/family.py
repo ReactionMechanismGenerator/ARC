@@ -863,3 +863,18 @@ def isomorphic_products(rxn: 'ARCReaction',
     """
     p_species = rxn.get_reactants_and_products(return_copies=True)[1]
     return check_product_isomorphism(products, p_species)
+
+def check_family_name(family: str
+                      ) -> bool:
+    """
+    Check whether the family name is defined.
+
+    Args:
+        family (str): The family name.
+
+    Returns:
+        bool: Whether the family is defined.
+    """
+    if not isinstance(family, str) and family is not None:
+        raise TypeError("Family name must be a string or None.")
+    return family in get_all_families() or family is None
