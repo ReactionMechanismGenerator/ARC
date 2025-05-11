@@ -1,0 +1,67 @@
+# Configuration file for hydrolysis reaction parameters
+
+# Family sets definition
+family_sets:
+  set_1:
+    - ester_hydrolysis
+    - ether_hydrolysis
+    - imine_hydrolysis
+  set_2:
+    - nitrile_hydrolysis
+
+# Default parameters used across all calculations
+default_parameters:
+  r_value: [1.8, 1.21, 0.97]
+  dihedral_adjustment_factors: [0.1,0.15,0.2,0.25,0.3]
+
+# Family-specific parameters for different reaction types
+family_parameters:
+  # Set 1 Families
+  ether_hydrolysis:
+    stretch: 1.5
+    # Adjustment for r_value[0]
+    r_value_adjustment: 2.1
+    a_value: [65, 72, 106]
+    d_values:
+      - [98.25, -0.72, 103]
+      - [-98.25, -0.72, 103]
+      - [98.25, -0.72, -103]
+      - [-98.25, -0.72, -103]
+
+  imine_hydrolysis:
+    stretch: 1.3
+    r_value_adjustment: null
+    a_value: [78, 70, 111]
+    d_values:
+      - [108, 12, 113]
+      - [-108, 12, 113]
+      - [108, 12, -113]
+      - [-108, 12, -113]
+
+  ester_hydrolysis:
+    stretch: 1.3
+    r_value_adjustment: null
+    a_value: [77, 71, 111]
+    d_values:
+      - [140, 1.64, 103]
+      - [-140, 1.64, 103]
+      - [140, 1.64, -103]
+      - [-140, 1.64, -103]
+      
+  # Set 2 Families
+  nitrile_hydrolysis:
+    stretch: 1.1
+    r_value_adjustment: null
+    a_value: [97, 58, 111]
+    d_values:
+      - [174, -0.0154, 104]
+      - [-174, -0.0154, 104]
+      - [174, -0.0154, -104]
+      - [-174, -0.0154, -104]
+  
+# General reference information
+units:
+  distances: Angstroms
+  angles: degrees
+  stretching_factors: dimensionless
+  thresholds: dimensionless
