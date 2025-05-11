@@ -4,6 +4,8 @@
 """
 This module contains unit tests of the arc.species.converter module
 """
+
+import math
 import os
 
 import numpy as np
@@ -551,8 +553,18 @@ H       0.63003260   -0.63003260   -0.63003260
                                                                 [2.47418, 0, -0.625387],
                                                                 [1.23765, 0, -2.79083],
                                                                 [-1.23765, -1.812e-07, -2.79083],
-                                                                [-2.47418, -6.81e-08, -0.625387]], 'angstroms')
-                                     )
+                                                                [-2.47418, -6.81e-08, -0.625387]], 'angstroms'))
+
+        cls.xyz_14 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                      'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                      'coords': ((-3.59616665, 3.56051739, 1.66762912),
+                                 (-3.12243719, 4.49463523, 1.44875867),
+                                 (-4.24266183, 3.67770871, 2.51214684),
+                                 (-2.59966081, 2.57831173, 1.96283775),
+                                 (-3.00851627, 1.82896095, 2.40205367),
+                                 (-4.38319614, 3.12587525, 0.50462835),
+                                 (-5.34431488, 3.03821019, 0.76647869),
+                                 (-4.29744813, 3.80180325, -0.22733382))}
 
         nh_s_adj = """1 N u0 p2 c0 {2,S}
                           2 H u0 p0 c0 {1,S}"""
@@ -4942,17 +4954,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(converter.check_isomorphism(mol1, mol2))
 
     def test_cluster_confs_by_rmsd(self):
-        nco_1 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
-                 'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
-                 'coords': ((-3.59616665, 3.56051739, 1.66762912),
-                            (-3.12243719, 4.49463523, 1.44875867),
-                            (-4.24266183, 3.67770871, 2.51214684),
-                            (-2.59966081, 2.57831173, 1.96283775),
-                            (-3.00851627, 1.82896095, 2.40205367),
-                            (-4.38319614, 3.12587525, 0.50462835),
-                            (-5.34431488, 3.03821019, 0.76647869),
-                            (-4.29744813, 3.80180325, -0.22733382))}
-
+        """Test clustering conformers by RMSD"""
         # translation of nco_1
         nco_2 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
@@ -5049,15 +5051,76 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-3.69226847, 4.12970364, 1.0893621),
                             (-4.52773502, 3.18138419, 0.05526659))}
 
-        xyzs1 = [nco_1, nco_2, nco_3, nco_4, nco_5]
+        xyzs1 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs1)), 1)
 
-        xyzs2 = [nco_1, nco_2, nco_3, nco_4, nco_5, nco_6]
+        xyzs2 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5, nco_6]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs2)), 2)
 
-        xyzs3 = [nco_1, nco_2, nco_6, nco_7, nco_8, nco_9]
+        xyzs3 = [self.xyz_14, nco_2, nco_6, nco_7, nco_8, nco_9]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
 
+    def test_distance_constraint(self):
+        """Test the distance_constraint() function"""
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][0], distance=0.0)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(sphere_error, 0.0)
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][0], distance=1.0)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(abs(sphere_error), 1.0)
+        distance = calculate_param(self.xyz_14['coords'], atoms=[0, 1])
+        self.assertAlmostEquals(distance, 1.06999992, places=4)
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][1],
+                                                  distance=distance)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(abs(sphere_error), 0.0, places=4)
+
+    def test_angle_constraint(self):
+        """Test the angle_constraint() function"""
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=0.0)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(plane_error, 0.0)
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=90.0)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(math.degrees(plane_error), 90.0, places=4)
+        angle = calculate_param(self.xyz_14['coords'], atoms=[0, 1, 2])
+        self.assertAlmostEquals(angle, 35.2643963, places=4)
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=angle)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(math.degrees(plane_error), angle, places=4)
+        plane_error = plane_eq(*self.xyz_14['coords'][2])
+        self.assertAlmostEquals(math.degrees(plane_error), 0.0, places=4)
+
+    def test_dihedral_constraint(self):
+        """Test the dihedral_constraint() function"""
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=0.0)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(torsion_error, 0.0, places=10)
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=60.0)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(math.degrees(torsion_error), 60.0, places=4)
+        dihedral = calculate_param(self.xyz_14['coords'], atoms=[0, 1, 2, 3])
+        self.assertAlmostEquals(dihedral, 38.970413, places=4)
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=dihedral)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEquals(math.degrees(torsion_error), dihedral, places=4)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][3])
+        self.assertAlmostEquals(math.degrees(torsion_error), 0.0, places=4)
     def test_add_atom_to_xyz_using_internal_coords(self):
         """Test the add_atom_to_xyz_using_internal_coords() function."""
         xyz_1 = """ C                 -3.63243985   -0.48299420   -0.05541310
