@@ -3643,6 +3643,11 @@ H      -4.07566100   -0.52115800    0.00003300"""
         rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
         self._check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
 
+        rd_mol = converter.to_rdkit_mol(spc1)
+        self.assertIsInstance(rd_mol, rdchem.Mol)
+        rd_mol_block = Chem.MolToMolBlock(rd_mol).splitlines()
+        self._check_atom_connectivity_in_rd_mol_block(spc1.mol, rd_mol_block)
+
         xyz = {'symbols': ('O', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                'isotopes': (16, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
                'coords': ((-1.3435816539552077, -1.2858724378615196, 1.2807152578949395),
