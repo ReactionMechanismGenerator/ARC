@@ -577,7 +577,7 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
                     rmg_families.extend(list(families))
         else:
             rmg_families = list(family_sets[rmg_family_set]) \
-                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else rmg_family_set
+                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
     if consider_arc_families:
         for family in os.listdir(ARC_FAMILIES_PATH):
             if family.startswith('.') or family.startswith('_'):
