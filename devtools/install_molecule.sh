@@ -55,15 +55,15 @@ fi
 echo "✔️ Activated arc_env"
 
 # === 1. Clone/update & build RingDecomposerLib ===
-echo "📦 Cloning/updating RingDecomposerLib (branch setup3)…"
+echo "📦 Cloning/updating RingDecomposerLib (branch main)…"
 cd "$RDL_PARENT_DIR"
 if [[ -d RingDecomposerLib ]]; then
     cd RingDecomposerLib
-    git fetch origin setup3
-    git checkout setup3
-    git pull origin setup3
+    git fetch origin main
+    git checkout main
+    git pull origin main
 else
-    git clone -b setup3 https://github.com/DanaResearchGroup/RingDecomposerLib
+    git clone https://github.com/DanaResearchGroup/RingDecomposerLib
     cd RingDecomposerLib
 fi
 
