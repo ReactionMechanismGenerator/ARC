@@ -1,7 +1,6 @@
 #!/bin/bash -l
 set -e
 
-echo ">>> Checking current directory…"
 if [[ ! -f environment.yml ]] || [[ ! -d devtools ]]; then
     echo "❌ This script must be run from the ARC root directory."
     exit 1

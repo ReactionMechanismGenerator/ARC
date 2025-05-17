@@ -1,5 +1,5 @@
 #!/bin/bash -l
-set -e
+set -eo pipefail
 
 INSTALL_MAIN=false
 KINBOT_VERSION=2.0.6
@@ -10,8 +10,6 @@ if [ "$1" == "--main" ]; then
     INSTALL_MAIN=true
     echo "📦 Installing the latest KinBot from 'main' branch"
 fi
-
-echo ">>> Checking available package manager..."
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -39,7 +37,6 @@ fi
 pushd .. > /dev/null
 
 if $INSTALL_MAIN; then
-    echo ">>> Cloning KinBot from main branch..."
     if [ -d KinBot ]; then
         cd KinBot
         git fetch origin
@@ -50,15 +47,12 @@ if $INSTALL_MAIN; then
         cd KinBot
     fi
 else
-    echo ">>> Downloading KinBot v${KINBOT_VERSION}..."
     wget -q --show-progress "$KINBOT_URL" -O "$KINBOT_TAR"
-    echo ">>> Extracting $KINBOT_TAR..."
     tar -xzf "$KINBOT_TAR"
     rm "$KINBOT_TAR"
     cd "KinBot-${KINBOT_VERSION}"
 fi
 
-echo ">>> Activating arc_env temporarily..."
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     micromamba activate arc_env
 else
@@ -69,7 +63,6 @@ echo ">>> Installing KinBot..."
 python setup.py build
 python setup.py install
 
-echo ">>> Deactivating arc_env..."
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     micromamba deactivate
 else
