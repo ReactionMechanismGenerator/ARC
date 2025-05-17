@@ -94,10 +94,7 @@ lite:
 	bash $(DEVTOOLS_DIR)/lite.sh
 
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} +
-	rm -rf functional ipython
-	rm -rf arc/testing/gcn_tst
-	rm -f .coverage coverage.xml
+	bash $(DEVTOOLS_DIR)/clean.sh
 
 check-env:
 	@echo "Python binary:"; which python
