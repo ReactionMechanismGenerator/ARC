@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 from random import shuffle
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.species import Species
+from molecule.molecule import Molecule
+from molecule.species import Species
 
 import arc.common as common
 from arc.exceptions import InputError, SettingsError

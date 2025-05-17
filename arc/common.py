@@ -27,19 +27,19 @@ import pandas as pd
 import qcelemental as qcel
 
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.element import get_element
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.qm.qmdata import QMData
-from rmgpy.qm.symmetry import PointGroupCalculator
+from molecule.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
+from molecule.molecule.atomtype import ATOMTYPES
+from molecule.molecule.element import get_element
+from molecule.molecule.molecule import Atom, Bond, Molecule
+from molecule.qm.qmdata import QMData
+from molecule.qm.symmetry import PointGroupCalculator
 
 from arc.exceptions import InputError, SettingsError
 from arc.imports import home, settings
 
 
 if TYPE_CHECKING:
-    from rmgpy.species import Species
+    from molecule.species import Species
 
 
 logger = logging.getLogger('arc')
@@ -1648,7 +1648,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
 def is_xyz_mol_match(mol: 'Molecule',
                      xyz: dict) -> bool:
     """
-    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    A helper function that matches RMG's Molecule object to an xyz,
     used in _scissors to match xyz and the cut products.
     This function only checks the molecular formula.
 
