@@ -40,9 +40,13 @@ fi
 cd "$RDL_PARENT_DIR"
 if [[ -d RingDecomposerLib ]]; then
     cd RingDecomposerLib
-    git fetch origin main
-    git checkout main
-    git pull origin main
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin main
+        git pull origin main
+    else
+        echo "⚠️ RingDecomposerLib is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     git clone https://github.com/DanaResearchGroup/RingDecomposerLib
     cd RingDecomposerLib
@@ -64,9 +68,13 @@ $COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal"
 cd "$ARC_ROOT/.."
 if [[ -d molecule ]]; then
     cd molecule
-    git fetch origin
-    git checkout main
-    git pull origin main
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin
+        git pull origin main
+    else
+        echo "⚠️ molecule is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     git clone https://github.com/ReactionMechanismGenerator/molecule
     cd molecule

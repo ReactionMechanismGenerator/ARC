@@ -39,9 +39,13 @@ pushd .. > /dev/null
 if $INSTALL_MAIN; then
     if [ -d KinBot ]; then
         cd KinBot
-        git fetch origin
-        git checkout main
-        git pull origin main
+        CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+        if [ "$CURRENT_BRANCH" = "main" ]; then
+            git fetch origin
+            git pull origin main
+        else
+            echo "⚠️ KinBot is on branch '$CURRENT_BRANCH'. Skipping update."
+        fi
     else
         git clone https://github.com/zadorlab/KinBot
         cd KinBot

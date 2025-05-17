@@ -38,9 +38,15 @@ fi
 export PYTHONPATH="$PYTHONPATH:$(pwd)"
 
 GCN_LINE="export PYTHONPATH=\$PYTHONPATH:$(pwd)"
-if ! grep -Fxq "$GCN_LINE" ~/.bashrc; then
-    echo "$GCN_LINE" >> ~/.bashrc
-    echo "✔️ Added GCN path to ~/.bashrc"
+if [ -d TS-GCN ]; then
+    cd TS-GCN
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin
+        git pull origin main
+    else
+        echo "⚠️ TS-GCN is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     echo "ℹ️ GCN path already present in ~/.bashrc"
 fi

@@ -20,11 +20,15 @@ echo ">>> Cloning or updating TS-GCN in $TS_GCN_DIR..."
 pushd .. > /dev/null
 
 if [ -d TS-GCN ]; then
-    echo "✔️ TS-GCN already exists. Updating..."
+    echo "✔️ TS-GCN already exists."
     cd TS-GCN
-    git fetch origin
-    git checkout main
-    git pull origin main
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin
+        git pull origin main
+    else
+        echo "⚠️ TS-GCN is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     echo "📦 Cloning TS-GCN..."
     git clone https://github.com/ReactionMechanismGenerator/TS-GCN

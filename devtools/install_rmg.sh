@@ -5,7 +5,7 @@ echo ">>> Installing RMG-Py and RMG-database..."
 
 RMG_PY_REPO="https://github.com/ReactionMechanismGenerator/RMG-Py.git"
 RMG_DB_REPO="https://github.com/ReactionMechanismGenerator/RMG-database.git"
-INSTALL_DIR="$(realpath \"$(pwd)/..\")"
+INSTALL_DIR="$(realpath "$(pwd)/..")"
 
 install_repo() {
     local repo_url=$1
