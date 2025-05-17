@@ -41,7 +41,7 @@ jobs:
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
-          cache-environment: true
+          cache-environment: true # Cache the environment state *after* this step
           cache-downloads: true
           create-args: --strict-channel-priority
           generate-run-shell: true
@@ -53,16 +53,24 @@ jobs:
           git clone $AUTOTST_REPO AutoTST &
           git clone $RMGDB_REPO RMG-database &
           git clone $KINBOT_REPO KinBot &
+          # Clone PyRDL here as well
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      - name: Install external tools
-        working-directory: ARC
+      # --- Install PyRDL separately into arc_env before archiving ---
+      - name: Install PyRDL into arc_env
         run: |
-          # point to your RingDecomposerLib clone
-          export RDL_REPO_PATH=$(realpath ../RingDecomposerLib)
-          # build & install all
-          DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
+          echo ">>> Installing PyRDL into arc_env..."
+          # Navigate to the PyRDL python wrapper source directory
+          cd RingDecomposerLib/src/python
+          # Install using pip within the arc_env
+          micromamba run -n arc_env pip install .
+          echo "✔️ PyRDL installed into arc_env."
+
+      - name: Install other external tools
+        working-directory: ARC
+        # Remove PyRDL installation from install-all make target
+        run: DEBUG_INSTALL=1 micromamba run -n arc_env make install-all # Assuming install-all now excludes PyRDL pip install
 
       - name: Archive environment bundle
         shell: bash
@@ -95,6 +103,7 @@ jobs:
         run: tar -xzf arc_bundle.tar.gz
 
       - name: Set up micromamba
+        # This will restore the cached environment including installed PyRDL
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
@@ -110,6 +119,9 @@ jobs:
           micromamba run -n arc_env which python
           micromamba run -n arc_env python --version
           micromamba run -n arc_env micromamba list
+          # Verify py_rdl is installed in the environment
+          micromamba run -n arc_env pip show py_rdl || { echo "❌ py_rdl not found in environment."; exit 1; }
+
 
       - name: Run Unit Tests
         working-directory: ARC
@@ -174,6 +186,7 @@ jobs:
         run: tar -xzf arc_bundle.tar.gz
 
       - name: Set up micromamba
+        # This will restore the cached environment including installed PyRDL
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
@@ -185,9 +198,9 @@ jobs:
 
       - name: Run Functional Tests
         working-directory: ARC
+        shell: bash
         run: |
           micromamba run -n arc_env bash -lc "
             export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test-functional
           "
-
