@@ -26,9 +26,13 @@ pushd ..
 echo ">>> Cloning or updating AutoTST..."
 if [ -d AutoTST ]; then
     cd AutoTST
-    git fetch origin
-    git checkout main
-    git pull origin main
+    CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
+    if [ "$CURRENT_BRANCH" = "main" ]; then
+        git fetch origin
+        git pull origin main
+    else
+        echo "⚠️ AutoTST is on branch '$CURRENT_BRANCH'. Skipping update."
+    fi
 else
     git clone https://github.com/ReactionMechanismGenerator/AutoTST
     cd AutoTST
