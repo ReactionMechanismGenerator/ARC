@@ -41,39 +41,41 @@ jobs:
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
-          cache-environment: true # Cache the environment state *after* this step
+          cache-environment: true
           cache-downloads: true
           create-args: --strict-channel-priority
           generate-run-shell: true
 
       - name: Clone external dependencies
-        shell: bash
         run: |
           git clone $MOLECULE_REPO molecule &
           git clone $AUTOTST_REPO AutoTST &
           git clone $RMGDB_REPO RMG-database &
           git clone $KINBOT_REPO KinBot &
-          # Clone PyRDL here as well
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      # --- Install PyRDL separately into arc_env before archiving ---
-      - name: Install PyRDL into arc_env
-        run: |
-          echo ">>> Installing PyRDL into arc_env..."
-          # Navigate to the PyRDL python wrapper source directory
-          cd RingDecomposerLib/src/python
-          # Install using pip within the arc_env
-          micromamba run -n arc_env pip install .
-          echo "✔️ PyRDL installed into arc_env."
-
-      - name: Install other external tools
+      - name: Build everything & install other tools
         working-directory: ARC
-        # Remove PyRDL installation from install-all make target
-        run: DEBUG_INSTALL=1 micromamba run -n arc_env make install-all # Assuming install-all now excludes PyRDL pip install
+        run: |
+          DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
+
+      - name: Install PyRDL wrapper into arc_env
+        run: |
+          echo ">>> Installing PyRDL Python wrapper..."
+          cd RingDecomposerLib/src/python
+          micromamba run -n arc_env pip install . 
+          echo "✔️ py_rdl installed"
+          # verify the .so links correctly
+          micromamba run -n arc_env python - <<'PYCODE'
+import glob, os, py_rdl.wrapper
+pattern = os.path.join(os.path.dirname(py_rdl.wrapper.__file__), "DataInternal*.so")
+files = glob.glob(pattern)
+assert files, f"❌ DataInternal not found; looked in {pattern}"
+print("✅ DataInternal.so present at", files[0])
+PYCODE
 
       - name: Archive environment bundle
-        shell: bash
         run: |
           tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
           ls -lh arc_bundle.tar.gz
@@ -99,11 +101,9 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
-        shell: bash
         run: tar -xzf arc_bundle.tar.gz
 
-      - name: Set up micromamba
-        # This will restore the cached environment including installed PyRDL
+      - name: Restore arc_env
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
@@ -113,23 +113,11 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Environment check
-        shell: bash
-        run: |
-          micromamba run -n arc_env which python
-          micromamba run -n arc_env python --version
-          micromamba run -n arc_env micromamba list
-          # Verify py_rdl is installed in the environment
-          micromamba run -n arc_env pip show py_rdl || { echo "❌ py_rdl not found in environment."; exit 1; }
-
-
       - name: Run Unit Tests
         working-directory: ARC
-        shell: bash
         run: |
           micromamba run -n arc_env bash -lc "
-            # Only add source directories for non-pip-installed repos to PYTHONPATH
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
             make test
           "
 
@@ -138,6 +126,41 @@ jobs:
         with:
           name: coverage-data
           path: ARC/coverage.xml
+
+  functional-test:
+    name: Run Functional Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Download environment bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: arc-ci-bundle
+
+      - name: Extract environment bundle
+        run: tar -xzf arc_bundle.tar.gz
+
+      - name: Restore arc_env
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          create-args: --strict-channel-priority
+          generate-run-shell: true
+
+      - name: Run Functional Tests
+        working-directory: ARC
+        run: |
+          micromamba run -n arc_env bash -lc "
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
+            make test-functional
+          "
 
   codecov:
     name: Upload Code Coverage
@@ -160,47 +183,3 @@ jobs:
           name: codecov-umbrella
           verbose: true
           fail_ci_if_error: false
-
-  functional-test:
-    name: Run Functional Tests
-    runs-on: ubuntu-latest
-    needs: setup
-    defaults:
-      run:
-        shell: bash -el {0}
-
-    steps:
-      - name: Cache micromamba packages
-        uses: actions/cache@v4
-        with:
-          path: ~/micromamba/pkgs
-          key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
-          restore-keys: micromamba-pkgs-${{ runner.os }}-
-
-      - name: Download environment bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: arc-ci-bundle
-
-      - name: Extract environment bundle
-        run: tar -xzf arc_bundle.tar.gz
-
-      - name: Set up micromamba
-        # This will restore the cached environment including installed PyRDL
-        uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-name: arc_env
-          environment-file: ARC/environment.yml
-          cache-environment: true
-          cache-downloads: true
-          create-args: --strict-channel-priority
-          generate-run-shell: true
-
-      - name: Run Functional Tests
-        working-directory: ARC
-        shell: bash
-        run: |
-          micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
-            make test-functional
-          "
