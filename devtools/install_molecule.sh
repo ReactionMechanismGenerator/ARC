@@ -77,7 +77,7 @@ cmake --build .
 # Install the Python wrapper
 echo "📦 Installing py_rdl via pip…"
 cd ../src/python
-$COMMAND_PKG run -n arc_env pip install .
+$COMMAND_PKG run -n arc_env pip install --no-build-isolation .
 
 echo "🔬 Verifying py_rdl import…"
 cd "$ARC_ROOT"
