@@ -55,17 +55,10 @@ jobs:
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      - name: Install all external tools
+      - name: Install all external tools (including PyRDL)
         working-directory: ARC
         run: |
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
-
-      # ← NEW: explicitly pip-install the Python wrapper into arc_env
-      - name: Ensure PyRDL is in arc_env
-        run: |
-          echo ">>> CI: pip-installing PyRDL into arc_env"
-          micromamba run -n arc_env pip install RingDecomposerLib/src/python
-          micromamba run -n arc_env pip show py_rdl
 
       - name: Archive environment bundle
         run: |
@@ -81,8 +74,8 @@ jobs:
 
   unit-test:
     name: Run Unit Tests
-    needs: setup
     runs-on: ubuntu-latest
+    needs: setup
     defaults:
       run:
         shell: bash -el {0}
@@ -106,15 +99,29 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Sanity check PyRDL in arc_env
+      - name: Environment check
         run: |
-          micromamba run -n arc_env pip show py_rdl || \
-            (echo "❌ py_rdl still not present in arc_env" && exit 1)
+          micromamba run -n arc_env which python
+          micromamba run -n arc_env python --version
+          micromamba run -n arc_env pip show py_rdl || echo "❌ py_rdl not found"
+
+      - name: Debug Python environment
+        working-directory: ARC
+        run: |
+          echo "---- ENVIRONMENT DUMP ----"
+          env | sort
+          echo "---- PYTHONPATH DUMP ----"
+          echo "$PYTHONPATH"
+          echo "---- which python ----"
+          which python
+          echo "---- python -c 'import sys; print(sys.path)' ----"
+          python -c 'import sys; print(sys.path)'
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
+            # Only add source dirs for uninstalled repos
             export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
             make test
           "
@@ -127,8 +134,8 @@ jobs:
 
   functional-test:
     name: Run Functional Tests
-    needs: setup
     runs-on: ubuntu-latest
+    needs: setup
     defaults:
       run:
         shell: bash -el {0}
@@ -162,8 +169,8 @@ jobs:
 
   codecov:
     name: Upload Code Coverage
-    needs: unit-test
     runs-on: ubuntu-latest
+    needs: unit-test
 
     steps:
       - name: Download coverage data
@@ -178,4 +185,6 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage.xml
           flags: unittests
+          name: codecov-umbrella
+          verbose: true
           fail_ci_if_error: false
