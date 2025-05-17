@@ -1,7 +1,5 @@
 #!/bin/bash -l
-set -e
-
-echo ">>> Checking available package manager..."
+set -eo pipefail
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -20,20 +18,24 @@ fi
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
-    BASE=$(conda info --base)
+    BASE=$($COMMAND_PKG info --base)
     . "$BASE/etc/profile.d/conda.sh"
 fi
 
-ENV_FILE=devtools/tani_environment.yml
+ENV_FILE="devtools/tani_environment.yml"
+
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ Environment file not found: $ENV_FILE"
     exit 1
 fi
 
-echo ">>> Creating tani_env from $ENV_FILE..."
-$COMMAND_PKG env create -n tani_env -f "$ENV_FILE" || true
-
-echo ">>> Checking TorchANI installation..."
+if $COMMAND_PKG env list | grep -q '^tani_env\s'; then
+    echo ">>> Updating existing tani_env..."
+    $COMMAND_PKG env update -n tani_env -f "$ENV_FILE" --prune -y
+else
+    echo ">>> Creating new tani_env..."
+    $COMMAND_PKG env create -n tani_env -f "$ENV_FILE" -y
+fi
 
 # Activate environment temporarily for the check
 if [ "$COMMAND_PKG" = "micromamba" ]; then

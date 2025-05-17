@@ -1,5 +1,5 @@
 #!/bin/bash -l
-set -e
+set -eo pipefail
 
 echo ">>> Running lite installation script..."
 

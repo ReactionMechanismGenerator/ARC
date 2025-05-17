@@ -1,8 +1,6 @@
 #!/bin/bash -l
 set -e
 
-echo ">>> Checking available package manager..."
-
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba

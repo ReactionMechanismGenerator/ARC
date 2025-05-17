@@ -1,7 +1,5 @@
 #!/bin/bash -l
-set -e
-
-echo ">>> Checking available package manager..."
+set -eo pipefail
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -24,14 +22,20 @@ else
     . "$BASE/etc/profile.d/conda.sh"
 fi
 
-echo ">>> Creating the Sella environment..."
+echo ">>> Creating or updating the Sella environment..."
 
 if [ ! -f devtools/sella_environment.yml ]; then
     echo "❌ File not found: devtools/sella_environment.yml"
     exit 1
 fi
 
-$COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml || true
+if $COMMAND_PKG env list | grep -q '^sella_env\s'; then
+    echo ">>> Updating existing sella_env..."
+    $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune -y
+else
+    echo ">>> Creating new sella_env..."
+    $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml -y
+fi
 
 # Dynamically determine the sella_env install path
 ENV_PATH=$($COMMAND_PKG env list | awk '$1 == "sella_env" {print $2}' | head -n1)
@@ -58,7 +62,5 @@ cat <<EOF > "$DEACTIVATE_HOOK"
 export LD_LIBRARY_PATH=\$OLD_LD_LIBRARY_PATH
 unset OLD_LD_LIBRARY_PATH
 EOF
-
-echo "✔️ LD_LIBRARY_PATH hooks installed."
 
 echo "✅ Done installing Sella."

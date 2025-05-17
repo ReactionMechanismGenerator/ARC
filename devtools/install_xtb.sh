@@ -1,7 +1,5 @@
 #!/bin/bash -l
-set -e
-
-echo ">>> Checking available package manager..."
+set -eo pipefail
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -20,20 +18,24 @@ fi
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
-    BASE=$(conda info --base)
+    BASE=$($COMMAND_PKG info --base)
     . "$BASE/etc/profile.d/conda.sh"
 fi
 
-ENV_FILE=devtools/xtb_environment.yml
+ENV_FILE="devtools/xtb_environment.yml"
+
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ File not found: $ENV_FILE"
     exit 1
 fi
 
-echo ">>> Creating xTB environment..."
-$COMMAND_PKG env create -n xtb_env -f "$ENV_FILE" || true
-
-echo ">>> Checking xTB installation..."
+if $COMMAND_PKG env list | grep -q '^xtb_env\s'; then
+    echo ">>> Updating existing xtb_env..."
+    $COMMAND_PKG env update -n xtb_env -f "$ENV_FILE" --prune -y
+else
+    echo ">>> Creating new xtb_env..."
+    $COMMAND_PKG env create -n xtb_env -f "$ENV_FILE" -y
+fi
 
 # Activate environment temporarily for the check
 if [ "$COMMAND_PKG" = "micromamba" ]; then
@@ -41,6 +43,8 @@ if [ "$COMMAND_PKG" = "micromamba" ]; then
 else
     conda activate xtb_env
 fi
+
+echo ">>> Checking xTB installation..."
 
 if xtb --version &> /dev/null; then
     xtb --version

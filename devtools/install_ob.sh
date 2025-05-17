@@ -1,7 +1,7 @@
 #!/bin/bash -l
-set -e
+set -eo pipefail
 
-echo ">>> Checking available package manager..."
+COMMAND_PKG=""
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -21,15 +21,24 @@ if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
     BASE=$(conda info --base)
-    . "$BASE/etc/profile.d/conda.sh"
+    source "$BASE/etc/profile.d/conda.sh"
 fi
 
-echo ">>> Creating ob_env from devtools/ob_environment.yml..."
-if [ ! -f devtools/ob_environment.yml ]; then
-    echo "❌ devtools/ob_environment.yml not found!"
+ENV_FILE="devtools/ob_environment.yml"
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ $ENV_FILE not found!"
     exit 1
 fi
 
-$COMMAND_PKG env create -n ob_env -f devtools/ob_environment.yml || true
+ENV_EXISTS=$($COMMAND_PKG env list | grep -q '^ob_env\s' && echo "true" || echo "false")
 
-echo "✅ OpenBabel environment (ob_env) ready."
+if [ "$ENV_EXISTS" = "true" ]; then
+    echo ">>> Updating existing environment ob_env..."
+    $COMMAND_PKG env update -n ob_env -f "$ENV_FILE" --prune -y
+else
+    echo ">>> Creating new environment ob_env..."
+    $COMMAND_PKG env create -n ob_env -f "$ENV_FILE" -y
+fi
+
+echo "✅ OpenBabel environment (ob_env) is ready."

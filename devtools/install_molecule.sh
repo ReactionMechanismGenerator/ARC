@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 ARC_ROOT=$(pwd)
 DEFAULT_PARENT=$(dirname "$ARC_ROOT")
