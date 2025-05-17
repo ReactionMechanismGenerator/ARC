@@ -67,25 +67,25 @@ else
     cd RingDecomposerLib
 fi
 
-# === Build RingDecomposerLib ===
-echo "🛠 Building RingDecomposerLib..."
+# Build
+echo "🛠 Building RingDecomposerLib (C library)…"
 mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build .
+cd ..
 
-# === Install the Python wrapper into arc_env ===
-echo "📦 Installing py_rdl into arc_env via pip…"
-# move to the Python wrapper directory
-cd ../src/python
-# use --no-build-isolation so we pick up the static lib from build/
+# === 1b. Install Python wrapper (py_rdl) into arc_env ===
+echo "📦 Installing py_rdl into arc_env…"
+cd src/python
+# --no-build-isolation ensures pip reuses the already-built static lib
 $COMMAND_PKG run -n arc_env pip install --no-build-isolation .
+echo "✅ py_rdl installed!"
 
-# === Quick smoke-test of the installed extension ===
+# Verify import
 echo "🔬 Verifying py_rdl.wrapper.DataInternal import…"
-# return to ARC root so that $ARC_ROOT is unchanged
 cd "$ARC_ROOT"
-$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ py_rdl.wrapper.DataInternal import successful')"
+$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ DataInternal import OK')"
 
 # Extra check: ensure the .so is in site-packages
 echo "🔍 Checking for DataInternal.so in site-packages…"
@@ -93,7 +93,9 @@ $COMMAND_PKG run -n arc_env python - <<'PYCODE'
 import glob, os, py_rdl.wrapper
 search = os.path.join(os.path.dirname(py_rdl.wrapper.__file__), "DataInternal*.so")
 matches = glob.glob(search)
-assert matches, f"❌ DataInternal.so not found; looked for: {search}"
+if not matches:
+    print(f"❌ DataInternal.so not found; looked for: {search}")
+    exit 1
 print("✅ DataInternal.so present at", matches[0])
 PYCODE
 
