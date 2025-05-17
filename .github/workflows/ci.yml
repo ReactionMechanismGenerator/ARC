@@ -13,7 +13,6 @@ env:
   AUTOTST_REPO: https://github.com/ReactionMechanismGenerator/AutoTST
   RMGDB_REPO: https://github.com/ReactionMechanismGenerator/RMG-database
   KINBOT_REPO: https://github.com/zadorlab/KinBot
-  PYRDL_REPO: https://github.com/DanaResearchGroup/RingDecomposerLib.git
 
 jobs:
   setup:
@@ -46,11 +45,7 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Install py_rdl explicitly
-        run: |
-          micromamba run -n arc_env pip install git+$PYRDL_REPO
-
-      - name: Clone external dependencies
+      - name: Clone external dependencies (except RDL)
         run: |
           git clone "$MOLECULE_REPO" molecule &
           git clone "$AUTOTST_REPO" AutoTST &
@@ -58,14 +53,14 @@ jobs:
           git clone "$KINBOT_REPO" KinBot &
           wait
 
-      - name: Install all external tools
+      - name: Install all external tools (including RDL via install_molecule.sh)
         working-directory: ARC
         run: |
           micromamba run -n arc_env make install-all
 
-      - name: Archive environment bundle
+      - name: Archive full environment
         run: |
-          tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot
+          tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot ~/micromamba/envs/arc_env
           ls -lh arc_bundle.tar.gz
 
       - name: Upload environment bundle
@@ -89,21 +84,7 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
-        run: tar -xzf arc_bundle.tar.gz
-
-      - name: Restore arc_env
-        uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-name: arc_env
-          environment-file: ARC/environment.yml
-          cache-environment: true
-          cache-downloads: true
-          create-args: --strict-channel-priority
-          generate-run-shell: true
-
-      - name: Install py_rdl explicitly
-        run: |
-          micromamba run -n arc_env pip install git+$PYRDL_REPO
+        run: tar -xzf arc_bundle.tar.gz -C /
 
       - name: Run Unit Tests
         working-directory: ARC
@@ -132,21 +113,7 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
-        run: tar -xzf arc_bundle.tar.gz
-
-      - name: Restore arc_env
-        uses: mamba-org/setup-micromamba@v1
-        with:
-          environment-name: arc_env
-          environment-file: ARC/environment.yml
-          cache-environment: true
-          cache-downloads: true
-          create-args: --strict-channel-priority
-          generate-run-shell: true
-
-      - name: Install py_rdl explicitly
-        run: |
-          micromamba run -n arc_env pip install git+$PYRDL_REPO
+        run: tar -xzf arc_bundle.tar.gz -C /
 
       - name: Run Functional Tests
         working-directory: ARC
