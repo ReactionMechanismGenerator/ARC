@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 echo ">>> Installing RMG-Py and RMG-database..."
 
