@@ -45,17 +45,19 @@ help:
 	@echo "Diagnostics:"
 	@echo "  check-env        Check Python binary, version, and PYTHONPATH"
 
-
 # === Testing ===
 
-test test-unittests:
-	pytest arc/ --cov -ra -vv
+# alias for unit tests
+test: test-unittests
+
+test-unittests:
+	pytest arc/ --cov --cov-report=xml -ra -vv
 
 test-functional:
 	pytest functional/ -ra -vv
 
 test-all:
-	pytest arc/ functional/ --cov -ra -vv
+	pytest arc/ functional/ --cov --cov-report=xml -ra -vv
 
 # === Installers ===
 
@@ -102,14 +104,11 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	rm -rf functional ipython
 	rm -rf arc/testing/gcn_tst
-	rm -f .coverage
+	rm -f .coverage coverage.xml
 
 # === Diagnostics ===
 
 check-env:
-	@echo "Python binary:"
-	which python
-	@echo "Python version:"
-	python -V
-	@echo "PYTHONPATH:"
-	echo $$PYTHONPATH
+	@echo "Python binary:"; which python
+	@echo "Python version:"; python -V
+	@echo "PYTHONPATH:"; echo $$PYTHONPATH
