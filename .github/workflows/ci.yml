@@ -47,6 +47,7 @@ jobs:
           generate-run-shell: true
 
       - name: Clone external dependencies
+        shell: bash
         run: |
           git clone $MOLECULE_REPO molecule &
           git clone $AUTOTST_REPO AutoTST &
@@ -64,6 +65,7 @@ jobs:
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
 
       - name: Archive environment bundle
+        shell: bash
         run: |
           tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
           ls -lh arc_bundle.tar.gz
@@ -89,6 +91,7 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
+        shell: bash
         run: tar -xzf arc_bundle.tar.gz
 
       - name: Set up micromamba
@@ -101,11 +104,19 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
+      - name: Environment check
+        shell: bash
+        run: |
+          micromamba run -n arc_env which python
+          micromamba run -n arc_env python --version
+          micromamba run -n arc_env micromamba list
+
       - name: Run Unit Tests
         working-directory: ARC
+        shell: bash
         run: |
           micromamba run -n arc_env bash -lc "
-            # only add non-pip-installed repos
+            # Only add source directories for non-pip-installed repos to PYTHONPATH
             export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test
           "
@@ -147,6 +158,13 @@ jobs:
         shell: bash -el {0}
 
     steps:
+      - name: Cache micromamba packages
+        uses: actions/cache@v4
+        with:
+          path: ~/micromamba/pkgs
+          key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
+          restore-keys: micromamba-pkgs-${{ runner.os }}-
+
       - name: Download environment bundle
         uses: actions/download-artifact@v4
         with:
@@ -172,3 +190,4 @@ jobs:
             export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test-functional
           "
+
