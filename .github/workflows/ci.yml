@@ -48,16 +48,17 @@ jobs:
 
       - name: Clone external dependencies
         run: |
-          git clone $MOLECULE_REPO molecule &
-          git clone $AUTOTST_REPO AutoTST &
-          git clone $RMGDB_REPO RMG-database &
-          git clone $KINBOT_REPO KinBot &
-          git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
+          git clone "$MOLECULE_REPO" molecule &
+          git clone "$AUTOTST_REPO" AutoTST &
+          git clone "$RMGDB_REPO" RMG-database &
+          git clone "$KINBOT_REPO" KinBot &
+          git clone -b setup3 "$PYRDL_REPO" RingDecomposerLib &
           wait
 
-      - name: Install all external tools (including PyRDL)
+      - name: Install all external tools
         working-directory: ARC
         run: |
+          # This will build & install PyRDL (via install_molecule.sh) plus others
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
 
       - name: Archive environment bundle
@@ -99,32 +100,31 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Environment check
-        run: |
-          micromamba run -n arc_env which python
-          micromamba run -n arc_env python --version
-          micromamba run -n arc_env pip show py_rdl || echo "❌ py_rdl not found"
-
       - name: Debug Python environment
-        working-directory: ARC
         run: |
-          echo "---- ENVIRONMENT DUMP ----"
-          env | sort
-          echo "---- PYTHONPATH DUMP ----"
-          echo "$PYTHONPATH"
-          echo "---- which python ----"
-          which python
-          echo "---- python -c 'import sys; print(sys.path)' ----"
-          python -c 'import sys; print(sys.path)'
+          echo "→ which python:"
+          micromamba run -n arc_env which python
+          echo "→ python --version:"
+          micromamba run -n arc_env python --version
+          echo "→ pip list (showing py_rdl if present):"
+          micromamba run -n arc_env pip list | grep py_rdl || echo "  [py_rdl not installed]"
+          echo "→ site.getsitepackages():"
+          micromamba run -n arc_env python - <<'PYCODE'
+          import site, pprint
+          pprint.pprint(site.getsitepackages())
+          PYCODE
+          echo "→ sys.path:"
+          micromamba run -n arc_env python - <<'PYCODE'
+          import sys, pprint
+          pprint.pprint(sys.path)
+          PYCODE
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "
-            # Only add source dirs for uninstalled repos
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
-            make test
-          "
+          micromamba run -n arc_env bash -lc "\
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+            make test"
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
@@ -162,10 +162,9 @@ jobs:
       - name: Run Functional Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
-            make test-functional
-          "
+          micromamba run -n arc_env bash -lc "\
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+            make test-functional"
 
   codecov:
     name: Upload Code Coverage
@@ -177,7 +176,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: coverage-data
-          path: .
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v3
