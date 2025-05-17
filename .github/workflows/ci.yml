@@ -84,13 +84,13 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
-        run: tar -xzf arc_bundle.tar.gz -C /
+        run: tar -xzf arc_bundle.tar.gz -C ${{ github.workspace }}
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
-          export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
-          micromamba run -n arc_env make test
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          micromamba run -p "${{ github.workspace }}/micromamba/envs/arc_env" make test
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
@@ -113,13 +113,13 @@ jobs:
           name: arc-ci-bundle
 
       - name: Extract environment bundle
-        run: tar -xzf arc_bundle.tar.gz -C /
+        run: tar -xzf arc_bundle.tar.gz -C ${{ github.workspace }}
 
       - name: Run Functional Tests
         working-directory: ARC
         run: |
-          export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
-          micromamba run -n arc_env make test-functional
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          micromamba run -p "${{ github.workspace }}/micromamba/envs/arc_env" make test-functional
 
   codecov:
     name: Upload Code Coverage
