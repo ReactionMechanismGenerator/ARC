@@ -11,7 +11,6 @@ on:
 env:
   MOLECULE_REPO: https://github.com/ReactionMechanismGenerator/molecule
   AUTOTST_REPO: https://github.com/ReactionMechanismGenerator/AutoTST
-  RMGDB_REPO: https://github.com/ReactionMechanismGenerator/RMG-database
   KINBOT_REPO: https://github.com/zadorlab/KinBot
 
 jobs:
@@ -42,15 +41,21 @@ jobs:
           cache-downloads: true
           generate-run-shell: true
 
-      - name: Clone external dependencies (excluding RDL)
+      - name: Cache RMG-Py
+        uses: actions/cache@v4
+        with:
+          path: ../RMG-Py
+          key: rmg-py-${{ hashFiles('ARC/devtools/install_rmg_py.sh') }}
+          restore-keys: rmg-py-
+
+      - name: Clone external dependencies (excluding RDL and RMG-Py)
         run: |
           git clone "$MOLECULE_REPO" molecule &
           git clone "$AUTOTST_REPO" AutoTST &
-          git clone "$RMGDB_REPO" RMG-database &
           git clone "$KINBOT_REPO" KinBot &
           wait
 
-      - name: Install all external tools (including RDL)
+      - name: Install all external tools
         working-directory: ARC
         run: |
           make install
