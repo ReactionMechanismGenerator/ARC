@@ -7,10 +7,14 @@ if [[ ! -f environment.yml ]] || [[ ! -d devtools ]]; then
     exit 1
 fi
 
-echo ">>> Beginning full ARC external repo installation…"
+echo ">>> Configuring conda to use libmamba solver"
+conda install -n base conda-libmamba-solver --yes
+conda config --set solver libmamba
+
+echo ">>> Beginning full ARC external repo installation..."
 pushd . >/dev/null
 
-bash devtools/install_rmgdb.sh
+bash devtools/install_rmg.sh
 bash devtools/install_molecule.sh
 bash devtools/install_gcn_cpu.sh
 bash devtools/install_autotst.sh
