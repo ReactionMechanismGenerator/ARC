@@ -67,19 +67,23 @@ else
     cd RingDecomposerLib
 fi
 
-# Build
+# === Build RingDecomposerLib ===
 echo "🛠 Building RingDecomposerLib..."
 mkdir -p build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build .
 
-# Install the Python wrapper
-echo "📦 Installing py_rdl via pip…"
+# === Install the Python wrapper into arc_env ===
+echo "📦 Installing py_rdl into arc_env via pip…"
+# move to the Python wrapper directory
 cd ../src/python
+# use --no-build-isolation so we pick up the static lib from build/
 $COMMAND_PKG run -n arc_env pip install --no-build-isolation .
 
-echo "🔬 Verifying py_rdl import…"
+# === Quick smoke-test of the installed extension ===
+echo "🔬 Verifying py_rdl.wrapper.DataInternal import…"
+# return to ARC root so that $ARC_ROOT is unchanged
 cd "$ARC_ROOT"
 $COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ py_rdl.wrapper.DataInternal import successful')"
 
