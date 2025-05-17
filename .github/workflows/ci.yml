@@ -13,11 +13,11 @@ env:
   AUTOTST_REPO: https://github.com/ReactionMechanismGenerator/AutoTST
   RMGDB_REPO: https://github.com/ReactionMechanismGenerator/RMG-database
   KINBOT_REPO: https://github.com/zadorlab/KinBot
-  PYRDL_REPO: https://github.com/DanaResearchGroup/RingDecomposerLib
+  PYRDL_REPO: https://github.com/DanaResearchGroup/RingDecomposerLib.git
 
 jobs:
   setup:
-    name: Setup Environments and Dependencies
+    name: Setup Environment
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,25 +46,26 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
+      - name: Install py_rdl explicitly
+        run: |
+          micromamba run -n arc_env pip install git+$PYRDL_REPO
+
       - name: Clone external dependencies
         run: |
           git clone "$MOLECULE_REPO" molecule &
           git clone "$AUTOTST_REPO" AutoTST &
           git clone "$RMGDB_REPO" RMG-database &
           git clone "$KINBOT_REPO" KinBot &
-          git clone -b setup3 "$PYRDL_REPO" RingDecomposerLib &
           wait
 
       - name: Install all external tools
         working-directory: ARC
         run: |
-          # This will build & install PyRDL (via install_molecule.sh) plus others
-          DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
+          micromamba run -n arc_env make install-all
 
       - name: Archive environment bundle
         run: |
-          tar --exclude='*/.git' -czf arc_bundle.tar.gz \
-              ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
+          tar --exclude='*/.git' -czf arc_bundle.tar.gz ARC molecule AutoTST RMG-database KinBot
           ls -lh arc_bundle.tar.gz
 
       - name: Upload environment bundle
@@ -100,34 +101,15 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Debug Python environment
+      - name: Install py_rdl explicitly
         run: |
-          echo "→ which python:"
-          micromamba run -n arc_env which python
-          echo "→ python --version:"
-          micromamba run -n arc_env python --version
-          echo "→ pip list (showing py_rdl if present):"
-          micromamba run -n arc_env pip list | grep py_rdl || echo "  [py_rdl not installed]"
-          echo "→ site.getsitepackages():"
-          micromamba run -n arc_env python - <<'PYCODE'
-          import site, pprint
-          pprint.pprint(site.getsitepackages())
-          PYCODE
-          echo "→ sys.path:"
-          micromamba run -n arc_env python - <<'PYCODE'
-          import sys, pprint
-          pprint.pprint(sys.path)
-          PYCODE
+          micromamba run -n arc_env pip install git+$PYRDL_REPO
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "
-            # Print PYTHONPATH for debugging
-            echo 'DEBUG: PYTHONPATH = '$PYTHONPATH
-            # Only add source directories for non-pip-installed repos to PYTHONPATH
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
-            make test"
+          export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
+          micromamba run -n arc_env make test
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
@@ -162,14 +144,15 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
+      - name: Install py_rdl explicitly
+        run: |
+          micromamba run -n arc_env pip install git+$PYRDL_REPO
+
       - name: Run Functional Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "
-            # Print PYTHONPATH for debugging
-            echo 'DEBUG: PYTHONPATH = '$PYTHONPATH
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
-            make test-functional"
+          export PYTHONPATH="$PWD/../molecule:$PWD/../AutoTST:$PWD/../RMG-database:$PWD/../KinBot:$PYTHONPATH"
+          micromamba run -n arc_env make test-functional
 
   codecov:
     name: Upload Code Coverage
