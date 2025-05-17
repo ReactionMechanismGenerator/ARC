@@ -52,7 +52,7 @@ fi
 echo "✔️ Activating arc_env"
 $COMMAND_PKG activate arc_env
 
-# === 1. Clone and build RingDecomposerLib ===
+# === 1. Clone/update & build RingDecomposerLib ===
 echo "📦 Cloning/updating RingDecomposerLib (branch setup3)..."
 RDL_PARENT_DIR=${RDL_PARENT_DIR:-$DEFAULT_PARENT}
 cd "$RDL_PARENT_DIR"
@@ -67,39 +67,34 @@ else
     cd RingDecomposerLib
 fi
 
-# Build
-echo "🛠 Building RingDecomposerLib (C library)…"
-mkdir -p build
-cd build
+echo "🛠 Building RingDecomposerLib..."
+mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build .
-cd ..
 
-# === 1b. Install Python wrapper (py_rdl) into arc_env ===
-echo "📦 Installing py_rdl into arc_env…"
-cd src/python
-# --no-build-isolation ensures pip reuses the already-built static lib
+# === 2. Install the Python wrapper ===
+echo "📦 Installing py_rdl via pip…"
+cd ../src/python
+# --no-build-isolation ensures your built static lib is picked up
 $COMMAND_PKG run -n arc_env pip install --no-build-isolation .
-echo "✅ py_rdl installed!"
 
-# Verify import
-echo "🔬 Verifying py_rdl.wrapper.DataInternal import…"
+echo "✔️ PyRDL installed into arc_env"
+
+echo "🔬 Verifying py_rdl import…"
 cd "$ARC_ROOT"
-$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ DataInternal import OK')"
+$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ py_rdl.wrapper.DataInternal import successful')"
 
-# Extra check: ensure the .so is in site-packages
-echo "🔍 Checking for DataInternal.so in site-packages…"
+# Extra check: ensure the .so ended up in site-packages
+echo "🔍 Checking DataInternal.so in site-packages…"
 $COMMAND_PKG run -n arc_env python - <<'PYCODE'
 import glob, os, py_rdl.wrapper
 search = os.path.join(os.path.dirname(py_rdl.wrapper.__file__), "DataInternal*.so")
 matches = glob.glob(search)
-if not matches:
-    print(f"❌ DataInternal.so not found; looked for: {search}")
-    exit 1
+assert matches, f"❌ DataInternal.so not found; looked for: {search}"
 print("✅ DataInternal.so present at", matches[0])
 PYCODE
 
-# === 2. Clone and build molecule ===
+# === 3. Clone/update & build molecule ===
 echo "📦 Cloning/updating molecule…"
 cd "$ARC_ROOT/.."
 if [[ -d molecule ]]; then
@@ -118,7 +113,7 @@ echo "🧪 Cythonizing molecule…"
 if [[ -f Makefile ]]; then
     $COMMAND_PKG run -n arc_env make
 else
-    echo "❌ Makefile not found in molecule; aborting."
+    echo "❌ Makefile not found; aborting."
     exit 1
 fi
 
