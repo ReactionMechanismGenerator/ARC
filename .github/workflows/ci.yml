@@ -51,14 +51,14 @@ jobs:
           key: rmg-py-${{ hashFiles('ARC/devtools/install_rmg_py.sh') }}
           restore-keys: rmg-py-
 
-      - name: Clone external dependencies (excluding RDL and RMG-Py)
+      - name: Clone external dependencies
         run: |
           git clone "$MOLECULE_REPO" molecule &
           git clone "$AUTOTST_REPO" AutoTST &
           git clone "$KINBOT_REPO" KinBot &
           wait
 
-      - name: Install all external tools (excluding arc_env creation)
+      - name: Install all external tools
         working-directory: ARC
         run: |
           make install
