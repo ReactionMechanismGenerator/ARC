@@ -24,7 +24,7 @@ help:
 	@echo "  test-all         Run all tests with coverage"
 	@echo ""
 	@echo "Installation:"
-	@echo "  install-all      Install all external dependencies"
+	@echo "  install          Install all external dependencies"
 	@echo "  install-molecule Install molecule"
 	@echo "  install-rmgdb    Install RMG-database"
 	@echo "  install-autotst  Install AutoTST"
@@ -54,7 +54,10 @@ test-functional:
 test-all:
 	pytest arc/ functional/ --cov --cov-report=xml -ra -vv
 
-install-all:
+install-all: install
+
+install:
+	@echo "Installing all external ARC dependencies..."
 	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-molecule:
