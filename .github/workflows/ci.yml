@@ -34,11 +34,14 @@ jobs:
           key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
           restore-keys: micromamba-pkgs-${{ runner.os }}-
 
-      - name: Set up micromamba
+      - name: Set up micromamba and create arc_env
         uses: mamba-org/setup-micromamba@v1
         with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
           cache-environment: true
           cache-downloads: true
+          create-args: --strict-channel-priority
           generate-run-shell: true
 
       - name: Cache RMG-Py
@@ -55,7 +58,7 @@ jobs:
           git clone "$KINBOT_REPO" KinBot &
           wait
 
-      - name: Install all external tools
+      - name: Install all external tools (excluding arc_env creation)
         working-directory: ARC
         run: |
           make install
@@ -64,15 +67,15 @@ jobs:
         working-directory: ARC
         run: |
           echo "Running Unit Tests..."
-          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          micromamba run -n arc_env make test
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest arc/ --cov --cov-report=xml -ra -vv
 
       - name: Run Functional Tests
         working-directory: ARC
         run: |
           echo "Running Functional Tests..."
-          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/RMG-database:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          micromamba run -n arc_env make test-functional
+          export PYTHONPATH="${{ github.workspace }}/molecule:${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest functional/ -ra -vv
 
       - name: Upload coverage data
         uses: codecov/codecov-action@v3
