@@ -19,10 +19,10 @@ import py3Dmol as p3D
 import qcelemental as qcel
 from rdkit import Chem
 
-from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.transport import TransportLibrary
-from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
-from rmgpy.quantity import ScalarQuantity
+from molecule.data.thermo import ThermoLibrary
+from molecule.data.transport import TransportLibrary
+from molecule.exceptions import DatabaseError, InvalidAdjacencyListError
+from molecule.quantity import ScalarQuantity
 
 from arc.common import (calculate_arrhenius_rate_coefficient,
                         extremum_list,
