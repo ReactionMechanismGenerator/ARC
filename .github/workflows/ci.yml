@@ -16,6 +16,7 @@ env:
   PYRDL_REPO: https://github.com/DanaResearchGroup/RingDecomposerLib
 
 jobs:
+
   setup:
     name: Setup Environments and Dependencies
     runs-on: ubuntu-latest
@@ -55,7 +56,14 @@ jobs:
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      - name: Install all external tools (including PyRDL)
+      - name: Install PyRDL into arc_env
+        run: |
+          echo ">>> Installing PyRDL into arc_env…"
+          cd RingDecomposerLib/src/python
+          micromamba run -n arc_env pip install --no-build-isolation .
+          micromamba run -n arc_env pip show py_rdl
+
+      - name: Install other external tools
         working-directory: ARC
         run: |
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
@@ -63,7 +71,7 @@ jobs:
       - name: Archive environment bundle
         run: |
           tar --exclude='*/.git' -czf arc_bundle.tar.gz \
-              ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
+            ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
           ls -lh arc_bundle.tar.gz
 
       - name: Upload environment bundle
@@ -99,16 +107,18 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Sanity check PyRDL in arc_env
+      - name: Sanity-check PyRDL installation
         run: |
-          micromamba run -n arc_env python --version
-          micromamba run -n arc_env pip show py_rdl
+          micromamba run -n arc_env pip show py_rdl || {
+            echo "❌ py_rdl not found in arc_env"; exit 1;
+          }
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
+            # Only add the other repos to PYTHONPATH; py_rdl lives in site-packages
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
             make test
           "
 
@@ -149,7 +159,7 @@ jobs:
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
             make test-functional
           "
 
