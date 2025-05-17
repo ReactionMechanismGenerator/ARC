@@ -5,7 +5,7 @@ echo ">>> Installing RMG-Py and RMG-database..."
 
 RMG_PY_REPO="https://github.com/ReactionMechanismGenerator/RMG-Py.git"
 RMG_DB_REPO="https://github.com/ReactionMechanismGenerator/RMG-database.git"
-INSTALL_DIR="$(pwd)/.."
+INSTALL_DIR="$(realpath \"$(pwd)/..\")"
 
 install_repo() {
     local repo_url=$1
@@ -18,7 +18,7 @@ install_repo() {
 
         REMOTE=$(git remote | grep -E '^(origin|official)$' | head -n1)
         if [ -z "$REMOTE" ]; then
-            echo "❌ No valid remote found (expected 'origin' or 'official') for $repo_name"
+            echo "❌ No valid remote found for $repo_name"
             exit 1
         fi
 
@@ -35,79 +35,49 @@ install_repo() {
     fi
 }
 
-# Install RMG-Py
+# Install repos
 install_repo "$RMG_PY_REPO" "RMG-Py"
-
-# Install RMG-database
 install_repo "$RMG_DB_REPO" "RMG-database"
 
-# Setup environment variables
+# Absolute paths
 RMG_PY_PATH="$INSTALL_DIR/RMG-Py"
 RMG_DB_PATH="$INSTALL_DIR/RMG-database"
 
-# Export RMG_PY_PATH to .bashrc
-RMG_PY_PATH_LINE="export RMG_PY_PATH=$RMG_PY_PATH"
-if ! grep -Fxq "$RMG_PY_PATH_LINE" ~/.bashrc; then
-    echo "$RMG_PY_PATH_LINE" >> ~/.bashrc
-    echo "✔️ Added RMG_PY_PATH to ~/.bashrc"
-else
-    echo "ℹ️ RMG_PY_PATH already set in ~/.bashrc"
-fi
-export RMG_PY_PATH
+# Function to export environment variables safely to .bashrc
+export_to_bashrc() {
+    local var=$1
+    local value=$2
 
-# Export RMG_DB_PATH to .bashrc
-RMG_DB_PATH_LINE="export RMG_DB_PATH=$RMG_DB_PATH"
-if ! grep -Fxq "$RMG_DB_PATH_LINE" ~/.bashrc; then
-    echo "$RMG_DB_PATH_LINE" >> ~/.bashrc
-    echo "✔️ Added RMG_DB_PATH to ~/.bashrc"
-else
-    echo "ℹ️ RMG_DB_PATH already set in ~/.bashrc"
-fi
-export RMG_DB_PATH
+    if grep -q "^export $var=" ~/.bashrc; then
+        sed -i.bak "/^export $var=/c\\export $var=$value" ~/.bashrc
+        echo "🔄 Updated $var in ~/.bashrc"
+    else
+        echo "export $var=$value" >> ~/.bashrc
+        echo "➕ Added $var to ~/.bashrc"
+    fi
+    export $var="$value"
+}
 
-# RMG-Py Installation Steps
+# Export necessary variables
+export_to_bashrc "RMG_PY_PATH" "$RMG_PY_PATH"
+export_to_bashrc "RMG_DB_PATH" "$RMG_DB_PATH"
+
+# RMG-Py setup
 cd "$RMG_PY_PATH"
-
-if conda env list | grep -q "rmg_env"; then
-    echo "✔️ rmg_env already exists. Skipping environment creation."
-else
+if ! conda env list | grep -q "rmg_env"; then
     conda env create -f environment.yml
+else
+    echo "✔️ conda environment 'rmg_env' already exists."
 fi
 
 eval "$(conda shell.bash hook)"
 conda activate rmg_env
 make
 
-# Update PYTHONPATH and PATH for RMG-Py
-export PYTHONPATH="$RMG_PY_PATH:$PYTHONPATH"
-export PATH="$RMG_PY_PATH:$PATH"
+# Julia dependencies
+julia -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg")); using ReactionMechanismSimulator;'
 
-# Configure Julia dependencies
-julia -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator",rev="for_rmg")); using ReactionMechanismSimulator;'
-
-# Configure Python-Julia bridge
+# Python-Julia bridge
 python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
-
-# Update PYTHONPATH
-for PATH_ENTRY in "$RMG_PY_PATH" "$RMG_DB_PATH"; do
-    LINE="export PYTHONPATH=\${PYTHONPATH:-}:$PATH_ENTRY"
-    if ! grep -Fxq "$LINE" ~/.bashrc; then
-        echo "$LINE" >> ~/.bashrc
-        echo "✔️ Added $PATH_ENTRY to PYTHONPATH in ~/.bashrc"
-    else
-        echo "ℹ️ $PATH_ENTRY already in PYTHONPATH"
-    fi
-    export PYTHONPATH="${PYTHONPATH:-}:$PATH_ENTRY"
-done
-
-# Set RMGDB environment variable
-if ! grep -Fxq "export RMGDB=$RMG_DB_PATH" ~/.bashrc; then
-    sed -i '/export RMGDB=/d' ~/.bashrc
-    echo "export RMGDB=$RMG_DB_PATH" >> ~/.bashrc
-    echo "✔️ RMGDB environment variable set in ~/.bashrc"
-else
-    echo "ℹ️ RMGDB environment variable already set in ~/.bashrc"
-fi
-export RMGDB="$RMG_DB_PATH"
 
 echo "✅ RMG-Py and RMG-database installation completed successfully."
