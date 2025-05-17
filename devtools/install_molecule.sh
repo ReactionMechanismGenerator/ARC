@@ -5,6 +5,10 @@ echo ">>> Installing molecule and PyRDL..."
 
 ARC_ROOT=$(pwd)
 DEFAULT_PARENT=$(dirname "$ARC_ROOT")
+RDL_PARENT_DIR=${RDL_PARENT_DIR:-$DEFAULT_PARENT}
+
+# Expose this for pip install include paths if needed
+export RDL_REPO_PATH="$RDL_PARENT_DIR/RingDecomposerLib"
 
 cleanup() {
     echo "--- Running cleanup trap ---"
@@ -43,20 +47,16 @@ fi
 # === Shell activation ===
 if [[ "$COMMAND_PKG" = "micromamba" ]]; then
     eval "$(micromamba shell hook --shell=bash)"
+    micromamba activate arc_env
 else
-    BASE=$($COMMAND_PKG info --base)
-    source "$BASE/etc/profile.d/conda.sh"
+    source "$($COMMAND_PKG info --base)/etc/profile.d/conda.sh"
+    conda activate arc_env
 fi
-
-# === Activate arc_env ===
-echo "✔️ Activating arc_env"
-$COMMAND_PKG activate arc_env
+echo "✔️ Activated arc_env"
 
 # === 1. Clone/update & build RingDecomposerLib ===
-echo "📦 Cloning/updating RingDecomposerLib (branch setup3)..."
-RDL_PARENT_DIR=${RDL_PARENT_DIR:-$DEFAULT_PARENT}
+echo "📦 Cloning/updating RingDecomposerLib (branch setup3)…"
 cd "$RDL_PARENT_DIR"
-
 if [[ -d RingDecomposerLib ]]; then
     cd RingDecomposerLib
     git fetch origin setup3
@@ -67,30 +67,34 @@ else
     cd RingDecomposerLib
 fi
 
-echo "🛠 Building RingDecomposerLib..."
+echo "🛠 Building RingDecomposerLib…"
 mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build .
 
 # === 2. Install the Python wrapper ===
 echo "📦 Installing py_rdl via pip…"
 cd ../src/python
-# --no-build-isolation ensures your built static lib is picked up
-$COMMAND_PKG run -n arc_env pip install --no-build-isolation .
+# Use python -m pip and no-build-isolation so we pick up the static lib
+$COMMAND_PKG run -n arc_env python -m pip install --no-build-isolation .
 
 echo "✔️ PyRDL installed into arc_env"
 
 echo "🔬 Verifying py_rdl import…"
 cd "$ARC_ROOT"
-$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal; print('✅ py_rdl.wrapper.DataInternal import successful')"
+$COMMAND_PKG run -n arc_env python -c \
+    "import py_rdl.wrapper.DataInternal; print('✅ py_rdl.wrapper.DataInternal import successful')"
 
 # Extra check: ensure the .so ended up in site-packages
-echo "🔍 Checking DataInternal.so in site-packages…"
+echo "🔍 Checking for DataInternal*.so in site-packages…"
 $COMMAND_PKG run -n arc_env python - <<'PYCODE'
 import glob, os, py_rdl.wrapper
 search = os.path.join(os.path.dirname(py_rdl.wrapper.__file__), "DataInternal*.so")
 matches = glob.glob(search)
-assert matches, f"❌ DataInternal.so not found; looked for: {search}"
+if not matches:
+    raise SystemExit(f"❌ DataInternal.so not found; looked for: {search}")
 print("✅ DataInternal.so present at", matches[0])
 PYCODE
 
@@ -108,12 +112,11 @@ else
 fi
 
 MOLECULE_PATH=$(pwd)
-
 echo "🧪 Cythonizing molecule…"
 if [[ -f Makefile ]]; then
     $COMMAND_PKG run -n arc_env make
 else
-    echo "❌ Makefile not found; aborting."
+    echo "❌ Makefile not found in molecule; aborting."
     exit 1
 fi
 
