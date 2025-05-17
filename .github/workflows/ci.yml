@@ -122,8 +122,11 @@ jobs:
       - name: Run Unit Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "\
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+          micromamba run -n arc_env bash -lc "
+            # Print PYTHONPATH for debugging
+            echo 'DEBUG: PYTHONPATH = '$PYTHONPATH
+            # Only add source directories for non-pip-installed repos to PYTHONPATH
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test"
 
       - name: Upload coverage data
@@ -162,8 +165,10 @@ jobs:
       - name: Run Functional Tests
         working-directory: ARC
         run: |
-          micromamba run -n arc_env bash -lc "\
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+          micromamba run -n arc_env bash -lc "
+            # Print PYTHONPATH for debugging
+            echo 'DEBUG: PYTHONPATH = '$PYTHONPATH
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test-functional"
 
   codecov:
