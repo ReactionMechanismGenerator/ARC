@@ -55,20 +55,10 @@ jobs:
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      - name: Install all external tools (including PyRDL via make install-all)
+      - name: Install all external tools (including PyRDL)
         working-directory: ARC
         run: |
-          # This runs your install_all.sh which in turn calls install_molecule.sh
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
-
-      # ← New step: explicitly reinstall PyRDL into the activated arc_env,
-      #     in case the scripted install had any hitch.
-      - name: Ensure PyRDL is installed
-        run: |
-          echo ">>> Installing PyRDL into arc_env (CI override)…"
-          cd RingDecomposerLib/src/python
-          micromamba run -n arc_env pip install .
-          micromamba run -n arc_env pip show py_rdl
 
       - name: Archive environment bundle
         run: |
@@ -111,14 +101,14 @@ jobs:
 
       - name: Sanity check PyRDL in arc_env
         run: |
-          micromamba run -n arc_env pip show py_rdl || \
-            (echo "❌ py_rdl still not present!" && exit 1)
+          micromamba run -n arc_env python --version
+          micromamba run -n arc_env pip show py_rdl
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test
           "
 
@@ -159,7 +149,7 @@ jobs:
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
-            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\"
             make test-functional
           "
 
