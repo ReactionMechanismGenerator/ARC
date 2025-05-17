@@ -8,11 +8,6 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
-env:
-  MOLECULE_REPO: https://github.com/ReactionMechanismGenerator/molecule
-  AUTOTST_REPO: https://github.com/ReactionMechanismGenerator/AutoTST
-  KINBOT_REPO: https://github.com/zadorlab/KinBot
-
 jobs:
   build-and-test:
     name: CI and Functional Tests
@@ -23,7 +18,7 @@ jobs:
 
     steps:
       - name: Checkout ARC
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: ARC
 
@@ -48,17 +43,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ../RMG-Py
-          key: rmg-py-${{ hashFiles('ARC/devtools/install_rmg_py.sh') }}
+          key: rmg-py-${{ hashFiles('../RMG-Py/.git/refs/heads/main') }}
           restore-keys: rmg-py-
 
-      - name: Clone external dependencies
+      - name: Install RMG-Py
+        working-directory: ARC
         run: |
-          git clone "$MOLECULE_REPO" molecule &
-          git clone "$AUTOTST_REPO" AutoTST &
-          git clone "$KINBOT_REPO" KinBot &
-          wait
+          bash devtools/install_rmg_py.sh
 
-      - name: Install all external tools
+      - name: Install ARC external packages
         working-directory: ARC
         run: |
           make install
