@@ -4,7 +4,6 @@
 #
 ################################################################################
 
-# Define variables for common paths
 DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
@@ -15,39 +14,35 @@ DEVTOOLS_DIR := devtools
 # Default target
 all: help
 
-# === Help ===
 help:
 	@echo "Available targets:"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test             Run unit tests (alias for test-unittests)"
+	@echo "  test             Run unit tests"
 	@echo "  test-unittests   Run unit tests with coverage"
 	@echo "  test-functional  Run functional tests"
-	@echo "  test-all         Run unit and functional tests with coverage"
+	@echo "  test-all         Run all tests with coverage"
 	@echo ""
 	@echo "Installation:"
-	@echo "  install-all      Install all external dependencies using devtools scripts"
-	@echo "  install-molecule Install molecule dependency"
+	@echo "  install-all      Install all external dependencies"
+	@echo "  install-molecule Install molecule"
 	@echo "  install-rmgdb    Install RMG-database"
 	@echo "  install-autotst  Install AutoTST"
-	@echo "  install-gcn      Install TS-GCN (GPU version)"
-	@echo "  install-gcn-cpu  Install TS-GCN (CPU version)"
+	@echo "  install-gcn      Install TS-GCN (GPU)"
+	@echo "  install-gcn-cpu  Install TS-GCN (CPU)"
 	@echo "  install-kinbot   Install KinBot"
 	@echo "  install-sella    Install Sella"
 	@echo "  install-xtb      Install xTB"
 	@echo "  install-torchani Install TorchANI"
-	@echo "  install-ob       Install OpenBabel environment"
+	@echo "  install-ob       Install OpenBabel"
 	@echo ""
 	@echo "Maintenance:"
-	@echo "  lite             Run the lite installation script (removes tests)"
-	@echo "  clean            Clean build artifacts (__pycache__, testing dirs, .coverage)"
+	@echo "  lite             Run lite installation (no tests)"
+	@echo "  clean            Clean build artifacts"
 	@echo ""
 	@echo "Diagnostics:"
-	@echo "  check-env        Check Python binary, version, and PYTHONPATH"
+	@echo "  check-env        Show Python environment info"
 
-# === Testing ===
-
-# alias for unit tests
 test: test-unittests
 
 test-unittests:
@@ -59,10 +54,7 @@ test-functional:
 test-all:
 	pytest arc/ functional/ --cov --cov-report=xml -ra -vv
 
-# === Installers ===
-
 install-all:
-	@echo "Installing all external dependencies..."
 	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-molecule:
@@ -95,8 +87,6 @@ install-torchani:
 install-ob:
 	bash $(DEVTOOLS_DIR)/install_ob.sh
 
-# === Maintenance ===
-
 lite:
 	bash $(DEVTOOLS_DIR)/lite.sh
 
@@ -105,8 +95,6 @@ clean:
 	rm -rf functional ipython
 	rm -rf arc/testing/gcn_tst
 	rm -f .coverage coverage.xml
-
-# === Diagnostics ===
 
 check-env:
 	@echo "Python binary:"; which python
