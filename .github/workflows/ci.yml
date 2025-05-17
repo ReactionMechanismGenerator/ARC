@@ -60,10 +60,17 @@ jobs:
         run: |
           DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
 
+      # ← NEW: explicitly pip-install the Python wrapper into arc_env
+      - name: Ensure PyRDL is in arc_env
+        run: |
+          echo ">>> CI: pip-installing PyRDL into arc_env"
+          micromamba run -n arc_env pip install RingDecomposerLib/src/python
+          micromamba run -n arc_env pip show py_rdl
+
       - name: Archive environment bundle
         run: |
           tar --exclude='*/.git' -czf arc_bundle.tar.gz \
-            ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
+              ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
           ls -lh arc_bundle.tar.gz
 
       - name: Upload environment bundle
@@ -102,7 +109,7 @@ jobs:
       - name: Sanity check PyRDL in arc_env
         run: |
           micromamba run -n arc_env pip show py_rdl || \
-            (echo "❌ py_rdl missing from arc_env" && exit 1)
+            (echo "❌ py_rdl still not present in arc_env" && exit 1)
 
       - name: Run Unit Tests
         working-directory: ARC
