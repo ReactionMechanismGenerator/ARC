@@ -122,7 +122,8 @@ jobs:
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -c " \
-            export PYTHONPATH=\"\$PWD/../RingDecomposerLib/src/python:\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+            # Only add the other repos (molecule, AutoTST, etc.), not py_rdl source \
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
             make test && \
             codecov --token=${{ secrets.CODECOV_TOKEN }} \
           "
@@ -171,7 +172,8 @@ jobs:
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -c " \
-            export PYTHONPATH=\"\$PWD/../RingDecomposerLib/src/python:\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
+            # Leave py_rdl to be picked up from site-packages \
+            export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot:\$PYTHONPATH\" && \
             make test-functional \
           "
 
