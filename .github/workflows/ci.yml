@@ -22,6 +22,7 @@ jobs:
     defaults:
       run:
         shell: bash -el {0}
+
     steps:
       - name: Checkout ARC
         uses: actions/checkout@v3
@@ -54,16 +55,25 @@ jobs:
           git clone -b setup3 $PYRDL_REPO RingDecomposerLib &
           wait
 
-      - name: Install all external tools (including PyRDL & molecule)
+      - name: Install all external tools (including PyRDL via make install-all)
         working-directory: ARC
         run: |
-          # DEBUG_INSTALL=1 if you need verbose output
-          micromamba run -n arc_env make install-all
+          # This runs your install_all.sh which in turn calls install_molecule.sh
+          DEBUG_INSTALL=1 micromamba run -n arc_env make install-all
+
+      # ← New step: explicitly reinstall PyRDL into the activated arc_env,
+      #     in case the scripted install had any hitch.
+      - name: Ensure PyRDL is installed
+        run: |
+          echo ">>> Installing PyRDL into arc_env (CI override)…"
+          cd RingDecomposerLib/src/python
+          micromamba run -n arc_env pip install .
+          micromamba run -n arc_env pip show py_rdl
 
       - name: Archive environment bundle
         run: |
           tar --exclude='*/.git' -czf arc_bundle.tar.gz \
-            ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
+              ARC molecule AutoTST RMG-database KinBot RingDecomposerLib
           ls -lh arc_bundle.tar.gz
 
       - name: Upload environment bundle
@@ -74,11 +84,12 @@ jobs:
 
   unit-test:
     name: Run Unit Tests
-    needs: setup
     runs-on: ubuntu-latest
+    needs: setup
     defaults:
       run:
         shell: bash -el {0}
+
     steps:
       - name: Download environment bundle
         uses: actions/download-artifact@v4
@@ -88,7 +99,7 @@ jobs:
       - name: Extract environment bundle
         run: tar -xzf arc_bundle.tar.gz
 
-      - name: Re-activate arc_env
+      - name: Restore arc_env
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
@@ -98,16 +109,15 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
-      - name: Sanity check environment
+      - name: Sanity check PyRDL in arc_env
         run: |
-          micromamba run -n arc_env python --version
-          micromamba run -n arc_env pip show py_rdl
+          micromamba run -n arc_env pip show py_rdl || \
+            (echo "❌ py_rdl still not present!" && exit 1)
 
       - name: Run Unit Tests
         working-directory: ARC
         run: |
           micromamba run -n arc_env bash -lc "
-            # only add repos that aren't pip-installed
             export PYTHONPATH=\"\$PWD/../molecule:\$PWD/../AutoTST:\$PWD/../RMG-database:\$PWD/../KinBot\"
             make test
           "
@@ -120,11 +130,12 @@ jobs:
 
   functional-test:
     name: Run Functional Tests
-    needs: setup
     runs-on: ubuntu-latest
+    needs: setup
     defaults:
       run:
         shell: bash -el {0}
+
     steps:
       - name: Download environment bundle
         uses: actions/download-artifact@v4
@@ -134,7 +145,7 @@ jobs:
       - name: Extract environment bundle
         run: tar -xzf arc_bundle.tar.gz
 
-      - name: Re-activate arc_env
+      - name: Restore arc_env
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
@@ -154,14 +165,16 @@ jobs:
 
   codecov:
     name: Upload Code Coverage
-    needs: unit-test
     runs-on: ubuntu-latest
+    needs: unit-test
+
     steps:
       - name: Download coverage data
         uses: actions/download-artifact@v4
         with:
           name: coverage-data
           path: .
+
       - name: Upload to Codecov
         uses: codecov/codecov-action@v3
         with:
