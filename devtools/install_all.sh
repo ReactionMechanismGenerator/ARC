@@ -13,6 +13,7 @@ conda config --set solver libmamba
 echo ">>> Beginning full ARC external repo installation..."
 pushd . >/dev/null
 
+bash devtools/install_arc.sh
 bash devtools/install_rmg.sh
 bash devtools/install_molecule.sh
 bash devtools/install_gcn_cpu.sh
