@@ -45,6 +45,11 @@ jobs:
           create-args: --strict-channel-priority
           generate-run-shell: true
 
+      - name: Fix Conda activation script (ADDR2LINE issue)
+        run: |
+          sed -i 's/set -eu/set -e/' ~/micromamba/envs/arc_env/etc/conda/activate.d/activate-binutils_linux-64.sh
+
+
       - name: Clone external dependencies (excluding RDL)
         run: |
           git clone "$MOLECULE_REPO" molecule &
