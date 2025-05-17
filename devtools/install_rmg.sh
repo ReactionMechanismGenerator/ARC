@@ -7,6 +7,26 @@ RMG_PY_REPO="https://github.com/ReactionMechanismGenerator/RMG-Py.git"
 RMG_DB_REPO="https://github.com/ReactionMechanismGenerator/RMG-database.git"
 INSTALL_DIR="$(pwd)/.."
 
+# Make RMG_PY_REPO available by adding to .bashrc
+RMG_PY_REPO_LINE="export RMG_PY_REPO=$RMG_PY_REPO"
+if ! grep -Fxq "$RMG_PY_REPO_LINE" ~/.bashrc; then
+    echo "$RMG_PY_REPO_LINE" >> ~/.bashrc
+    echo "✔️ Added RMG_PY_REPO to ~/.bashrc"
+else
+    echo "ℹ️ RMG_PY_REPO already set in ~/.bashrc"
+fi
+export RMG_PY_REPO
+
+# Make RMG_DB_REPO available by adding to .bashrc
+RMG_DB_REPO_LINE="export RMG_DB_REPO=$RMG_DB_REPO"
+if ! grep -Fxq "$RMG_DB_REPO_LINE" ~/.bashrc; then
+    echo "$RMG_DB_REPO_LINE" >> ~/.bashrc
+    echo "✔️ Added RMG_DB_REPO to ~/.bashrc"
+else
+    echo "ℹ️ RMG_DB_REPO already set in ~/.bashrc"
+fi
+export RMG_DB_REPO
+
 install_repo() {
     local repo_url=$1
     local repo_name=$2
