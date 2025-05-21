@@ -302,8 +302,8 @@ end
                         if method == 'mp2':
                             block += '\n\n%mp2\n    RI true\nend'
                         elif method == 'casscf':
-                            block += (f'\n\n%casscf\n    nel {self.species[0].active[0]}'
-                                      f'\n    norb {self.species[0].active[1]}\n    nroots 1\n    maxiter 999\nend')
+                            block += (f'\n\n%casscf\n    nel {self.species[0].active['e_o'][0]}'
+                                      f'\n    norb {self.species[0].active['e_o'][1]}\n    nroots 1\n    maxiter 999\nend')
                         elif method == 'mrci':
                             block += f'\n\n%mrci\n    citype MRCI\n    davidsonopt true\n    maxiter 999\nend\n'
                     input_dict['block'] += block
