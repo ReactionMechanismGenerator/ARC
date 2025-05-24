@@ -17,10 +17,6 @@ fi
 # Remove Python cache files
 find . -type d -name "__pycache__" -exec rm -rf {} +
 
-# Remove specific directories
-rm -rf functional ipython
-rm -rf arc/testing/gcn_tst
-
 # Remove coverage files
 rm -f .coverage coverage.xml
 
