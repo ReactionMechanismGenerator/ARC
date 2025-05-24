@@ -4,14 +4,14 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python
   - numpy
   - pandas
   - ase
-  - torchani=2.2
-  - pytorch=1.13.1
-  - torchvision=0.14.1
-  - torchaudio=0.13.1
+  - torchani
+  - pytorch
+  - torchvision
+  - torchaudio
   - cpuonly
   - scikit-learn
   - matplotlib
