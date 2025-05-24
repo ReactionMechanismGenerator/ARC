@@ -43,13 +43,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ../RMG-Py
-          key: rmg-py-${{ hashFiles('../RMG-Py/.git/refs/heads/main') }}
+          key: rmg-py-${{ hashFiles('ARC/RMG_PY_COMMIT_HASH') }}
           restore-keys: rmg-py-
 
       - name: Install RMG-Py
         working-directory: ARC
         run: |
-          bash devtools/install_rmg_py.sh
+          bash devtools/install_rmg.sh
 
       - name: Install ARC external packages
         working-directory: ARC

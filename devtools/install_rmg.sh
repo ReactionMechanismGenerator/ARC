@@ -43,6 +43,9 @@ install_repo "$RMG_DB_REPO" "RMG-database"
 RMG_PY_PATH="$INSTALL_DIR/RMG-Py"
 RMG_DB_PATH="$INSTALL_DIR/RMG-database"
 
+# Save RMG-Py commit hash for caching purposes
+git -C "$RMG_PY_PATH" rev-parse HEAD > "$(pwd)/RMG_PY_COMMIT_HASH"
+
 # Function to export environment variables safely to .bashrc
 export_to_bashrc() {
     local var=$1
