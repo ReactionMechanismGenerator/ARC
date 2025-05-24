@@ -31,10 +31,18 @@ fi
 
 if $COMMAND_PKG env list | grep -q '^sella_env\s'; then
     echo ">>> Updating existing sella_env..."
-    $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune -y
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune -y
+    else
+        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune
+    fi
 else
     echo ">>> Creating new sella_env..."
-    $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml -y
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml -y
+    else
+        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml
+    fi
 fi
 
 # Dynamically determine the sella_env install path

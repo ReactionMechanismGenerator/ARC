@@ -18,8 +18,8 @@ fi
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
-    BASE=$(conda info --base)
-    . "$BASE/etc/profile.d/conda.sh"
+    BASE=$($COMMAND_PKG info --base)
+    source "$BASE/etc/profile.d/conda.sh"
 fi
 
 pushd ..
@@ -46,15 +46,28 @@ else
     echo "ℹ️ AutoTST path already exists in ~/.bashrc"
 fi
 
-echo ">>> Creating or updating AutoTST environment (tst_env)..."
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    $COMMAND_PKG create -n tst_env -f environment.yml || true
+if $COMMAND_PKG env list | grep -q '^tst_env\s'; then
+    echo ">>> Updating existing environment tst_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env update -n tst_env -f environment.yml --prune -y
+    else
+        $COMMAND_PKG env update -n tst_env -f environment.yml --prune
+    fi
 else
-    $COMMAND_PKG env create -n tst_env -f environment.yml --skip-if-exists || true
+    echo ">>> Creating new environment tst_env..."
+    if [ "$COMMAND_PKG" != "conda" ]; then
+        $COMMAND_PKG env create -n tst_env -f environment.yml -y
+    else
+        $COMMAND_PKG env create -n tst_env -f environment.yml
+    fi
 fi
 
 echo ">>> Installing extra dependencies into tst_env..."
-$COMMAND_PKG install -y -n tst_env -c conda-forge pyyaml
+if [ "$COMMAND_PKG" != "conda" ]; then
+    $COMMAND_PKG install -n tst_env -c conda-forge pyyaml -y
+else
+    $COMMAND_PKG install -n tst_env -c conda-forge pyyaml
+fi
 
 popd > /dev/null
 echo "✅ Done installing AutoTST."
