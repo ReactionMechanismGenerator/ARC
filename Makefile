@@ -39,6 +39,7 @@ help:
 	@echo "Maintenance:"
 	@echo "  lite             Run lite installation (no tests)"
 	@echo "  clean            Clean build artifacts"
+	@echo "  delete           Delete cloned repositories (inc. RMG and molecule)"
 	@echo ""
 	@echo "Diagnostics:"
 	@echo "  check-env        Show Python environment info"
@@ -95,6 +96,9 @@ lite:
 
 clean:
 	bash $(DEVTOOLS_DIR)/clean.sh
+
+delete:
+	bash $(DEVTOOLS_DIR)/delete.sh
 
 check-env:
 	@echo "Python binary:"; which python
