@@ -7,7 +7,7 @@ dependencies:
   - python >=3.8
   - cairocffi
   - coverage
-  - cython >=0.25.2,<3
+  - cython >=3.0
   - h5py
   - jupyter
   - matplotlib
