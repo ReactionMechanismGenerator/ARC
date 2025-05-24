@@ -11,6 +11,7 @@ else
     echo "❌ Mamba or Conda is required. Micromamba is not supported for TS-GCN."
     exit 1
 fi
+
 echo "✔️ Using package manager: $COMMAND_PKG"
 
 ENV_FILE="$(pwd)/devtools/gcn_environment.yml"
@@ -50,8 +51,21 @@ echo "✔️ Environment file exists."
 echo ">>> Creating or updating conda environment 'ts_gcn'..."
 source "$($COMMAND_PKG info --base)/etc/profile.d/conda.sh"
 
-$COMMAND_PKG env create -n ts_gcn -f "$ENV_FILE" -y || \
-$COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" -y
+if $COMMAND_PKG env list | grep -q '^ts_gcn\s'; then
+    echo ">>> Updating existing environment 'ts_gcn'..."
+    if [ "$COMMAND_PKG" = "micromamba" ] || [ "$COMMAND_PKG" = "mamba" ]; then
+        $COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" --prune -y
+    else
+        $COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" --prune
+    fi
+else
+    echo ">>> Creating new environment 'ts_gcn'..."
+    if [ "$COMMAND_PKG" = "micromamba" ] || [ "$COMMAND_PKG" = "mamba" ]; then
+        $COMMAND_PKG env create -n ts_gcn -f "$ENV_FILE" -y
+    else
+        $COMMAND_PKG env create -n ts_gcn -f "$ENV_FILE"
+    fi
+fi
 
 echo ">>> Adding TS-GCN to PYTHONPATH..."
 LINE="export PYTHONPATH=\$PYTHONPATH:$TS_GCN_CLONED_PATH"
