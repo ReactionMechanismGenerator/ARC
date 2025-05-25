@@ -65,6 +65,10 @@ export_to_bashrc() {
 export_to_bashrc "RMG_PY_PATH" "$RMG_PY_PATH"
 export_to_bashrc "RMG_DB_PATH" "$RMG_DB_PATH"
 
+# Configure conda to use libmamba solver
+conda install -n base conda-libmamba-solver -y
+conda config --set solver libmamba
+
 # RMG-Py setup
 cd "$RMG_PY_PATH"
 if ! conda env list | grep -q "rmg_env"; then
