@@ -5,8 +5,7 @@ A module for representing a reaction.
 from typing import Dict, List, Optional, Tuple, Union
 
 from arkane.common import get_element_mass
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
+from molecule.species import Species
 
 from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
