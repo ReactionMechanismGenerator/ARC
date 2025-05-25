@@ -30,6 +30,7 @@ from arc.family.family import (ReactionFamily,
                                get_rmg_recommended_family_sets,
                                is_own_reverse,
                                is_reversible,
+                               check_family_name
                                )
 from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies
@@ -644,7 +645,10 @@ H      -0.83821148   -0.26602407    0.00000000"""
         self.assertIn('intra_OH_migration', families)
         families = get_all_families(consider_rmg_families=False)
         self.assertIsInstance(families, list)
-        self.assertIn('hydrolysis', families)
+        self.assertIn('ester_hydrolysis', families)
+        self.assertIn('ether_hydrolysis', families)
+        self.assertIn('imine_hydrolysis', families)
+        self.assertIn('nitrile_hydrolysis', families)
         families = get_all_families(rmg_family_set=['H_Abstraction'])
         self.assertEqual(families, ['H_Abstraction'])
 
@@ -1001,6 +1005,16 @@ H       1.24252625    0.91583948   -0.84155142"""
                                                       mol_2=spc_2.mol,
                                                       )
         self.assertEqual(isomorphic_subgraph, {0: '*3', 4: '*1', 7: '*2'})
+
+    def test_check_family_name(self):
+        """Test check family name function"""
+        self.assertTrue(check_family_name('H_Abstraction'))
+        self.assertTrue(check_family_name('ether_hydrolysis'))
+        self.assertFalse(check_family_name('etherhydrolysis'))
+        self.assertFalse(check_family_name('amine_hydrolysis'))
+        self.assertTrue(check_family_name(None))
+        with self.assertRaises(TypeError):
+            check_family_name(123)
 
 
 if __name__ == '__main__':
