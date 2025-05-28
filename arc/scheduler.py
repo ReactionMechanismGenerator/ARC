@@ -1286,6 +1286,7 @@ class Scheduler(object):
             logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
                         f'same level of theory. Using the optimization output to parse the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
+            print(f'job_dict[label]: {self.job_dict[label]}')
             if 'opt' in self.job_dict[label].keys():
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
                     if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
