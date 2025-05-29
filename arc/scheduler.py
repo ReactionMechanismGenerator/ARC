@@ -989,6 +989,12 @@ class Scheduler(object):
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
 
+        RETRY_COUNT, RETRY_SLEEP_SECONDS = 5, 10
+        i = RETRY_COUNT
+        while i and not os.path.isfile(job.local_path_to_output_file):
+            i -= 1
+            time.sleep(RETRY_SLEEP_SECONDS)
+
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
