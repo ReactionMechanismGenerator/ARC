@@ -988,6 +988,11 @@ class Scheduler(object):
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
 
+        i = 5
+        while i and not os.path.isfile(job.local_path_to_output_file):
+            i -= 1
+            time.sleep(10)
+
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
