@@ -96,6 +96,7 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
     dh_rxn298 = dh_rxn298 or get_dh_rxn298(rmgdb=rmgdb, reaction=reaction)  # J/mol
     for family, degenerate_reactions in fam_list:
         for deg_rxn in degenerate_reactions:
+            family.add_rules_from_training(thermo_database=rmgdb.thermo)
             kinetics_list = family.get_kinetics(reaction=deg_rxn, template_labels=deg_rxn.template, degeneracy=deg_rxn.degeneracy)
             for kinetics_detailes in kinetics_list:
                 kinetics = kinetics_detailes[0]
