@@ -988,6 +988,11 @@ class Scheduler(object):
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
 
+        i = 5
+        while i and not os.path.isfile(job.local_path_to_output_file):
+            i -= 1
+            time.sleep(10)
+
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
@@ -1273,10 +1278,10 @@ class Scheduler(object):
 
         if self.job_types['conf_sp'] and conformer is not None and self.conformer_sp_level != self.conformer_opt_level:
             self.run_job(label=label,
-                        xyz=self.species_dict[label].conformers[conformer],
-                        level_of_theory=self.conformer_sp_level,
-                        job_type='conf_sp',
-                        conformer=conformer)
+                         xyz=self.species_dict[label].conformers[conformer],
+                         level_of_theory=self.conformer_sp_level,
+                         job_type='conf_sp',
+                         conformer=conformer)
             return
         # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
@@ -1286,6 +1291,7 @@ class Scheduler(object):
             logger.info(f'Not running an sp job for {label} at {level} since the optimization was done at the '
                         f'same level of theory. Using the optimization output to parse the sp energy.')
             recent_opt_job_name, recent_opt_job = 'opt_a0', None
+            print(f'job_dict[label]: {self.job_dict[label]}')
             if 'opt' in self.job_dict[label].keys():
                 for opt_job_name, opt_job in self.job_dict[label]['opt'].items():
                     if int(opt_job_name.split('_a')[-1]) > int(recent_opt_job_name.split('_a')[-1]):
@@ -1347,6 +1353,10 @@ class Scheduler(object):
                              xyz=self.species_dict[label].get_xyz(generate=False),
                              level_of_theory='ccsd/vdz',
                              job_type='sp')
+        mol = self.species_dict[label].mol
+        if mol is not None and len(mol.atoms) == 1 and mol.atoms[0].element.symbol == 'H' and 'DLPNO' in level.method:
+            # Run only CCSD for an H atom instead of DLPNO-CCSD(T) / etc.
+            level = Level(repr='ccsd/vtz', software=level.software, args=level.args)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):
