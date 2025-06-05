@@ -1057,6 +1057,8 @@ class ARCSpecies(object):
                 return None
             other = other.mol
         if isinstance(other, Molecule):
+            if len(self.mol.atoms) != len(other.atoms):
+                return False
             if self.mol_list is not None and len(self.mol_list):
                 for mol_ in [self.mol] + self.mol_list:
                     if mol_.copy(deep=True).is_isomorphic(other.copy(deep=True)):
@@ -1065,6 +1067,8 @@ class ARCSpecies(object):
             else:
                 return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
         if isinstance(other, Species):
+            if len(self.mol.atoms) != len(other.molecule[0].atoms):
+                return False
             for other_mol in other.molecule:
                 if self.mol_list is not None and len(self.mol_list):
                     for mol_ in [self.mol] + self.mol_list:
