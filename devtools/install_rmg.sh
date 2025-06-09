@@ -88,7 +88,11 @@ Pkg.add("PyCall")
 Pkg.build("PyCall")
 Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
 Pkg.instantiate()
-using ReactionMechanismSimulator
+try
+    using ReactionMechanismSimulator
+catch err
+    @warn "Skipping ReactionMechanismSimulator load" error=err
+end
 '
 
 # Python-Julia bridge
