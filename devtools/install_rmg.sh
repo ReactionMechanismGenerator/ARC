@@ -85,26 +85,30 @@ make install
 # Julia dependencies
 julia -e '
 using Pkg
-Pkg.add("PyCall")
-Pkg.build("PyCall")
+Pkg.add("PyCall"); Pkg.build("PyCall")
 Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
+Pkg.add("DiffeqPy")
 Pkg.instantiate()
 '
 
+# Disable Enzyme precompilation
 for f in ~/.julia/packages/Enzyme/*/src/Enzyme.jl; do
-    sed -i '1i__precompile__(false)' "$f"
+    sed -i "1i__precompile__(false)" "$f"
 done
 
-julia -e 'try using ReactionMechanismSimulator; catch end'
+# Test load (warnings only)
+julia -e 'try using ReactionMechanismSimulator; catch e println("⚠️ ", e) end'
 
-# ensure the Python bridge runs inside the conda env
+# Python–Julia bridge: only install julia client
 eval "$(conda shell.bash hook)"
 conda activate rmg_env
+pip install --upgrade julia
 python - <<'PYCODE'
-import subprocess, sys
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "julia", "diffeqpy"])
-import julia; julia.install()
-import diffeqpy; diffeqpy.install()
+import julia
+julia.install()
+# ensure we can import and initialize DiffEqPy
+import diffeqpy
+print("✅ DiffEqPy import OK")
 PYCODE
 
 echo "✅ RMG-Py and RMG-database installation completed successfully."
