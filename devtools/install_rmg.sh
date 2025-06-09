@@ -82,7 +82,14 @@ conda activate rmg_env
 make
 
 # Julia dependencies
-julia -e 'using Pkg; Pkg.add("PyCall"); Pkg.build("PyCall"); Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg")); using ReactionMechanismSimulator;'
+julia -e '
+using Pkg
+Pkg.add("PyCall")
+Pkg.build("PyCall")
+Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
+Pkg.instantiate()
+using ReactionMechanismSimulator
+'
 
 # Python-Julia bridge
 python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
