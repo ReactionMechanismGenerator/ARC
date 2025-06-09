@@ -19,7 +19,8 @@ from molecule.species import Species
 from molecule.statmech import NonlinearRotor, LinearRotor
 from molecule.transport import TransportData
 
-from arc.common import (almost_equal_coords,
+from arc.common import (SYMBOL_BY_NUMBER,
+                        almost_equal_coords,
                         convert_list_index_0_to_1,
                         determine_symmetry,
                         dfs,
@@ -1488,7 +1489,7 @@ class ARCSpecies(object):
         if xyz:
             electrons = 0
             for symbol in xyz['symbols']:
-                for number, symb in symbol_by_number.items():
+                for number, symb in SYMBOL_BY_NUMBER.items():
                     if symbol == symb:
                         electrons += number
                         break
@@ -2483,7 +2484,7 @@ def check_xyz(xyz: dict,
     symbols = xyz['symbols']
     electrons = 0
     for symbol in symbols:
-        for number, element_symbol in symbol_by_number.items():
+        for number, element_symbol in SYMBOL_BY_NUMBER.items():
             if symbol == element_symbol:
                 electrons += number
                 break
