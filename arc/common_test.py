@@ -584,6 +584,13 @@ class TestCommon(unittest.TestCase):
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}""")
 
+    def test_get_element_mass(self):
+        """Test determining the mass of an atom"""
+        self.assertEqual(common.get_element_mass('H'), (1.00782503224, 1))
+        self.assertEqual(common.get_element_mass('C'), (12.0000000, 12))
+        self.assertEqual(common.get_element_mass('C', 13), (13.00335483507, 12))
+        self.assertEqual(common.get_element_mass('O'), (15.99491461957, 16))
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
