@@ -68,6 +68,7 @@ export_to_bashrc "RMG_DB_PATH" "$RMG_DB_PATH"
 # Configure conda to use libmamba solver
 conda install -n base conda-libmamba-solver -y
 conda config --set solver libmamba
+conda install -n base -c conda-forge julia=1.10 -y
 
 # RMG-Py setup
 cd "$RMG_PY_PATH"
@@ -88,11 +89,13 @@ Pkg.add("PyCall")
 Pkg.build("PyCall")
 Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
 Pkg.instantiate()
-try
-    using ReactionMechanismSimulator
-catch
-end
 '
+
+for f in ~/.julia/packages/Enzyme/*/src/Enzyme.jl; do
+    sed -i '1i__precompile__(false)' "$f"
+done
+
+julia -e 'try using ReactionMechanismSimulator; catch end'
 
 # ensure the Python bridge runs inside the conda env
 eval "$(conda shell.bash hook)"
