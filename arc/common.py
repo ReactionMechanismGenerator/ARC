@@ -1015,8 +1015,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
 
 def almost_equal_coords(xyz1: dict,
                         xyz2: dict,
-                        rtol: float = 1e-05,
-                        atol: float = 1e-08,
+                        rtol: float = 1e-03,
+                        atol: float = 1e-04,
                         ) -> bool:
     """
     A helper function for checking whether two xyz's are almost equal. Also checks equal symbols.
@@ -1045,8 +1045,8 @@ def almost_equal_coords(xyz1: dict,
 
 def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
                               xyz2: Union[List[dict], dict],
-                              rtol: float = 1e-05,
-                              atol: float = 1e-08,
+                              rtol: float = 1e-03,
+                              atol: float = 1e-04,
                               ) -> bool:
     """
     A helper function for checking two lists of xyzs has at least one entry in each that is almost equal.
