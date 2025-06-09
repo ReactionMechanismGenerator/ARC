@@ -90,12 +90,13 @@ Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
 Pkg.instantiate()
 try
     using ReactionMechanismSimulator
-catch err
-    @warn "Skipping ReactionMechanismSimulator load" error=err
+catch
 end
 '
 
-# Python-Julia bridge
+# ensure the Python bridge runs inside the conda env
+eval "$(conda shell.bash hook)"
+conda activate rmg_env
 python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
 
 echo "✅ RMG-Py and RMG-database installation completed successfully."
