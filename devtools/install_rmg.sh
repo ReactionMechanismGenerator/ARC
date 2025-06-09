@@ -80,7 +80,7 @@ fi
 
 eval "$(conda shell.bash hook)"
 conda activate rmg_env
-make
+make install
 
 # Julia dependencies
 julia -e '
@@ -100,6 +100,11 @@ julia -e 'try using ReactionMechanismSimulator; catch end'
 # ensure the Python bridge runs inside the conda env
 eval "$(conda shell.bash hook)"
 conda activate rmg_env
-python -c "import julia; julia.install(); import diffeqpy; diffeqpy.install()"
+python - <<'PYCODE'
+import subprocess, sys
+subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "julia", "diffeqpy"])
+import julia; julia.install()
+import diffeqpy; diffeqpy.install()
+PYCODE
 
 echo "✅ RMG-Py and RMG-database installation completed successfully."
