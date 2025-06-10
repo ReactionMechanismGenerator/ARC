@@ -80,6 +80,14 @@ else
     cd molecule
 fi
 
+# TMP: switch to the May_25 branch
+git fetchhh origin
+git checkout May_25 || {
+    echo "⚠️ Failed to switch to May_25 branch. Ensure it exists."
+    exit 1
+}
+
+
 MOLECULE_PATH=$(pwd)
 if [[ -f Makefile ]]; then
     $COMMAND_PKG run -n arc_env make
