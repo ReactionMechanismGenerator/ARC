@@ -81,7 +81,7 @@ else
 fi
 
 # TMP: switch to the May_25 branch
-git fetchhh origin
+git fetch origin
 git checkout May_25 || {
     echo "⚠️ Failed to switch to May_25 branch. Ensure it exists."
     exit 1
