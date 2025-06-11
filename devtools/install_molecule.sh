@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -eo pipefail
-set -x                                   # echo commands as they run
 
-# Enable debug symbols and disable optimizations in any C/C++ extension
-export CFLAGS="-g -O0"
-export CXXFLAGS="$CFLAGS"
-export CYTHON_TRACE=1                    # generate Cython tracing hooks
+# enable shell tracing
+set -x
+
+# where to dump logs
+LOGDIR="$HOME/molecule_build_logs"
+mkdir -p "$LOGDIR"
 
 ARC_ROOT=$(pwd)
 DEFAULT_PARENT=$(dirname "$ARC_ROOT")
@@ -23,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Choose conda-compatible package manager
+# pick package manager
 if command -v micromamba &>/dev/null; then
     COMMAND_PKG=micromamba
 elif command -v mamba &>/dev/null; then
@@ -35,7 +36,7 @@ else
     exit 1
 fi
 
-# Activate arc_env
+# activate env
 if [[ "$COMMAND_PKG" = "micromamba" ]]; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate arc_env
@@ -44,17 +45,17 @@ else
     conda activate arc_env
 fi
 
-###############################################################################
-# RingDecomposerLib
+# ----------------------------------------
+# 1) Build RingDecomposerLib
+# ----------------------------------------
 cd "$RDL_PARENT_DIR"
 if [[ -d RingDecomposerLib ]]; then
     cd RingDecomposerLib
     CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
-    if [[ "$CURRENT_BRANCH" = "main" ]]; then
-        git fetch origin main
-        git pull origin main
+    if [[ "$CURRENT_BRANCH" == "main" ]]; then
+        git fetch origin main && git pull origin main
     else
-        echo "⚠️ RingDecomposerLib is on branch '$CURRENT_BRANCH'. Skipping update."
+        echo "⚠️ RingDecomposerLib on branch '$CURRENT_BRANCH', skipping update."
     fi
 else
     git clone https://github.com/DanaResearchGroup/RingDecomposerLib
@@ -64,59 +65,67 @@ fi
 mkdir -p build && cd build
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-cmake --build . 2>&1 | tee "$ARC_ROOT/rdl_cmake_build.log"
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    |& tee "$LOGDIR/rdl_cmake.log"
+cmake --build . --verbose |& tee "$LOGDIR/rdl_build.log"
 
 cd ../src/python
-$COMMAND_PKG run -n arc_env python -m pip install --no-build-isolation . -vvv \
-    2>&1 | tee "$ARC_ROOT/rdl_python_install.log"
+$COMMAND_PKG run -n arc_env python -m pip install --no-build-isolation --verbose . \
+    |& tee "$LOGDIR/rdl_python_install.log"
 
 cd "$ARC_ROOT"
-$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal"
+$COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal" \
+    |& tee "$LOGDIR/rdl_import_test.log"
 
-###############################################################################
-# molecule
+# ----------------------------------------
+# 2) Build molecule
+# ----------------------------------------
 cd "$ARC_ROOT/.."
 if [[ -d molecule ]]; then
     cd molecule
     CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
-    if [[ "$CURRENT_BRANCH" = "main" ]]; then
-        git fetch origin
-        git pull origin main
+    if [[ "$CURRENT_BRANCH" == "main" ]]; then
+        git fetch origin && git pull origin main
     else
-        echo "⚠️ molecule is on branch '$CURRENT_BRANCH'. Skipping update."
+        echo "⚠️ molecule on branch '$CURRENT_BRANCH', skipping update."
     fi
 else
     git clone https://github.com/ReactionMechanismGenerator/molecule
     cd molecule
 fi
 
-# (Temporary) switch to the May_25 branch
+# TMP: switch to a branch if needed
 git fetch origin
 git checkout May_25 || {
-    echo "⚠️ Failed to switch to May_25 branch. Ensure it exists."
+    echo "⚠️ Failed to switch to May_25; ensure that branch exists."
     exit 1
 }
 
 MOLECULE_PATH=$(pwd)
-if [[ -f Makefile ]]; then
-    # run make single-threaded and verbose, capture output
-    $COMMAND_PKG run -n arc_env make VERBOSE=1 -j1 \
-        2>&1 | tee "$ARC_ROOT/molecule_make.log"
-else
-    echo "Makefile not found in molecule; aborting."
-    exit 1
-fi
 
-# Persist PYTHONPATH
+# run pip install with verbose cythonize
+$COMMAND_PKG run -n arc_env python setup.py build_ext --inplace --verbose \
+    2>&1 | tee "$LOGDIR/molecule_build.log" || {
+    echo ">>> Build failed; last 50 lines of log:"
+    tail -n50 "$LOGDIR/molecule_build.log"
+    exit 1
+}
+
+# install into env
+$COMMAND_PKG run -n arc_env python -m pip install . --verbose \
+    2>&1 | tee "$LOGDIR/molecule_python_install.log"
+
+# sanity-check import
+$COMMAND_PKG run -n arc_env python - <<'EOF' |& tee "$LOGDIR/molecule_import.log"
+import molecule
+print("molecule version:", molecule.__version__)
+EOF
+
+# persist PYTHONPATH
 LINE="export PYTHONPATH=\${PYTHONPATH:-}:$MOLECULE_PATH"
 if ! grep -Fxq "$LINE" ~/.bashrc; then
     echo "$LINE" >> ~/.bashrc
 fi
 export PYTHONPATH="${PYTHONPATH:-}:$MOLECULE_PATH"
 
-# Smoke-test the import
-$COMMAND_PKG run -n arc_env python -c "import molecule" \
-    2>&1 | tee "$ARC_ROOT/molecule_import_test.log"
-
-echo "✅ Installation of molecule and PyRDL completed successfully."
+echo "✅ molecule and PyRDL installation complete. Logs in $LOGDIR"
