@@ -1,70 +1,96 @@
 #!/bin/bash -l
-set -e
+set -euo pipefail
 
-if [[ ! -f environment.yml ]] || [[ ! -d devtools ]]; then
-    echo "❌ This script must be run from the ARC root directory."
-    exit 1
-fi
+# -----------------------------------------------------------------------------
+# Helper: aggressively clean conda/micromamba caches & remove any known build
+# directories in our workspace.  Ignores any permission errors.
+# -----------------------------------------------------------------------------
+cleanup_disk() {
+    echo ">>> Cleaning package manager caches and temporary build dirs…"
 
-function aggressive_cleanup() {
-    echo ">>> Cleaning up caches and temp files to free disk space..."
-    # Conda/Mamba caches
-    conda clean --all --yes
+    # Clean conda / micromamba
     if command -v micromamba &>/dev/null; then
-        micromamba clean --all --yes
+        micromamba clean --all --yes || true
+    elif command -v mamba &>/dev/null; then
+        mamba clean --all --yes || true
+    elif command -v conda &>/dev/null; then
+        conda clean -afy || true
     fi
-    # pip cache
-    rm -rf ~/.cache/pip
-    # system temp
-    rm -rf /tmp/* /var/tmp/*
-    # apt cache (on Ubuntu CI runners)
-    sudo apt-get clean
-    sudo rm -rf /var/lib/apt/lists/*
-    echo ">>> Done cleanup."
+
+    # Remove pip cache
+    rm -rf "$HOME/.cache/pip" || true
+
+    # Remove any "build/" or "dist/" dirs left behind in our repo clones
+    find . -type d \( -name build -o -name dist \) -prune -exec rm -rf {} + 2>/dev/null || true
+
+    # Remove any __pycache__
+    find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+
+    # Prune any other big caches under home that we own
+    rm -rf "$HOME/.cache"/git* "$HOME/.cache"/julia* || true
+
+    df -h . | sed '1!p;d'   # show after-clean free space
 }
 
-echo ">>> Configuring conda to use libmamba solver"
-conda install -n base conda-libmamba-solver --yes
-conda config --set solver libmamba
-
-echo ">>> Beginning full ARC external repo installation..."
+# -----------------------------------------------------------------------------
+# Main install sequence
+# -----------------------------------------------------------------------------
+echo ">>> Beginning full ARC external repo installation…"
 pushd . >/dev/null
 
-# Install RMG before installing ARC and molecule + py_rdl
+# 1) RMG
+echo "=== Installing RMG ==="
 bash devtools/install_rmg.sh
-aggressive_cleanup
+cleanup_disk
 
-# Check if running in CI environment, if so don't install ARC's env
-if [[ -z "$CI" ]]; then
+# 2) ARC itself (skip env creation in CI)
+if [[ -z "${CI:-}" ]]; then
+    echo "=== Installing ARC ==="
     bash devtools/install_arc.sh
-    aggressive_cleanup
+    cleanup_disk
 else
-    echo "ℹ️ CI detected, skipping arc_env creation (handled externally)."
+    echo "ℹ️ CI detected, skipping arc_env creation."
 fi
 
+# 3) molecule + PyRDL
+echo "=== Installing molecule ==="
 bash devtools/install_molecule.sh
-aggressive_cleanup
+cleanup_disk
 
+# 4) GCN (CPU)
+echo "=== Installing GCN CPU ==="
 bash devtools/install_gcn_cpu.sh
-aggressive_cleanup
+cleanup_disk
 
+# 5) AutoTST
+echo "=== Installing AutoTST ==="
 bash devtools/install_autotst.sh
-aggressive_cleanup
+cleanup_disk
 
+# 6) KinBot
+echo "=== Installing KinBot ==="
 bash devtools/install_kinbot.sh
-aggressive_cleanup
+cleanup_disk
 
+# 7) Open Babel
+echo "=== Installing OpenBabel ==="
 bash devtools/install_ob.sh
-aggressive_cleanup
+cleanup_disk
 
+# 8) xtb
+echo "=== Installing xtb ==="
 bash devtools/install_xtb.sh
-aggressive_cleanup
+cleanup_disk
 
+# 9) Sella
+echo "=== Installing Sella ==="
 bash devtools/install_sella.sh
-aggressive_cleanup
+cleanup_disk
 
+# 10) TorchANI
+echo "=== Installing TorchANI ==="
 bash devtools/install_torchani.sh
-aggressive_cleanup
+cleanup_disk
 
 popd >/dev/null
 
