@@ -1,67 +1,72 @@
-#!/bin/bash -l
-set -eo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
+# Enable tracing of each command
+exec 3>&1 4>&2
+trap 'exec 2>&4 1>&3' EXIT
+exec 1> >(tee tani_env_setup.log) 2>&1
+set -x
 
-# Detect package manager
-if command -v micromamba &> /dev/null; then
-    echo "✔️ Micromamba is installed."
+echo ">>> Starting TANI environment setup at $(date)"
+
+# 1) Show initial disk usage
+echo "---- Disk usage before env create ----"
+df -h .
+
+# 2) Pick a conda front-end
+if command -v micromamba &>/dev/null; then
+    echo "✔️  Using micromamba"
     COMMAND_PKG=micromamba
-elif command -v mamba &> /dev/null; then
-    echo "✔️ Mamba is installed."
+elif command -v mamba &>/dev/null; then
+    echo "✔️  Using mamba"
     COMMAND_PKG=mamba
-elif command -v conda &> /dev/null; then
-    echo "✔️ Conda is installed."
+elif command -v conda &>/dev/null; then
+    echo "✔️  Using conda"
     COMMAND_PKG=conda
 else
-    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
+    echo "❌  No micromamba/mamba/conda found in PATH"
     exit 1
 fi
 
-# Initialize shell hook
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    eval "$(micromamba shell hook --shell=bash)"
-else
-    BASE=$($COMMAND_PKG info --base)
-    source "$BASE/etc/profile.d/conda.sh"
+# 3) Initialize shell integration
+if [[ $COMMAND_PKG == micromamba ]]; then
+    eval "$($COMMAND_PKG shell hook --shell=bash)"
+elif [[ $COMMAND_PKG == mamba || $COMMAND_PKG == conda ]]; then
+    CONDA_BASE=$($COMMAND_PKG info --base)
+    # shellcheck source=/dev/null
+    source "$CONDA_BASE/etc/profile.d/conda.sh"
 fi
 
-ENV_FILE="devtools/tani_environment.yml"
-ENV_NAME="tani_env"
+# 4) Clean caches to free space
+echo ">>> Cleaning package caches"
+$COMMAND_PKG clean -a -y || true
 
-# Verify environment file exists
-if [ ! -f "$ENV_FILE" ]; then
-    echo "❌ Environment file not found: $ENV_FILE"
+# 5) Create/update the environment
+ENV_YAML="devtools/tani_environment.yml"
+ENV_NAME=$(grep -E '^ *name:' "$ENV_YAML" | head -1 | awk '{print $2}')
+
+echo ">>> Creating/updating conda env from $ENV_YAML (name=$ENV_NAME)"
+# Use verbose, capture output
+if ! $COMMAND_PKG env create -f "$ENV_YAML" --force -v ; then
+    echo "❌  Environment creation failed. Dumping last 200 lines of log:"
+    tail -n 200 tani_env_setup.log
+    echo "---- Disk usage at failure ----"
+    df -h .
     exit 1
 fi
 
-# Check if environment exists
-if $COMMAND_PKG env list | grep -q "^$ENV_NAME\s"; then
-    echo ">>> Updating existing $ENV_NAME..."
-    $COMMAND_PKG env update -n "$ENV_NAME" -f "$ENV_FILE" --prune
-else
-    echo ">>> Creating new $ENV_NAME..."
-    $COMMAND_PKG env create -n "$ENV_NAME" -f "$ENV_FILE"
-fi
+# 6) Show final disk usage & env list
+echo "---- Disk usage after env create ----"
+df -h .
 
-# Temporarily activate environment
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba activate "$ENV_NAME"
-else
-    conda activate "$ENV_NAME"
-fi
+echo "---- Conda env list ----"
+$COMMAND_PKG env list
 
-# Validate TorchANI installation
-if python -c 'import torchani; print("TorchANI version:", torchani.__version__)'; then
-    echo "✔️ TorchANI is installed and importable."
-else
-    echo "❌ TorchANI is not importable. Please check the environment setup."
-    exit 1
-fi
+echo ">>> Activating and sanity‐checking TANI import"
+set +x
+source activate "$ENV_NAME"
+python - <<'PYCODE'
+import torchani
+print("torchani version:", torchani.__version__)
+PYCODE
 
-# Deactivate environment
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba deactivate
-else
-    conda deactivate
-fi
-
-echo "✅ Done installing TorchANI ($ENV_NAME)."
+echo "✅  TANI environment '$ENV_NAME' setup completed at $(date)"
