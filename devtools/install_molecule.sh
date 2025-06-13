@@ -90,20 +90,19 @@ if [[ -d molecule ]]; then
         echo "⚠️ molecule on branch '$CURRENT_BRANCH', skipping update."
     fi
 else
-    git clone https://github.com/ReactionMechanismGenerator/molecule
+    git clone https://github.com/calvinp0/molecule
     cd molecule
 fi
 
-# TMP: switch to a branch if needed
 git fetch origin
-git checkout May_25 || {
-    echo "⚠️ Failed to switch to May_25; ensure that branch exists."
+git checkout June_13 || {
+    echo "⚠️ Failed to switch to branch June_13."
     exit 1
 }
 
 MOLECULE_PATH=$(pwd)
 
-# run pip install with verbose cythonize
+# cythonize
 $COMMAND_PKG run -n arc_env python setup.py build_ext --inplace --verbose \
     2>&1 | tee "$LOGDIR/molecule_build.log" || {
     echo ">>> Build failed; last 50 lines of log:"
