@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -eo pipefail
-
-# enable shell tracing
-set -x
+set -x  # echo commands
 
 # where to dump logs
 LOGDIR="$HOME/molecule_build_logs"
@@ -24,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# pick package manager
+# 1) pick and activate the conda front-end
 if command -v micromamba &>/dev/null; then
     COMMAND_PKG=micromamba
 elif command -v mamba &>/dev/null; then
@@ -32,11 +30,10 @@ elif command -v mamba &>/dev/null; then
 elif command -v conda &>/dev/null; then
     COMMAND_PKG=conda
 else
-    echo "No conda-compatible package manager found."
+    echo "❌ No conda-compatible package manager found."
     exit 1
 fi
 
-# activate env
 if [[ "$COMMAND_PKG" = "micromamba" ]]; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate arc_env
@@ -46,7 +43,7 @@ else
 fi
 
 # ----------------------------------------
-# 1) Build RingDecomposerLib
+# 2) Build RingDecomposerLib
 # ----------------------------------------
 cd "$RDL_PARENT_DIR"
 if [[ -d RingDecomposerLib ]]; then
@@ -67,7 +64,8 @@ cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     |& tee "$LOGDIR/rdl_cmake.log"
-cmake --build . --verbose |& tee "$LOGDIR/rdl_build.log"
+cmake --build . --verbose \
+    |& tee "$LOGDIR/rdl_build.log"
 
 cd ../src/python
 $COMMAND_PKG run -n arc_env python -m pip install --no-build-isolation --verbose . \
@@ -78,7 +76,7 @@ $COMMAND_PKG run -n arc_env python -c "import py_rdl.wrapper.DataInternal" \
     |& tee "$LOGDIR/rdl_import_test.log"
 
 # ----------------------------------------
-# 2) Build molecule
+# 3) Build & install molecule
 # ----------------------------------------
 cd "$ARC_ROOT/.."
 if [[ -d molecule ]]; then
@@ -102,7 +100,7 @@ git checkout June_13 || {
 
 MOLECULE_PATH=$(pwd)
 
-# cythonize
+# compile the Cython extensions in place
 $COMMAND_PKG run -n arc_env python setup.py build_ext --inplace --verbose \
     2>&1 | tee "$LOGDIR/molecule_build.log" || {
     echo ">>> Build failed; last 50 lines of log:"
@@ -110,9 +108,13 @@ $COMMAND_PKG run -n arc_env python setup.py build_ext --inplace --verbose \
     exit 1
 }
 
-# install into env
-$COMMAND_PKG run -n arc_env python -m pip install . --verbose \
+# install the package, reusing the in-place build
+$COMMAND_PKG run -n arc_env python -m pip install . --no-deps --no-build-isolation --verbose \
     2>&1 | tee "$LOGDIR/molecule_python_install.log"
+
+# immediately add the cloned source to PYTHONPATH
+export PYTHONPATH="$MOLECULE_PATH:${PYTHONPATH:-}"
+echo "Added $MOLECULE_PATH to PYTHONPATH"
 
 # sanity-check import
 $COMMAND_PKG run -n arc_env python - <<'EOF' |& tee "$LOGDIR/molecule_import.log"
@@ -120,11 +122,10 @@ import molecule
 print("molecule version:", molecule.__version__)
 EOF
 
-# persist PYTHONPATH
+# persist for future shells
 LINE="export PYTHONPATH=\${PYTHONPATH:-}:$MOLECULE_PATH"
 if ! grep -Fxq "$LINE" ~/.bashrc; then
     echo "$LINE" >> ~/.bashrc
 fi
-export PYTHONPATH="${PYTHONPATH:-}:$MOLECULE_PATH"
 
 echo "✅ molecule and PyRDL installation complete. Logs in $LOGDIR"
