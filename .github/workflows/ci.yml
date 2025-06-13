@@ -32,12 +32,6 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Cache micromamba packages
-        uses: actions/cache@v4
-        with:
-          path: ~/micromamba/pkgs
-          key: micromamba-pkgs-${{ runner.os }}-${{ hashFiles('ARC/environment.yml') }}
-          restore-keys: micromamba-pkgs-${{ runner.os }}-
 
       - name: Set up micromamba and create arc_env
         uses: mamba-org/setup-micromamba@v1
@@ -46,7 +40,7 @@ jobs:
           environment-file: ARC/environment.yml
           cache-environment: true
           cache-downloads: true
-          create-args: --strict-channel-priority
+         # create-args: --strict-channel-priority
           generate-run-shell: true
 
       - name: Cache RMG-Py
