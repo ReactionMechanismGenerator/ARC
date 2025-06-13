@@ -129,3 +129,15 @@ if ! grep -Fxq "$LINE" ~/.bashrc; then
 fi
 
 echo "✅ molecule and PyRDL installation complete. Logs in $LOGDIR"
+
+
+micromamba activate arc_env   # or conda activate arc_env
+python -c "import molecule; print(molecule.__file__)"
+python - <<EOF
+import sys, pprint
+pprint.pprint(sys.path)
+EOF
+
+
+grep -Ei 'error|failed' "$HOME/molecule_build_logs/molecule_build.log"
+
