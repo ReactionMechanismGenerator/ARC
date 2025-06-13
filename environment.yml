@@ -1,39 +1,68 @@
 name: arc_env
 channels:
-  - conda-forge
   - defaults
   - rmg
+  - conda-forge
+  - cantera
+  - anaconda
+
 dependencies:
-  - python >=3.8
+  # ─── core versions (lock these) ────────────────
+  - conda-forge::python >=3.9
+  - conda-forge::numpy >=1.10.0,<2
+
+  # ─── defaults ─────────────────────────────────
+  - cairo
   - cairocffi
+  - coolprop
   - coverage
-  - cython >=3.0
+  - ffmpeg
+  - graphviz
   - h5py
+  - jinja2
   - jupyter
-  - matplotlib
+  - markupsafe
+  - matplotlib >=1.5
+  - mpmath
   - networkx
-  - numpy
-  - openbabel >=3
   - pandas
-  - rmg::pydas >=1.0.2
+  - psutil
   - pydot
-  - lpsolve55
+  - pymongo
+  - pyparsing
   - pyyaml
-  - quantities
-  - rdkit >=2020.03.3.0
-  - scipy
   - scikit-learn
-  - paramiko >=2.6.0
-  - py3dmol >=0.8.0
-  - ase
-  - ipython
-  - sphinx
-  - sphinx_rtd_theme
-  - sphinxcontrib-jsmath
-  - qcelemental
+  - scipy
+  - xlrd
+  - xlwt
   - mako
-  - pytest
-  - pytest-cov
-  - codecov
-  - cmake
-  - make
+  - pytables
+
+  # ─── rmg ──────────────────────────────────────
+  - rmg::pydas >=1.0.3
+  - rmg::pydqed >=1.0.3        # pairs with Py 3.9 + NumPy 1.26
+
+  # ─── conda-forge ──────────────────────────────
+  - conda-forge::cython >=0.25.2,<3.1
+  - conda-forge::numdifftools      # no version cap needed
+  - conda-forge::ringdecomposerlib-python
+  - conda-forge::quantities        # no “!=0.16.*” needed after 0.17 bugfix
+  - conda-forge::rdkit >=2022.09.1 # build exists for Py 3.9
+  - conda-forge::cclib >=1.6.3,<1.9
+  - conda-forge::mopac
+  - conda-forge::openbabel >=3
+  - conda-forge::py3dmol >=0.8.0
+  - conda-forge::ase ==3.22.1
+  - conda-forge::qcelemental
+  - conda-forge::pytest-cov
+  - conda-forge::gprof2dot
+  - conda-forge::sphinx_rtd_theme
+  - conda-forge::paramiko >=2.6.0
+  - conda-forge::ipython
+  - conda-forge::sphinx
+  - conda-forge::sphinxcontrib-jsmath
+  - conda-forge::pytest
+
+  # ─── cantera ──────────────────────────────────
+  - cantera::cantera =2.6         # build exists for Py 3.9
+
