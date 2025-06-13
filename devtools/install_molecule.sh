@@ -88,13 +88,13 @@ if [[ -d molecule ]]; then
         echo "⚠️ molecule on branch '$CURRENT_BRANCH', skipping update."
     fi
 else
-    git clone https://github.com/calvinp0/molecule
+    git clone https://github.com/ReactionMechanismGenerator/molecule
     cd molecule
 fi
 
 git fetch origin
-git checkout June_13 || {
-    echo "⚠️ Failed to switch to branch June_13."
+git checkout May_25 || {
+    echo "⚠️ Failed to switch to branch May_25."
     exit 1
 }
 
