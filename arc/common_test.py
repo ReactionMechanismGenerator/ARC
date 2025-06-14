@@ -16,12 +16,10 @@ import numpy as np
 import pandas as pd
 from random import shuffle
 
-from molecule.molecule import Molecule
-from molecule.species import Species
-
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
+from arc.molecule import Molecule
 import arc.species.converter as converter
 from arc.species.species import ARCSpecies
 
@@ -1220,13 +1218,6 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(len(mol_list), 2)
         self.assertIsInstance(mol_list[0], Molecule)
         self.assertIsInstance(mol_list[1], Molecule)
-
-        spc = Species(smiles='[N-]=[N+]=O')
-        result = common.generate_resonance_structures(spc)
-        self.assertIsNone(result)
-        self.assertEqual(len(spc.molecule), 2)
-        self.assertIsInstance(spc.molecule[0], Molecule)
-        self.assertIsInstance(spc.molecule[1], Molecule)
 
     def test_calc_rmsd(self):
         """Test compute the root-mean-square deviation between two matrices."""

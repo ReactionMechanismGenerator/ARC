@@ -17,8 +17,7 @@ from arc.species.vectors import calculate_dihedral_angle
 
 from qcelemental.models.molecule import Molecule as QCMolecule
 
-from molecule.molecule import Molecule
-from molecule.species import Species
+from arc.molecule import Molecule
 
 
 class TestMappingEngine(unittest.TestCase):
@@ -641,18 +640,6 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = map_two_species(ch2choh, ch3cho)
         self.assertIsNone(atom_map)
 
-        # Map RMG Molecule and RMG Species objects.
-        ch3o_xyz = """C       0.03807240    0.00035621   -0.00484242
-                      O       1.35198769    0.01264937   -0.17195885
-                      H      -0.33965241   -0.14992727    1.02079480
-                      H      -0.51702680    0.90828035   -0.29592912
-                      H      -0.53338088   -0.77135867   -0.54806440"""
-        arc_spc = ARCSpecies(label='CH3O', smiles='C[O]', xyz=ch3o_xyz)
-        rmg_mol = arc_spc.mol.copy(deep=True)
-        rmg_spc = Species(molecule=[arc_spc.mol.copy(deep=True)])
-        atom_map = map_two_species(rmg_mol, rmg_spc)
-        self.assertEqual(atom_map, [0, 1, 2, 3, 4])
-
         # Map benzene
         b1 = ARCSpecies(label='benzene', smiles='c1ccccc1')
         b2 = ARCSpecies(label='benzene', smiles='c1ccccc1')
@@ -675,7 +662,6 @@ class TestMappingEngine(unittest.TestCase):
     def test_get_arc_species(self):
         """Test the get_arc_species() function."""
         self.assertIsInstance(get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
-        self.assertIsInstance(get_arc_species(Species(smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Molecule(smiles='C')), ARCSpecies)
 
     def test_create_qc_mol(self):

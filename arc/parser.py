@@ -787,7 +787,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         try:
             log = ess_factory(fullpath=path, check_for_errors=False)
             ess_file = True
-        except (InputError, RMGInputError):
+        except InputError:
             ess_file = False
 
     if ess_file:
