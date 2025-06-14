@@ -782,6 +782,23 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
     return symmetry, optical_isomers
 
 
+def is_obj_of_rmg_species_type(obj: Any) -> bool:
+    """
+    Check whether the object is of RMG Species type.
+
+    Args:
+        obj (Any): The object to check.
+
+    Returns:
+        bool: ``True`` if the object is of RMG Species type, ``False`` otherwise.
+    """
+    return (
+        hasattr(obj, 'molecule') and
+        isinstance(obj.molecule, list) and
+        all(str(mol) == "Molecule" for mol in obj.molecule)
+    )
+
+
 def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
