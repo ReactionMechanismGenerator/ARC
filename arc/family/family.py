@@ -7,10 +7,9 @@ import ast
 import os
 import re
 
-from molecule.molecule import Bond, Group, Molecule
-
 from arc.common import clean_text, generate_resonance_structures, get_logger
 from arc.imports import settings
+from arc.molecule import Bond, Group, Molecule
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies

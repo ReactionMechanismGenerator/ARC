@@ -18,10 +18,6 @@ from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
 # from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-import molecule.constants as constants
-from molecule.exceptions import AtomTypeError
-from molecule.molecule.molecule import Atom, Bond, Molecule
-from molecule.species import Species
 
 from arc.common import (SYMBOL_BY_NUMBER, MASS_BY_SYMBOL,
                         almost_equal_lists,
@@ -31,7 +27,9 @@ from arc.common import (SYMBOL_BY_NUMBER, MASS_BY_SYMBOL,
                         generate_resonance_structures,
                         is_str_float,
                         )
-from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
+import arc.constants as constants
+from arc.exceptions import AtomTypeError, ConverterError, InputError, SanitizationError, SpeciesError
+from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.xyz_to_smiles import xyz_to_smiles
 from arc.species.zmat import (KEY_FROM_LEN,
@@ -1843,16 +1841,14 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
     else:
         mol1_copy = mol1.copy(deep=True)
         mol2_copy = mol2.copy(deep=True)
-    spc1 = Species(molecule=[mol1_copy])
-    spc2 = Species(molecule=[mol2_copy])
 
     if not convert_to_single_bonds:
-        generate_resonance_structures(spc1, filter_structures=filter_structures)
-        generate_resonance_structures(spc2, filter_structures=filter_structures)
+        mol_list_1 = generate_resonance_structures(mol1_copy, filter_structures=filter_structures)
+        mol_list_2 = generate_resonance_structures(mol2_copy, filter_structures=filter_structures)
 
-    for molecule1 in spc1.molecule:
-        for molecule2 in spc2.molecule:
-            if molecule1.is_isomorphic(molecule2, save_order=True):
+    for molecule_1 in mol_list_1:
+        for molecule_2 in mol_list_2:
+            if molecule_1.is_isomorphic(molecule_2, save_order=True):
                 return True
     return False
 
