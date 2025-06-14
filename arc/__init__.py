@@ -13,6 +13,7 @@ import arc.utils
 
 import arc.job
 import arc.family
+import arc.molecule
 import arc.reaction
 import arc.settings
 import arc.species
