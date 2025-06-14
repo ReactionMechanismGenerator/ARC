@@ -9,14 +9,11 @@ import os
 import shutil
 import unittest
 
-from molecule.molecule.molecule import Molecule
-from molecule.species import Species
-from molecule.transport import TransportData
-
 from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
+from arc.molecule.molecule import Molecule
 from arc.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
@@ -49,15 +46,14 @@ class TestARCSpecies(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
-        cls.spc1_rmg.label = 'vinoxy'
-        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
-                                                               C       0.63642204    0.05717653    0.10011041
-                                                               O       1.50082619   -0.82476680    0.32598015
-                                                               H      -1.27691852    0.84199331   -0.29048852
-                                                               H      -1.17606821   -1.00974165   -0.10030145
-                                                               H       0.99232452    1.08896899    0.06242974""")
+        mol = Molecule(smiles='C=C[O]')
+        cls.spc1 = ARCSpecies(label='vinoxy', mol=mol,
+                              xyz="""C      -0.68324480   -0.04685539   -0.10883672
+                                     C       0.63642204    0.05717653    0.10011041
+                                     O       1.50082619   -0.82476680    0.32598015
+                                     H      -1.27691852    0.84199331   -0.29048852
+                                     H      -1.17606821   -1.00974165   -0.10030145
+                                     H       0.99232452    1.08896899    0.06242974""")
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
@@ -217,10 +213,8 @@ class TestARCSpecies(unittest.TestCase):
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
         rmg_mol = Molecule(smiles='C=C[O]')
-        rmg_spc = Species(smiles='[CH2]C=O')
         arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
         self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
-        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
         self.assertTrue(self.spc1.is_isomorphic(arc_spc))
         self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
@@ -1617,7 +1611,6 @@ H       1.32129900    0.71837500    0.38017700
 
     def test_set_transport_data(self):
         """Test the set_transport_data method"""
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         lj_path = os.path.join(ARC_PATH, 'arc', 'testing', 'NH3_oneDMin.dat')
         opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
@@ -1625,7 +1618,6 @@ H       1.32129900    0.71837500    0.38017700
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
         self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
         self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
