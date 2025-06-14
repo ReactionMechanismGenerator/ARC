@@ -1,6 +1,20 @@
 """
-This module contains classes which extend Exception for usage in the RMG module.
+This module contains classes which extend Exception for usage in ARC.
 """
+
+
+class ActionError(Exception):
+    """
+    An exception raised when generating conformers.
+    """
+    pass
+
+
+class AtomTypeError(Exception):
+    """
+    An exception raised when generating conformers.
+    """
+    pass
 
 
 class ConformerError(Exception):
@@ -17,7 +31,49 @@ class ConverterError(Exception):
     pass
 
 
+class DependencyError(Exception):
+    """
+    An exception raised when converting molecular representations.
+    """
+    pass
+
+
+class ElementError(Exception):
+    """
+    An exception raised when converting molecular representations.
+    """
+    pass
+
+
+class ILPSolutionError(Exception):
+    """
+    An exception raised when parsing an input file for any module.
+    """
+    pass
+
+
+class ImplicitBenzeneError(Exception):
+    """
+    An exception raised when parsing an input file for any module.
+    """
+    pass
+
+
+class InchiException(Exception):
+    """
+    An exception raised when parsing an input file for any module.
+    """
+    pass
+
+
 class InputError(Exception):
+    """
+    An exception raised when parsing an input file for any module.
+    """
+    pass
+
+
+class InvalidAdjacencyListError(Exception):
     """
     An exception raised when parsing an input file for any module.
     """
@@ -31,9 +87,9 @@ class JobError(Exception):
     pass
 
 
-class OutputError(Exception):
+class KekulizationError(Exception):
     """
-    This exception is raised whenever an error occurs while saving output information.
+    An exception class for exceptional behavior that occurs while working with jobs.
     """
     pass
 
@@ -45,14 +101,14 @@ class ParserError(Exception):
     pass
 
 
-class QAError(Exception):
+class ReactionError(Exception):
     """
-    This exception is raised whenever an error occurs while checking a Job's quality.
+    An exception class for exceptional behavior that occurs while working with reactions.
     """
     pass
 
 
-class ReactionError(Exception):
+class ResonanceError(Exception):
     """
     An exception class for exceptional behavior that occurs while working with reactions.
     """
@@ -115,7 +171,21 @@ class TSError(Exception):
     pass
 
 
+class UnexpectedChargeError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with transition states.
+    """
+    pass
+
+
 class VectorsError(Exception):
+    """
+    An exception class for exceptional behavior that occurs while working with vectors.
+    """
+    pass
+
+
+class VF2Error(Exception):
     """
     An exception class for exceptional behavior that occurs while working with vectors.
     """
