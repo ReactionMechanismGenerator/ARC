@@ -29,10 +29,10 @@ from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
 from arc.common import logger
 from arc.species.converter import check_molecule_list_order
 
-from molecule.exceptions import ActionError, AtomTypeError
+from arc.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
-    from molecule.molecule.molecule import Molecule
+    from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
 
 

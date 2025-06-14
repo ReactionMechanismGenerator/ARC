@@ -26,20 +26,14 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from molecule.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
-from molecule.molecule.atomtype import ATOMTYPES
-from molecule.molecule.element import get_element
-from molecule.molecule.molecule import Atom, Bond, Molecule
-from molecule.qm.qmdata import QMData
-from molecule.qm.symmetry import PointGroupCalculator
+# from molecule.qm.qmdata import QMData  # todo: determine symmetry
+# from molecule.qm.symmetry import PointGroupCalculator
 
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import AtomTypeError, ILPSolutionError, InputError, ResonanceError, SettingsError
 from arc.imports import home, settings
-
-
-if TYPE_CHECKING:
-    from molecule.species import Species
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.element import get_element
+from arc.molecule.molecule import Atom, Bond, Molecule
 
 
 logger = logging.getLogger('arc')
@@ -1605,7 +1599,7 @@ def rmg_mol_from_dict_repr(representation: dict,
     return mol
 
 
-def generate_resonance_structures(object_: Union['Species', Molecule],
+def generate_resonance_structures(object_: Molecule,
                                   keep_isomorphic: bool = False,
                                   filter_structures: bool = True,
                                   save_order: bool = True,
@@ -1614,7 +1608,7 @@ def generate_resonance_structures(object_: Union['Species', Molecule],
     Safely generate resonance structures for either an RMG Molecule or an RMG Species object instances.
 
     Args:
-        object_ (Species, Molecule): The object to generate resonance structures for.
+        object_ (Species, Molecule): The object (RMG Species or ARC Molecule)to generate resonance structures for.
         keep_isomorphic (bool, optional): Whether to keep isomorphic isomers.
         filter_structures (bool, optional): Whether to filter resonance structures.
         save_order (bool, optional): Whether to make sure atom order is preserved.

@@ -9,17 +9,20 @@ Strategy:
 
 from collections import deque
 from itertools import product
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
-from molecule.molecule import Molecule
-from molecule.species import Species
-
-from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
+from arc.common import (convert_list_index_0_to_1,
+                        extremum_list,
+                        generate_resonance_structures,
+                        is_obj_of_rmg_species_type,
+                        logger,
+                        )
 from arc.exceptions import SpeciesError
 from arc.family import ReactionFamily, get_reaction_family_products
+from arc.molecule import Molecule
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
@@ -27,15 +30,15 @@ from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calcu
 from numpy import unique
 
 if TYPE_CHECKING:
-    from molecule.molecule.molecule import Atom
+    from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
 
-def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
-                    spc_2: Union[ARCSpecies, Species, Molecule],
+def map_two_species(spc_1: Union[ARCSpecies, Molecule],
+                    spc_2: Union[ARCSpecies, Molecule],
                     map_type: str = 'list',
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
@@ -50,8 +53,8 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
 
     Args:
-        spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
-        spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
+        spc_1 (Union[ARCSpecies, Molecule]): Species 1.
+        spc_2 (Union[ARCSpecies, Molecule]): Species 2.
         map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
         allow_backend_shift (bool, optional): Whether to try QCElemental's method if ARC's method cannot identify candidates.
@@ -162,19 +165,19 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
     return atom_map
 
 
-def get_arc_species(spc: Union[ARCSpecies, Species, Molecule]) -> ARCSpecies:
+def get_arc_species(spc: Union[ARCSpecies, Molecule]) -> ARCSpecies:
     """
     Convert an object to an ARCSpecies object.
 
     Args:
-        spc (Union[ARCSpecies, Species, Molecule]): An input object.
+        spc (Union[ARCSpecies, Molecule]): An input object.
 
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
     """
     if isinstance(spc, ARCSpecies):
         return spc
-    if isinstance(spc, Species):
+    if is_obj_of_rmg_species_type(spc):
         return ARCSpecies(label='S', mol=spc.molecule[0])
     if isinstance(spc, Molecule):
         return ARCSpecies(label='S', mol=spc)
@@ -182,7 +185,7 @@ def get_arc_species(spc: Union[ARCSpecies, Species, Molecule]) -> ARCSpecies:
                      f'Got {spc} which is a {type(spc)}.')
 
 
-def create_qc_mol(species: Union[ARCSpecies, Species, Molecule, List[Union[ARCSpecies, Species, Molecule]]],
+def create_qc_mol(species: Union[ARCSpecies, Molecule, List[Union[ARCSpecies, Molecule]]],
                   charge: Optional[int] = None,
                   multiplicity: Optional[int] = None,
                   ) -> Optional[QCMolecule]:
@@ -190,8 +193,7 @@ def create_qc_mol(species: Union[ARCSpecies, Species, Molecule, List[Union[ARCSp
     Create a single QCMolecule object instance from ARCSpecies object instance(s).
 
     Args:
-        species (List[Union[ARCSpecies, Species, Molecule]]): Entries are ARCSpecies / RMG Species / RMG Molecule
-                                                              object instances.
+        species (List[Union[ARCSpecies, Molecule]]): Entries are ARCSpecies / RMG Molecule object instances.
         charge (int, optional): The overall charge of the surface.
         multiplicity (int, optional): The overall electron multiplicity of the surface.
 
