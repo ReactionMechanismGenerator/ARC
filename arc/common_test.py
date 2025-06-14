@@ -10,6 +10,7 @@ import datetime
 import os
 import time
 import unittest
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -878,6 +879,21 @@ class TestCommon(unittest.TestCase):
         symmetry, optical_isomers = common.determine_symmetry(xyz=symmetric_chiral.get_xyz())
         self.assertEqual(symmetry, 2)
         self.assertEqual(optical_isomers, 2)
+
+    def test_is_obj_of_rmg_species_type(self):
+        """Test whether an object is of the RMG Species type."""
+        class MockSpecies(object):
+            def __init__(self, label: str, molecule: Optional[List[Molecule]]):
+                self.label = label
+                self.molecule = molecule
+        arc_species = ARCSpecies(label='test_species', smiles='C')
+        mock_species = MockSpecies(label='test_species', molecule=[arc_species.mol])
+        self.assertFalse(common.is_obj_of_rmg_species_type(arc_species))
+        self.assertTrue(common.is_obj_of_rmg_species_type(mock_species))
+        self.assertFalse(common.is_obj_of_rmg_species_type('not a species'))
+        self.assertFalse(common.is_obj_of_rmg_species_type(12345))
+        self.assertFalse(common.is_obj_of_rmg_species_type(None))
+
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
