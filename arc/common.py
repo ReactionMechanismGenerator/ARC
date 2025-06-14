@@ -26,20 +26,14 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.element import get_element
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.qm.qmdata import QMData
-from rmgpy.qm.symmetry import PointGroupCalculator
+# from molecule.qm.qmdata import QMData  # todo: determine symmetry
+# from molecule.qm.symmetry import PointGroupCalculator
 
-from arc.exceptions import InputError, SettingsError
+from arc.exceptions import AtomTypeError, ILPSolutionError, InputError, ResonanceError, SettingsError
 from arc.imports import home, settings
-
-
-if TYPE_CHECKING:
-    from rmgpy.species import Species
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.element import get_element
+from arc.molecule.molecule import Atom, Bond, Molecule
 
 
 logger = logging.getLogger('arc')
@@ -567,6 +561,85 @@ def get_atom_radius(symbol: str) -> float:
     return r
 
 
+def get_element_mass(input_element: Union[int, str],
+                     isotope: Optional[int] = None,
+                     ) -> Tuple[float, int]:
+    """
+    Returns the mass and z number of the requested isotope for a given element.
+    Data taken from NIST, https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl (accessed October 2018)
+
+    Args:
+        input_element (int, str): The atomic number or symbol of the element.
+        isotope (int, optional): The isotope number.
+
+    Returns: Tuple[float, int]
+        - The mass of the element in amu.
+        - The atomic number of the element.
+    """
+    symbol = None
+    number = None
+
+    if isinstance(input_element, int):
+        symbol = symbol_by_number[input_element]
+        number = input_element
+    elif isinstance(input_element, str):
+        symbol = input_element
+        try:
+            number = number_by_symbol[symbol]
+        except KeyError:
+            symbol = input_element.capitalize()
+            number = number_by_symbol[symbol]
+
+    if symbol is None or number is None:
+        raise ValueError('Could not identify element {0}'.format(input_element))
+
+    mass_list = mass_by_symbol[symbol]
+
+    if isotope is not None:
+        # a specific isotope is required
+        for iso_mass in mass_list:
+            if iso_mass[0] == isotope:
+                mass = iso_mass[1]
+                break
+        else:
+            raise ValueError("Could not find requested isotope {0} for element {1}".format(isotope, symbol))
+    else:
+        # no specific isotope is required
+        if len(mass_list[0]) == 2:
+            # isotope weight is unavailable, use the first entry
+            mass = mass_list[0][1]
+            logging.warning('Assuming isotope {0} is representative of element {1}'.format(mass_list[0][0], symbol))
+        else:
+            # use the most common isotope
+            max_weight = mass_list[0][2]
+            mass = mass_list[0][1]
+            for iso_mass in mass_list:
+                if iso_mass[2] > max_weight:
+                    max_weight = iso_mass[2]
+                    mass = iso_mass[1]
+    return mass, number
+
+
+def read_element_dicts() -> Tuple[dict, dict, dict]:
+    """
+    Read the element dictionaries from the elements.yml data file.
+
+    Returns: Tuple[dict, dict, dict]
+        - A dictionary of element symbol by name.
+        - A dictionary of element number by symbol.
+        - A dictionary of element mass by symbol, including isotope and occurrence frequency.
+    """
+    elements_path = os.path.join(ARC_PATH, 'data', 'elements.yml')
+    contents = read_yaml_file(elements_path)
+    symbol_by_number = contents['symbol_by_number']
+    number_by_symbol = {value: key for key, value in symbol_by_number.items()}
+    mass_by_symbol = contents['mass_by_symbol']
+    return symbol_by_number, number_by_symbol, mass_by_symbol
+
+
+SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL = read_element_dicts()
+
+
 # A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
@@ -701,6 +774,23 @@ def determine_symmetry(xyz: dict) -> Tuple[int, int]:
         symmetry = pg.symmetry_number
         optical_isomers = 2 if pg.chiral else optical_isomers
     return symmetry, optical_isomers
+
+
+def is_obj_of_rmg_species_type(obj: Any) -> bool:
+    """
+    Check whether the object is of RMG Species type.
+
+    Args:
+        obj (Any): The object to check.
+
+    Returns:
+        bool: ``True`` if the object is of RMG Species type, ``False`` otherwise.
+    """
+    return (
+        hasattr(obj, 'molecule') and
+        isinstance(obj.molecule, list) and
+        all(str(mol) == "Molecule" for mol in obj.molecule)
+    )
 
 
 def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]:
@@ -945,8 +1035,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
 
 def almost_equal_coords(xyz1: dict,
                         xyz2: dict,
-                        rtol: float = 1e-05,
-                        atol: float = 1e-08,
+                        rtol: float = 1e-03,
+                        atol: float = 1e-04,
                         ) -> bool:
     """
     A helper function for checking whether two xyz's are almost equal. Also checks equal symbols.
@@ -975,8 +1065,8 @@ def almost_equal_coords(xyz1: dict,
 
 def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
                               xyz2: Union[List[dict], dict],
-                              rtol: float = 1e-05,
-                              atol: float = 1e-08,
+                              rtol: float = 1e-03,
+                              atol: float = 1e-04,
                               ) -> bool:
     """
     A helper function for checking two lists of xyzs has at least one entry in each that is almost equal.
@@ -1509,7 +1599,7 @@ def rmg_mol_from_dict_repr(representation: dict,
     return mol
 
 
-def generate_resonance_structures(object_: Union['Species', Molecule],
+def generate_resonance_structures(object_: Molecule,
                                   keep_isomorphic: bool = False,
                                   filter_structures: bool = True,
                                   save_order: bool = True,
@@ -1518,7 +1608,7 @@ def generate_resonance_structures(object_: Union['Species', Molecule],
     Safely generate resonance structures for either an RMG Molecule or an RMG Species object instances.
 
     Args:
-        object_ (Species, Molecule): The object to generate resonance structures for.
+        object_ (Species, Molecule): The object (RMG Species or ARC Molecule)to generate resonance structures for.
         keep_isomorphic (bool, optional): Whether to keep isomorphic isomers.
         filter_structures (bool, optional): Whether to filter resonance structures.
         save_order (bool, optional): Whether to make sure atom order is preserved.
@@ -1648,7 +1738,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
 def is_xyz_mol_match(mol: 'Molecule',
                      xyz: dict) -> bool:
     """
-    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    A helper function that matches RMG's Molecule object to an xyz,
     used in _scissors to match xyz and the cut products.
     This function only checks the molecular formula.
 

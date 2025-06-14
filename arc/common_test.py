@@ -10,17 +10,16 @@ import datetime
 import os
 import time
 import unittest
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 from random import shuffle
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.species import Species
-
 import arc.common as common
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
+from arc.molecule import Molecule
 import arc.species.converter as converter
 from arc.species.species import ARCSpecies
 
@@ -596,6 +595,13 @@ class TestCommon(unittest.TestCase):
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}""")
 
+    def test_get_element_mass(self):
+        """Test determining the mass of an atom"""
+        self.assertEqual(common.get_element_mass('H'), (1.00782503224, 1))
+        self.assertEqual(common.get_element_mass('C'), (12.0000000, 12))
+        self.assertEqual(common.get_element_mass('C', 13), (13.00335483507, 12))
+        self.assertEqual(common.get_element_mass('O'), (15.99491461957, 16))
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
@@ -871,6 +877,21 @@ class TestCommon(unittest.TestCase):
         symmetry, optical_isomers = common.determine_symmetry(xyz=symmetric_chiral.get_xyz())
         self.assertEqual(symmetry, 2)
         self.assertEqual(optical_isomers, 2)
+
+    def test_is_obj_of_rmg_species_type(self):
+        """Test whether an object is of the RMG Species type."""
+        class MockSpecies(object):
+            def __init__(self, label: str, molecule: Optional[List[Molecule]]):
+                self.label = label
+                self.molecule = molecule
+        arc_species = ARCSpecies(label='test_species', smiles='C')
+        mock_species = MockSpecies(label='test_species', molecule=[arc_species.mol])
+        self.assertFalse(common.is_obj_of_rmg_species_type(arc_species))
+        self.assertTrue(common.is_obj_of_rmg_species_type(mock_species))
+        self.assertFalse(common.is_obj_of_rmg_species_type('not a species'))
+        self.assertFalse(common.is_obj_of_rmg_species_type(12345))
+        self.assertFalse(common.is_obj_of_rmg_species_type(None))
+
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
@@ -1197,13 +1218,6 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(len(mol_list), 2)
         self.assertIsInstance(mol_list[0], Molecule)
         self.assertIsInstance(mol_list[1], Molecule)
-
-        spc = Species(smiles='[N-]=[N+]=O')
-        result = common.generate_resonance_structures(spc)
-        self.assertIsNone(result)
-        self.assertEqual(len(spc.molecule), 2)
-        self.assertIsInstance(spc.molecule[0], Molecule)
-        self.assertIsInstance(spc.molecule[1], Molecule)
 
     def test_calc_rmsd(self):
         """Test compute the root-mean-square deviation between two matrices."""

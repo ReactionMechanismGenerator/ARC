@@ -19,10 +19,10 @@ import py3Dmol as p3D
 import qcelemental as qcel
 from rdkit import Chem
 
-from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.transport import TransportLibrary
-from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
-from rmgpy.quantity import ScalarQuantity
+from molecule.data.thermo import ThermoLibrary
+from molecule.data.transport import TransportLibrary
+from molecule.exceptions import DatabaseError, InvalidAdjacencyListError
+from molecule.quantity import ScalarQuantity
 
 from arc.common import (calculate_arrhenius_rate_coefficient,
                         extremum_list,
@@ -36,7 +36,7 @@ from arc.common import (calculate_arrhenius_rate_coefficient,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
-from arc.exceptions import InputError, SanitizationError
+from arc.exceptions import DatabaseError, InputError, SanitizationError, InvalidAdjacencyListError
 from arc.level import Level
 from arc.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
@@ -526,9 +526,7 @@ def draw_kinetics_plots(rxn_list: list,
         T_max = (3000, 'K')
     elif isinstance(T_max, (int, float)):
         T_max = (T_min, 'K')
-    T_min = ScalarQuantity(value=T_min[0], units=T_min[1])
-    T_max = ScalarQuantity(value=T_max[0], units=T_max[1])
-    temperatures = np.linspace(T_min.value_si, T_max.value_si, T_count)
+    temperatures = np.linspace(T_min[0], T_max[0], T_count)
 
     pp = None
     if path is not None:
