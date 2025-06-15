@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -eo pipefail
-set -x  # Echo commands
 
 ENV_NAME="arc_env"
 
@@ -29,7 +28,7 @@ else
 fi
 
 # Compile ARC’s in-repo Cython module
-cd "$(dirname "${BASH_SOURCE[0]}")/../arc/molecule"
+cd "$(dirname "${BASH_SOURCE[0]}")/../"
 python setup.py build_ext --inplace --verbose
 cd ../../  # Return to ARC root
 
