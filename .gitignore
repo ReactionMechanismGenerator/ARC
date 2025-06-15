@@ -11,6 +11,8 @@
 *.pyc
 *.so
 *.pyd
+*.c
+*.html
 
 # PyCharm project files
 .idea/*
