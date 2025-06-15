@@ -9,7 +9,7 @@ DEVTOOLS_DIR := devtools
 .PHONY: all help clean test test-unittests test-functional test-all \
         install-all install-molecule install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
-        lite check-env
+        lite check-env compile
 
 # Default target
 all: help
@@ -40,6 +40,7 @@ help:
 	@echo "  lite             Run lite installation (no tests)"
 	@echo "  clean            Clean build artifacts"
 	@echo "  delete           Delete cloned repositories (inc. RMG and molecule)"
+	@echo "  compile          Compile ARC's Cython module (arc.molecule)"
 	@echo ""
 	@echo "Diagnostics:"
 	@echo "  check-env        Show Python environment info"
@@ -104,3 +105,6 @@ check-env:
 	@echo "Python binary:"; which python
 	@echo "Python version:"; python -V
 	@echo "PYTHONPATH:"; echo $$PYTHONPATH
+
+compile:
+	bash $(DEVTOOLS_DIR)/compile.sh
