@@ -41,7 +41,7 @@ else
 fi
 
 # Compile ARC’s in-repo Cython module
-cd "$(dirname "${BASH_SOURCE[0]}")/arc/molecule"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 python setup.py build_ext --inplace --verbose 2>&1 | tee "$LOGDIR/arc_molecule_build.log"
 cd ../../  # Return to ARC root
 
