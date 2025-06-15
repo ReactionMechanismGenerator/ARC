@@ -25,7 +25,7 @@ except ImportError:
     print('NumPy is required to compile the molecule module in ARC.')
     raise
 
-Options.annotate = True
+Options.annotate = False  # HTML annotation
 
 directives = {
     'language_level': 3,
@@ -56,6 +56,6 @@ setup(
     description='ARC Molecule Cython components',
     author='ARC Developers',
     packages=find_packages(include=['arc.molecule', 'arc.molecule.*']),
-    ext_modules=cythonize(ext_modules, build_dir='build', compiler_directives=directives),
+    ext_modules=cythonize(ext_modules, compiler_directives=directives),
     include_dirs=['.', numpy.get_include()],
 )
