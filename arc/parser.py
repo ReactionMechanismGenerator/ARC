@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from rmgpy.exceptions import InputError as RMGInputError
+from molecule.exceptions import InputError as RMGInputError
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
@@ -787,7 +787,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         try:
             log = ess_factory(fullpath=path, check_for_errors=False)
             ess_file = True
-        except (InputError, RMGInputError):
+        except InputError:
             ess_file = False
 
     if ess_file:
