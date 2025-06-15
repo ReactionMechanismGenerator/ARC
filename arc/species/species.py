@@ -9,20 +9,9 @@ import os
 from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
-import molecule.molecule.element as elements
-from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import is_linear
-from molecule.exceptions import AtomTypeError, InvalidAdjacencyListError
-from molecule.molecule.molecule import Atom, Molecule
-from molecule.molecule.resonance import generate_kekule_structure
-from molecule.species import Species
-from molecule.statmech import NonlinearRotor, LinearRotor
-from molecule.transport import TransportData
-
 from arc.common import (SYMBOL_BY_NUMBER,
                         almost_equal_coords,
                         convert_list_index_0_to_1,
-                        determine_symmetry,
                         dfs,
                         get_logger,
                         get_single_bond_length,
@@ -30,16 +19,15 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         is_angle_linear,
                         is_obj_of_rmg_species_type,
                         read_yaml_file,
-                        rmg_mol_from_dict_repr,
-                        rmg_mol_to_dict_repr,
                         timedelta_from_str,
                         sort_atoms_in_descending_label_order,
                         )
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError
-from arc.imports import settings
+from arc.imports import home, settings
 from arc.level import Level
 import arc.molecule.element as elements
-from arc.molecule.molecule import Atom, Molecule
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_kekule_structure
 from arc.parser import (parse_1d_scan_energies,
                         parse_dipole_moment,
@@ -2744,3 +2732,123 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
         fragments.append(frag_indices)
     return molecules, fragments
+
+
+def rmg_mol_from_dict_repr(representation: dict,
+                           is_ts: bool = False,
+                           ) -> Optional[Molecule]:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
+        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
+
+    Returns:
+        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
+
+    """
+    mol = Molecule(multiplicity=representation['multiplicity'],
+                   props=representation['props'])
+    atoms = {atom_dict['id']: Atom(element=elements.get_element(value=atom_dict['element']['number'],
+                                                       isotope=atom_dict['element']['isotope']),
+                                   radical_electrons=atom_dict['radical_electrons'],
+                                   charge=atom_dict['charge'],
+                                   lone_pairs=atom_dict['lone_pairs'],
+                                   id=atom_dict['id'],
+                                   props=atom_dict['props'],
+                                   ) for atom_dict in representation['atoms']}
+    for atom_dict in representation['atoms']:
+        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
+    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
+    for i, atom_1 in enumerate(atoms.values()):
+        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
+            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
+            mol.add_bond(bond)
+    mol.update_atomtypes(raise_exception=False)
+    mol.update_multiplicity()
+    if not is_ts:
+        mol.identify_ring_membership()
+        mol.update_connectivity_values()
+    return mol
+
+
+def rmg_mol_to_dict_repr(mol: Molecule,
+                         reset_atom_ids: bool = False,
+                         testing: bool = False,
+                         ) -> dict:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        mol (Molecule): The RMG ``Molecule`` object instance.
+        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
+                                         Useful when copying the object to avoid duplicate atom IDs between
+                                         different object instances.
+        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
+
+    Returns:
+        dict: The corresponding dict representation.
+    """
+    mol = mol.copy(deep=True)
+    if testing:
+        counter = 0
+        for atom in mol.atoms:
+            atom.id = counter
+            counter += 1
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
+        mol.assign_atom_ids()
+    return {'atoms': [{'element': {'number': atom.element.number,
+                                   'isotope': atom.element.isotope,
+                                   },
+                       'radical_electrons': atom.radical_electrons,
+                       'charge': atom.charge,
+                       'label': atom.label,
+                       'lone_pairs': atom.lone_pairs,
+                       'id': atom.id,
+                       'props': atom.props,
+                       'atomtype': atom.atomtype.label,
+                       'edges': {atom_2.id: bond.order
+                                 for atom_2, bond in atom.edges.items()},
+                       } for atom in mol.atoms],
+            'multiplicity': mol.multiplicity,
+            'props': mol.props,
+            'atom_order': [atom.id for atom in mol.atoms]
+            }
+
+
+def determine_symmetry(xyz: dict) -> Tuple[int, int]:
+    """
+    Determine external symmetry and chirality (optical isomers) of the species.
+
+    Args:
+        xyz (dict): The 3D coordinates.
+
+    Returns: Tuple[int, int]
+        - The external symmetry number.
+        - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
+    """
+    atom_numbers = list()
+    for symbol in xyz['symbols']:
+        atom_numbers.append(get_element(symbol).number)
+    # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
+    coords = np.array(xyz['coords'], np.float64)
+    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
+    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
+    if not os.path.exists(scr_dir):
+        os.makedirs(scr_dir)
+    symmetry = optical_isomers = 1
+    qmdata = QMData(
+        groundStateDegeneracy=1,  # Only needed to check if valid QMData.
+        numberOfAtoms=len(atom_numbers),
+        atomicNumbers=atom_numbers,
+        atomCoords=(coords, 'angstrom'),
+        energy=(0.0, 'kcal/mol')  # Dummy
+    )
+    symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
+    pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)
+    pg = pgc.calculate()
+    if pg is not None:
+        symmetry = pg.symmetry_number
+        optical_isomers = 2 if pg.chiral else optical_isomers
+    return symmetry, optical_isomers
