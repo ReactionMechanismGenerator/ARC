@@ -8,8 +8,6 @@ This module contains unit tests of the arc.reaction.family module
 import os
 import unittest
 
-from rmgpy.molecule import Group, Molecule
-
 from arc.common import generate_resonance_structures
 from arc.family.family import (ReactionFamily,
                                ARC_FAMILIES_PATH,
@@ -31,6 +29,7 @@ from arc.family.family import (ReactionFamily,
                                is_own_reverse,
                                is_reversible,
                                )
+from arc.molecule import Group, Molecule
 from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
