@@ -97,6 +97,7 @@ lite:
 
 clean:
 	bash $(DEVTOOLS_DIR)/clean.sh
+	@ python utilities.py clean
 
 delete:
 	bash $(DEVTOOLS_DIR)/delete.sh
@@ -107,4 +108,8 @@ check-env:
 	@echo "PYTHONPATH:"; echo $$PYTHONPATH
 
 compile:
-	bash $(DEVTOOLS_DIR)/compile.sh
+	# bash $(DEVTOOLS_DIR)/compile.sh
+	@echo "Compiling ARC's Cython module (arc.molecule)..."
+	@ python utilities.py check-python
+	python setup.py build_ext --inplace --build-temp .
+	@ python utilities.py check-dependencies

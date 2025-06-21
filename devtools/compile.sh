@@ -22,6 +22,9 @@ fi
 if [[ "$COMMAND_PKG" == "micromamba" ]]; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate "$ENV_NAME"
+elif [[ "$COMMAND_PKG" == "mamba" ]]; then
+    eval "$(mamba shell hook --shell=bash)"
+    mamba activate "$ENV_NAME"
 else
     source "$($COMMAND_PKG info --base)/etc/profile.d/conda.sh"
     conda activate "$ENV_NAME"

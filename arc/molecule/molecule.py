@@ -7,10 +7,12 @@ describe the corresponding atom or bond.
 """
 
 import itertools
+import logging
 import os
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
 from urllib.parse import quote
+from operator import attrgetter
 
 import cython
 import numpy as np
@@ -21,7 +23,6 @@ import arc.molecule.element as elements
 import arc.molecule.group as gr
 import arc.molecule.resonance as resonance
 import arc.molecule.translator as translator
-from arc.common import get_logger
 from arc.exceptions import DependencyError
 from arc.molecule.adjlist import Saturator
 from arc.molecule.atomtype import AtomType, ATOMTYPES, get_atomtype, AtomTypeError
@@ -31,8 +32,11 @@ from arc.molecule.kekulize import kekulize
 from arc.molecule.pathfinder import find_shortest_path
 from arc.molecule.fragment import CuttingLabel
 
+################################################################################
 
-logger = get_logger()
+# helper function for sorting
+def _skip_first(in_tuple):
+    return in_tuple[1:]
 
 bond_orders = {'S': 1, 'D': 2, 'T': 3, 'B': 1.5}
 
@@ -1002,7 +1006,7 @@ class Molecule(Graph):
         self.facet = facet
 
         if inchi and smiles:
-            logger.warning('Both InChI and SMILES provided for Molecule instantiation, '
+            logging.warning('Both InChI and SMILES provided for Molecule instantiation, '
                             'using InChI and ignoring SMILES.')
         if inchi:
             self.from_inchi(inchi)
@@ -1065,7 +1069,7 @@ class Molecule(Graph):
                 return 'Molecule(smiles="{0}", multiplicity={1:d})'.format(self.to_smiles(), multiplicity)
             return 'Molecule(smiles="{0}")'.format(self.to_smiles())
         except KeyError:
-            logger.warning('Could not generate SMILES for this molecule object.'
+            logging.warning('Could not generate SMILES for this molecule object.'
                             ' Likely due to a keyerror when converting to RDKit'
                             ' Here is molecules AdjList: {}'.format(self.to_adjacency_list()))
             return 'Molecule().from_adjacency_list"""{}"""'.format(self.to_adjacency_list())
@@ -1494,7 +1498,7 @@ class Molecule(Graph):
                 atom.atomtype = get_atomtype(atom, atom.edges)
             except AtomTypeError:
                 if log_species:
-                    logger.error("Could not update atomtypes for this molecule:\n{0}".format(self.to_adjacency_list()))
+                    logging.error("Could not update atomtypes for this molecule:\n{0}".format(self.to_adjacency_list()))
                 if raise_exception:
                     raise
                 atom.atomtype = ATOMTYPES['R']
@@ -1853,7 +1857,7 @@ class Molecule(Graph):
         Skips the first line (assuming it's a label) unless `withLabel` is
         ``False``.
         """
-        from arc.molecule.adjlist import from_adjacency_list
+        from rmgpy.molecule.adjlist import from_adjacency_list
 
         self.vertices, self.multiplicity, self.metal, self.facet = from_adjacency_list(adjlist, group=False, saturate_h=saturate_h,
                                                                check_consistency=check_consistency)
@@ -1929,7 +1933,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_augmented_inchi(self, backend='rdkit-first'):
@@ -1946,7 +1950,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend, aug_level=2)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_inchi_key(self, backend='rdkit-first'):
@@ -1966,7 +1970,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_augmented_inchi_key(self, backend='rdkit-first'):
@@ -1984,7 +1988,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend, aug_level=2)
         except:
-            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_smarts(self):
@@ -2021,7 +2025,7 @@ class Molecule(Graph):
         """
         Convert the molecular structure to a string adjacency list.
         """
-        from arc.molecule.adjlist import to_adjacency_list
+        from rmgpy.molecule.adjlist import to_adjacency_list
         result = to_adjacency_list(self.vertices, self.multiplicity, metal=self.metal, facet=self.facet, 
                                    label=label, group=False, remove_h=remove_h,
                                    remove_lone_pairs=remove_lone_pairs, old_style=old_style)
@@ -2243,7 +2247,7 @@ class Molecule(Graph):
         Return the symmetry number for the structure. The symmetry number
         includes both external and internal modes.
         """
-        from arc.molecule.symmetry import calculate_symmetry_number
+        from rmgpy.molecule.symmetry import calculate_symmetry_number
         self.update_connectivity_values()  # for consistent results
         self.symmetry_number = calculate_symmetry_number(self)
         return self.symmetry_number
@@ -2314,7 +2318,7 @@ class Molecule(Graph):
                                                        save_order=save_order,
                                                        )
         except:
-            logger.warning("Resonance structure generation failed for {}".format(self))
+            logging.warning("Resonance structure generation failed for {}".format(self))
             return [self.copy(deep=True)]
 
     def get_url(self):
@@ -2352,7 +2356,7 @@ class Molecule(Graph):
                 atom1.lone_pairs = (elements.PeriodicSystem.valence_electrons[atom1.symbol]
                                    - atom1.radical_electrons - atom1.charge - int(order)) / 2.0
                 if atom1.lone_pairs % 1 > 0 or atom1.lone_pairs > 4:
-                    logger.error("Unable to determine the number of lone pairs for "
+                    logging.error("Unable to determine the number of lone pairs for "
                                   "element {0} in {1}".format(atom1, self))
 
     def get_net_charge(self):
@@ -2523,7 +2527,20 @@ class Molecule(Graph):
             rings = self.get_relevant_cycles()
 
         # Remove rings that share more than 3 atoms, since they cannot be planar
-        rings = filter_fused_rings(rings)
+        cython.declare(toRemove=set, j=cython.int, toRemoveSorted=list)
+        if len(rings) < 2:
+            pass
+        else:
+            to_remove = set()
+            for i, j in itertools.combinations(range(len(rings)), 2):
+                if len(set(rings[i]) & set(rings[j])) > 2:
+                    to_remove.add(i)
+                    to_remove.add(j)
+
+            to_remove_sorted = sorted(to_remove, reverse=True)
+
+            for i in to_remove_sorted:
+                del rings[i]
 
         # Only keep rings with exactly 6 atoms, since RMG can only handle aromatic benzene
         rings = [ring for ring in rings if len(ring) == 6]
@@ -2534,7 +2551,7 @@ class Molecule(Graph):
         try:
             rdkitmol, rd_atom_indices = converter.to_rdkit_mol(self, remove_h=False, return_mapping=True, save_order=save_order)
         except ValueError:
-            logger.warning('Unable to check aromaticity by converting to RDKit Mol.')
+            logging.warning('Unable to check aromaticity by converting to RDKit Mol.')
         else:
             aromatic_rings = []
             aromatic_bonds = []
@@ -2559,11 +2576,11 @@ class Molecule(Graph):
 
             return aromatic_rings, aromatic_bonds
 
-        logger.info('Trying to use OpenBabel to check aromaticity.')
+        logging.info('Trying to use OpenBabel to check aromaticity.')
         try:
             obmol, ob_atom_ids = converter.to_ob_mol(self, return_mapping=True, save_order=save_order)
         except DependencyError:
-            logger.warning('Unable to check aromaticity by converting for OB Mol.')
+            logging.warning('Unable to check aromaticity by converting for OB Mol.')
             return [], []
         else:
             aromatic_rings = []
@@ -2659,9 +2676,7 @@ class Molecule(Graph):
                     tup = (vertex, get_vertex_connectivity_value(vertex), -origin_conn_dict[vertex])
                     root_candidates_tups.append(tup)
 
-                # Explicit sort without lambda
-                root_candidates_tups.sort(key=_root_candidates_sort_key, reverse=True)
-                root_vertex = root_candidates_tups[0][0]
+                root_vertex = sorted(root_candidates_tups, key=_skip_first, reverse=True)[0][0]
 
                 # Get all cycles involving the root vertex
                 cycles = graph0.get_all_cycles(root_vertex)
@@ -2673,19 +2688,12 @@ class Molecule(Graph):
                 # Keep the smallest of the cycles found above
                 cycle_candidate_tups = []
                 for cycle0 in cycles:
-                    sum_conn_dict = 0
-                    sum_element_number = 0
-                    sum_bond_order = 0
-                    for v in cycle0:
-                        sum_conn_dict += origin_conn_dict[v]
-                        sum_element_number += v.element.number
-                        sum_bond_order += v.get_total_bond_order()
-                    tup = (cycle0, len(cycle0), -sum_conn_dict, -sum_element_number, -sum_bond_order)
+                    tup = (cycle0, len(cycle0), -sum([origin_conn_dict[v] for v in cycle0]),
+                           -sum([v.element.number for v in cycle0]),
+                           -sum([v.get_total_bond_order() for v in cycle0]))
                     cycle_candidate_tups.append(tup)
 
-                # Explicit sort without lambda
-                cycle_candidate_tups.sort(key=_cycle_candidate_sort_key)
-                cycle = cycle_candidate_tups[0][0]
+                cycle = sorted(cycle_candidate_tups, key=_skip_first)[0][0]
 
                 cycle_list.append(cycle)
 
@@ -2756,35 +2764,31 @@ class Molecule(Graph):
         If ``strict=False``, performs the check ignoring electrons and resonance structures.
         """
         cython.declare(atom_ids=set, other_ids=set, atom_list=list, other_list=list, mapping=dict)
-        from arc.molecule.fragment import Fragment
+        from rmgpy.molecule.fragment import Fragment
 
         if not isinstance(other, (Molecule, Fragment)):
             raise TypeError(
                 'Got a {0} object for parameter "other", when a Molecule object is required.'.format(other.__class__))
 
-        # Explicitly construct atom_ids and other_ids sets
-        atom_ids = set()
-        for atom in self.atoms:
-            atom_ids.add(atom.id)
+        # Get a set of atom indices for each molecule
+        atom_ids = set([atom.id for atom in self.atoms])
+        other_ids = set([atom.id for atom in other.atoms])
 
-        other_ids = set()
-        for atom in other.atoms:
-            other_ids.add(atom.id)
+        if atom_ids == other_ids:
+            # If the two molecules have the same indices, then they might be identical
+            # Sort the atoms by ID
+            atom_list = sorted(self.atoms, key=attrgetter('id'))
+            other_list = sorted(other.atoms, key=attrgetter('id'))
 
-        if atom_ids != other_ids:
+            # If matching atom indices gives a valid mapping, then the molecules are fully identical
+            mapping = {}
+            for atom1, atom2 in zip(atom_list, other_list):
+                mapping[atom1] = atom2
+
+            return self.is_mapping_valid(other, mapping, equivalent=True, strict=strict)
+        else:
+            # The molecules don't have the same set of indices, so they are not identical
             return False
-
-        # Explicit sort without lambda
-        atom_list = list(self.atoms)
-        atom_list.sort(key=_atom_sort_key)
-        other_list = list(other.atoms)
-        other_list.sort(key=_atom_sort_key)
-
-        mapping = {}
-        for i in range(len(atom_list)):
-            mapping[atom_list[i]] = other_list[i]
-
-        return self.is_mapping_valid(other, mapping, equivalent=True, strict=strict)
 
     def get_nth_neighbor(self, starting_atoms, distance_list, ignore_list=None, n=1):
         """
@@ -2963,48 +2967,12 @@ class Molecule(Graph):
                 desorbed_molecule.update()
             except AtomTypeError:
                 desorbed_molecules.remove(desorbed_molecule)
-                logger.debug(f"Removing {desorbed_molecule} from possible structure list:\n{desorbed_molecule.to_adjacency_list()}")
+                logging.debug(f"Removing {desorbed_molecule} from possible structure list:\n{desorbed_molecule.to_adjacency_list()}")
             else:
-                logger.debug("After removing from surface:\n" + desorbed_molecule.to_adjacency_list())
+                logging.debug("After removing from surface:\n" + desorbed_molecule.to_adjacency_list())
 
         return desorbed_molecules
 
 # this variable is used to name atom IDs so that there are as few conflicts by 
 # using the entire space of integer objects
 atom_id_counter = -2 ** 15
-
-
-def filter_fused_rings(_rings):
-    """
-    Given a list of rings, remove ones which share more than 2 atoms.
-    """
-    cython.declare(toRemove=set, i=cython.int, j=cython.int, toRemoveSorted=list)
-
-    if len(_rings) < 2:
-        return _rings
-
-    to_remove = set()
-    for i, j in itertools.combinations(range(len(_rings)), 2):
-        if len(set(_rings[i]) & set(_rings[j])) > 2:
-            to_remove.add(i)
-            to_remove.add(j)
-
-    to_remove_sorted = sorted(to_remove, reverse=True)
-
-    for i in to_remove_sorted:
-        del _rings[i]
-
-    return _rings
-
-
-# Explicit sort key helper functions defined at module level
-def _root_candidates_sort_key(tup0):
-    return (tup0[1], tup0[2])
-
-
-def _cycle_candidate_sort_key(tup0):
-    return (tup0[1], tup0[2], tup0[3], tup0[4])
-
-
-def _atom_sort_key(atom):
-    return atom.id

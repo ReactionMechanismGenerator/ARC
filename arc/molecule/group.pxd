@@ -1,6 +1,9 @@
-from .graph cimport Vertex, Edge, Graph
-cimport arc.molecule.molecule as mol
 
+from .graph cimport Vertex, Edge, Graph
+from .atomtype cimport AtomType
+cimport arc.molecule.molecule as mol
+from cpython cimport bool
+################################################################################
 
 cdef class GroupAtom(Vertex):
 
@@ -45,10 +48,6 @@ cdef class GroupAtom(Vertex):
 
     cpdef bint is_bonded_to_surface(self) except -2
 
-    cpdef bint is_proton(self)
-
-    cpdef bint is_electron(self)
-
     cpdef bint is_oxygen(self)
 
     cpdef bint is_sulfur(self)
@@ -63,6 +62,7 @@ cdef class GroupAtom(Vertex):
 
     cpdef mol.Atom make_sample_atom(self)
 
+################################################################################
 
 cdef class GroupBond(Edge):
 
@@ -97,6 +97,7 @@ cdef class GroupBond(Edge):
 
     cpdef make_bond(self, mol.Molecule molecule, mol.Atom atom1, mol.Atom atom2)
 
+################################################################################
 
 cdef class Group(Graph):
 
@@ -163,10 +164,6 @@ cdef class Group(Graph):
 
     cpdef bint is_surface_site(self) except -2
 
-    cpdef bint is_proton(self)
-
-    cpdef bint is_electron(self)
-    
     cpdef bint contains_surface_site(self) except -2
 
     cpdef list get_surface_sites(self)
