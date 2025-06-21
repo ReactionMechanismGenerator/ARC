@@ -1,13 +1,15 @@
 cimport numpy as np
 
-cimport molecule.constants as constants
+cimport arc.constants as constants
 cimport arc.molecule.group as gr
 from arc.molecule.atomtype cimport AtomType
 from arc.molecule.element cimport Element
 from arc.molecule.graph cimport Vertex, Edge, Graph
 
-
+################################################################################
 cdef dict bond_orders 
+
+cdef tuple _skip_first(in_tuple)
 
 cdef class Atom(Vertex):
 

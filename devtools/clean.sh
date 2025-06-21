@@ -3,11 +3,6 @@ set -eo pipefail
 
 echo "🧹 Cleaning ARC, molecule, and RMG-Py build artifacts..."
 
-# Run make clean in molecule and RMG-Py if directories exist
-if [[ -d "molecule" ]]; then
-    echo "🧹 Running 'make clean' in molecule..."
-    (cd molecule && make clean)
-fi
 
 if [[ -d "RMG-Py" ]]; then
     echo "🧹 Running 'make clean' in RMG-Py..."
