@@ -56,6 +56,6 @@ setup(
     description='ARC Molecule Cython components',
     author='ARC Developers',
     packages=find_packages(include=['arc.molecule', 'arc.molecule.*']),
-    ext_modules=cythonize(ext_modules, compiler_directives=directives),
+    ext_modules=cythonize(ext_modules, build_dir='build', compiler_directives=directives),
     include_dirs=['.', numpy.get_include()],
 )

@@ -1771,7 +1771,7 @@ class Fragment(Molecule):
         return mapping
 
     def assign_representative_species(self):
-        from molecule.species import Species
+        from arc.molecule.species import Species
 
         self.assign_representative_molecule()
         self.species_repr = Species(molecule=[self.mol_repr])
