@@ -7,7 +7,7 @@
 DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
-        install-all install-molecule install-rmgdb install-autotst install-gcn \
+        install-all install-ci install-molecule install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
         lite check-env compile
 
@@ -25,6 +25,7 @@ help:
 	@echo ""
 	@echo "Installation:"
 	@echo "  install          Install all external dependencies"
+	@echo "  install-ci       Install all external dependencies for CI (no clean)"
 	@echo "  install-molecule Install molecule"
 	@echo "  install-rmgdb    Install RMG-database"
 	@echo "  install-autotst  Install AutoTST"
@@ -61,6 +62,10 @@ install-all: install
 install:
 	@echo "Installing all external ARC dependencies..."
 	bash $(DEVTOOLS_DIR)/install_all.sh
+
+install-ci:
+	@echo "Installing all external ARC dependencies for CI (no clean)..."
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean
 
 install-molecule:
 	bash $(DEVTOOLS_DIR)/install_molecule.sh
