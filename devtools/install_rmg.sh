@@ -66,18 +66,17 @@ export RMG_DB_PATH="$(realpath RMG-database)"
 ###############################################################################
 cd "$RMG_PY_PATH"
 echo "📚 Ensuring conda env: $ENV_NAME"
-
-if $COMMAND env list | grep -qE "^$ENV_NAME\s"; then
+if $COMMAND env list | grep -qE "(^|\s)$ENV_NAME(\s|$)"; then
     echo "📦 Updating existing env…"
     if [[ "$COMMAND" == micromamba ]]; then
-        $COMMAND env update -n "$ENV_NAME" --file environment.yml
+        $COMMAND env update -n "$ENV_NAME" -f environment.yml
     else
         $COMMAND env update -n "$ENV_NAME" -f environment.yml
     fi
 else
     echo "📦 Creating env from scratch…"
     if [[ "$COMMAND" == micromamba ]]; then
-        $COMMAND env create -n "$ENV_NAME" --file environment.yml
+        $COMMAND env create -n "$ENV_NAME" -f environment.yml
     else
         $COMMAND env create -n "$ENV_NAME" -f environment.yml
     fi
