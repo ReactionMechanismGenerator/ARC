@@ -32,33 +32,46 @@ jobs:
           large-packages: true
           swap-storage: true
 
-
-      - name: Set up micromamba and create arc_env
+      # ─── conda env (micromamba) ───────────────────────────────────────
+      - name: Set up micromamba
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
           cache-environment: true
           cache-downloads: true
-         # create-args: --strict-channel-priority
-          generate-run-shell: true
+          generate-run-shell: true   # creates `micromamba-shell {0}`
 
-      - name: Cache RMG-Py
-        uses: actions/cache@v4
-        with:
-          path: ../RMG-Py
-          key: rmg-py-${{ hashFiles('ARC/RMG_PY_COMMIT_HASH') }}
-          restore-keys: rmg-py-
+      - name: Export ARC paths
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PATH=$PWD:\$PATH"            >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$PWD:\$PYTHONPATH" >> "$GITHUB_ENV"
 
-      - name: Install RMG-Py
+      # ─── use the wrapper from now on ───────────────────────────────────
+      - name: Install RMG-Py + database
+        shell: micromamba-shell {0}
         working-directory: ARC
         run: |
           bash devtools/install_rmg.sh
+          echo "RMG_PY_PATH=$(realpath ../RMG-Py)"       >> $GITHUB_ENV
+          echo "RMG_DB_PATH=$(realpath ../RMG-database)" >> $GITHUB_ENV
+          echo "PATH=$(realpath ../RMG-Py):$PATH"        >> $GITHUB_ENV
 
-      - name: Install ARC external packages
+      # ─── optional: cache local RMG checkout (source speed-up) ──────────
+      - name: Cache RMG-Py source
+        uses: actions/cache@v4
+        with:
+          path: RMG-Py
+          key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
+          restore-keys: ${{ runner.os }}-rmgpy-
+
+      # ─── build ARC (Cython etc.) ───────────────────────────────────────
+      - name: Build ARC
+        shell: micromamba-shell {0}
         working-directory: ARC
-        run: |
-          make install
+        run: make install
 
       - name: Run Unit Tests
         working-directory: ARC
