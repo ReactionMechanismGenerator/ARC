@@ -1,89 +1,105 @@
 #!/usr/bin/env bash
-set -eo pipefail
+set -euo pipefail
 
-echo ">>> Installing RMG-Py and RMG-database..."
+echo ">>> Starting RMG-Py installer..."
 
-RMG_PY_REPO="https://github.com/ReactionMechanismGenerator/RMG-Py.git"
-RMG_DB_REPO="https://github.com/ReactionMechanismGenerator/RMG-database.git"
-INSTALL_DIR="$(realpath "$(pwd)/..")"
+###############################################################################
+# CONFIGURATION
+###############################################################################
+USE_SSH=false
+ENV_NAME="rmg_env"
 
-install_repo() {
-    local repo_url=$1
-    local repo_name=$2
-    cd "$INSTALL_DIR"
-    if [ -d "$repo_name" ]; then
-        echo "✔️ $repo_name exists. Checking for updates..."
-        cd "$repo_name"
-        REMOTE=$(git remote | grep -E '^(origin|official)$' | head -n1)
-        [ -n "$REMOTE" ] || { echo "❌ No valid remote for $repo_name"; exit 1; }
-        CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
-        if [ "$CURRENT_BRANCH" = "main" ]; then
-            git pull "$REMOTE" main
-        else
-            echo "ℹ️ Skipping update (branch=$CURRENT_BRANCH)"
-        fi
-    else
-        echo "📦 Cloning $repo_name..."
-        git clone "$repo_url" "$repo_name"
-    fi
-}
+# Parse flags
+for arg in "$@"; do
+    case $arg in
+        --ssh) USE_SSH=true ;;
+    esac
+done
 
-install_repo "$RMG_PY_REPO" "RMG-Py"
-install_repo "$RMG_DB_REPO" "RMG-database"
-
-RMG_PY_PATH="$INSTALL_DIR/RMG-Py"
-RMG_DB_PATH="$INSTALL_DIR/RMG-database"
-git -C "$RMG_PY_PATH" rev-parse HEAD > "$(pwd)/RMG_PY_COMMIT_HASH"
-
-export_to_bashrc() {
-    local var=$1 val=$2
-    if grep -q "^export $var=" ~/.bashrc; then
-        sed -i.bak "/^export $var=/c\\export $var=$val" ~/.bashrc
-    else
-        echo "export $var=$val" >> ~/.bashrc
-    fi
-    export "$var"="$val"
-}
-export_to_bashrc RMG_PY_PATH "$RMG_PY_PATH"
-export_to_bashrc RMG_DB_PATH "$RMG_DB_PATH"
-
-# Use libmamba + Julia 1.10
-conda install -n base conda-libmamba-solver -y
-conda config --set solver libmamba
-conda install -n base -c conda-forge julia=1.10 -y
-
-# Build RMG-Py
-cd "$RMG_PY_PATH"
-if ! conda env list | grep -q rmg_env; then
-    conda env create -f environment.yml
+# Detect conda frontend
+if command -v micromamba &>/dev/null; then
+    COMMAND=micromamba
+elif command -v mamba &>/dev/null; then
+    COMMAND=mamba
+elif command -v conda &>/dev/null; then
+    COMMAND=conda
+else
+    echo "❌ No conda/mamba/micromamba found in PATH."
+    exit 1
 fi
-eval "$(conda shell.bash hook)"
-conda activate rmg_env
-make install
 
-# Disable Julia precompile cache so we skip GPUCompiler/Enzyme errors
-export JULIA_LOAD_CACHE_PATH=""
-export JULIA_DEPOT_PATH="$HOME/.juliacache"
+echo "✔️ Using $COMMAND to manage environments"
 
-# Julia: install PyCall and ReactionMechanismSimulator
-julia -e '
-using Pkg
-Pkg.add("PyCall"); Pkg.build("PyCall")
-Pkg.add(PackageSpec(name="ReactionMechanismSimulator", rev="for_rmg"))
-Pkg.instantiate()
-'
+###############################################################################
+# CLONE REPOS (shallow)
+###############################################################################
+ARC_PATH="$(pwd)"
+PARENT_DIR="$(realpath "$ARC_PATH/..")"
+cd "$PARENT_DIR"
 
-# Test load (warnings only)
-julia -e 'try using ReactionMechanismSimulator; catch e println("⚠️ ", e) end'
+clone_repo() {
+    local repo_name=$1
+    local ssh_url=$2
+    local https_url=$3
+    if [[ -d "$repo_name" ]]; then
+        echo "✔️ $repo_name already exists, skipping clone"
+    else
+        local url="$([ "$USE_SSH" == true ] && echo "$ssh_url" || echo "$https_url")"
+        echo "📦 Cloning $repo_name with --depth 1"
+        git clone --depth 1 "$url" "$repo_name"
+    fi
+}
 
-# Python–Julia bridge
-eval "$(conda shell.bash hook)"
-conda activate rmg_env
-pip install --upgrade julia
-python - <<'PYCODE'
-import julia
-julia.install()
-print("✅ Julia bridge OK")
-PYCODE
+clone_repo RMG-Py \
+    git@github.com:ReactionMechanismGenerator/RMG-Py.git \
+    https://github.com/ReactionMechanismGenerator/RMG-Py.git
 
-echo "✅ RMG-Py and RMG-database installation completed successfully."
+clone_repo RMG-database \
+    git@github.com:ReactionMechanismGenerator/RMG-database.git \
+    https://github.com/ReactionMechanismGenerator/RMG-database.git
+
+export RMG_PY_PATH="$(realpath RMG-Py)"
+export RMG_DB_PATH="$(realpath RMG-database)"
+
+###############################################################################
+# CREATE ENVIRONMENT
+###############################################################################
+cd "$RMG_PY_PATH"
+echo "📚 Creating conda env: $ENV_NAME"
+$COMMAND env create -n "$ENV_NAME" -f environment.yml || {
+    echo "⚠️ Environment likely exists; trying update..."
+    $COMMAND env update -n "$ENV_NAME" -f environment.yml
+}
+
+###############################################################################
+# COMPILE RMG
+###############################################################################
+echo "🔧 Compiling RMG-Py..."
+$COMMAND run -n "$ENV_NAME" make -j"$(nproc)"
+
+###############################################################################
+# UPDATE SHELL PATH
+###############################################################################
+case "$SHELL" in
+    */zsh) RC=~/.zshrc ;;
+    *)     RC=~/.bashrc ;;
+esac
+
+if ! grep -q "$RMG_PY_PATH" "$RC"; then
+    echo "📌 Adding RMG-Py to \$PATH in $RC"
+    echo "export PATH=\"$RMG_PY_PATH:\$PATH\"" >> "$RC"
+fi
+
+###############################################################################
+# INSTALL JULIA INTO THE SAME ENV
+###############################################################################
+echo "📦 Installing Julia 1.10 in $ENV_NAME"
+$COMMAND install -n "$ENV_NAME" -c conda-forge julia=1.10
+
+###############################################################################
+# INSTALL RMS
+###############################################################################
+echo "🚀 Running install_rms.sh inside $ENV_NAME"
+$COMMAND run -n "$ENV_NAME" bash install_rms.sh
+
+echo "✅ RMG-Py installation complete."
