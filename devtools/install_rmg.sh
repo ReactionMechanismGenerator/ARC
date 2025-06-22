@@ -100,6 +100,6 @@ $COMMAND install -n "$ENV_NAME" -c conda-forge julia=1.10
 # INSTALL RMS
 ###############################################################################
 echo "🚀 Running install_rms.sh inside $ENV_NAME"
-$COMMAND run -n "$ENV_NAME" bash -c "bash install_rms.sh"
+$COMMAND run -n "$ENV_NAME" bash -c "source install_rms.sh"
 
 echo "✅ RMG-Py installation complete."
