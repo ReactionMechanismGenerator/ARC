@@ -65,10 +65,10 @@ jobs:
           key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
           restore-keys: ${{ runner.os }}-rmgpy-
 
-      - name: Install all extras
+      - name: Install all extras - CI
         shell: micromamba-shell {0}
         working-directory: ARC
-        run: bash devtools/install_all.sh --no-clean
+        run: make install-ci
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
