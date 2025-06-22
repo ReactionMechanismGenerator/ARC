@@ -33,7 +33,7 @@ jobs:
           swap-storage: true
 
       - name: Set up micromamba (arc_env)
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
