@@ -66,6 +66,15 @@ export RMG_DB_PATH="$(realpath RMG-database)"
 ###############################################################################
 cd "$RMG_PY_PATH"
 echo "📚 Ensuring conda env: $ENV_NAME"
+
+echo "DEBUG: COMMAND=$COMMAND  path=$(command -v $COMMAND)"
+echo "DEBUG: raw env list ↓"
+$COMMAND env list || echo "(env list exit $?)"
+echo "DEBUG: grep exit status: "
+$COMMAND env list | grep -qE "(^|[[:space:]])$ENV_NAME([[:space:]]|$)"
+echo $?
+
+
 if $COMMAND env list | grep -qE "(^|\s)$ENV_NAME(\s|$)"; then
     echo "📦 Updating existing env…"
     if [[ "$COMMAND" == micromamba ]]; then
