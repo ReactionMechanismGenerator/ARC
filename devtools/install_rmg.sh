@@ -118,6 +118,7 @@ fi
 ###############################################################################
 echo "📦 Installing Julia 1.10 in $ENV_NAME"
 $COMMAND install -n "$ENV_NAME" -c conda-forge julia=1.10
+$COMMAND install -n "$ENV_NAME" -c conda-forge juliaup
 
 ###############################################################################
 # INSTALL RMS
