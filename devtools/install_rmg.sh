@@ -71,8 +71,10 @@ echo "DEBUG: COMMAND=$COMMAND  path=$(command -v $COMMAND)"
 echo "DEBUG: raw env list ↓"
 $COMMAND env list || echo "(env list exit $?)"
 echo "DEBUG: grep exit status: "
+set +e
 $COMMAND env list | grep -qE "(^|[[:space:]])$ENV_NAME([[:space:]]|$)"
-
+echo "DEBUG grep exit = $?"
+set -e
 
 if $COMMAND env list | grep -qE "(^|[[:space:]])$ENV_NAME([[:space:]]|$)"; then
     echo "📦 Updating existing env…"
