@@ -105,6 +105,12 @@ jobs:
         shell: micromamba-shell {0}
         working-directory: ARC
         run: make install-ci
+      
+      - name: Compile ARC molecule
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          make compile
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
