@@ -68,7 +68,11 @@ cd "$RMG_PY_PATH"
 echo "📚 Creating conda env: $ENV_NAME"
 $COMMAND env create -n "$ENV_NAME" -f environment.yml || {
     echo "⚠️ Environment likely exists; trying update..."
-    $COMMAND env update -n "$ENV_NAME" -f environment.yml
+    if [[ "$COMMAND" == micromamba ]]; then
+        micromamba env update -n "$ENV_NAME" --file environment.yml
+    else
+        $COMMAND env update -n "$ENV_NAME" -f environment.yml
+    fi
 }
 
 ###############################################################################
