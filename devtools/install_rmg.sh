@@ -79,6 +79,8 @@ set -e
 if $COMMAND env list | grep -qE "(^|[[:space:]])$ENV_NAME([[:space:]]|$)"; then
     echo "📦 Updating existing env…"
     if [[ "$COMMAND" == micromamba ]]; then
+        micromamba env update --help | sed -n '1,60p'
+        echo "Current folder: $(pwd)"
         $COMMAND env update -n "$ENV_NAME" -f environment.yml
     else
         $COMMAND env update -n "$ENV_NAME" -f environment.yml
