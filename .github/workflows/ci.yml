@@ -41,6 +41,13 @@ jobs:
           cache-downloads: true
           generate-run-shell: true
 
+      - name: Install conda in micromamba base
+        shell: micromamba-shell {0}
+        run: |
+          echo "::group::Install conda in micromamba base"
+          micromamba install -n base -c conda-forge conda
+          echo "::endgroup::"
+
       - name: Export ARC paths
         shell: micromamba-shell {0}
         working-directory: ARC
