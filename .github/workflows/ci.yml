@@ -32,24 +32,22 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      # ─── conda env (micromamba) ───────────────────────────────────────
-      - name: Set up micromamba
+      - name: Set up micromamba (arc_env)
         uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
           cache-environment: true
           cache-downloads: true
-          generate-run-shell: true   # creates `micromamba-shell {0}`
+          generate-run-shell: true
 
       - name: Export ARC paths
         shell: micromamba-shell {0}
         working-directory: ARC
         run: |
-          echo "PATH=$PWD:\$PATH"            >> "$GITHUB_ENV"
-          echo "PYTHONPATH=$PWD:\$PYTHONPATH" >> "$GITHUB_ENV"
+          echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
 
-      # ─── use the wrapper from now on ───────────────────────────────────
       - name: Install RMG-Py + database
         shell: micromamba-shell {0}
         working-directory: ARC
@@ -58,8 +56,8 @@ jobs:
           echo "RMG_PY_PATH=$(realpath ../RMG-Py)"       >> $GITHUB_ENV
           echo "RMG_DB_PATH=$(realpath ../RMG-database)" >> $GITHUB_ENV
           echo "PATH=$(realpath ../RMG-Py):$PATH"        >> $GITHUB_ENV
+          echo "PYTHONPATH=$(realpath ../RMG-Py):$PYTHONPATH" >> $GITHUB_ENV
 
-      # ─── optional: cache local RMG checkout (source speed-up) ──────────
       - name: Cache RMG-Py source
         uses: actions/cache@v4
         with:
@@ -67,13 +65,13 @@ jobs:
           key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
           restore-keys: ${{ runner.os }}-rmgpy-
 
-      # ─── build ARC (Cython etc.) ───────────────────────────────────────
-      - name: Build ARC
+      - name: Build ARC (make install)
         shell: micromamba-shell {0}
         working-directory: ARC
         run: make install
 
       - name: Run Unit Tests
+        shell: micromamba-shell {0}
         working-directory: ARC
         run: |
           echo "Running Unit Tests..."
@@ -81,6 +79,7 @@ jobs:
           pytest arc/ --cov --cov-report=xml -ra -vv
 
       - name: Run Functional Tests
+        shell: micromamba-shell {0}
         working-directory: ARC
         run: |
           echo "Running Functional Tests..."
