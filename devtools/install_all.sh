@@ -1,5 +1,12 @@
-#!/bin/bash -l
+#!/usr/bin/env bash
 set -euo pipefail
+
+###################################################################################
+# Flag for cleaning
+#################################################################################
+SKIP_CLEAN=false
+[[ "${1:-}" == --no-clean ]] && SKIP_CLEAN=true
+
 
 # -----------------------------------------------------------------------------
 # Helper: aggressively clean conda/micromamba caches & remove any known build
@@ -41,18 +48,18 @@ pushd . >/dev/null
 # 1) RMG
 echo "=== Installing RMG ==="
 bash devtools/install_rmg.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 2) PyRDL
 echo "=== Installing PyRDL ==="
 bash devtools/install_pyrdl.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 3) ARC itself (skip env creation in CI)
 if [[ -z "${CI:-}" ]]; then
     echo "=== Installing ARC ==="
     bash devtools/install_arc.sh
-    cleanup_disk
+    ! $SKIP_CLEAN && cleanup_disk
 else
     echo "ℹ️ CI detected, skipping arc_env creation."
 fi
@@ -60,37 +67,37 @@ fi
 # 4) GCN (CPU)
 echo "=== Installing GCN CPU ==="
 bash devtools/install_gcn_cpu.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 5) AutoTST
 echo "=== Installing AutoTST ==="
 bash devtools/install_autotst.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 6) KinBot
 echo "=== Installing KinBot ==="
 bash devtools/install_kinbot.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 7) Open Babel
 echo "=== Installing OpenBabel ==="
 bash devtools/install_ob.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 8) xtb
 echo "=== Installing xtb ==="
 bash devtools/install_xtb.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 9) Sella
 echo "=== Installing Sella ==="
 bash devtools/install_sella.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 # 10) TorchANI
 echo "=== Installing TorchANI ==="
 bash devtools/install_torchani.sh
-cleanup_disk
+! $SKIP_CLEAN && cleanup_disk
 
 popd >/dev/null
 
