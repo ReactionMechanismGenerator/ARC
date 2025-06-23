@@ -1,0 +1,10 @@
+import arc.parser.adapters.common
+import arc.parser.adapters.gaussian
+import arc.parser.adapters.mockter
+import arc.parser.adapters.molpro
+import arc.parser.adapters.orca
+import arc.parser.adapters.obabel
+import arc.parser.adapters.qchem
+import arc.parser.adapters.terachem
+import arc.parser.adapters.torch_ani
+import arc.parser.adapters.xtb
