@@ -33,7 +33,9 @@ from rdkit.Chem import AllChem
 from arc.common import get_logger
 from arc.molecule.molecule import Atom, Molecule, Bond
 from arc.molecule.pathfinder import find_shortest_path
-from molecule.qm.molecule import Geometry
+# from molecule.qm.molecule import Geometry
+# TODO: Need to figure out the geometry import
+from rmgpy.qm.molecule import Geometry
 
 
 logger = get_logger()

@@ -11,7 +11,9 @@ import unittest
 
 from arc.molecule import Molecule
 from arc.molecule.draw import MoleculeDrawer
-from molecule.species import Species
+# from molecule.species import Species
+# TODO: This species is from Molecule github repo - so should we also be bringing it in?
+from rmgpy.species import Species
 
 
 class TestMoleculeDrawer(unittest.TestCase):
