@@ -443,13 +443,21 @@ class TestCommon(unittest.TestCase):
 
     def test_determine_ess(self):
         """Test the determine_ess function"""
-        gaussian = os.path.join(common.ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
-        qchem = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
-        molpro = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        gaussian_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        qchem_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        molpro_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        psi4_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.psi4.log')
+        terachem_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
+        xtb_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
+        orca_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'orca_example_freq.log')
 
-        self.assertEqual(common.determine_ess(gaussian), 'gaussian')
-        self.assertEqual(common.determine_ess(qchem), 'qchem')
-        self.assertEqual(common.determine_ess(molpro), 'molpro')
+        self.assertEqual(common.determine_ess(gaussian_path), 'gaussian')
+        self.assertEqual(common.determine_ess(qchem_path), 'qchem')
+        self.assertEqual(common.determine_ess(molpro_path), 'molpro')
+        self.assertEqual(common.determine_ess(psi4_path), 'psi4')
+        self.assertEqual(common.determine_ess(terachem_path), 'terachem')
+        self.assertEqual(common.determine_ess(xtb_path), 'xtb')
+        self.assertEqual(common.determine_ess(orca_path), 'orca')
 
     def test_sort_two_lists_by_the_first(self):
         """Test the sort_two_lists_by_the_first function"""

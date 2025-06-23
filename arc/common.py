@@ -5,7 +5,6 @@ to avoid circular imports.
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 """
-from __future__ import annotations
 
 import ast
 import datetime
@@ -21,7 +20,7 @@ import time
 import warnings
 import yaml
 from collections import deque
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -30,10 +29,6 @@ import qcelemental as qcel
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
 from arc.exceptions import AtomTypeError, ILPSolutionError, InputError, ResonanceError, SettingsError
 from arc.imports import settings
-
-# adding arkane imports temp until arkane is fully integrated into ARC
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-
 
 
 logger = logging.getLogger('arc')
@@ -116,27 +111,50 @@ def initialize_job_types(job_types: Optional[dict] = None,
 
 def determine_ess(log_file: str) -> str:
     """
-    Determine the ESS to which the log file belongs.
+    Determine the ESS that generated a specific output file.
 
     Args:
-        log_file (str): The ESS log file path.
+        log_file (str): The disk location of the output file of interest.
 
-    Returns: str
-        The ESS log class from Arkane.
+    Returns:
+        str: The ESS name, e.g., 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', or 'psi4'.
     """
-    log = ess_factory(log_file, check_for_errors=False)
-    if isinstance(log, GaussianLog):
-        return 'gaussian'
-    if isinstance(log, MolproLog):
-        return 'molpro'
-    if isinstance(log, OrcaLog):
-        return 'orca'
-    if isinstance(log, QChemLog):
-        return 'qchem'
-    if isinstance(log, TeraChemLog):
-        return 'terachem'
-    raise InputError(f'Could not identify the log file in {log_file} as belonging to '
-                     f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
+    ess_name = None
+    if log_file.endswith('.yml'):
+        content = read_yaml_file(log_file)
+        if isinstance(content, dict) and 'adapter' in content.keys():
+            return content['adapter']
+    if os.path.splitext(log_file)[-1] in ['.xyz', '.dat', '.geometry']:
+        ess_name = 'terachem'
+    else:
+        with open(log_file, 'r') as f:
+            line = f.readline().lower()
+            while ess_name is None and line != '':
+                if 'gaussian' in line:
+                    ess_name = 'gaussian'
+                    break
+                elif 'molpro' in line:
+                    ess_name = 'molpro'
+                    break
+                elif 'o   r   c   a' in line or 'orca' in line:
+                    ess_name = 'orca'
+                    break
+                elif 'psi4' in line or 'rob parrish' in line:
+                    ess_name = 'psi4'
+                    break
+                elif 'qchem' in line:
+                    ess_name = 'qchem'
+                    break
+                elif 'terachem' in line:
+                    ess_name = 'terachem'
+                    break
+                elif 'x T B' in line:
+                    ess_name = 'xtb'
+                    break
+                line = f.readline().lower()
+    if ess_name is None:
+        raise InputError(f'The ESS that generated the file at {log_file} could not be identified.')
+    return ess_name
 
 
 def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
