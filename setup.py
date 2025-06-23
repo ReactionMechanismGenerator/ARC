@@ -33,6 +33,7 @@ directives = {
 
 ext_modules = [
     Extension('arc.molecule.atomtype', ['arc/molecule/atomtype.py'], include_dirs=['.']),
+    Extension('arc.constants', ['arc/constants.py'], include_dirs=['.']),
     Extension('arc.molecule.element', ['arc/molecule/element.py'], include_dirs=['.']),
     Extension('arc.molecule.graph', ['arc/molecule/graph.pyx'], include_dirs=['.']),
     Extension('arc.molecule.group', ['arc/molecule/group.py'], include_dirs=['.']),
