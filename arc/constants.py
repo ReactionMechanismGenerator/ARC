@@ -9,6 +9,7 @@ The constants defined in this module are listed in the table below:
     Symbol                  Constant            Value                                                       Description
     ======================= =================== =========================================================== ============================================================
     :math:`E_\mathrm{h}`    :data:`E_h`         :math:`4.35974434 \times 10^{-18} \ \mathrm{J}`             Hartree energy
+    :math:`E_\mathrm{h, kJ/mol}` :data:`E_h_kJmol` :math:`2625.5 \ \mathrm{kJ/mol}`                         Hartree energy in kJ/mol
     :math:`F`               :data:`F`           :math:`96485.3365 \ \mathrm{C/mol}`                         Faraday constant
     :math:`G`               :data:`G`           :math:`6.67384 \times 10^{-11} \ \mathrm{m^3/kg \cdot s^2}` Newtonian gravitational constant
     :math:`N_\mathrm{A}`    :data:`Na`          :math:`6.02214179 \times 10^{23} \ \mathrm{mol^{-1}}`       Avogadro constant
@@ -24,18 +25,20 @@ The constants defined in this module are listed in the table below:
     :math:`m_\mathrm{n}`    :data:`m_n`         :math:`1.674927351 \times 10^{-27} \ \mathrm{kg}`           neutron rest mass
     :math:`m_\mathrm{p}`    :data:`m_p`         :math:`1.672621777 \times 10^{-27} \ \mathrm{kg}`           proton rest mass
     :math:`m_\mathrm{u}`    :data:`amu`         :math:`1.660538921 \times 10^{-27} \ \mathrm{kg}`           atomic mass unit
-    :math:`\pi`             :data:`pi`          :math:`3.14159 \ldots`      
+    :math:`\pi`             :data:`pi`          :math:`3.14159 \ldots`
     ======================= =================== =========================================================== ============================================================
 """
 
 import math
 
-
 #: The Hartree energy :math:`E_\mathrm{h}` in :math:`\mathrm{J}`
 E_h = 4.35974434e-18
 
-#: The Avogadro constant :math:`N_\mathrm{A}` in :math:`\mathrm{mol^{-1}}`       
+#: The Avogadro constant :math:`N_\mathrm{A}` in :math:`\mathrm{mol^{-1}}`
 Na = 6.02214179e23
+
+#: The Hartree energy in kJ/mol
+E_h_kJmol = E_h * Na / 1000  # 1 Hartree = 2625.5 kJ/mol
 
 #: The gas law constant :math:`R` in :math:`\mathrm{J/mol \cdot K}`
 R = 8.314472
@@ -70,15 +73,14 @@ m_n = 1.674927351e-27
 #: The mass of a proton :math:`m_\mathrm{p}` in :math:`\mathrm{kg}`
 m_p = 1.672621777e-27
 
-#: :math:`\pi = 3.14159 \ldots`      
+#: :math:`\pi = 3.14159 \ldots`
 pi = float(math.pi)
 
 #: Faradays Constant F in C/mol
 F = 96485.3321233100184
 
-#: Vacuum permittivity 
+#: Vacuum permittivity
 epsilon_0 = 8.8541878128
-
 
 # Cython does not automatically place module-level variables into the module
 # symbol table when in compiled mode, so we must do this manually so that we
@@ -86,6 +88,7 @@ epsilon_0 = 8.8541878128
 globals().update({
     'E_h': E_h,
     'Na': Na,
+    'E_h_kJmol': E_h_kJmol,
     'R': R,
     'a0': a0,
     'amu': amu,
