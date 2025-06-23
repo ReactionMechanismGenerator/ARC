@@ -41,7 +41,6 @@ from arc.common import (calculate_arrhenius_rate_coefficient,
                         is_notebook,
                         is_str_float,
                         read_yaml_file,
-                        rmg_mol_to_dict_repr,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
@@ -58,7 +57,7 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, rmg_mol_to_dict_repr
 
 
 R = 8.31446261815324  # J/(mol*K)
