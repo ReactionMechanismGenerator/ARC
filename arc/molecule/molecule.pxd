@@ -6,7 +6,7 @@ from arc.molecule.atomtype cimport AtomType
 from arc.molecule.element cimport Element
 from arc.molecule.graph cimport Vertex, Edge, Graph
 
-################################################################################
+
 cdef dict bond_orders 
 
 cdef tuple _skip_first(in_tuple)

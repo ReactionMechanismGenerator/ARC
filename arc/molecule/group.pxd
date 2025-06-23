@@ -3,7 +3,7 @@ from .graph cimport Vertex, Edge, Graph
 from .atomtype cimport AtomType
 cimport arc.molecule.molecule as mol
 from cpython cimport bool
-################################################################################
+
 
 cdef class GroupAtom(Vertex):
 
