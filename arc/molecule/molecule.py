@@ -7,7 +7,6 @@ describe the corresponding atom or bond.
 """
 
 import itertools
-import logging
 import os
 from collections import OrderedDict, defaultdict
 from copy import deepcopy
@@ -23,6 +22,7 @@ import arc.molecule.element as elements
 import arc.molecule.group as gr
 import arc.molecule.resonance as resonance
 import arc.molecule.translator as translator
+from arc.common import get_logger
 from arc.exceptions import DependencyError
 from arc.molecule.adjlist import Saturator
 from arc.molecule.atomtype import AtomType, ATOMTYPES, get_atomtype, AtomTypeError
@@ -32,7 +32,8 @@ from arc.molecule.kekulize import kekulize
 from arc.molecule.pathfinder import find_shortest_path
 from arc.molecule.fragment import CuttingLabel
 
-################################################################################
+
+logger = get_logger()
 
 # helper function for sorting
 def _skip_first(in_tuple):
@@ -1006,7 +1007,7 @@ class Molecule(Graph):
         self.facet = facet
 
         if inchi and smiles:
-            logging.warning('Both InChI and SMILES provided for Molecule instantiation, '
+            logger.warning('Both InChI and SMILES provided for Molecule instantiation, '
                             'using InChI and ignoring SMILES.')
         if inchi:
             self.from_inchi(inchi)
@@ -1069,7 +1070,7 @@ class Molecule(Graph):
                 return 'Molecule(smiles="{0}", multiplicity={1:d})'.format(self.to_smiles(), multiplicity)
             return 'Molecule(smiles="{0}")'.format(self.to_smiles())
         except KeyError:
-            logging.warning('Could not generate SMILES for this molecule object.'
+            logger.warning('Could not generate SMILES for this molecule object.'
                             ' Likely due to a keyerror when converting to RDKit'
                             ' Here is molecules AdjList: {}'.format(self.to_adjacency_list()))
             return 'Molecule().from_adjacency_list"""{}"""'.format(self.to_adjacency_list())
@@ -1498,7 +1499,7 @@ class Molecule(Graph):
                 atom.atomtype = get_atomtype(atom, atom.edges)
             except AtomTypeError:
                 if log_species:
-                    logging.error("Could not update atomtypes for this molecule:\n{0}".format(self.to_adjacency_list()))
+                    logger.error("Could not update atomtypes for this molecule:\n{0}".format(self.to_adjacency_list()))
                 if raise_exception:
                     raise
                 atom.atomtype = ATOMTYPES['R']
@@ -1933,7 +1934,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend)
         except:
-            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_augmented_inchi(self, backend='rdkit-first'):
@@ -1950,7 +1951,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi(self, backend=backend, aug_level=2)
         except:
-            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_inchi_key(self, backend='rdkit-first'):
@@ -1970,7 +1971,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend)
         except:
-            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_augmented_inchi_key(self, backend='rdkit-first'):
@@ -1988,7 +1989,7 @@ class Molecule(Graph):
         try:
             return translator.to_inchi_key(self, backend=backend, aug_level=2)
         except:
-            logging.exception(f"Error for molecule \n{self.to_adjacency_list()}")
+            logger.exception(f"Error for molecule \n{self.to_adjacency_list()}")
             raise
 
     def to_smarts(self):
@@ -2318,7 +2319,7 @@ class Molecule(Graph):
                                                        save_order=save_order,
                                                        )
         except:
-            logging.warning("Resonance structure generation failed for {}".format(self))
+            logger.warning("Resonance structure generation failed for {}".format(self))
             return [self.copy(deep=True)]
 
     def get_url(self):
@@ -2356,7 +2357,7 @@ class Molecule(Graph):
                 atom1.lone_pairs = (elements.PeriodicSystem.valence_electrons[atom1.symbol]
                                    - atom1.radical_electrons - atom1.charge - int(order)) / 2.0
                 if atom1.lone_pairs % 1 > 0 or atom1.lone_pairs > 4:
-                    logging.error("Unable to determine the number of lone pairs for "
+                    logger.error("Unable to determine the number of lone pairs for "
                                   "element {0} in {1}".format(atom1, self))
 
     def get_net_charge(self):
@@ -2551,7 +2552,7 @@ class Molecule(Graph):
         try:
             rdkitmol, rd_atom_indices = converter.to_rdkit_mol(self, remove_h=False, return_mapping=True, save_order=save_order)
         except ValueError:
-            logging.warning('Unable to check aromaticity by converting to RDKit Mol.')
+            logger.warning('Unable to check aromaticity by converting to RDKit Mol.')
         else:
             aromatic_rings = []
             aromatic_bonds = []
@@ -2576,11 +2577,11 @@ class Molecule(Graph):
 
             return aromatic_rings, aromatic_bonds
 
-        logging.info('Trying to use OpenBabel to check aromaticity.')
+        logger.info('Trying to use OpenBabel to check aromaticity.')
         try:
             obmol, ob_atom_ids = converter.to_ob_mol(self, return_mapping=True, save_order=save_order)
         except DependencyError:
-            logging.warning('Unable to check aromaticity by converting for OB Mol.')
+            logger.warning('Unable to check aromaticity by converting for OB Mol.')
             return [], []
         else:
             aromatic_rings = []
@@ -2967,9 +2968,9 @@ class Molecule(Graph):
                 desorbed_molecule.update()
             except AtomTypeError:
                 desorbed_molecules.remove(desorbed_molecule)
-                logging.debug(f"Removing {desorbed_molecule} from possible structure list:\n{desorbed_molecule.to_adjacency_list()}")
+                logger.debug(f"Removing {desorbed_molecule} from possible structure list:\n{desorbed_molecule.to_adjacency_list()}")
             else:
-                logging.debug("After removing from surface:\n" + desorbed_molecule.to_adjacency_list())
+                logger.debug("After removing from surface:\n" + desorbed_molecule.to_adjacency_list())
 
         return desorbed_molecules
 
