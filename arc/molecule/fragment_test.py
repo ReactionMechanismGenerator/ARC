@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # encoding: utf-8
-
-from tkinter import ARC
 import unittest
 
 from arc.molecule import resonance
@@ -550,7 +548,7 @@ class TestFragment(unittest.TestCase):
 3 H u0 p0 c0 {1,S}
 4 R u0 p0 c0 {1,S}
 """
-        fragment = ARC.molecule.fragment.Fragment().from_adjacency_list(adj)
+        fragment = arc.molecule.fragment.Fragment().from_adjacency_list(adj)
 
         # create expected fragment
         smiles_like = '[CH2]R'
