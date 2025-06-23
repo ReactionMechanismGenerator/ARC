@@ -1771,7 +1771,8 @@ class Fragment(Molecule):
         return mapping
 
     def assign_representative_species(self):
-        from arc.molecule.species import Species
+        # TODO: remove this method once Species is sorted
+        from rmgpy.species import Species
 
         self.assign_representative_molecule()
         self.species_repr = Species(molecule=[self.mol_repr])
