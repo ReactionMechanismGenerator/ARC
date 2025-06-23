@@ -2,6 +2,7 @@
 This module contains functionality for reading from and writing to the
 adjacency list format used by Reaction Mechanism Generator (RMG).
 """
+from __future__ import annotations
 
 import re
 
@@ -11,7 +12,7 @@ from arc.molecule.atomtype import get_atomtype
 from arc.molecule.element import get_element, PeriodicSystem
 from arc.molecule.group import GroupAtom, GroupBond
 from arc.molecule.molecule import Atom, Bond
-from arc.molecule.fragment import Fragment, CuttingLabel
+#from arc.molecule.fragment import Fragment, CuttingLabel
 
 
 logger = get_logger()
@@ -434,6 +435,7 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
     Convert a string adjacency list `adjlist` into a set of :class:`Atom` and
     :class:`Bond` objects.
     """
+    from arc.molecule.fragment import Fragment, CuttingLabel
     atoms = []
     atom_dict = {}
     bonds = {}
