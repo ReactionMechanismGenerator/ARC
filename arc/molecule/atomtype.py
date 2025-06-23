@@ -2,7 +2,7 @@
 """
 This module defines the atom types that are available for representing
 molecular functional groups and substructure patterns. Each available atom type
-is defined as an instance of the :class:`AtomType` class. The atom types 
+is defined as an instance of the :class:`AtomType` class. The atom types
 themselves are available in the ``ATOMTYPES`` module-level variable, or as
 the return value from the :meth:`get_atomtype()` method.
 
@@ -12,8 +12,6 @@ represent, this should be the only module you need to change to do so.
 
 import cython
 from arc.exceptions import AtomTypeError
-
-################################################################################
 
 
 class AtomType:
