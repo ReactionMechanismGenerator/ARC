@@ -4,8 +4,6 @@
 from tkinter import ARC
 import unittest
 
-import argcomplete
-
 from arc.molecule import resonance
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.element import get_element
@@ -667,7 +665,7 @@ class TestFragment(unittest.TestCase):
 22 H u0 p0 c0 {9,S}
 23 H u0 p0 c0 {10,S}
 """
-        fragment = argcomplete.molecule.fragment.Fragment().from_adjacency_list(adj)
+        fragment = arc.molecule.fragment.Fragment().from_adjacency_list(adj)
 
         frag_res = resonance.generate_resonance_structures(fragment, 
                                                            clar_structures=False)
