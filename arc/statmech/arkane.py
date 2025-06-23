@@ -8,8 +8,10 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 
-import molecule.constants as constants
-from molecule.species import Species, TransitionState
+import arc.constants as constants
+# Species is from Molecule github repo, so should we also be bringing it in?
+#from molecule.species import Species, TransitionState
+from rmgpy.species import Species, TransitionState  # !!! from RMG-Py
 from rmgpy.statmech import Conformer, HarmonicOscillator, HinderedRotor, IdealGasTranslation, LinearRotor, NonlinearRotor  # !!!
 
 import arkane.input

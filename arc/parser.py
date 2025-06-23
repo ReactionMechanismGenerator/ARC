@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from molecule.exceptions import InputError as RMGInputError
+from arc.exceptions import InputError as RMGInputError
 from arkane.exceptions import LogError
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 

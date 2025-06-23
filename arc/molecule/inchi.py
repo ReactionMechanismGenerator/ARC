@@ -692,7 +692,9 @@ def _convert_3_atom_2_bond_path(start, mol):
     with a number of actions that reflect the changes in bond orders and unpaired
     electrons that the molecule should undergo.
     """
-    from molecule.data.kinetics.family import ReactionRecipe
+    #from molecule.data.kinetics.family import ReactionRecipe
+    # TODO: import from rmgpy.data.kinetics.family for now
+    from rmgpy.data.kinetics.family import ReactionRecipe
 
     paths = pathfinder.find_allyl_end_with_charge(start)
 

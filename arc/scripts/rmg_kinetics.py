@@ -11,13 +11,20 @@ from typing import List, Optional, Tuple
 
 from common import parse_command_line_arguments, read_yaml_file, save_yaml_file
 
-from molecule.data.kinetics.common import find_degenerate_reactions
-from molecule.data.kinetics.family import KineticsFamily
-from molecule.data.rmg import RMGDatabase
-from molecule import settings as rmg_settings
-from molecule.reaction import same_species_lists, Reaction
-from molecule.species import Species
+# These imports are from the molecule package, which we have left out - so reverting back to RMG
+# from molecule.data.kinetics.common import find_degenerate_reactions
+# from molecule.data.kinetics.family import KineticsFamily
+# from molecule.data.rmg import RMGDatabase
+# from molecule import settings as rmg_settings
+# from molecule.reaction import same_species_lists, Reaction
+# from molecule.species import Species
 
+from rmgpy.data.kinetics.common import find_degenerate_reactions
+from rmgpy.data.kinetics.family import KineticsFamily
+from rmgpy.data.rmg import RMGDatabase
+from rmgpy import settings as rmg_settings
+from rmgpy.reaction import same_species_lists, Reaction
+from rmgpy.species import Species
 
 DB_PATH = rmg_settings['database.directory']
 
