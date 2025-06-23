@@ -5,6 +5,7 @@ to avoid circular imports.
 
 VERSION is the full ARC version, using `semantic versioning <https://semver.org/>`_.
 """
+from __future__ import annotations
 
 import ast
 import datetime
@@ -33,8 +34,6 @@ from arc.imports import settings
 # adding arkane imports temp until arkane is fully integrated into ARC
 from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
 
-if TYPE_CHECKING:
-    from arc.molecule.molecule import Atom, Molecule
 
 
 logger = logging.getLogger('arc')
@@ -561,6 +560,24 @@ def get_atom_radius(symbol: str) -> float:
         r = None
     return r
 
+def read_element_dicts() -> Tuple[dict, dict, dict]:
+    """
+    Read the element dictionaries from the elements.yml data file.
+
+    Returns: Tuple[dict, dict, dict]
+        - A dictionary of element symbol by name.
+        - A dictionary of element number by symbol.
+        - A dictionary of element mass by symbol, including isotope and occurrence frequency.
+    """
+    elements_path = os.path.join(ARC_PATH, 'data', 'elements.yml')
+    contents = read_yaml_file(elements_path)
+    symbol_by_number = contents['symbol_by_number']
+    number_by_symbol = {value: key for key, value in symbol_by_number.items()}
+    mass_by_symbol = contents['mass_by_symbol']
+    return symbol_by_number, number_by_symbol, mass_by_symbol
+
+
+SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL = read_element_dicts()
 
 def get_element_mass(input_element: Union[int, str],
                      isotope: Optional[int] = None,
@@ -581,20 +598,20 @@ def get_element_mass(input_element: Union[int, str],
     number = None
 
     if isinstance(input_element, int):
-        symbol = symbol_by_number[input_element]
+        symbol = SYMBOL_BY_NUMBER[input_element]
         number = input_element
     elif isinstance(input_element, str):
         symbol = input_element
         try:
-            number = number_by_symbol[symbol]
+            number = NUMBER_BY_SYMBOL[symbol]
         except KeyError:
             symbol = input_element.capitalize()
-            number = number_by_symbol[symbol]
+            number = NUMBER_BY_SYMBOL[symbol]
 
     if symbol is None or number is None:
         raise ValueError('Could not identify element {0}'.format(input_element))
 
-    mass_list = mass_by_symbol[symbol]
+    mass_list = MASS_BY_SYMBOL[symbol]
 
     if isotope is not None:
         # a specific isotope is required
@@ -620,25 +637,6 @@ def get_element_mass(input_element: Union[int, str],
                     mass = iso_mass[1]
     return mass, number
 
-
-def read_element_dicts() -> Tuple[dict, dict, dict]:
-    """
-    Read the element dictionaries from the elements.yml data file.
-
-    Returns: Tuple[dict, dict, dict]
-        - A dictionary of element symbol by name.
-        - A dictionary of element number by symbol.
-        - A dictionary of element mass by symbol, including isotope and occurrence frequency.
-    """
-    elements_path = os.path.join(ARC_PATH, 'data', 'elements.yml')
-    contents = read_yaml_file(elements_path)
-    symbol_by_number = contents['symbol_by_number']
-    number_by_symbol = {value: key for key, value in symbol_by_number.items()}
-    mass_by_symbol = contents['mass_by_symbol']
-    return symbol_by_number, number_by_symbol, mass_by_symbol
-
-
-SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL = read_element_dicts()
 
 
 # A bond length dictionary of single bonds in Angstrom.
