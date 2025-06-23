@@ -71,11 +71,11 @@ jobs:
           echo "::endgroup::"
           julia --version # Check that Julia is installed correctly
 
-      - name: Install RMG-Py + database
+      - name: Set RMG-Py + database in PATH and PYTHONPATH
         shell: micromamba-shell {0}
         working-directory: ARC
         run: |
-          bash devtools/install_rmg.sh
+          # bash devtools/install_rmg.sh
           echo "RMG_PY_PATH=$(realpath ../RMG-Py)"       >> $GITHUB_ENV
           echo "RMG_DB_PATH=$(realpath ../RMG-database)" >> $GITHUB_ENV
           echo "PATH=$(realpath ../RMG-Py):$PATH"        >> $GITHUB_ENV
@@ -88,6 +88,17 @@ jobs:
           key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
           restore-keys: ${{ runner.os }}-rmgpy-
 
+      - name: Install all extras - CI
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: make install-ci
+      
+      - name: Compile ARC molecule
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          make compile
+
       - name: Show what micromamba knows about envs
         shell: micromamba-shell {0}
         run: |
@@ -99,18 +110,6 @@ jobs:
           echo "-----"
           echo "Check whether the directory exists anyway:"
           ls -ld ${MAMBA_ROOT_PREFIX:-$HOME/micromamba}/envs/rmg_env || echo "(directory missing)"
-
-
-      - name: Install all extras - CI
-        shell: micromamba-shell {0}
-        working-directory: ARC
-        run: make install-ci
-      
-      - name: Compile ARC molecule
-        shell: micromamba-shell {0}
-        working-directory: ARC
-        run: |
-          make compile
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
