@@ -1857,7 +1857,7 @@ class Molecule(Graph):
         Skips the first line (assuming it's a label) unless `withLabel` is
         ``False``.
         """
-        from rmgpy.molecule.adjlist import from_adjacency_list
+        from arc.molecule.adjlist import from_adjacency_list
 
         self.vertices, self.multiplicity, self.metal, self.facet = from_adjacency_list(adjlist, group=False, saturate_h=saturate_h,
                                                                check_consistency=check_consistency)
@@ -2025,7 +2025,7 @@ class Molecule(Graph):
         """
         Convert the molecular structure to a string adjacency list.
         """
-        from rmgpy.molecule.adjlist import to_adjacency_list
+        from arc.molecule.adjlist import to_adjacency_list
         result = to_adjacency_list(self.vertices, self.multiplicity, metal=self.metal, facet=self.facet, 
                                    label=label, group=False, remove_h=remove_h,
                                    remove_lone_pairs=remove_lone_pairs, old_style=old_style)
@@ -2247,7 +2247,7 @@ class Molecule(Graph):
         Return the symmetry number for the structure. The symmetry number
         includes both external and internal modes.
         """
-        from rmgpy.molecule.symmetry import calculate_symmetry_number
+        from arc.molecule.symmetry import calculate_symmetry_number
         self.update_connectivity_values()  # for consistent results
         self.symmetry_number = calculate_symmetry_number(self)
         return self.symmetry_number
@@ -2764,7 +2764,7 @@ class Molecule(Graph):
         If ``strict=False``, performs the check ignoring electrons and resonance structures.
         """
         cython.declare(atom_ids=set, other_ids=set, atom_list=list, other_list=list, mapping=dict)
-        from rmgpy.molecule.fragment import Fragment
+        from arc.molecule.fragment import Fragment
 
         if not isinstance(other, (Molecule, Fragment)):
             raise TypeError(
