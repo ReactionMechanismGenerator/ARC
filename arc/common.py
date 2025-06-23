@@ -30,6 +30,9 @@ import qcelemental as qcel
 from arc.exceptions import AtomTypeError, ILPSolutionError, InputError, ResonanceError, SettingsError
 from arc.imports import settings
 
+# adding arkane imports temp until arkane is fully integrated into ARC
+from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
+
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom, Molecule
 
