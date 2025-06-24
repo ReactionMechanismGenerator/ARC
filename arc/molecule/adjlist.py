@@ -10,12 +10,22 @@ from arc.common import get_logger
 from arc.exceptions import InvalidAdjacencyListError
 from arc.molecule.atomtype import get_atomtype
 from arc.molecule.element import get_element, PeriodicSystem
-from arc.molecule.group import GroupAtom, GroupBond
-from arc.molecule.molecule import Atom, Bond
-#from arc.molecule.fragment import Fragment, CuttingLabel
+# from arc.molecule.molecule import Atom, Bond
+# from arc.molecule.group import GroupAtom, GroupBond
+# from arc.molecule.fragment import Fragment, CuttingLabel
 
 
-logger = get_logger()
+"""
+This module contains functionality for reading from and writing to the
+adjacency list format used by Reaction Mechanism Generator (RMG).
+"""
+import logging
+import re
+import warnings
+
+from arc.exceptions import InvalidAdjacencyListError
+from arc.molecule.atomtype import get_atomtype
+from arc.molecule.element import get_element, PeriodicSystem
 
 
 class Saturator(object):
@@ -29,15 +39,16 @@ class Saturator(object):
         The required number of hydrogen atoms per heavy atom is determined as follows:
         H's =     max number of valence electrons - atom.radical_electrons
                     - 2* atom.lone_pairs - order - atom.charge
+
         """
-        new_atoms = list()
+        new_atoms = []
         for atom in atoms:
-            if isinstance(atom, CuttingLabel):
-                continue
+            if not isinstance(atom, Atom): continue
             try:
                 max_number_of_valence_electrons = PeriodicSystem.valence_electrons[atom.symbol]
             except KeyError:
-                raise InvalidAdjacencyListError(f'Cannot add hydrogens to adjacency list: Unknown orbital for atom "{atom.symbol}".')
+                raise InvalidAdjacencyListError(
+                    'Cannot add hydrogens to adjacency list: Unknown orbital for atom "{0}".'.format(atom.symbol))
 
             order = atom.get_total_bond_order()
 
@@ -57,9 +68,7 @@ class Saturator(object):
 
 
 class ConsistencyChecker(object):
-    """
-    A class for checking the consistency of an adjacency list.
-    """
+
     @staticmethod
     def check_partial_charge(atom):
         """
@@ -67,7 +76,7 @@ class ConsistencyChecker(object):
         the theoretical one:
 
         """
-        if atom.symbol in {'X','L','R','e','H+','Li'}:
+        if atom.symbol in ['X','Li']:
             return  # because we can't check it.
 
         valence = PeriodicSystem.valence_electrons[atom.symbol]
@@ -77,11 +86,17 @@ class ConsistencyChecker(object):
 
         if not (-0.301 < atom.charge - theoretical < 0.301):
             # It should be 0, but -0.1 is caused by a Hydrogen bond
-            bonds = ','.join([str(bond.order) for bond in atom.bonds.values()])
             raise InvalidAdjacencyListError(
-                f'Invalid valency for atom {atom.symbol} ({get_atomtype(atom, atom.edges).label}) with '
-                f'{atom.radical_electrons} unpaired electrons, {atom.lone_pairs} pairs of electrons, '
-                f'{atom.charge} charge, and bonds [{bonds}].')
+                'Invalid valency for atom {symbol} ({type}) with {radicals} unpaired electrons, '
+                '{lone_pairs} pairs of electrons, {charge} charge, and bonds [{bonds}].'.format(
+                    symbol=atom.symbol,
+                    type=get_atomtype(atom, atom.edges).label,
+                    radicals=atom.radical_electrons,
+                    lone_pairs=atom.lone_pairs,
+                    charge=atom.charge,
+                    bonds=','.join([str(bond.order) for bond in atom.bonds.values()])
+                )
+            )
 
     @staticmethod
     def check_multiplicity(n_rad, multiplicity):
@@ -112,8 +127,8 @@ class ConsistencyChecker(object):
                 raise InvalidAdjacencyListError('Multiplicity {0} not in agreement with total number of '
                                                 'radicals {1}.'.format(multiplicity, n_rad))
         else:
-            logger.warning("Consistency checking of multiplicity of molecules with "
-                           "more than 4 unpaired electrons is not implemented yet!")
+            logging.warning("Consistency checking of multiplicity of molecules with "
+                            "more than 4 unpaired electrons is not implemented yet!")
 
     @staticmethod
     def check_hund_rule(atom, multiplicity):
@@ -139,6 +154,9 @@ def from_old_adjacency_list(adjlist, group=False, saturate_h=False):
     It can read both "old style" that existed for years, an the "intermediate style" that
     existed for a few months in 2014, with the extra column of integers for lone pairs.
     """
+    from arc.molecule.molecule import Atom, Bond
+    from arc.molecule.group import GroupAtom, GroupBond
+    
     atoms = []
     atomdict = {}
     bonds = {}
@@ -406,14 +424,16 @@ def from_old_adjacency_list(adjlist, group=False, saturate_h=False):
             multiplicity = None
 
     except InvalidAdjacencyListError:
-        logger.error("Troublesome adjacency list:\n" + adjlist)
+        logging.error("Troublesome adjacency list:\n" + adjlist)
         raise
     if group:
         return atoms, multiplicity, [], []
     else:
         return atoms, multiplicity, '', ''
 
-# Regular expressions for parsing old and intermediate adjacency lists
+
+###############################
+
 re_intermediate_adjlist = re.compile(r'^\s*(\d*)\s+' +  # atom number digit
                                      r'(?P<label>\*\d*\s+)?' +  # optional label eg * or *2
                                      r'(?P<atomtype>\{?[A-Z]\S*)\s+' +  # atomtype eg R!H or {Cb,Cd}
@@ -436,6 +456,9 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
     :class:`Bond` objects.
     """
     from arc.molecule.fragment import Fragment, CuttingLabel
+    from arc.molecule.molecule import Atom, Bond
+    from arc.molecule.group import GroupAtom, GroupBond
+    
     atoms = []
     atom_dict = {}
     bonds = {}
@@ -452,15 +475,15 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
         lines.pop()
         last_line = lines[-1].strip()
     if re_intermediate_adjlist.match(last_line):
-        logger.debug(
+        logging.debug(
             "adjacency list:\n{1}\nline '{0}' looks like an intermediate style "
             "adjacency list".format(last_line, adjlist))
         return from_old_adjacency_list(adjlist, group=group, saturate_h=saturate_h)
     if re_old_adjlist.match(last_line):
-        logger.debug(
+        logging.debug(
             "Adjacency list:\n{1}\nline '{0}' looks like an old style adjacency list".format(last_line, adjlist))
         if not group:
-            logger.debug("Will assume implicit H atoms")
+            logging.debug("Will assume implicit H atoms")
         return from_old_adjacency_list(adjlist, group=group, saturate_h=(not group))
 
     # Interpret the first line if it contains a label
@@ -852,13 +875,19 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
 
 
 
-def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group=False, remove_h=False, remove_lone_pairs=False):
+def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group=False, remove_h=False, remove_lone_pairs=False,
+                      old_style=False):
     """
     Convert a chemical graph defined by a list of `atoms` into a string
     adjacency list.
     """
+    from arc.molecule.molecule import Atom, Bond
+    
     if not atoms:
         return ''
+
+    if old_style:
+        return to_old_adjacency_list(atoms, multiplicity, label, group, remove_h)
 
     adjlist = ''
 
@@ -1104,3 +1133,101 @@ def get_old_electron_state(atom):
     else:
         raise InvalidAdjacencyListError("Cannot find electron state of atom {0}".format(atom))
     return electron_state
+
+
+def to_old_adjacency_list(atoms, multiplicity=None, label=None, group=False, remove_h=False):
+    """
+    Convert a chemical graph defined by a list of `atoms` into a string old-style 
+    adjacency list that can be used in RMG-Java.  Currently not working for groups.
+    """
+    warnings.warn("The old adjacency lists are no longer supported and may be"
+                  " removed in version 2.3.", DeprecationWarning)
+    adjlist = ''
+
+    if group:
+        raise InvalidAdjacencyListError("Not yet implemented.")
+    # Filter out all non-valid atoms
+    if not group:
+        for atom in atoms:
+            if atom.element.symbol in ['He', 'Ne', 'Ar', 'N']:
+                raise InvalidAdjacencyListError("Old-style adjacency list does not accept He, Ne, Ar, N elements.")
+
+    # Don't remove hydrogen atoms if the molecule consists only of hydrogen atoms
+    try:
+        if remove_h and all([atom.element.symbol == 'H' for atom in atoms]):
+            remove_h = False
+    except AttributeError:
+        pass
+
+    if label:
+        adjlist += label + '\n'
+
+    # Determine the numbers to use for each atom
+    atom_numbers = {}
+    index = 0
+    for atom in atoms:
+        if remove_h and atom.element.symbol == 'H' and atom.label == '': continue
+        atom_numbers[atom] = '{0:d}'.format(index + 1)
+        index += 1
+
+    atom_labels = dict([(atom, '{0}'.format(atom.label)) for atom in atom_numbers])
+
+    atom_types = {}
+    atom_electron_states = {}
+    if group:
+        raise InvalidAdjacencyListError("Not yet implemented.")
+    else:
+        for atom in atom_numbers:
+            # Atom type
+            atom_types[atom] = '{0}'.format(atom.element.symbol)
+            # Electron state(s)
+            atom_electron_states[atom] = '{0}'.format(get_old_electron_state(atom))
+
+    # Determine field widths
+    atom_number_width = max([len(s) for s in atom_numbers.values()]) + 1
+    atom_label_width = max([len(s) for s in atom_labels.values()])
+    if atom_label_width > 0:
+        atom_label_width += 1
+    atom_type_width = max([len(s) for s in atom_types.values()]) + 1
+    atom_electron_state_width = max([len(s) for s in atom_electron_states.values()])
+
+    # Assemble the adjacency list
+    for atom in atoms:
+        if atom not in atom_numbers:
+            continue
+
+        # Atom number
+        adjlist += '{0:<{1:d}}'.format(atom_numbers[atom], atom_number_width)
+        # Atom label
+        adjlist += '{0:<{1:d}}'.format(atom_labels[atom], atom_label_width)
+        # Atom type(s)
+        adjlist += '{0:<{1:d}}'.format(atom_types[atom], atom_type_width)
+        # Electron state(s)
+        adjlist += '{0:<{1:d}}'.format(atom_electron_states[atom], atom_electron_state_width)
+
+        # Bonds list
+        atoms2 = list(atom.bonds.keys())
+        # sort them the same way as the atoms
+        atoms2.sort(key=atoms.index)
+
+        for atom2 in atoms2:
+            if atom2 not in atom_numbers:
+                continue
+
+            bond = atom.bonds[atom2]
+            adjlist += ' {{{0},'.format(atom_numbers[atom2])
+
+            # Bond type(s)
+            if group:
+                if len(bond.order) == 1:
+                    adjlist += bond.get_order_str()[0]
+                else:
+                    adjlist += '{{{0}}}'.format(','.join(bond.get_order_str()))
+            else:
+                adjlist += bond.get_order_str()
+            adjlist += '}'
+
+        # Each atom begins on a new line
+        adjlist += '\n'
+
+    return adjlist

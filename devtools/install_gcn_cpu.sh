@@ -49,7 +49,14 @@ fi
 echo "✔️ Environment file exists."
 
 echo ">>> Creating or updating conda environment 'ts_gcn'..."
-source "$($COMMAND_PKG info --base)/etc/profile.d/conda.sh"
+
+
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    eval "$(micromamba shell hook --shell=bash)"
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
+    BASE=$(conda info --base)
+    source "$BASE/etc/profile.d/conda.sh"
+fi
 
 if $COMMAND_PKG env list | grep -q '^ts_gcn\s'; then
     echo ">>> Updating existing environment 'ts_gcn'..."

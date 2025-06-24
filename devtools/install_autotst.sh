@@ -17,8 +17,8 @@ fi
 
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-else
-    BASE=$($COMMAND_PKG info --base)
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
+    BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
 fi
 

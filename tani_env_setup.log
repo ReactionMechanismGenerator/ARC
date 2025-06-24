@@ -1,0 +1,817 @@
+++ date
++ echo '>>> Starting TANI environment setup at Tue Jun 24 06:06:33 AM IDT 2025'
+>>> Starting TANI environment setup at Tue Jun 24 06:06:33 AM IDT 2025
++ command -v micromamba
++ command -v mamba
++ echo '✔️  Using mamba'
+✔️  Using mamba
++ COMMAND_PKG=mamba
++ '[' mamba = micromamba ']'
++ '[' mamba = mamba ']'
+++ conda info --base
++ BASE=/home/calvin/miniforge3
++ source /home/calvin/miniforge3/etc/profile.d/conda.sh
+++ export CONDA_EXE=/home/calvin/miniforge3/bin/conda
+++ CONDA_EXE=/home/calvin/miniforge3/bin/conda
+++ export _CE_M=
+++ _CE_M=
+++ export _CE_CONDA=
+++ _CE_CONDA=
+++ export CONDA_PYTHON_EXE=/home/calvin/miniforge3/bin/python
+++ CONDA_PYTHON_EXE=/home/calvin/miniforge3/bin/python
+++ '[' -z x ']'
++ echo '>>> Cleaning package caches (pre-env)'
+>>> Cleaning package caches (pre-env)
++ mamba clean -a -y
+Collect information..
+Cleaning index cache..
+Cleaning lock files..
+Cleaning tarballs..
+Cleaning packages..
++ ENV_YAML=devtools/tani_environment.yml
+++ grep -E '^ *name:' devtools/tani_environment.yml
+++ head -1
+++ awk '{print $2}'
++ ENV_NAME=tani_env
++ echo '>>> Removing any existing '\''tani_env'\'' env'
+>>> Removing any existing 'tani_env' env
++ [[ mamba == micromamba ]]
++ [[ mamba == mamba ]]
++ mamba env remove -n tani_env --yes
++ true
++ echo '>>> Creating conda env from devtools/tani_environment.yml (name=tani_env)'
+>>> Creating conda env from devtools/tani_environment.yml (name=tani_env)
++ mamba env create -n tani_env -f devtools/tani_environment.yml -v
+info     libmamba Searching index cache file for repo 'pytorch/linux-64'
+info     libmamba Valid cache found  for 'pytorch/linux-64': 0
+info     libmamba Searching index cache file for repo 'pytorch/noarch'
+info     libmamba Valid cache found  for 'pytorch/noarch': 0
+info     libmamba Searching index cache file for repo 'conda-forge/linux-64'
+info     libmamba Valid cache found  for 'conda-forge/linux-64': 0
+info     libmamba Searching index cache file for repo 'conda-forge/noarch'
+info     libmamba Valid cache found  for 'conda-forge/noarch': 0
+warning  libmamba 'repo.anaconda.com', a commercial channel hosted by Anaconda.com, is used.
+    
+warning  libmamba Please make sure you understand Anaconda Terms of Services.
+    
+warning  libmamba See: https://legal.anaconda.com/policies/en/
+info     libmamba Searching index cache file for repo 'pkgs/main/linux-64'
+info     libmamba Valid cache found  for 'pkgs/main/linux-64': 0
+info     libmamba Searching index cache file for repo 'pkgs/main/noarch'
+info     libmamba Valid cache found  for 'pkgs/main/noarch': 0
+info     libmamba Searching index cache file for repo 'pkgs/r/linux-64'
+info     libmamba Valid cache found  for 'pkgs/r/linux-64': 0
+info     libmamba Searching index cache file for repo 'pkgs/r/noarch'
+info     libmamba Valid cache found  for 'pkgs/r/noarch': 0
+info     libmamba Checking for CA certificates at the root prefix: "/home/calvin/miniforge3/ssl/cacert.pem"
+info     libmamba Using CA certificates from `conda-forge::ca-certificates` installed in the root prefix (i.e "/home/calvin/miniforge3/ssl/cacert.pem")
+info     libmamba Checked: https://repo.anaconda.com/pkgs/r/linux-64/repodata.json.zst [200]
+info     libmamba Checked: https://repo.anaconda.com/pkgs/main/noarch/repodata.json.zst [200]
+info     libmamba Checked: https://conda.anaconda.org/pytorch/noarch/repodata.json.zst [200]
+info     libmamba Checked: https://conda.anaconda.org/pytorch/linux-64/repodata.json.zst [200]
+info     libmamba Checked: https://repo.anaconda.com/pkgs/main/linux-64/repodata.json.zst [200]
+info     libmamba Checked: https://repo.anaconda.com/pkgs/r/noarch/repodata.json.zst [200]
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/cb9fd28a.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/cb9fd28a.json" for repo https://conda.anaconda.org/pytorch/linux-64 using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/cb9fd28a.solv" for repo https://conda.anaconda.org/pytorch/linux-64
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/81a587a4.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/81a587a4.json" for repo https://conda.anaconda.org/pytorch/noarch using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/81a587a4.solv" for repo https://conda.anaconda.org/pytorch/noarch
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/88ec62ec.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/88ec62ec.json" for repo https://conda.anaconda.org/conda-forge/linux-64 using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/88ec62ec.solv" for repo https://conda.anaconda.org/conda-forge/linux-64
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/eb045dd1.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/eb045dd1.json" for repo https://conda.anaconda.org/conda-forge/noarch using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/eb045dd1.solv" for repo https://conda.anaconda.org/conda-forge/noarch
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/cbcb0f8c.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/cbcb0f8c.json" for repo https://repo.anaconda.com/pkgs/main/linux-64 using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/cbcb0f8c.solv" for repo https://repo.anaconda.com/pkgs/main/linux-64
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/45dad287.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/45dad287.json" for repo https://repo.anaconda.com/pkgs/main/noarch using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/45dad287.solv" for repo https://repo.anaconda.com/pkgs/main/noarch
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/26049a09.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/26049a09.json" for repo https://repo.anaconda.com/pkgs/r/linux-64 using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/26049a09.solv" for repo https://repo.anaconda.com/pkgs/r/linux-64
+info     libmamba Trying to load repo from json file "/home/calvin/miniforge3/pkgs/cache/c150ef0f.json"
+info     libmamba Reading repodata.json file "/home/calvin/miniforge3/pkgs/cache/c150ef0f.json" for repo https://repo.anaconda.com/pkgs/r/noarch using mamba
+info     libmamba Writing libsolv solv file "/home/calvin/miniforge3/pkgs/cache/c150ef0f.solv" for repo https://repo.anaconda.com/pkgs/r/noarch
+info     libmamba Loading site packages
+
+
+Transaction
+
+  Prefix: /home/calvin/miniforge3/envs/tani_env
+
+  Updating specs:
+
+   - python
+   - numpy
+   - pandas
+   - ase
+   - torchani
+   - pytorch
+   - torchvision
+   - torchaudio
+   - cpuonly
+   - scikit-learn
+   - matplotlib
+   - ipython
+   - pyyaml
+   - typing-extensions
+
+
+  Package                            Version  Build                       Channel           Size
+──────────────────────────────────────────────────────────────────────────────────────────────────
+  Install:
+──────────────────────────────────────────────────────────────────────────────────────────────────
+
+  + _openmp_mutex                        4.5  3_kmp_llvm                  conda-forge        8kB
+  + alsa-lib                          1.2.14  hb9d3cd8_0                  conda-forge     Cached
+  + aom                                3.9.1  hac33072_0                  conda-forge     Cached
+  + ase                               3.25.0  pyhd8ed1ab_0                conda-forge        2MB
+  + asttokens                          3.0.0  pyhd8ed1ab_1                conda-forge     Cached
+  + blinker                            1.9.0  pyhff2d567_0                conda-forge       14kB
+  + brotli                             1.1.0  hb9d3cd8_3                  conda-forge     Cached
+  + brotli-bin                         1.1.0  hb9d3cd8_3                  conda-forge     Cached
+  + brotli-python                      1.1.0  py313h46c70d0_3             conda-forge      350kB
+  + bzip2                              1.0.8  h4bc722e_7                  conda-forge     Cached
+  + ca-certificates                2025.6.15  hbd8a1cb_0                  conda-forge     Cached
+  + cairo                             1.18.4  h3394656_0                  conda-forge     Cached
+  + certifi                        2025.6.15  pyhd8ed1ab_0                conda-forge     Cached
+  + cffi                              1.17.1  py313hfab6e84_0             conda-forge      296kB
+  + charset-normalizer                 3.4.2  pyhd8ed1ab_0                conda-forge     Cached
+  + click                              8.2.1  pyh707e725_0                conda-forge     Cached
+  + contourpy                          1.3.2  py313h33d0bda_0             conda-forge      279kB
+  + cpuonly                              2.0  0                           pytorch            2kB
+  + cpython                           3.13.5  py313hd8ed1ab_102           conda-forge       48kB
+  + cycler                            0.12.1  pyhd8ed1ab_1                conda-forge     Cached
+  + cyrus-sasl                        2.1.28  hd9c7081_0                  conda-forge     Cached
+  + dav1d                              1.2.1  hd590300_0                  conda-forge     Cached
+  + dbus                              1.16.2  h3c4dab8_0                  conda-forge     Cached
+  + decorator                          5.2.1  pyhd8ed1ab_0                conda-forge     Cached
+  + double-conversion                  3.3.1  h5888daf_0                  conda-forge     Cached
+  + exceptiongroup                     1.3.0  pyhd8ed1ab_0                conda-forge     Cached
+  + executing                          2.2.0  pyhd8ed1ab_0                conda-forge     Cached
+  + filelock                          3.18.0  pyhd8ed1ab_0                conda-forge     Cached
+  + flask                              3.1.1  pyhd8ed1ab_0                conda-forge       83kB
+  + font-ttf-dejavu-sans-mono           2.37  hab24e00_0                  conda-forge     Cached
+  + font-ttf-inconsolata               3.000  h77eed37_0                  conda-forge     Cached
+  + font-ttf-source-code-pro           2.038  h77eed37_0                  conda-forge     Cached
+  + font-ttf-ubuntu                     0.83  h77eed37_3                  conda-forge     Cached
+  + fontconfig                        2.15.0  h7e30c49_1                  conda-forge     Cached
+  + fonts-conda-ecosystem                  1  0                           conda-forge     Cached
+  + fonts-conda-forge                      1  0                           conda-forge     Cached
+  + fonttools                         4.58.4  py313h8060acc_0             conda-forge        3MB
+  + freetype                          2.13.3  ha770c72_1                  conda-forge     Cached
+  + fsspec                          2025.5.1  pyhd8ed1ab_0                conda-forge      146kB
+  + giflib                             5.2.2  hd590300_0                  conda-forge     Cached
+  + gmp                                6.3.0  hac33072_2                  conda-forge     Cached
+  + gmpy2                              2.2.1  py313h11186cd_0             conda-forge      213kB
+  + graphite2                         1.3.14  h5888daf_0                  conda-forge     Cached
+  + h2                                 4.2.0  pyhd8ed1ab_0                conda-forge     Cached
+  + harfbuzz                          11.2.1  h3beb420_0                  conda-forge     Cached
+  + hpack                              4.1.0  pyhd8ed1ab_0                conda-forge     Cached
+  + hyperframe                         6.1.0  pyhd8ed1ab_0                conda-forge     Cached
+  + icu                                 75.1  he02047a_0                  conda-forge     Cached
+  + idna                                3.10  pyhd8ed1ab_1                conda-forge     Cached
+  + importlib-metadata                 8.7.0  pyhe01879c_1                conda-forge     Cached
+  + ipython                            9.3.0  pyhfa0c392_0                conda-forge     Cached
+  + ipython_pygments_lexers            1.1.1  pyhd8ed1ab_0                conda-forge     Cached
+  + itsdangerous                       2.2.0  pyhd8ed1ab_1                conda-forge       19kB
+  + jedi                              0.19.2  pyhd8ed1ab_1                conda-forge     Cached
+  + jinja2                             3.1.6  pyhd8ed1ab_0                conda-forge     Cached
+  + joblib                             1.5.1  pyhd8ed1ab_0                conda-forge     Cached
+  + kaldi                           5.5.1112  cpu_h7360626_9              conda-forge       21MB
+  + keyutils                           1.6.1  h166bdaf_0                  conda-forge     Cached
+  + kiwisolver                         1.4.7  py313h33d0bda_0             conda-forge       71kB
+  + krb5                              1.21.3  h659f571_0                  conda-forge     Cached
+  + lark-parser                       0.12.0  pyhd8ed1ab_1                conda-forge       86kB
+  + lcms2                               2.17  h717163a_0                  conda-forge     Cached
+  + ld_impl_linux-64                    2.43  h1423503_5                  conda-forge     Cached
+  + lerc                               4.0.0  h0aef613_1                  conda-forge     Cached
+  + libabseil                     20250127.1  cxx17_hbbce691_0            conda-forge     Cached
+  + libavif16                          1.3.0  h766b0b6_0                  conda-forge      140kB
+  + libblas                            3.9.0  32_hfdb39a5_mkl             conda-forge       18kB
+  + libbrotlicommon                    1.1.0  hb9d3cd8_3                  conda-forge     Cached
+  + libbrotlidec                       1.1.0  hb9d3cd8_3                  conda-forge     Cached
+  + libbrotlienc                       1.1.0  hb9d3cd8_3                  conda-forge     Cached
+  + libcblas                           3.9.0  32_h372d94f_mkl             conda-forge       17kB
+  + libclang-cpp20.1                  20.1.7  default_h1df26ce_0          conda-forge     Cached
+  + libclang13                        20.1.7  default_he06ed0a_0          conda-forge     Cached
+  + libcups                            2.3.3  hb8b1518_5                  conda-forge     Cached
+  + libde265                          1.0.15  h00ab1b0_0                  conda-forge      412kB
+  + libdeflate                          1.24  h86f0d12_0                  conda-forge     Cached
+  + libdrm                           2.4.125  hb9d3cd8_0                  conda-forge     Cached
+  + libedit                     3.1.20250104  pl5321h7949ede_0            conda-forge     Cached
+  + libegl                             1.7.0  ha4b6fd6_2                  conda-forge     Cached
+  + libexpat                           2.7.0  h5888daf_0                  conda-forge     Cached
+  + libffi                             3.4.6  h2dba641_1                  conda-forge     Cached
+  + libfreetype                       2.13.3  ha770c72_1                  conda-forge     Cached
+  + libfreetype6                      2.13.3  h48d6fc4_1                  conda-forge     Cached
+  + libgcc                            15.1.0  h767d61c_2                  conda-forge     Cached
+  + libgcc-ng                         15.1.0  h69a702a_2                  conda-forge     Cached
+  + libgfortran                       15.1.0  h69a702a_2                  conda-forge     Cached
+  + libgfortran5                      15.1.0  hcea5267_2                  conda-forge     Cached
+  + libgl                              1.7.0  ha4b6fd6_2                  conda-forge     Cached
+  + libglib                           2.84.2  h3618099_0                  conda-forge     Cached
+  + libglvnd                           1.7.0  ha4b6fd6_2                  conda-forge     Cached
+  + libglx                             1.7.0  ha4b6fd6_2                  conda-forge     Cached
+  + libheif                           1.19.7  gpl_hc18d805_100            conda-forge      597kB
+  + libhwloc                          2.11.2  default_h0d58e46_1001       conda-forge     Cached
+  + libiconv                            1.18  h4ce23a2_1                  conda-forge     Cached
+  + libjpeg-turbo                      3.1.0  hb9d3cd8_0                  conda-forge     Cached
+  + liblapack                          3.9.0  32_hc41d3b0_mkl             conda-forge       17kB
+  + liblapacke                         3.9.0  32_hbc6e62b_mkl             conda-forge       17kB
+  + libllvm20                         20.1.7  he9d0ab4_0                  conda-forge     Cached
+  + liblzma                            5.8.1  hb9d3cd8_2                  conda-forge     Cached
+  + libmpdec                           4.0.0  hb9d3cd8_0                  conda-forge     Cached
+  + libntlm                              1.8  hb9d3cd8_0                  conda-forge     Cached
+  + libopengl                          1.7.0  ha4b6fd6_2                  conda-forge     Cached
+  + libpciaccess                        0.18  hb9d3cd8_0                  conda-forge     Cached
+  + libpng                            1.6.49  h943b412_0                  conda-forge     Cached
+  + libpq                               17.5  h27ae623_0                  conda-forge     Cached
+  + libprotobuf                       5.29.3  h501fc15_1                  conda-forge     Cached
+  + libsqlite                         3.50.1  h6cd9bfd_6                  conda-forge     Cached
+  + libstdcxx                         15.1.0  h8f9b012_2                  conda-forge     Cached
+  + libstdcxx-ng                      15.1.0  h4852527_2                  conda-forge     Cached
+  + libtiff                            4.7.0  hf01ce69_5                  conda-forge     Cached
+  + libtorch                           2.7.1  cpu_mkl_hb1c5dc7_100        conda-forge       56MB
+  + libuuid                           2.38.1  h0b41bf4_0                  conda-forge     Cached
+  + libuv                             1.51.0  hb9d3cd8_0                  conda-forge      890kB
+  + libwebp-base                       1.5.0  h851e524_0                  conda-forge     Cached
+  + libxcb                            1.17.0  h8a09558_0                  conda-forge     Cached
+  + libxcrypt                         4.4.36  hd590300_1                  conda-forge     Cached
+  + libxkbcommon                      1.10.0  h65c71a3_0                  conda-forge     Cached
+  + libxml2                           2.13.8  h4bc477f_0                  conda-forge     Cached
+  + libxslt                           1.1.39  h76b75d6_0                  conda-forge     Cached
+  + libzlib                            1.3.1  hb9d3cd8_2                  conda-forge     Cached
+  + llvm-openmp                       20.1.7  h024ca30_0                  conda-forge        4MB
+  + markupsafe                         3.0.2  py313h8060acc_1             conda-forge       25kB
+  + matplotlib                        3.10.3  py313h78bf25f_0             conda-forge       17kB
+  + matplotlib-base                   3.10.3  py313h129903b_0             conda-forge        8MB
+  + matplotlib-inline                  0.1.7  pyhd8ed1ab_1                conda-forge     Cached
+  + mkl                             2024.2.2  ha957f24_16                 conda-forge      125MB
+  + mpc                                1.3.1  h24ddda3_1                  conda-forge     Cached
+  + mpfr                               4.2.1  h90cbb55_3                  conda-forge     Cached
+  + mpmath                             1.3.0  pyhd8ed1ab_1                conda-forge     Cached
+  + munkres                            1.1.4  pyhd8ed1ab_1                conda-forge     Cached
+  + ncurses                              6.5  h2d0b736_3                  conda-forge     Cached
+  + networkx                             3.5  pyhe01879c_0                conda-forge     Cached
+  + numpy                              2.3.0  py313h17eae1a_0             conda-forge        9MB
+  + openfst                            1.8.3  h84d6215_3                  conda-forge        5MB
+  + openjpeg                           2.5.3  h5fbd93e_0                  conda-forge     Cached
+  + openldap                          2.6.10  he970967_0                  conda-forge     Cached
+  + openssl                            3.5.0  h7b32b05_1                  conda-forge     Cached
+  + optree                            0.16.0  py313h33d0bda_0             conda-forge      436kB
+  + packaging                           25.0  pyh29332c3_1                conda-forge     Cached
+  + pandas                             2.3.0  py313ha87cce1_0             conda-forge       15MB
+  + parso                              0.8.4  pyhd8ed1ab_1                conda-forge     Cached
+  + pcre2                              10.45  hc749103_0                  conda-forge     Cached
+  + pexpect                            4.9.0  pyhd8ed1ab_1                conda-forge     Cached
+  + pickleshare                        0.7.5  pyhd8ed1ab_1004             conda-forge     Cached
+  + pillow                            11.2.1  py313h8db990d_0             conda-forge       43MB
+  + pip                               25.1.1  pyh145f28c_0                conda-forge     Cached
+  + pixman                            0.46.2  h29eaf8c_0                  conda-forge     Cached
+  + prompt-toolkit                    3.0.51  pyha770c72_0                conda-forge     Cached
+  + pthread-stubs                        0.4  hb9d3cd8_1002               conda-forge     Cached
+  + ptyprocess                         0.7.0  pyhd8ed1ab_1                conda-forge     Cached
+  + pure_eval                          0.2.3  pyhd8ed1ab_1                conda-forge     Cached
+  + pybind11                          2.13.6  pyhc790b64_3                conda-forge      187kB
+  + pybind11-global                   2.13.6  pyh217bc35_3                conda-forge      180kB
+  + pycparser                           2.22  pyh29332c3_1                conda-forge     Cached
+  + pygments                          2.19.2  pyhd8ed1ab_0                conda-forge     Cached
+  + pyparsing                          3.2.3  pyhd8ed1ab_1                conda-forge     Cached
+  + pyside6                            6.9.1  py313h7dabd7a_0             conda-forge       10MB
+  + pysocks                            1.7.1  pyha55dd90_7                conda-forge     Cached
+  + python                            3.13.5  hec9711d_102_cp313          conda-forge     Cached
+  + python-dateutil              2.9.0.post0  pyhff2d567_1                conda-forge     Cached
+  + python-tzdata                     2025.2  pyhd8ed1ab_0                conda-forge     Cached
+  + python_abi                          3.13  7_cp313                     conda-forge     Cached
+  + pytorch                            2.7.1  cpu_mkl_py313_hea9ba1b_100  conda-forge       29MB
+  + pytorch-mutex                        1.0  cpu                         pytorch            3kB
+  + pytz                              2025.2  pyhd8ed1ab_0                conda-forge     Cached
+  + pyyaml                             6.0.2  py313h8060acc_2             conda-forge     Cached
+  + qhull                             2020.2  h434a139_5                  conda-forge     Cached
+  + qt6-main                           6.9.1  h0384650_0                  conda-forge     Cached
+  + rav1e                              0.7.1  h8fae777_3                  conda-forge        5MB
+  + readline                             8.2  h8c095d6_2                  conda-forge     Cached
+  + requests                          2.32.4  pyhd8ed1ab_0                conda-forge     Cached
+  + scikit-learn                       1.7.0  py313h8ef605b_1             conda-forge       10MB
+  + scipy                             1.15.2  py313h86fcf2b_0             conda-forge       17MB
+  + setuptools                        80.9.0  pyhff2d567_0                conda-forge     Cached
+  + six                               1.17.0  pyhd8ed1ab_0                conda-forge     Cached
+  + sleef                                3.8  h1b44611_0                  conda-forge     Cached
+  + stack_data                         0.6.3  pyhd8ed1ab_1                conda-forge     Cached
+  + svt-av1                            3.0.2  h5888daf_0                  conda-forge     Cached
+  + sympy                             1.14.0  pyh2585a3b_105              conda-forge        5MB
+  + tbb                            2021.13.0  hceb3a55_1                  conda-forge      176kB
+  + threadpoolctl                      3.6.0  pyhecae5ae_0                conda-forge     Cached
+  + tk                                8.6.13  noxft_hd72426e_102          conda-forge     Cached
+  + torchani                             2.2  pyh9f0ad1d_0                conda-forge       11MB
+  + torchaudio                         2.7.1  cpu_py313h33afbea_1         conda-forge        5MB
+  + torchvision                       0.22.0  cpu_py313_h2f72641_0        conda-forge        2MB
+  + torchvision-extra-decoders         0.0.2  py313hf1e760e_3             conda-forge       64kB
+  + tornado                            6.5.1  py313h536fd9c_0             conda-forge      873kB
+  + traitlets                         5.14.3  pyhd8ed1ab_1                conda-forge     Cached
+  + typing-extensions                 4.14.0  h32cad80_0                  conda-forge     Cached
+  + typing_extensions                 4.14.0  pyhe01879c_0                conda-forge     Cached
+  + tzdata                             2025b  h78e105d_0                  conda-forge     Cached
+  + urllib3                            2.5.0  pyhd8ed1ab_0                conda-forge     Cached
+  + wayland                           1.23.1  h3e06ad9_1                  conda-forge     Cached
+  + wcwidth                           0.2.13  pyhd8ed1ab_1                conda-forge     Cached
+  + werkzeug                           3.1.3  pyhd8ed1ab_1                conda-forge      244kB
+  + x265                                 3.5  h924138e_3                  conda-forge     Cached
+  + xcb-util                           0.4.1  h4f16b4b_2                  conda-forge     Cached
+  + xcb-util-cursor                    0.1.5  hb9d3cd8_0                  conda-forge     Cached
+  + xcb-util-image                     0.4.0  hb711507_2                  conda-forge     Cached
+  + xcb-util-keysyms                   0.4.1  hb711507_0                  conda-forge     Cached
+  + xcb-util-renderutil               0.3.10  hb711507_0                  conda-forge     Cached
+  + xcb-util-wm                        0.4.2  hb711507_0                  conda-forge     Cached
+  + xkeyboard-config                    2.45  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libice                        1.1.2  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libsm                         1.2.6  he73a12e_0                  conda-forge     Cached
+  + xorg-libx11                       1.8.12  h4f16b4b_0                  conda-forge     Cached
+  + xorg-libxau                       1.0.12  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxcomposite                 0.4.6  hb9d3cd8_2                  conda-forge     Cached
+  + xorg-libxcursor                    1.2.3  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxdamage                    1.1.6  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxdmcp                      1.1.5  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxext                       1.3.6  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxfixes                     6.0.1  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxi                         1.8.2  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxrandr                     1.5.4  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxrender                   0.9.12  hb9d3cd8_0                  conda-forge     Cached
+  + xorg-libxtst                       1.2.5  hb9d3cd8_3                  conda-forge     Cached
+  + xorg-libxxf86vm                    1.1.6  hb9d3cd8_0                  conda-forge     Cached
+  + yaml                               0.2.5  h7f98852_2                  conda-forge     Cached
+  + zipp                              3.23.0  pyhd8ed1ab_0                conda-forge     Cached
+  + zstandard                         0.23.0  py313h536fd9c_2             conda-forge      737kB
+  + zstd                               1.5.7  hb8e6e7a_2                  conda-forge     Cached
+
+  Summary:
+
+  Install: 222 packages
+
+  Total download: 391MB
+
+──────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+Confirm changes: [Y/n] info     libmamba Cleaned 0 .mamba_trash files. 0 remaining.
+
+Transaction starting
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/kaldi-5.5.1112-cpu_h7360626_9.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pytorch-2.7.1-cpu_mkl_py313_hea9ba1b_100.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/scipy-1.15.2-py313h86fcf2b_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pillow-11.2.1-py313h8db990d_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libtorch-2.7.1-cpu_mkl_hb1c5dc7_100.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pyside6-6.9.1-py313h7dabd7a_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/scikit-learn-1.7.0-py313h8ef605b_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/numpy-2.3.0-py313h17eae1a_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pandas-2.3.0-py313ha87cce1_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/matplotlib-base-3.10.3-py313h129903b_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/openfst-1.8.3-h84d6215_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/torchani-2.2-pyh9f0ad1d_0.tar.bz2'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/rav1e-0.7.1-h8fae777_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/sympy-1.14.0-pyh2585a3b_105.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/torchaudio-2.7.1-cpu_py313h33afbea_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/llvm-openmp-20.1.7-h024ca30_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/ase-3.25.0-pyhd8ed1ab_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libuv-1.51.0-hb9d3cd8_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/torchvision-0.22.0-cpu_py313_h2f72641_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/tornado-6.5.1-py313h536fd9c_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/fonttools-4.58.4-py313h8060acc_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/zstandard-0.23.0-py313h536fd9c_2.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libheif-1.19.7-gpl_hc18d805_100.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/optree-0.16.0-py313h33d0bda_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libde265-1.0.15-h00ab1b0_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/brotli-python-1.1.0-py313h46c70d0_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/cffi-1.17.1-py313hfab6e84_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/contourpy-1.3.2-py313h33d0bda_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/werkzeug-3.1.3-pyhd8ed1ab_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/gmpy2-2.2.1-py313h11186cd_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pybind11-2.13.6-pyhc790b64_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pybind11-global-2.13.6-pyh217bc35_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/tbb-2021.13.0-hceb3a55_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/fsspec-2025.5.1-pyhd8ed1ab_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libavif16-1.3.0-h766b0b6_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/flask-3.1.1-pyhd8ed1ab_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/kiwisolver-1.4.7-py313h33d0bda_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/torchvision-extra-decoders-0.0.2-py313hf1e760e_3.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/lark-parser-0.12.0-pyhd8ed1ab_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/cpython-3.13.5-py313hd8ed1ab_102.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/markupsafe-3.0.2-py313h8060acc_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libblas-3.9.0-32_hfdb39a5_mkl.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/itsdangerous-2.2.0-pyhd8ed1ab_1.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/matplotlib-3.10.3-py313h78bf25f_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/liblapacke-3.9.0-32_hbc6e62b_mkl.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/liblapack-3.9.0-32_hc41d3b0_mkl.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/libcblas-3.9.0-32_h372d94f_mkl.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/blinker-1.9.0-pyhff2d567_0.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/_openmp_mutex-4.5-3_kmp_llvm.conda'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/pytorch-mutex-1.0-cpu.tar.bz2'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/cpuonly-2.0-0.tar.bz2'
+info     libmamba Download finished, tarball available at '/home/calvin/miniforge3/pkgs/mkl-2024.2.2-ha957f24_16.conda'
+Linking pytorch-mutex-1.0-cpu
+Linking cpuonly-2.0-0
+Linking llvm-openmp-20.1.7-h024ca30_0
+Linking libglvnd-1.7.0-ha4b6fd6_2
+Linking ld_impl_linux-64-2.43-h1423503_5
+Linking _openmp_mutex-4.5-3_kmp_llvm
+Linking libopengl-1.7.0-ha4b6fd6_2
+Linking libegl-1.7.0-ha4b6fd6_2
+Linking libgcc-15.1.0-h767d61c_2
+Linking libpciaccess-0.18-hb9d3cd8_0
+Linking libmpdec-4.0.0-hb9d3cd8_0
+Linking libntlm-1.8-hb9d3cd8_0
+Linking alsa-lib-1.2.14-hb9d3cd8_0
+Linking xorg-libice-1.1.2-hb9d3cd8_0
+Linking libbrotlicommon-1.1.0-hb9d3cd8_3
+Linking xorg-libxdmcp-1.1.5-hb9d3cd8_0
+Linking pthread-stubs-0.4-hb9d3cd8_1002
+Linking xorg-libxau-1.0.12-hb9d3cd8_0
+Linking libiconv-1.18-h4ce23a2_1
+Linking libdeflate-1.24-h86f0d12_0
+Linking ncurses-6.5-h2d0b736_3
+Linking libffi-3.4.6-h2dba641_1
+Linking libgfortran5-15.1.0-hcea5267_2
+Linking libzlib-1.3.1-hb9d3cd8_2
+Linking liblzma-5.8.1-hb9d3cd8_2
+Linking libstdcxx-15.1.0-h8f9b012_2
+Linking libgcc-ng-15.1.0-h69a702a_2
+Linking rav1e-0.7.1-h8fae777_3
+Linking libwebp-base-1.5.0-h851e524_0
+Linking libjpeg-turbo-3.1.0-hb9d3cd8_0
+Linking libuv-1.51.0-hb9d3cd8_0
+Linking libexpat-2.7.0-h5888daf_0
+Linking libdrm-2.4.125-hb9d3cd8_0
+Linking libbrotlienc-1.1.0-hb9d3cd8_3
+Linking libbrotlidec-1.1.0-hb9d3cd8_3
+Linking libxcb-1.17.0-h8a09558_0
+Linking libedit-3.1.20250104-pl5321h7949ede_0
+Linking readline-8.2-h8c095d6_2
+Linking libgfortran-15.1.0-h69a702a_2
+Linking libsqlite-3.50.1-h6cd9bfd_6
+Linking tk-8.6.13-noxft_hd72426e_102
+Linking libpng-1.6.49-h943b412_0
+Linking pixman-0.46.2-h29eaf8c_0
+Linking graphite2-1.3.14-h5888daf_0
+Linking openfst-1.8.3-h84d6215_3
+Linking libstdcxx-ng-15.1.0-h4852527_2
+Linking zstd-1.5.7-hb8e6e7a_2
+Linking lerc-4.0.0-h0aef613_1
+Linking double-conversion-3.3.1-h5888daf_0
+Linking svt-av1-3.0.2-h5888daf_0
+Linking sleef-3.8-h1b44611_0
+Linking libabseil-20250127.1-cxx17_hbbce691_0
+Linking libxcrypt-4.4.36-hd590300_1
+Linking dav1d-1.2.1-hd590300_0
+Linking keyutils-1.6.1-h166bdaf_0
+Linking yaml-0.2.5-h7f98852_2
+Linking bzip2-1.0.8-h4bc722e_7
+Linking giflib-5.2.2-hd590300_0
+Linking libuuid-2.38.1-h0b41bf4_0
+Linking wayland-1.23.1-h3e06ad9_1
+Linking brotli-bin-1.1.0-hb9d3cd8_3
+Linking xcb-util-0.4.1-h4f16b4b_2
+Linking xcb-util-wm-0.4.2-hb711507_0
+Linking xcb-util-renderutil-0.3.10-hb711507_0
+Linking xcb-util-keysyms-0.4.1-hb711507_0
+Linking xorg-libx11-1.8.12-h4f16b4b_0
+Linking libfreetype6-2.13.3-h48d6fc4_1
+Linking gmp-6.3.0-hac33072_2
+Linking x265-3.5-h924138e_3
+Linking qhull-2020.2-h434a139_5
+Linking icu-75.1-he02047a_0
+Linking libde265-1.0.15-h00ab1b0_0
+Linking aom-3.9.1-hac33072_0
+Linking libtiff-4.7.0-hf01ce69_5
+Linking libprotobuf-5.29.3-h501fc15_1
+Linking pcre2-10.45-hc749103_0
+Linking xorg-libsm-1.2.6-he73a12e_0
+Linking brotli-1.1.0-hb9d3cd8_3
+Linking xcb-util-image-0.4.0-hb711507_2
+Linking xorg-libxfixes-6.0.1-hb9d3cd8_0
+Linking xorg-libxrender-0.9.12-hb9d3cd8_0
+Linking xorg-libxext-1.3.6-hb9d3cd8_0
+Linking libglx-1.7.0-ha4b6fd6_2
+Linking xkeyboard-config-2.45-hb9d3cd8_0
+Linking libfreetype-2.13.3-ha770c72_1
+Linking mpfr-4.2.1-h90cbb55_3
+Linking libxml2-2.13.8-h4bc477f_0
+Linking libavif16-1.3.0-h766b0b6_0
+Linking openjpeg-2.5.3-h5fbd93e_0
+Linking lcms2-2.17-h717163a_0
+Linking libglib-2.84.2-h3618099_0
+Linking xcb-util-cursor-0.1.5-hb9d3cd8_0
+Linking xorg-libxcomposite-0.4.6-hb9d3cd8_2
+Linking xorg-libxcursor-1.2.3-hb9d3cd8_0
+Linking xorg-libxi-1.8.2-hb9d3cd8_0
+Linking xorg-libxxf86vm-1.1.6-hb9d3cd8_0
+Linking xorg-libxrandr-1.5.4-hb9d3cd8_0
+Linking xorg-libxdamage-1.1.6-hb9d3cd8_0
+Linking libgl-1.7.0-ha4b6fd6_2
+Linking freetype-2.13.3-ha770c72_1
+Linking mpc-1.3.1-h24ddda3_1
+Linking libxslt-1.1.39-h76b75d6_0
+Linking libllvm20-20.1.7-he9d0ab4_0
+Linking libhwloc-2.11.2-default_h0d58e46_1001
+Linking libxkbcommon-1.10.0-h65c71a3_0
+Linking libheif-1.19.7-gpl_hc18d805_100
+Linking dbus-1.16.2-h3c4dab8_0
+Linking xorg-libxtst-1.2.5-hb9d3cd8_3
+Linking fontconfig-2.15.0-h7e30c49_1
+Linking libclang13-20.1.7-default_he06ed0a_0
+Linking libclang-cpp20.1-20.1.7-default_h1df26ce_0
+Linking tbb-2021.13.0-hceb3a55_1
+Linking mkl-2024.2.2-ha957f24_16
+Linking libblas-3.9.0-32_hfdb39a5_mkl
+Linking libcblas-3.9.0-32_h372d94f_mkl
+Linking liblapack-3.9.0-32_hc41d3b0_mkl
+Linking libtorch-2.7.1-cpu_mkl_hb1c5dc7_100
+Linking liblapacke-3.9.0-32_hbc6e62b_mkl
+Linking kaldi-5.5.1112-cpu_h7360626_9
+Linking python_abi-3.13-7_cp313
+Linking tzdata-2025b-h78e105d_0
+Linking ca-certificates-2025.6.15-hbd8a1cb_0
+Linking font-ttf-ubuntu-0.83-h77eed37_3
+Linking font-ttf-dejavu-sans-mono-2.37-hab24e00_0
+Linking font-ttf-inconsolata-3.000-h77eed37_0
+Linking font-ttf-source-code-pro-2.038-h77eed37_0
+Linking fonts-conda-forge-1-0
+Linking fonts-conda-ecosystem-1-0
+Linking openssl-3.5.0-h7b32b05_1
+Linking cairo-1.18.4-h3394656_0
+Linking krb5-1.21.3-h659f571_0
+Linking python-3.13.5-hec9711d_102_cp313
+Linking harfbuzz-11.2.1-h3beb420_0
+Linking cyrus-sasl-2.1.28-hd9c7081_0
+Linking libcups-2.3.3-hb8b1518_5
+Linking openldap-2.6.10-he970967_0
+Linking libpq-17.5-h27ae623_0
+Linking qt6-main-6.9.1-h0384650_0
+Linking pip-25.1.1-pyh145f28c_0
+info     libmamba Running wrapped python compilation command /home/calvin/miniforge3/envs/tani_env/bin/python3.13 -Wi -u /tmp/mambaf7h5ah336rj
+info     libmamba Compiling 411 files to pyc
+Linking pybind11-global-2.13.6-pyh217bc35_3
+Linking zipp-3.23.0-pyhd8ed1ab_0
+info     libmamba Compiling 7 files to pyc
+Linking pycparser-2.22-pyh29332c3_1
+info     libmamba Compiling 17 files to pyc
+Linking itsdangerous-2.2.0-pyhd8ed1ab_1
+info     libmamba Compiling 8 files to pyc
+Linking blinker-1.9.0-pyhff2d567_0
+info     libmamba Compiling 3 files to pyc
+Linking click-8.2.1-pyh707e725_0
+info     libmamba Compiling 16 files to pyc
+Linking parso-0.8.4-pyhd8ed1ab_1
+info     libmamba Compiling 21 files to pyc
+Linking ptyprocess-0.7.0-pyhd8ed1ab_1
+info     libmamba Compiling 4 files to pyc
+Linking wcwidth-0.2.13-pyhd8ed1ab_1
+info     libmamba Compiling 6 files to pyc
+Linking six-1.17.0-pyhd8ed1ab_0
+info     libmamba Compiling 1 files to pyc
+Linking pure_eval-0.2.3-pyhd8ed1ab_1
+info     libmamba Compiling 5 files to pyc
+Linking executing-2.2.0-pyhd8ed1ab_0
+info     libmamba Compiling 6 files to pyc
+Linking asttokens-3.0.0-pyhd8ed1ab_1
+info     libmamba Compiling 7 files to pyc
+Linking cpython-3.13.5-py313hd8ed1ab_102
+Linking mpmath-1.3.0-pyhd8ed1ab_1
+info     libmamba Compiling 87 files to pyc
+Linking pysocks-1.7.1-pyha55dd90_7
+info     libmamba Compiling 2 files to pyc
+Linking hyperframe-6.1.0-pyhd8ed1ab_0
+info     libmamba Compiling 4 files to pyc
+Linking hpack-4.1.0-pyhd8ed1ab_0
+info     libmamba Compiling 8 files to pyc
+Linking munkres-1.1.4-pyhd8ed1ab_1
+info     libmamba Compiling 1 files to pyc
+Linking pyparsing-3.2.3-pyhd8ed1ab_1
+info     libmamba Compiling 13 files to pyc
+Linking packaging-25.0-pyh29332c3_1
+info     libmamba Compiling 16 files to pyc
+Linking cycler-0.12.1-pyhd8ed1ab_1
+info     libmamba Compiling 1 files to pyc
+Linking pytz-2025.2-pyhd8ed1ab_0
+info     libmamba Compiling 6 files to pyc
+Linking python-tzdata-2025.2-pyhd8ed1ab_0
+info     libmamba Compiling 22 files to pyc
+Linking fsspec-2025.5.1-pyhd8ed1ab_0
+info     libmamba Compiling 56 files to pyc
+Linking networkx-3.5-pyhe01879c_0
+info     libmamba Compiling 574 files to pyc
+Linking filelock-3.18.0-pyhd8ed1ab_0
+info     libmamba Compiling 9 files to pyc
+Linking threadpoolctl-3.6.0-pyhecae5ae_0
+info     libmamba Compiling 1 files to pyc
+Linking traitlets-5.14.3-pyhd8ed1ab_1
+info     libmamba Compiling 24 files to pyc
+Linking pygments-2.19.2-pyhd8ed1ab_0
+info     libmamba Compiling 338 files to pyc
+Linking pickleshare-0.7.5-pyhd8ed1ab_1004
+info     libmamba Compiling 1 files to pyc
+Linking decorator-5.2.1-pyhd8ed1ab_0
+info     libmamba Compiling 1 files to pyc
+Linking charset-normalizer-3.4.2-pyhd8ed1ab_0
+info     libmamba Compiling 12 files to pyc
+Linking idna-3.10-pyhd8ed1ab_1
+info     libmamba Compiling 8 files to pyc
+Linking certifi-2025.6.15-pyhd8ed1ab_0
+info     libmamba Compiling 3 files to pyc
+Linking lark-parser-0.12.0-pyhd8ed1ab_1
+info     libmamba Compiling 33 files to pyc
+Linking setuptools-80.9.0-pyhff2d567_0
+info     libmamba Compiling 355 files to pyc
+Linking typing_extensions-4.14.0-pyhe01879c_0
+info     libmamba Compiling 1 files to pyc
+Linking pybind11-2.13.6-pyhc790b64_3
+info     libmamba Compiling 5 files to pyc
+Linking importlib-metadata-8.7.0-pyhe01879c_1
+info     libmamba Compiling 13 files to pyc
+Linking jedi-0.19.2-pyhd8ed1ab_1
+info     libmamba Compiling 84 files to pyc
+Linking pexpect-4.9.0-pyhd8ed1ab_1
+info     libmamba Compiling 18 files to pyc
+Linking prompt-toolkit-3.0.51-pyha770c72_0
+info     libmamba Compiling 144 files to pyc
+Linking python-dateutil-2.9.0.post0-pyhff2d567_1
+info     libmamba Compiling 18 files to pyc
+Linking stack_data-0.6.3-pyhd8ed1ab_1
+info     libmamba Compiling 6 files to pyc
+Linking h2-4.2.0-pyhd8ed1ab_0
+info     libmamba Compiling 11 files to pyc
+Linking matplotlib-inline-0.1.7-pyhd8ed1ab_1
+info     libmamba Compiling 3 files to pyc
+Linking ipython_pygments_lexers-1.1.1-pyhd8ed1ab_0
+info     libmamba Compiling 1 files to pyc
+Linking joblib-1.5.1-pyhd8ed1ab_0
+info     libmamba Compiling 73 files to pyc
+Linking exceptiongroup-1.3.0-pyhd8ed1ab_0
+info     libmamba Compiling 6 files to pyc
+Linking typing-extensions-4.14.0-h32cad80_0
+Linking ipython-9.3.0-pyhfa0c392_0
+info     libmamba Compiling 171 files to pyc
+Linking markupsafe-3.0.2-py313h8060acc_1
+Linking gmpy2-2.2.1-py313h11186cd_0
+Linking brotli-python-1.1.0-py313h46c70d0_3
+Linking tornado-6.5.1-py313h536fd9c_0
+Linking pyside6-6.9.1-py313h7dabd7a_0
+Linking kiwisolver-1.4.7-py313h33d0bda_0
+Linking pillow-11.2.1-py313h8db990d_0
+Linking pyyaml-6.0.2-py313h8060acc_2
+Linking numpy-2.3.0-py313h17eae1a_0
+Linking cffi-1.17.1-py313hfab6e84_0
+Linking fonttools-4.58.4-py313h8060acc_0
+Linking optree-0.16.0-py313h33d0bda_0
+Linking contourpy-1.3.2-py313h33d0bda_0
+Linking scipy-1.15.2-py313h86fcf2b_0
+Linking pandas-2.3.0-py313ha87cce1_0
+Linking zstandard-0.23.0-py313h536fd9c_2
+Linking matplotlib-base-3.10.3-py313h129903b_0
+Linking scikit-learn-1.7.0-py313h8ef605b_1
+Linking matplotlib-3.10.3-py313h78bf25f_0
+Linking werkzeug-3.1.3-pyhd8ed1ab_1
+info     libmamba Compiling 52 files to pyc
+Linking jinja2-3.1.6-pyhd8ed1ab_0
+info     libmamba Compiling 25 files to pyc
+Linking sympy-1.14.0-pyh2585a3b_105
+info     libmamba Compiling 1533 files to pyc
+Linking urllib3-2.5.0-pyhd8ed1ab_0
+info     libmamba Compiling 36 files to pyc
+Linking flask-3.1.1-pyhd8ed1ab_0
+info     libmamba Compiling 24 files to pyc
+Linking requests-2.32.4-pyhd8ed1ab_0
+info     libmamba Compiling 18 files to pyc
+Linking ase-3.25.0-pyhd8ed1ab_0
+info     libmamba Compiling 1146 files to pyc
+Linking pytorch-2.7.1-cpu_mkl_py313_hea9ba1b_100
+Linking torchvision-extra-decoders-0.0.2-py313hf1e760e_3
+Linking torchaudio-2.7.1-cpu_py313h33afbea_1
+Linking torchvision-0.22.0-cpu_py313_h2f72641_0
+Linking torchani-2.2-pyh9f0ad1d_0
+info     libmamba Compiling 11 files to pyc
+info     libmamba Waiting for pyc compilation to finish
+
+Transaction finished
+
+info     libmamba Opening history file: "/home/calvin/miniforge3/envs/tani_env/conda-meta/history"
+
+To activate this environment, use:
+
+    mamba activate tani_env
+
+Or to execute a single command in this environment, use:
+
+    mamba run -n tani_env mycommand
+
++ echo '>>> Cleaning package caches (post-env)'
+>>> Cleaning package caches (post-env)
++ mamba clean -a -y
+Collect information..
+Cleaning index cache..
+Cleaning lock files..
+  Package file                                               Size
+───────────────────────────────────────────────────────────────────
+  /home/calvin/miniforge3/pkgs
+───────────────────────────────────────────────────────────────────
+
+  _openmp_mutex-4.5-3_kmp_llvm.conda                          8kB
+  ase-3.25.0-pyhd8ed1ab_0.conda                               2MB
+  blinker-1.9.0-pyhff2d567_0.conda                           14kB
+  brotli-python-1.1.0-py313h46c70d0_3.conda                 350kB
+  cffi-1.17.1-py313hfab6e84_0.conda                         296kB
+  contourpy-1.3.2-py313h33d0bda_0.conda                     279kB
+  cpuonly-2.0-0.tar.bz2                                       2kB
+  cpython-3.13.5-py313hd8ed1ab_102.conda                     48kB
+  flask-3.1.1-pyhd8ed1ab_0.conda                             83kB
+  fonttools-4.58.4-py313h8060acc_0.conda                      3MB
+  fsspec-2025.5.1-pyhd8ed1ab_0.conda                        146kB
+  gmpy2-2.2.1-py313h11186cd_0.conda                         213kB
+  itsdangerous-2.2.0-pyhd8ed1ab_1.conda                      19kB
+  kaldi-5.5.1112-cpu_h7360626_9.conda                        21MB
+  kiwisolver-1.4.7-py313h33d0bda_0.conda                     71kB
+  lark-parser-0.12.0-pyhd8ed1ab_1.conda                      86kB
+  libavif16-1.3.0-h766b0b6_0.conda                          140kB
+  libblas-3.9.0-32_hfdb39a5_mkl.conda                        18kB
+  libcblas-3.9.0-32_h372d94f_mkl.conda                       17kB
+  libde265-1.0.15-h00ab1b0_0.conda                          412kB
+  libheif-1.19.7-gpl_hc18d805_100.conda                     597kB
+  liblapack-3.9.0-32_hc41d3b0_mkl.conda                      17kB
+  liblapacke-3.9.0-32_hbc6e62b_mkl.conda                     17kB
+  libtorch-2.7.1-cpu_mkl_hb1c5dc7_100.conda                  56MB
+  libuv-1.51.0-hb9d3cd8_0.conda                             890kB
+  llvm-openmp-20.1.7-h024ca30_0.conda                         4MB
+  markupsafe-3.0.2-py313h8060acc_1.conda                     25kB
+  matplotlib-3.10.3-py313h78bf25f_0.conda                    17kB
+  matplotlib-base-3.10.3-py313h129903b_0.conda                8MB
+  mkl-2024.2.2-ha957f24_16.conda                            125MB
+  numpy-2.3.0-py313h17eae1a_0.conda                           9MB
+  openfst-1.8.3-h84d6215_3.conda                              5MB
+  optree-0.16.0-py313h33d0bda_0.conda                       436kB
+  pandas-2.3.0-py313ha87cce1_0.conda                         15MB
+  pillow-11.2.1-py313h8db990d_0.conda                        43MB
+  pybind11-2.13.6-pyhc790b64_3.conda                        187kB
+  pybind11-global-2.13.6-pyh217bc35_3.conda                 180kB
+  pyside6-6.9.1-py313h7dabd7a_0.conda                        10MB
+  pytorch-2.7.1-cpu_mkl_py313_hea9ba1b_100.conda             29MB
+  pytorch-mutex-1.0-cpu.tar.bz2                               3kB
+  rav1e-0.7.1-h8fae777_3.conda                                5MB
+  scikit-learn-1.7.0-py313h8ef605b_1.conda                   10MB
+  scipy-1.15.2-py313h86fcf2b_0.conda                         17MB
+  sympy-1.14.0-pyh2585a3b_105.conda                           5MB
+  tbb-2021.13.0-hceb3a55_1.conda                            176kB
+  torchani-2.2-pyh9f0ad1d_0.tar.bz2                          11MB
+  torchaudio-2.7.1-cpu_py313h33afbea_1.conda                  5MB
+  torchvision-0.22.0-cpu_py313_h2f72641_0.conda               2MB
+  torchvision-extra-decoders-0.0.2-py313hf1e760e_3.conda     64kB
+  tornado-6.5.1-py313h536fd9c_0.conda                       873kB
+  werkzeug-3.1.3-pyhd8ed1ab_1.conda                         244kB
+  zstandard-0.23.0-py313h536fd9c_2.conda                    737kB
+
+  /home/calvin/.mamba/pkgs
+───────────────────────────────────────────────────────────────────
+
+
+  
+───────────────────────────────────────────────────────────────────
+
+  Total size:                                               391MB
+Cleaning tarballs..
+Cleaning packages..
++ echo '---- Disk usage after env create ----'
+---- Disk usage after env create ----
++ df -h .
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda2       1.8T  946G  794G  55% /
++ echo '---- Conda env list ----'
+---- Conda env list ----
++ mamba env list
+  Name               Active  Path                                          
+─────────────────────────────────────────────────────────────────────────────
+  base               *       /home/calvin/miniforge3                       
+  arc_env                    /home/calvin/miniforge3/envs/arc_env          
+  arc_env_new                /home/calvin/miniforge3/envs/arc_env_new      
+  chemprop_rocm              /home/calvin/miniforge3/envs/chemprop_rocm    
+  cmpnn-revised-cpu          /home/calvin/miniforge3/envs/cmpnn-revised-cpu
+  deepchem                   /home/calvin/miniforge3/envs/deepchem         
+  dmpnn_env                  /home/calvin/miniforge3/envs/dmpnn_env        
+  dmpnn_rocm                 /home/calvin/miniforge3/envs/dmpnn_rocm       
+  habnet_env                 /home/calvin/miniforge3/envs/habnet_env       
+  ob_env                     /home/calvin/miniforge3/envs/ob_env           
+  pysidt_env                 /home/calvin/miniforge3/envs/pysidt_env       
+  rmg_env                    /home/calvin/miniforge3/envs/rmg_env          
+  sella_env                  /home/calvin/miniforge3/envs/sella_env        
+  tani_env                   /home/calvin/miniforge3/envs/tani_env         
+  ts_gcn                     /home/calvin/miniforge3/envs/ts_gcn           
+  tst_env                    /home/calvin/miniforge3/envs/tst_env          
+  xtb_env                    /home/calvin/miniforge3/envs/xtb_env          
++ echo '>>> Activating and sanity-checking TANI import'
+>>> Activating and sanity-checking TANI import
++ set +x
+/home/calvin/miniforge3/envs/tani_env/lib/python3.13/site-packages/torchani/__init__.py:39: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import get_distribution, DistributionNotFound
+torchani version: 2.2
+✅  TANI environment 'tani_env' setup completed at Tue Jun 24 06:07:44 AM IDT 2025

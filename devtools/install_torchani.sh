@@ -9,10 +9,6 @@ set -x
 
 echo ">>> Starting TANI environment setup at $(date)"
 
-# 1) Show initial disk usage
-echo "---- Disk usage before env create ----"
-df -h .
-
 # 2) Pick a conda front-end
 if command -v micromamba &>/dev/null; then
     echo "✔️  Using micromamba"
@@ -29,13 +25,13 @@ else
 fi
 
 # 3) Initialize shell integration
-if [[ $COMMAND_PKG == micromamba ]]; then
-    eval "$($COMMAND_PKG shell hook --shell=bash)"
-else
-    CONDA_BASE=$($COMMAND_PKG info --base)
-    # shellcheck source=/dev/null
-    source "$CONDA_BASE/etc/profile.d/conda.sh"
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    eval "$(micromamba shell hook --shell=bash)"
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
+    BASE=$(conda info --base)
+    source "$BASE/etc/profile.d/conda.sh"
 fi
+
 
 # 4) Clean caches to free space (pre-env)
 echo ">>> Cleaning package caches (pre-env)"

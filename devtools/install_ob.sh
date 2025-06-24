@@ -19,7 +19,7 @@ fi
 
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-else
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
     BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
 fi
@@ -35,10 +35,10 @@ ENV_EXISTS=$($COMMAND_PKG env list | grep -q '^ob_env\s' && echo "true" || echo 
 
 if [ "$ENV_EXISTS" = "true" ]; then
     echo ">>> Updating existing environment ob_env..."
-    $COMMAND_PKG env update -n ob_env -f "$ENV_FILE" --prune
+    $COMMAND_PKG env update -n ob_env -f "$ENV_FILE" --prune -y
 else
     echo ">>> Creating new environment ob_env..."
-    $COMMAND_PKG env create -n ob_env -f "$ENV_FILE"
+    $COMMAND_PKG env create -n ob_env -f "$ENV_FILE" -y
 fi
 
 echo "✅ OpenBabel environment (ob_env) is ready."

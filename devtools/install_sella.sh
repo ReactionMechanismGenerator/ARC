@@ -18,7 +18,7 @@ fi
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
-    BASE=$($COMMAND_PKG info --base)
+    BASE=$(conda info --base)
     . "$BASE/etc/profile.d/conda.sh"
 fi
 
@@ -41,7 +41,7 @@ else
     if [ "$COMMAND_PKG" != "conda" ]; then
         $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml -y
     else
-        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml
+        $COMMAND_PKG env create -n sella_env -f devtools/sella_environment.yml 
     fi
 fi
 
