@@ -11,7 +11,7 @@ from arc.common import read_yaml_file
 from arc.constants import E_h_kJmol, bohr_to_angstrom
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.species.converter import check_xyz_dict
+from arc.species.converter import str_to_xyz
 
 
 class YAMLParser(ESSAdapter, ABC):
@@ -42,8 +42,10 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
         """
-        xyz = self.data.get('xyz')
-        return check_xyz_dict(xyz) if xyz else None
+        for key in ['xyz', 'opt_xyz']:
+            if key in self.data.keys():
+                return self.data[key] if isinstance(self.data[key], dict) else str_to_xyz(self.data[key])
+        return None
 
     def parse_frequencies(self) -> Optional['np.ndarray']:
         """
@@ -182,5 +184,3 @@ class YAMLParser(ESSAdapter, ABC):
 
 
 register_ess_adapter('yaml', YAMLParser)
-register_ess_adapter('xtb', YAMLParser)
-register_ess_adapter('torchani', YAMLParser)

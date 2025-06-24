@@ -9,7 +9,7 @@ import numpy as np
 import os
 import unittest
 
-import arc.parser as parser
+import arc.parser.parser as parser
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz, xyz_to_str
@@ -26,6 +26,24 @@ class TestParser(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+
+    def test_determine_ess(self):
+        """Test the determine_ess function"""
+        gaussian_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
+        qchem_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        molpro_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
+        psi4_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.psi4.log')
+        terachem_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_terachem.dat')
+        xtb_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
+        orca_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_example_freq.log')
+
+        self.assertEqual(parser.determine_ess(gaussian_path), 'gaussian')
+        self.assertEqual(parser.determine_ess(qchem_path), 'qchem')
+        self.assertEqual(parser.determine_ess(molpro_path), 'molpro')
+        self.assertEqual(parser.determine_ess(psi4_path), 'psi4')
+        self.assertEqual(parser.determine_ess(terachem_path), 'terachem')
+        self.assertEqual(parser.determine_ess(xtb_path), 'xtb')
+        self.assertEqual(parser.determine_ess(orca_path), 'orca')
 
     def test_parse_frequencies(self):
         """Test frequency parsing"""

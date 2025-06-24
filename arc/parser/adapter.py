@@ -25,14 +25,14 @@ class ESSEnum(str, Enum):
     """
     cfour = 'cfour'
     gaussian = 'gaussian'
-    # mockter = 'mockter'
+    mockter = 'mockter'
     molpro = 'molpro'
     orca = 'orca'
     psi4 = 'psi4'
     qchem = 'qchem'
     terachem = 'terachem'
-    # torchani = 'torchani'
-    # xtb = 'xtb'
+    torchani = 'torchani'
+    xtb = 'xtb'
 
 
 class ESSAdapter(ABC):
