@@ -19,7 +19,8 @@ if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
 else
     BASE=$(conda info --base)
-    . "$BASE/etc/profile.d/conda.sh"       # shellcheck source=/dev/null
+    # shellcheck source=/dev/null
+    . "$BASE/etc/profile.d/conda.sh"
 fi
 
 pushd ..

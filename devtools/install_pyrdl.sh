@@ -20,7 +20,7 @@ if command -v micromamba &> /dev/null; then
 elif command -v mamba &> /dev/null; then
     echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
-    source "$(mamba info --base)/etc/profile.d/conda.sh"
+    source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate arc_env
 elif command -v conda &> /dev/null; then
     echo "✔️ Conda is installed."

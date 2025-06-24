@@ -17,10 +17,11 @@ fi
 
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-else
-    BASE=$($COMMAND_PKG info --base)
-    . "$BASE/etc/profile.d/conda.sh"
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
+    BASE=$(conda info --base)
+    source "$BASE/etc/profile.d/conda.sh"
 fi
+
 
 ENV_FILE="devtools/xtb_environment.yml"
 
@@ -31,10 +32,10 @@ fi
 
 if $COMMAND_PKG env list | grep -q '^xtb_env\s'; then
     echo ">>> Updating existing xtb_env..."
-    $COMMAND_PKG env update -n xtb_env -f "$ENV_FILE" --prune
+    $COMMAND_PKG env update -n xtb_env -f "$ENV_FILE" --prune -y
 else
     echo ">>> Creating new xtb_env..."
-    $COMMAND_PKG env create -n xtb_env -f "$ENV_FILE"
+    $COMMAND_PKG env create -n xtb_env -f "$ENV_FILE" -y
 fi
 
 # Activate environment temporarily for the check

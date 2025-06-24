@@ -50,19 +50,19 @@ echo "=== Installing RMG ==="
 bash devtools/install_rmg.sh
 ! $SKIP_CLEAN && cleanup_disk
 
-# 2) PyRDL
-echo "=== Installing PyRDL ==="
-bash devtools/install_pyrdl.sh
-! $SKIP_CLEAN && cleanup_disk
+# # 2) PyRDL
+# echo "=== Installing PyRDL ==="
+# bash devtools/install_pyrdl.sh
+# ! $SKIP_CLEAN && cleanup_disk
 
-# 3) ARC itself (skip env creation in CI)
-if [[ -z "${CI:-}" ]]; then
-    echo "=== Installing ARC ==="
-    bash devtools/install_arc.sh
-    ! $SKIP_CLEAN && cleanup_disk
-else
-    echo "ℹ️ CI detected, skipping arc_env creation."
-fi
+# # 3) ARC itself (skip env creation in CI)
+# if [[ -z "${CI:-}" ]]; then
+#     echo "=== Installing ARC ==="
+#     bash devtools/install_arc.sh
+#     ! $SKIP_CLEAN && cleanup_disk
+# else
+#     echo "ℹ️ CI detected, skipping arc_env creation."
+# fi
 
 # 4) GCN (CPU)
 echo "=== Installing GCN CPU ==="

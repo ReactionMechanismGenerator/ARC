@@ -23,13 +23,13 @@ else
 fi
 
 # Initialize shell hooks
-if [[ "$COMMAND_PKG" == "micromamba" ]]; then
+if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate "$ENV_NAME"
-else
-    source "$($COMMAND_PKG info --base)/etc/profile.d/conda.sh"
-    conda activate "$ENV_NAME"
+elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
+    BASE=$(conda info --base)
+    source "$BASE/etc/profile.d/conda.sh"
 fi
+
 
 # Create or update the environment
 if $COMMAND_PKG env list | grep -qw "$ENV_NAME"; then
