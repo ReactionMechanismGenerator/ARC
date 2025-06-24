@@ -5,6 +5,7 @@ adjacency list format used by Reaction Mechanism Generator (RMG).
 from __future__ import annotations
 
 import re
+import warnings
 
 from arc.common import get_logger
 from arc.exceptions import InvalidAdjacencyListError
@@ -14,18 +15,7 @@ from arc.molecule.element import get_element, PeriodicSystem
 # from arc.molecule.group import GroupAtom, GroupBond
 # from arc.molecule.fragment import Fragment, CuttingLabel
 
-
-"""
-This module contains functionality for reading from and writing to the
-adjacency list format used by Reaction Mechanism Generator (RMG).
-"""
-import logging
-import re
-import warnings
-
-from arc.exceptions import InvalidAdjacencyListError
-from arc.molecule.atomtype import get_atomtype
-from arc.molecule.element import get_element, PeriodicSystem
+logger = get_logger()
 
 
 class Saturator(object):
@@ -127,7 +117,7 @@ class ConsistencyChecker(object):
                 raise InvalidAdjacencyListError('Multiplicity {0} not in agreement with total number of '
                                                 'radicals {1}.'.format(multiplicity, n_rad))
         else:
-            logging.warning("Consistency checking of multiplicity of molecules with "
+            logger.warning("Consistency checking of multiplicity of molecules with "
                             "more than 4 unpaired electrons is not implemented yet!")
 
     @staticmethod
@@ -424,7 +414,7 @@ def from_old_adjacency_list(adjlist, group=False, saturate_h=False):
             multiplicity = None
 
     except InvalidAdjacencyListError:
-        logging.error("Troublesome adjacency list:\n" + adjlist)
+        logger.error("Troublesome adjacency list:\n" + adjlist)
         raise
     if group:
         return atoms, multiplicity, [], []
@@ -475,15 +465,15 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
         lines.pop()
         last_line = lines[-1].strip()
     if re_intermediate_adjlist.match(last_line):
-        logging.debug(
+        logger.debug(
             "adjacency list:\n{1}\nline '{0}' looks like an intermediate style "
             "adjacency list".format(last_line, adjlist))
         return from_old_adjacency_list(adjlist, group=group, saturate_h=saturate_h)
     if re_old_adjlist.match(last_line):
-        logging.debug(
+        logger.debug(
             "Adjacency list:\n{1}\nline '{0}' looks like an old style adjacency list".format(last_line, adjlist))
         if not group:
-            logging.debug("Will assume implicit H atoms")
+            logger.debug("Will assume implicit H atoms")
         return from_old_adjacency_list(adjlist, group=group, saturate_h=(not group))
 
     # Interpret the first line if it contains a label
