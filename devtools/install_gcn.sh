@@ -1,6 +1,12 @@
 #!/bin/bash -l
 set -e
 
+# ── locate folders relative to this script ────────────────────────────────
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ARC_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"      # …/ARC_Mol
+CLONE_ROOT="$(cd "$ARC_ROOT/.." && pwd)"      # directory that *contains* ARC_Mol
+cd "$CLONE_ROOT"
+
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
@@ -23,7 +29,6 @@ else
     . "$BASE/etc/profile.d/conda.sh"
 fi
 
-pushd ..
 
 echo ">>> Cloning or updating TS-GCN..."
 if [ -d TS-GCN ]; then
@@ -61,5 +66,4 @@ else
     exit 1
 fi
 
-popd > /dev/null
 echo "✅ Done installing GCN."

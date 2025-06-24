@@ -1,43 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# -------------------------------------------------------------------------
+# INSTALLATION OF ARC, RMG, and other external dependencies
+# Options: 
+# --no-clean: Skip the aggressive cleanup of conda/micromamba caches and build directories.
+# --no-ext: Skip the installation of external dependencies (autotst, kinbot, etc.)
+# --rmg-*: Options for RMG installation
+# --arc-*: Options for ARC installation
+# -------------------------------------------------------------------------
+
+# ── locate this script and the repo root ──────────────────────────────────
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+DEVTOOLS_DIR="$SCRIPT_DIR"                   # you are already in devtools
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"    # one level up
+
+# helper so every sub-call works no matter where we launched from
+run_devtool () { bash "$DEVTOOLS_DIR/$1" "${@:2}"; }
+
 ###################################################################################
-# Flag for cleaning
+# Flag for cleaning up disk space and caches, and for installing external dependencies
+# and their arguments.
 #################################################################################
+
 SKIP_CLEAN=false
-[[ "${1:-}" == --no-clean ]] && SKIP_CLEAN=true
+SKIP_EXT=false
+SKIP_ARC=false
+RMG_ARGS=()
+ARC_ARGS=()
+EXT_ARGS=()
+GENERIC_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-clean) SKIP_CLEAN=true ;;
+        --no-ext)   SKIP_EXT=true  ;;
+        --no-arc)   SKIP_ARC=true  ;;
+        --rmg-*)    RMG_ARGS+=("${1#--rmg-}") ;;
+        --arc-*)    ARC_ARGS+=("${1#--arc-}") ;;
+        --ext-*)    EXT_ARGS+=("${1#--ext-}") ;;
+        --help|-h)
+            cat <<EOF
+Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
+  --no-clean          Skip micromamba/conda cache cleanup
+  --no-ext            Skip external tools (AutoTST, KinBot, …)
+  --rmg-path          Forward '--path' to RMG installer
+  --rmg-pip           Forward '--pip'  to RMG installer
+  ...
+EOF
+            exit 0 ;;
+        *) GENERIC_ARGS+=("$1") ;;
+    esac
+    shift
+done
+
+echo ">>> Beginning full ARC external repo installation…"
+echo "    RMG sub-flags : ${RMG_ARGS[*]:-(none)}"
+echo "    ARC sub-flags : ${ARC_ARGS[*]:-(none)}"
+echo "    EXT sub-flags : ${EXT_ARGS[*]:-(none)}"
 
 
-# -----------------------------------------------------------------------------
-# Helper: aggressively clean conda/micromamba caches & remove any known build
-# directories in our workspace.  Ignores any permission errors.
-# -----------------------------------------------------------------------------
-cleanup_disk() {
-    echo ">>> Cleaning package manager caches and temporary build dirs…"
-
-    # Clean conda / micromamba
-    if command -v micromamba &>/dev/null; then
-        micromamba clean --all --yes || true
-    elif command -v mamba &>/dev/null; then
-        mamba clean --all --yes || true
-    elif command -v conda &>/dev/null; then
-        conda clean -afy || true
-    fi
-
-    # Remove pip cache
-    rm -rf "$HOME/.cache/pip" || true
-
-    # Remove any "build/" or "dist/" dirs left behind in our repo clones
-    find . -type d \( -name build -o -name dist \) -prune -exec rm -rf {} + 2>/dev/null || true
-
-    # Remove any __pycache__
-    find . -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
-
-    # Prune any other big caches under home that we own
-    rm -rf "$HOME/.cache"/git* "$HOME/.cache"/julia* || true
-
-    df -h . | sed '1!p;d'   # show after-clean free space
-}
 
 # -----------------------------------------------------------------------------
 # Main install sequence
@@ -47,57 +69,54 @@ pushd . >/dev/null
 
 # 1) RMG
 echo "=== Installing RMG ==="
-bash devtools/install_rmg.sh
-! $SKIP_CLEAN && cleanup_disk
+run_devtool install_rmg.sh "${RMG_ARGS[@]}"
+
 
 # # 2) PyRDL
 # echo "=== Installing PyRDL ==="
 # bash devtools/install_pyrdl.sh
 # ! $SKIP_CLEAN && cleanup_disk
 
-# # 3) ARC itself (skip env creation in CI)
-# if [[ -z "${CI:-}" ]]; then
-#     echo "=== Installing ARC ==="
-#     bash devtools/install_arc.sh
-#     ! $SKIP_CLEAN && cleanup_disk
-# else
-#     echo "ℹ️ CI detected, skipping arc_env creation."
-# fi
+# 3) ARC itself (skip env creation in CI or if user requests it)
+if [[ -z "${CI:-}" ]] && [[ -z "${SKIP_ARC:-}" ]]; then
+    echo "=== Installing ARC ==="
+    run_devtool install_arc.sh "${ARC_ARGS[@]}"
 
-# 4) GCN (CPU)
-echo "=== Installing GCN CPU ==="
-bash devtools/install_gcn_cpu.sh
-! $SKIP_CLEAN && cleanup_disk
+    if [[ $SKIP_CLEAN == false ]]; then
+        echo "=== Cleaning up ARC build artifacts ==="
+        # Cleanup disk space after ARC installation
+        run_devtool clean.sh --python-builds --pip
+        echo "ℹ️  Disk cleanup complete."
+    else
+        echo "ℹ️  Skipping ARC cleanup as per --no-clean flag."
+    fi
+else
+    echo "ℹ️  CI detected or --no-arc flag set. Skipping ARC installation."
+fi
 
-# 5) AutoTST
-echo "=== Installing AutoTST ==="
-bash devtools/install_autotst.sh
-! $SKIP_CLEAN && cleanup_disk
+if [[ $SKIP_EXT == false ]]; then
+    # map of friendly names → installer scripts
+    declare -A EXT_INSTALLERS=(
+        [GCN\ CPU]=install_gcn_cpu.sh
+        [AutoTST]=install_autotst.sh
+        [KinBot]=install_kinbot.sh
+        [OpenBabel]=install_ob.sh
+        [xtb]=install_xtb.sh
+        [Sella]=install_sella.sh
+        [TorchANI]=install_torchani.sh
+    )
 
-# 6) KinBot
-echo "=== Installing KinBot ==="
-bash devtools/install_kinbot.sh
-! $SKIP_CLEAN && cleanup_disk
+    for name in "${!EXT_INSTALLERS[@]}"; do
+        echo "=== Installing $name ==="
+        run_devtool "${EXT_INSTALLERS[$name]}"
+        
+    done
+else
+    echo "ℹ️  --no-ext flag set. Skipping external-dependency installs."
+fi
 
-# 7) Open Babel
-echo "=== Installing OpenBabel ==="
-bash devtools/install_ob.sh
-! $SKIP_CLEAN && cleanup_disk
-
-# 8) xtb
-echo "=== Installing xtb ==="
-bash devtools/install_xtb.sh
-! $SKIP_CLEAN && cleanup_disk
-
-# 9) Sella
-echo "=== Installing Sella ==="
-bash devtools/install_sella.sh
-! $SKIP_CLEAN && cleanup_disk
-
-# 10) TorchANI
-echo "=== Installing TorchANI ==="
-bash devtools/install_torchani.sh
-! $SKIP_CLEAN && cleanup_disk
+# 4) Clean up disk space
+run_devtool clean.sh --conda
 
 popd >/dev/null
 
