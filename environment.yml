@@ -47,7 +47,6 @@ dependencies:
   - conda-forge::pytest
   - conda-forge::pytest-cov
   - conda-forge::pyyaml
-  - conda-forge::qcelemental
   - conda-forge::quantities
   - conda-forge::rdkit >=2022.09.1,<2024.0.0   # newer builds clash with CoolProp - Symbol clash causes ARC to hang
   - conda-forge::ringdecomposerlib-python
