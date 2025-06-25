@@ -52,7 +52,7 @@ class TeraChemParser(ESSAdapter, ABC):
 
     def parse_geometry(self) -> Optional[Dict[str, tuple]]:
         """
-        Parse the latest xyz geometry from the TeraChem log file.
+        Parse the xyz geometry from an ESS log file.
 
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
@@ -101,7 +101,7 @@ class TeraChemParser(ESSAdapter, ABC):
         Parse the frequencies from a freq job output file.
 
         Returns: Optional[np.ndarray]
-            The parsed frequencies (in cm^-1), or None if not found.
+            The parsed frequencies (in cm^-1).
         """
         lines = _get_lines_from_file(self.log_file_path)
         frequencies = list()
@@ -129,16 +129,15 @@ class TeraChemParser(ESSAdapter, ABC):
             return np.array(frequencies, dtype=np.float64)
         return None
 
-    def parse_normal_mode_displacement(self) -> Optional[Tuple['np.ndarray', 'np.ndarray']]:
+    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
         """
-        Parse frequencies and normal mode displacement from Psi4 log file.
+        Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[np.ndarray, np.ndarray]
+        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
-            Displacement array shape: (n_modes, n_atoms, 3)
         """
         # Not implemented for TeraChem.
-        return None
+        return None, None
 
     def parse_t1(self) -> Optional[float]:
         """

@@ -37,7 +37,7 @@ class YAMLParser(ESSAdapter, ABC):
 
     def parse_geometry(self) -> Optional[Dict[str, tuple]]:
         """
-        Parse the latest xyz geometry from the TeraChem log file.
+        Parse the xyz geometry from an ESS log file.
 
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
@@ -61,15 +61,15 @@ class YAMLParser(ESSAdapter, ABC):
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[np.ndarray, np.ndarray]
+        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         freqs = self.data.get('freqs')
         modes = self.data.get('modes')
         if freqs and modes:
             return (
-                np.array(freqs, dtype=np.float64),
-                np.array(modes, dtype=np.float64)
+                np.array(freqs, dtype=np.float64) if freqs is not None else None,
+                np.array(modes, dtype=np.float64) if modes is not None else None
             )
         return None, None
 

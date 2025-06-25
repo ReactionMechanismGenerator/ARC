@@ -80,11 +80,11 @@ class ESSAdapter(ABC):
         pass
 
     @abstractmethod
-    def parse_normal_mode_displacement(self) -> Optional[Tuple['np.ndarray', 'np.ndarray']]:
+    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
         """
         Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[np.ndarray, np.ndarray]
+        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
         pass
