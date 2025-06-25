@@ -82,6 +82,8 @@ F = 96485.3321233100184
 #: Vacuum permittivity
 epsilon_0 = 8.8541878128
 
+bohr_to_angstrom = 0.529177
+
 # Cython does not automatically place module-level variables into the module
 # symbol table when in compiled mode, so we must do this manually so that we
 # can use the constants from both Cython and regular Python code
@@ -103,4 +105,5 @@ globals().update({
     'pi': pi,
     'F': F,
     'epsilon_0': epsilon_0,
+    'bohr_to_angstrom': bohr_to_angstrom,
 })
