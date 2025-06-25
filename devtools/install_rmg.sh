@@ -52,8 +52,11 @@ echo "✔️ Using $COMMAND_PKG to manage environments"
 # Paths and clones
 ###############################################################################
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-ARC_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || \
-            cd "$SCRIPT_DIR/.." && pwd)"
+if ARC_ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+    :  # got it
+else
+    ARC_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+fi
 CLONE_ROOT="$(dirname "$ARC_ROOT")"
 cd "$CLONE_ROOT" || exit 1
 echo "📂  Clone root: $CLONE_ROOT"
