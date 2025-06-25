@@ -7,7 +7,6 @@ import numpy as np
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
-import qcelemental as qcel
 from ase import Atoms
 from openbabel import openbabel as ob
 from openbabel import pybel
@@ -17,9 +16,7 @@ from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
-# from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-
-from arc.common import (SYMBOL_BY_NUMBER, MASS_BY_SYMBOL,
+from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
                         almost_equal_lists,
                         calc_rmsd,
                         get_atom_radius,
@@ -324,7 +321,7 @@ def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
         Tuple[list, list]: Coords and atomic numbers.
     """
     coords = xyz_to_coords_list(xyz)
-    z_list = [qcel.periodictable.to_Z(symbol) for symbol in xyz['symbols']]
+    z_list = [NUMBER_BY_SYMBOL(symbol) for symbol in xyz['symbols']]
     return coords, z_list
 
 
@@ -358,9 +355,31 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
-    dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
-                                          b=np.array(xyz_to_coords_list(xyz_dict)))
+    dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
+                           b=np.array(xyz_to_coords_list(xyz_dict)))
     return dmat
+
+
+def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Compute the Euclidean distance matrix between rows of two arrays.
+
+    This function is equivalent to `scipy.spatial.distance.cdist(a, b, 'Euclidean')`
+    but implemented using pure NumPy for zero dependencies.
+
+    Args:
+        a (np.ndarray): First array of shape (m, d)
+        b (np.ndarray): Second array of shape (n, d)
+
+    Returns:
+        np.ndarray: Distance matrix of shape (m, n) where element (i, j) is the
+                    Euclidean distance between a[i] and b[j]
+    """
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
+    sq_diff = diff ** 2
+    return np.sqrt(np.sum(sq_diff, axis=-1))
 
 
 def xyz_file_format_to_xyz(xyz_file: str) -> dict:
