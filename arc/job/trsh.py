@@ -74,7 +74,7 @@ def determine_ess_status(output_path: str,
         return 'errored', keywords, error, line
 
     if software is None:
-        software = determine_ess(log_file=output_path)
+        software = determine_ess(log_file_path=output_path)
 
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
@@ -552,7 +552,7 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(path=log_file, raise_error=False)
+    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
     if not len(normal_modes_disp):
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
@@ -737,7 +737,7 @@ def trsh_scan_job(label: str,
 
         # Convert to_freeze into an input block str
         to_freeze += already_frozen
-        software = determine_ess(log_file)
+        software = determine_ess(log_file_path=log_file)
         scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
 
     else:
