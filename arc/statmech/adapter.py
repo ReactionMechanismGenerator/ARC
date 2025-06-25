@@ -3,6 +3,17 @@ A module for the abstract StatmechAdapter class
 """
 
 from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class StatmechEnum(str, Enum):
+    """
+    The supported statmech software adapters.
+    The available adapters are a finite set.
+    """
+    arkane = 'arkane'
+    # mesmer = 'mesmer'
+    # mess = 'mess'
 
 
 class StatmechAdapter(ABC):
