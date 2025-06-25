@@ -17,6 +17,7 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         get_single_bond_length,
                         generate_resonance_structures,
                         is_angle_linear,
+                        is_xyz_linear,
                         is_obj_of_rmg_species_type,
                         read_yaml_file,
                         timedelta_from_str,
@@ -29,12 +30,12 @@ import arc.molecule.element as elements
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_kekule_structure
-from arc.parser import (parse_1d_scan_energies,
-                        parse_dipole_moment,
-                        parse_polarizability,
-                        parse_xyz_from_file,
-                        process_conformers_file,
-                        )
+from arc.parser.parser import (parse_1d_scan_energies,
+                               parse_dipole_moment,
+                               parse_polarizability,
+                               parse_xyz_from_file,
+                               process_conformers_file,
+                               )
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -222,8 +223,7 @@ class ARCSpecies(object):
         compute_thermo (bool): Whether to calculate thermodynamic properties for this species.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
-        thermo (HeatCapacityModel): The thermodata calculated by ARC.
-        rmg_thermo (Dict[str, int]): The RMG thermo, 'H298' in kJ/mol and 'S298' in J/mol*K.
+        thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
@@ -333,7 +333,6 @@ class ARCSpecies(object):
         self.conformer_energies = list()
         self.initial_xyz = None
         self.thermo = None
-        self.rmg_thermo = None
         self.rmg_kinetics = None
         self._number_of_atoms = None
         self._number_of_heavy_atoms = None
@@ -1697,7 +1696,7 @@ class ARCSpecies(object):
             shape_index = 0
             comment += '; The molecule is monoatomic'
         else:
-            if is_linear(coordinates=np.array(self.get_xyz()['coords'])):
+            if is_xyz_linear(self.get_xyz()):
                 shape_index = 1
                 comment += '; The molecule is linear'
             else:
@@ -2263,11 +2262,82 @@ class TSGuess(object):
             self.execution_time = datetime.datetime.now() - self.t0
 
 
+class ThermoData(object):
+    """
+    A set of thermodynamic properties for a species.
+    """
+
+    def __init__(self,
+                 H298=None,
+                 S298=None,
+                 Tdata=None,
+                 Cpdata=None,
+                 Cp0=None,
+                 CpInf=None,
+                 Tmin=None,
+                 Tmax=None,
+                 comment='',
+                 ):
+        """
+        Args:
+            H298 (tuple): Standard enthalpy at 298 K as (value, units)
+            S298 (tuple): Standard entropy at 298 K as (value, units)
+            Tdata (tuple): Temperature data points as (list, units)
+            Cpdata (tuple): Heat capacity data as (list, units)
+            Cp0 (tuple): Heat capacity at 0 K as (value, units)
+            CpInf (tuple): Heat capacity at infinite temperature as (value, units)
+            Tmin (tuple): Minimum temperature as (value, units)
+            Tmax (tuple): Maximum temperature as (value, units)
+            comment (str): Additional comments or description
+        """
+        self.H298 = H298
+        self.S298 = S298
+        self.Tdata = Tdata
+        self.Cpdata = Cpdata
+        self.Cp0 = Cp0
+        self.CpInf = CpInf
+        self.Tmin = Tmin
+        self.Tmax = Tmax
+        self.comment = comment
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the ThermoData object.
+        """
+        attributes = list()
+        if self.H298 is not None:
+            attributes.append(f'H298={self.H298!r}')
+        if self.S298 is not None:
+            attributes.append(f'S298={self.S298!r}')
+        if self.Tdata is not None:
+            attributes.append(f'Tdata={self.Tdata!r}')
+        if self.Cpdata is not None:
+            attributes.append(f'Cpdata={self.Cpdata!r}')
+        if self.Cp0 is not None:
+            attributes.append(f'Cp0={self.Cp0!r}')
+        if self.CpInf is not None:
+            attributes.append(f'CpInf={self.CpInf!r}')
+        if self.Tmin is not None:
+            attributes.append(f'Tmin={self.Tmin!r}')
+        if self.Tmax is not None:
+            attributes.append(f'Tmax={self.Tmax!r}')
+        if self.comment:
+            attributes.append(f'comment="""{self.comment}"""')
+        return f"ThermoData({', '.join(attributes)})"
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a ThermoData object.
+        """
+        return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
+                             self.Cp0, self.CpInf, self.Tmin, self.Tmax,
+                             self.comment))
+
+
 class TransportData(object):
     """
     A set of transport properties used in molecular simulations and kinetic models.
     """
-
     def __init__(self,
                  shapeIndex=None,
                  epsilon=None,
@@ -2316,8 +2386,7 @@ class TransportData(object):
             attributes.append('rotrelaxcollnum={0!r}'.format(self.rotrelaxcollnum))
         if self.comment:
             attributes.append('comment="""{0!s}"""'.format(self.comment))
-        string = 'TransportData({0!s})'.format(', '.join(attributes))
-        return string
+        return 'TransportData({0!s})'.format(', '.join(attributes))
 
     def __reduce__(self):
         """
