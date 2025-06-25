@@ -1299,9 +1299,39 @@ def is_angle_linear(angle: float,
     Returns:
         bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
     """
-    if 180 - tolerance < angle <= 180 or 0 <= angle < tolerance:
+    return (180 - tolerance < angle <= 180) or (0 <= angle < tolerance)
+
+
+def is_xyz_linear(xyz: dict) -> bool:
+    """
+    Determine whether the xyz coords represents a linear molecule.
+
+    Args:
+        xyz (dict): The xyz coordinates in dict format.
+
+    Returns:
+        bool: Whether the molecule is linear, ``True`` if it is.
+    """
+    coordinates = np.array(xyz['coords'])
+    n_atoms = len(coordinates)
+    if n_atoms == 1:
+        return False
+    if n_atoms == 2:
         return True
-    return False
+
+    for i in range(1, n_atoms - 1):
+        v1 = coordinates[i - 1] - coordinates[i]
+        v2 = coordinates[i + 1] - coordinates[i]
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        if norm1 == 0 or norm2 == 0:
+            continue
+        cos_angle = np.dot(v1, v2) / (norm1 * norm2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        angle = math.degrees(np.arccos(cos_angle))
+        if not is_angle_linear(angle, tolerance=0.1):
+            return False
+    return True
 
 
 def get_angle_in_180_range(angle: float,
