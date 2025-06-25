@@ -21,9 +21,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from arkane.statmech import is_linear
-
-from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.common import almost_equal_coords, get_logger, is_angle_linear, is_xyz_linear, key_by_val
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
@@ -389,7 +387,7 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
           before returning the final cartesian coordinates
     """
     is_a2_linear = is_angle_linear(a2)
-    is_mol_1_linear = is_linear(np.array(xyz_1['coords']))
+    is_mol_1_linear = is_xyz_linear(xyz_1['coords'])
     d2 = d2 if not is_a2_linear else None
     num_atoms_mol_1, num_atoms_mol_2 = len(mol_1.atoms), len(mol_2.atoms)
 
@@ -857,8 +855,7 @@ def h_abstraction(reaction: 'ARCReaction',
         reactant_2 = reactants[int(not reactants_reversed)]  # Get R(*3)j.
         product = products[int(not products_reversed)]  # Get R(*3)-H(*2).
         r_mol, p_mol = reactant.mol.copy(deep=True), product.mol.copy(deep=True)
-        if any([is_linear(coordinates=np.array(reactant.get_xyz()['coords'])),
-                is_linear(coordinates=np.array(product.get_xyz()['coords']))]) and is_angle_linear(a2):
+        if any([is_xyz_linear(reactant.get_xyz()), is_xyz_linear(product.get_xyz())]) and is_angle_linear(a2):
             # Don't modify dihedrals for an attacking H (or other linear radical) at a linear angle, C ~ A -- H1 - H2 -- H.
             dihedral_increment = 360
 
