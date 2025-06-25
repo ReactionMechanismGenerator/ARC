@@ -41,7 +41,7 @@ Na = 6.02214179e23
 E_h_kJmol = E_h * Na / 1000  # 1 Hartree = 2625.5 kJ/mol
 
 #: The gas law constant :math:`R` in :math:`\mathrm{J/mol \cdot K}`
-R = 8.314472
+R = 8.31446261815324
 
 #: The Bohr radius :math:`a_0` in :math:`\mathrm{m}`
 a0 = 5.2917721092e-11
