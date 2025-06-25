@@ -61,15 +61,29 @@ CLONE_ROOT="$(dirname "$ARC_ROOT")"
 cd "$CLONE_ROOT" || exit 1
 echo "📂  Clone root: $CLONE_ROOT"
 
-clone() {            # $1 repo name   $2 ssh url   $3 https url
-    [[ -d $1/.git ]] && { echo "✔️  $1 exists"; return; }
-    git clone --depth 1 "${USE_SSH:+$2}" "${USE_SSH:+}" \
-                          "${USE_SSH:-$3}" "$1"
+clone_repo () {
+    local repo_name=$1 ssh_url=$2 https_url=$3
+    [[ -d $repo_name/.git ]] && { echo "✔️  $repo_name exists"; return; }
+
+    local url
+    if $USE_SSH; then
+        url=$ssh_url
+    else
+        url=$https_url
+    fi
+
+    echo "📦  Cloning $repo_name → $url"
+    git clone --depth 1 "$url" "$repo_name"
 }
-clone RMG-Py        git@github.com:ReactionMechanismGenerator/RMG-Py.git \
-                    https://github.com/ReactionMechanismGenerator/RMG-Py.git
-clone RMG-database  git@github.com:ReactionMechanismGenerator/RMG-database.git \
-                    https://github.com/ReactionMechanismGenerator/RMG-database.git
+
+# ---------- actual clones ---------------------------------------------------
+clone_repo RMG-Py \
+           git@github.com:ReactionMechanismGenerator/RMG-Py.git \
+           https://github.com/ReactionMechanismGenerator/RMG-Py.git
+
+clone_repo RMG-database \
+           git@github.com:ReactionMechanismGenerator/RMG-database.git \
+           https://github.com/ReactionMechanismGenerator/RMG-database.git
 
 export RMG_PY_PATH=$CLONE_ROOT/RMG-Py
 export RMG_DB_PATH=$CLONE_ROOT/RMG-database
