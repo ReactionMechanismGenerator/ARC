@@ -3,13 +3,17 @@ A module for parsing information from various files.
 """
 
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 
 
 from arc.common import get_logger, read_yaml_file
 from arc.exceptions import InputError, ParserError
 from arc.parser.factory import ess_factory
 from arc.species.converter import str_to_xyz
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
 
 
 logger = get_logger()
@@ -71,6 +75,8 @@ def determine_ess(log_file_path: str,
 
 def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     """
+    Fallback for parse_geometry()
+
     Parse xyz coordinated from:
     - .xyz: XYZ file
     - .gjf: Gaussian input file
@@ -81,9 +87,6 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     Args:
         path (str): The file path.
 
-    Raises:
-        ParserError: If the coordinates could not be parsed.
-
     Returns: Optional[Dict[str, tuple]]
         The parsed cartesian coordinates.
     """
@@ -93,13 +96,10 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
         content = read_yaml_file(path)
         if isinstance(content, dict) and 'xyz' in content.keys():
             return content['xyz']
-
     lines = _get_lines_from_file(path)
     file_extension = os.path.splitext(path)[1]
-
     xyz = None
     relevant_lines = list()
-
     if file_extension == '.xyz':
         for i, line in enumerate(reversed(lines)):
             splits = line.strip().split()
@@ -148,6 +148,116 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     if xyz is None and relevant_lines:
         xyz = str_to_xyz(''.join([line for line in relevant_lines if line]))
     return xyz
+
+
+def make_parser(parse_method: str,
+                return_type: Type,
+                error_message: str,
+                fallback: Optional[Callable] = None,
+                ) -> Callable[[str, bool], Optional[Any]]:
+    """
+    Create a parser function for a specific ESS property.
+
+    Args:
+        parse_method (str): Name of the parse method in ESSAdapter
+        return_type (Type): Expected return type (for type hinting)
+        error_message (str): Template for error message (uses {path} placeholder)
+        fallback (callable, optional): Fallback function to call if the ESS adapter method fails.
+
+    Returns:
+        Callable: Configured parser function
+    """
+    def parser(log_file_path: str, raise_error: bool = True) -> return_type:
+        ess_name = determine_ess(log_file_path=log_file_path, raise_error=False)
+        result = None
+        if ess_name is not None:
+            adapter = ess_factory(log_file_path=log_file_path, ess_adapter=ess_name)
+            method = getattr(adapter, parse_method, None)
+            if callable(method):
+                result = method()
+        if result is None and fallback is not None:
+            try:
+                result = fallback(log_file_path, raise_error)
+            except Exception as e:
+                logger.error(f'Fallback parsing failed for {log_file_path}: {e}')
+        if result is None and raise_error:
+            raise ParserError(error_message.format(path=log_file_path))
+        return result
+    return parser
+
+
+parse_geometry = make_parser(
+    parse_method='parse_geometry',
+    return_type=Optional[Dict[str, tuple]],
+    error_message='Could not parse the geometry from {path} using either an ESS adapter or XYZ parser.',
+    fallback=parse_xyz_from_file,
+)
+
+parse_frequencies = make_parser(
+    parse_method='parse_frequencies',
+    return_type=Optional['np.ndarray'],
+    error_message='Could not parse frequencies from {path}',
+)
+
+parse_normal_mode_displacement = make_parser(
+    parse_method='parse_normal_mode_displacement',
+    return_type=Tuple[Optional['np.ndarray'], Optional['np.ndarray']],
+    error_message='Could not parse normal mode displacement from {path}',
+)
+
+parse_t1 = make_parser(
+    parse_method='parse_t1',
+    return_type=Optional[float],
+    error_message='Could not parse T1 from {path}',
+)
+
+parse_e_elect = make_parser(
+    parse_method='parse_e_elect',
+    return_type=Optional[float],
+    error_message='Could not parse e_elect from {path}',
+)
+
+parse_zpe_correction = make_parser(
+    parse_method='parse_zpe_correction',
+    return_type=Optional[float],
+    error_message='Could not parse zpe correction from {path}',
+)
+
+parse_1d_scan_energies = make_parser(
+    parse_method='parse_1d_scan_energies',
+    return_type=Tuple[Optional[List[float]], Optional[List[float]]],
+    error_message='Could not parse 1d scan energies from {path}',
+)
+
+parse_1d_scan_coords = make_parser(
+    parse_method='parse_1d_scan_coords',
+    return_type=Optional[List[Dict[str, tuple]]],
+    error_message='Could not parse 1d scan coords from {path}',
+)
+
+parse_scan_conformers = make_parser(
+    parse_method='parse_scan_conformers',
+    return_type=Optional['pd.DataFrame'],
+    error_message='Could not parse scan conformers from {path}',
+)
+
+parse_nd_scan_energies = make_parser(
+    parse_method='parse_nd_scan_energies',
+    return_type=Optional[Dict],
+    error_message='Could not parse nd scan energies from {path}',
+)
+
+parse_dipole_moment = make_parser(
+    parse_method='parse_dipole_moment',
+    return_type=Optional[float],
+    error_message='Could not parse dipole moment from {path}',
+)
+
+parse_polarizability = make_parser(
+    parse_method='parse_polarizability',
+    return_type=Optional[float],
+    error_message='Could not parse polarizability from {path}',
+)
 
 
 def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
@@ -202,25 +312,6 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         logger.error(f'Could not parse trajectory from {path}')
         return None
     return traj
-
-
-def parse_dipole_moment(path: str,
-                        raise_error: bool = True,
-                        ) -> Optional[float]:
-    """
-    Parse the dipole moment in Debye from an opt job output file.
-
-    Args:
-        path: The ESS log file.
-        raise_error (bool): Whether to raise an error if the dipole moment could not be parsed.
-
-    Returns: Optional[float]
-        The dipole moment in Debye.
-    """
-    dipole_moment = ess_factory(log_file_path=path).parse_dipole_moment()
-    if dipole_moment is None and raise_error:
-        raise ParserError('Could not parse the dipole moment')
-    return dipole_moment
 
 
 def _get_lines_from_file(path: str) -> List[str]:
