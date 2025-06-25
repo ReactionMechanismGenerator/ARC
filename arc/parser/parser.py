@@ -387,7 +387,7 @@ def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
         ess_file = determine_ess(log_file_path=path, raise_error=False)
         ess_file = bool(ess_file)
     if ess_file:
-        traj = ess_factory(log_file_path=path).parse_1d_scan_coords()
+        traj = parse_1d_scan_coords(log_file_path=path)
     else:
         # this is not an ESS output file, probably an XYZ format file with several Cartesian coordinates
         skip_line = False
