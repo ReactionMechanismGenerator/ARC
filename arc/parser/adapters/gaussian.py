@@ -52,6 +52,11 @@ class GaussianParser(ESSAdapter, ABC):
                     error = 'Z-matrix formatting error. There are two blank lines between z-matrix and the variables, expected only one'
                 elif 'l202.exe' in line:
                     error = 'Molecular orientation/point group changed during optimization'
+                elif 'l301.exe' in line:
+                    # This is not exactly correct - l301 can have multiple reasons
+                    error = 'No data on chk file.'
+                elif 'l401.exe' in line:
+                    error = 'Basis set data is not on the checkpoint file.'
                 elif 'l502.exe' in line:
                     error = 'Unconverged SCF.'
                 elif 'l716.exe' in line:
