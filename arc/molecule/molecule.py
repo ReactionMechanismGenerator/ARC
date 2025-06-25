@@ -2112,7 +2112,6 @@ class Molecule(Graph):
         Return :data:`True` if the structure is linear and :data:`False`
         otherwise.
         """
-
         atom_count = len(self.vertices)
 
         # Monatomic molecules are definitely nonlinear

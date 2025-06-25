@@ -11,9 +11,6 @@ from arc.common import get_logger
 from arc.exceptions import InvalidAdjacencyListError
 from arc.molecule.atomtype import get_atomtype
 from arc.molecule.element import get_element, PeriodicSystem
-# from arc.molecule.molecule import Atom, Bond
-# from arc.molecule.group import GroupAtom, GroupBond
-# from arc.molecule.fragment import Fragment, CuttingLabel
 
 logger = get_logger()
 
