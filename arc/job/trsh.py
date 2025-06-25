@@ -29,13 +29,13 @@ from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser import (parse_1d_scan_coords,
-                        parse_normal_mode_displacement,
-                        parse_scan_args,
-                        parse_scan_conformers,
-                        parse_xyz_from_file,
-                        determine_ess
-                        )
+from arc.parser.parser import (parse_1d_scan_coords,
+                               parse_normal_mode_displacement,
+                               parse_scan_args,
+                               parse_scan_conformers,
+                               parse_xyz_from_file,
+                               determine_ess
+                               )
 
 
 logger = get_logger()
