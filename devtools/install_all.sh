@@ -36,9 +36,9 @@ while [[ $# -gt 0 ]]; do
         --no-clean) SKIP_CLEAN=true ;;
         --no-ext)   SKIP_EXT=true  ;;
         --no-arc)   SKIP_ARC=true  ;;
-        --rmg-*)    RMG_ARGS+=("${1#--rmg-}") ;;
-        --arc-*)    ARC_ARGS+=("${1#--arc-}") ;;
-        --ext-*)    EXT_ARGS+=("${1#--ext-}") ;;
+        --rmg-*)    RMG_ARGS+=("--${1#--rmg-}") ;;
+        --arc-*)    ARC_ARGS+=("--${1#--arc-}") ;;
+        --ext-*)    EXT_ARGS+=("--${1#--ext-}") ;;
         --help|-h)
             cat <<EOF
 Usage: $0 [global-flags] [--rmg-xxx] [--arc-yyy] [--ext-zzz]
