@@ -38,7 +38,7 @@ LOGDIR="$ARC_ROOT/build"
 mkdir -p "$LOGDIR"
 BUILD_LOG="$LOGDIR/compile.log"
 IMPORT_LOG="$LOGDIR/import.log"
-ENV_NAME=arc_env_new
+ENV_NAME=arc_env
 ENV_FILE="$ARC_ROOT/environment.yml"
 
 ###############################################################################

@@ -1,15 +1,9 @@
 #!/bin/bash -l
 set -eo pipefail
+ENV_NAME=arc_env
+KINBOT_VERSION=2.1.1
 
-INSTALL_MAIN=false
-KINBOT_VERSION=2.0.6
-KINBOT_TAR="v${KINBOT_VERSION}.tar.gz"
-KINBOT_URL="https://github.com/zadorlab/KinBot/archive/refs/tags/${KINBOT_TAR}"
-
-if [ "$1" == "--main" ]; then
-    INSTALL_MAIN=true
-    echo "📦 Installing the latest KinBot from 'main' branch"
-fi
+echo "📦 Installing Kinbot..."
 
 if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
@@ -27,63 +21,21 @@ fi
 
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate base
 else
     BASE=$(conda info --base)
     . "$BASE/etc/profile.d/conda.sh"
-    conda activate base
+    eval "$($COMMAND_PKG shell hook --shell=bash)"
 fi
 
-pushd .. > /dev/null
 
-if $INSTALL_MAIN; then
-    if [ -d KinBot ]; then
-        cd KinBot
-        CURRENT_BRANCH=$(git symbolic-ref --short HEAD)
-        if [ "$CURRENT_BRANCH" = "main" ]; then
-            git fetch origin
-            git pull origin main
-        else
-            echo "⚠️ KinBot is on branch '$CURRENT_BRANCH'. Skipping update."
-        fi
-    else
-        git clone https://github.com/zadorlab/KinBot
-        cd KinBot
-    fi
-else
-    wget -q --show-progress "$KINBOT_URL" -O "$KINBOT_TAR"
-    tar -xzf "$KINBOT_TAR"
-    rm "$KINBOT_TAR"
-    cd "KinBot-${KINBOT_VERSION}"
+# Activate arc_env
+
+if ! $COMMAND_PKG env list | awk '{print $1}' | sed 's/^\*//' | grep -Fxq "$ENV_NAME"; then
+    echo "❌ Environment '$ENV_NAME' not found. Please create it first."
+    exit 1
 fi
 
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba activate arc_env
-else
-    conda activate arc_env
-fi
-
-echo ">>> Installing KinBot..."
-python setup.py build
-python setup.py install
-
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba deactivate
-else
-    conda deactivate
-fi
-
-KINBOT_ABS_PATH=$(pwd)
-export PYTHONPATH="$PYTHONPATH:$KINBOT_ABS_PATH"
-KINBOT_LINE="export PYTHONPATH=\$PYTHONPATH:$KINBOT_ABS_PATH"
-if ! grep -Fxq "$KINBOT_LINE" ~/.bashrc; then
-    echo "$KINBOT_LINE" >> ~/.bashrc
-    echo "✔️ Added KinBot path to ~/.bashrc"
-else
-    echo "ℹ️ KinBot path already present in ~/.bashrc"
-fi
-echo "PYTHONPATH=$PYTHONPATH"
-
-popd > /dev/null
+echo ">>> Installing KinBot version $KINBOT_VERSION in environment '$ENV_NAME'..."
+$COMMAND_PKG install -n "$ENV_NAME" -c conda-forge kinbot=$KINBOT_VERSION -y
 
 echo "✅ Done installing KinBot."
