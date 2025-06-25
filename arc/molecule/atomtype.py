@@ -14,7 +14,7 @@ import cython
 from arc.exceptions import AtomTypeError
 
 
-class AtomType:
+class AtomType(object):
     """
     A class for internal representation of atom types. Using unique objects
     rather than strings allows us to use fast pointer comparisons instead of

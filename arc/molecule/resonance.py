@@ -33,11 +33,10 @@ import arc.molecule.pathfinder as pathfinder
 from arc.common import get_logger
 from arc.exceptions import ILPSolutionError, KekulizationError, AtomTypeError, ResonanceError
 from arc.molecule.adjlist import Saturator
-from arc.molecule.graph import Vertex
+from arc.molecule.graph import Edge, Graph, Vertex
 from arc.molecule.kekulize import kekulize
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.fragment import CuttingLabel
-
 
 logger = get_logger()
 
@@ -244,7 +243,7 @@ def _generate_resonance_structures(mol_list, method_list, keep_isomorphic=False,
         keep_isomorphic      if False, removes any structures that give is_isomorphic=True (default)
                             if True, only remove structures that give is_identical=True
         copy                if False, append new resonance structures to input list (default)
-                            if True, make a new list with all of the resonance structures
+                            if True, make a new list with all the resonance structures
     """
     cython.declare(index=cython.int, molecule=Graph, new_mol_list=list, new_mol=Graph, mol=Graph,
                    input_charge=cython.int, x=Vertex)
