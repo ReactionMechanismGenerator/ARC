@@ -17,10 +17,10 @@ import pandas as pd
 from random import shuffle
 
 import arc.common as common
+import arc.species.converter as converter
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
 from arc.molecule import Molecule
-import arc.species.converter as converter
 from arc.species.species import ARCSpecies
 
 
