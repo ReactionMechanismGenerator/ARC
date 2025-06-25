@@ -12,7 +12,6 @@ import re
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
-                        determine_ess,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -35,6 +34,7 @@ from arc.parser import (parse_1d_scan_coords,
                         parse_scan_args,
                         parse_scan_conformers,
                         parse_xyz_from_file,
+                        determine_ess
                         )
 
 

@@ -109,54 +109,6 @@ def initialize_job_types(job_types: Optional[dict] = None,
     return job_types
 
 
-def determine_ess(log_file: str) -> str:
-    """
-    Determine the ESS that generated a specific output file.
-
-    Args:
-        log_file (str): The disk location of the output file of interest.
-
-    Returns:
-        str: The ESS name, e.g., 'gaussian', 'molpro', 'orca', 'qchem', 'terachem', or 'psi4'.
-    """
-    ess_name = None
-    if log_file.endswith('.yml'):
-        content = read_yaml_file(log_file)
-        if isinstance(content, dict) and 'adapter' in content.keys():
-            return content['adapter']
-    if os.path.splitext(log_file)[-1] in ['.xyz', '.dat', '.geometry']:
-        ess_name = 'terachem'
-    else:
-        with open(log_file, 'r') as f:
-            line = f.readline().lower()
-            while ess_name is None and line != '':
-                if 'gaussian' in line:
-                    ess_name = 'gaussian'
-                    break
-                elif 'molpro' in line:
-                    ess_name = 'molpro'
-                    break
-                elif 'o   r   c   a' in line or 'orca' in line:
-                    ess_name = 'orca'
-                    break
-                elif 'psi4' in line or 'rob parrish' in line:
-                    ess_name = 'psi4'
-                    break
-                elif 'qchem' in line:
-                    ess_name = 'qchem'
-                    break
-                elif 'terachem' in line:
-                    ess_name = 'terachem'
-                    break
-                elif 'x T B' in line:
-                    ess_name = 'xtb'
-                    break
-                line = f.readline().lower()
-    if ess_name is None:
-        raise InputError(f'The ESS that generated the file at {log_file} could not be identified.')
-    return ess_name
-
-
 def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists

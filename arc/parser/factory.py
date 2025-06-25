@@ -29,7 +29,7 @@ def register_ess_adapter(ess_adapter_label: str,
 
 
 def ess_factory(log_file_path: str,
-                ess_adapter: Optional[str] = None,
+                ess_adapter: str,
                 ) -> ESSAdapter:
     """
     A factory generating an ESS adapter corresponding to ``ess_adapter``.
@@ -40,11 +40,13 @@ def ess_factory(log_file_path: str,
 
     Returns: ESSAdapter
         The requested ESSAdapter subclass, initialized with the ESS log file path.
+    Raises:
+        TypeError: If ess_adapter is not a string.
+        ValueError: If ess_adapter is not registered in _registered_ess_adapters.
     """
-    if ess_adapter is None:
-        from arc.parser import determine_ess
-        ess_adapter = determine_ess(log_file_path)
-    
+    if not isinstance(ess_adapter, str):
+        raise TypeError(f'Expected "ess_adapter" to be a string, got {type(ess_adapter)} instead.')
+
     ess_enum = ESSEnum(ess_adapter.lower())
     
     if ess_enum not in _registered_ess_adapters.keys():
