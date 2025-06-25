@@ -14,7 +14,7 @@ from arc.constants import E_h_kJmol
 from arc.species.converter import str_to_xyz
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser.parser import _get_lines_from_file
+from arc.parser import _get_lines_from_file
 
 class XTBParser(ESSAdapter, ABC):
     """

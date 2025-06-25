@@ -99,18 +99,6 @@ jobs:
         run: |
           make compile
 
-      - name: Show what micromamba knows about envs
-        shell: micromamba-shell {0}
-        run: |
-          echo "micromamba env list:"
-          micromamba env list
-          echo "-----"
-          echo "grep for rmg_env:"
-          micromamba env list | grep rmg_env || echo "(no match)"
-          echo "-----"
-          echo "Check whether the directory exists anyway:"
-          ls -ld ${MAMBA_ROOT_PREFIX:-$HOME/micromamba}/envs/rmg_env || echo "(directory missing)"
-
       - name: Run Unit Tests
         shell: micromamba-shell {0}
         working-directory: ARC

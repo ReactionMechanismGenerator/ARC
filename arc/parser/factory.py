@@ -42,7 +42,7 @@ def ess_factory(log_file_path: str,
         The requested ESSAdapter subclass, initialized with the ESS log file path.
     """
     if ess_adapter is None:
-        from arc.parser.parser import determine_ess
+        from arc.parser import determine_ess
         ess_adapter = determine_ess(log_file_path)
     
     ess_enum = ESSEnum(ess_adapter.lower())
