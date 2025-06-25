@@ -119,7 +119,7 @@ class TestAtomType(unittest.TestCase):
             adjlist = f"1 {name} ux"
             group = mm.Group().from_adjacency_list(adjlist)
             try:
-                result = group.make_sample_molecule()
+                _ = group.make_sample_molecule()
             except:
                 failed.append(name)
         self.assertFalse(failed, f"Couldn't make sample molecules for types {', '.join(failed)}")

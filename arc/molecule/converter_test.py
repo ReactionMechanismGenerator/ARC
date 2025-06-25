@@ -45,7 +45,7 @@ class RDKitTest(unittest.TestCase):
         rdkitmol, rd_atom_indices = to_rdkit_mol(mol, remove_h=False, return_mapping=True)
         for atom in mol.atoms:
             # Check that all atoms are found in mapping
-            self.assertTrue(atom in rd_atom_indices)
+            self.assertIn(atom, rd_atom_indices)
             # Check that all bonds are in rdkitmol with correct mapping and order
             for connected_atom, bond in atom.bonds.items():
                 bond_type = str(rdkitmol.GetBondBetweenAtoms(rd_atom_indices[atom],
@@ -58,7 +58,7 @@ class RDKitTest(unittest.TestCase):
         for atom in mol.atoms:
             # Check that all non-hydrogen atoms are found in mapping
             if atom.symbol != 'H':
-                self.assertTrue(atom in rd_atom_indices2)
+                self.assertIn(atom, rd_atom_indices2)
                 # Check that all bonds connected to non-hydrogen have the correct mapping and order
                 for connected_atom, bond in atom.bonds.items():
                     if connected_atom.symbol != 'H':
