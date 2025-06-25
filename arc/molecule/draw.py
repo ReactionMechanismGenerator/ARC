@@ -15,10 +15,14 @@ The implementation uses the 2D coordinate generation of rdKit to find coordinate
 then uses Cairo to render the atom.
 """
 
+import itertools
 import math
+import numpy as np
 import os.path
 import re
-import itertools
+
+import rdkit.Chem as Chem
+from rdkit.Chem import AllChem
 
 try:
     import cairocffi as cairo
@@ -27,15 +31,10 @@ except ImportError:
         import cairo
     except ImportError:
         cairo = None
-import numpy as np
-from rdkit.Chem import AllChem
 
 from arc.common import get_logger
 from arc.molecule.molecule import Atom, Molecule, Bond
 from arc.molecule.pathfinder import find_shortest_path
-# from molecule.qm.molecule import Geometry
-# TODO: Need to figure out the geometry import
-from rmgpy.qm.molecule import Geometry
 
 
 logger = get_logger()
@@ -69,13 +68,12 @@ def create_new_surface(file_format, target=None, width=1024, height=768):
     return surface
 
 
-################################################################################
-
 class AdsorbateDrawingError(Exception):
     """
     When something goes wrong trying to draw an adsorbate.
     """
     pass
+
 
 class MoleculeDrawer(object):
     """
@@ -1674,8 +1672,6 @@ class MoleculeDrawer(object):
                         del site2.bonds[site1]
 
 
-################################################################################
-
 class ReactionDrawer(object):
     """
     This class provides functionality for drawing chemical reactions using the
@@ -1852,3 +1848,175 @@ class ReactionDrawer(object):
             rxn_surface.write_to_png(path)
         else:
             rxn_surface.finish()
+
+
+class Geometry(object):
+    """
+    A geometry object used for quantum calculations.
+
+    This class is created from a molecule, with the geometry estimated by RDKit.
+
+    Attributes:
+        settings (QMSettings): Settings for quantum chemistry calculations.
+        unique_id (str): A short identifier, such as an augmented InChI Key.
+        molecule (Molecule): The RMG Molecule object this geometry is based on.
+        unique_id_long (str): A long, truly unique identifier, such as an augmented InChI.
+    """
+    def __init__(self, settings, unique_id, molecule, unique_id_long=None):
+        self.settings = settings
+        #: A short unique ID such as an augmented InChI Key.
+        self.unique_id = unique_id
+        self.molecule = molecule
+        if unique_id_long is None:
+            self.unique_id_long = unique_id
+        else:
+            #: Long, truly unique, ID, such as the augmented InChI.
+            self.unique_id_long = unique_id_long
+
+        # ToDo: why do we copy self.settings.fileStore into self.fileStore ?
+        # (and same for .scratchDirectory)
+        if self.settings:
+            self.fileStore = self.settings.fileStore
+            self.scratchDirectory = self.settings.scratchDirectory
+        else:
+            self.fileStore = None
+            self.scratchDirectory = None
+
+        if self.fileStore and not os.path.exists(self.fileStore):
+            logger.info(f"Creating permanent directory {os.path.abspath(self.fileStore)} for qm files.")
+            os.makedirs(self.fileStore)
+
+        if self.scratchDirectory and not os.path.exists(self.scratchDirectory):
+            logger.info(f"Creating scratch directory {os.path.abspath(self.scratchDirectory)} for qm files.")
+            os.makedirs(self.scratchDirectory)
+
+    def get_file_path(self, extension, scratch=True):
+        """
+        Returns the path to the file with the given extension.
+
+        The provided extension should include the leading dot.
+        If called with `scratch=False` then it will be in the `fileStore` directory,
+        else `scratch=True` is assumed and it will be in the `scratchDirectory` directory.
+        """
+        return os.path.join(
+            self.settings.scratchDirectory if scratch else self.settings.fileStore,
+            self.unique_id + extension,
+        )
+
+    def get_crude_mol_file_path(self):
+        """Returns the path of the crude mol file."""
+        return self.get_file_path(".crude.mol")
+
+    def get_refined_mol_file_path(self):
+        """Returns the path to the refined mol file."""
+        return self.get_file_path(".refined.mol")
+
+    def generate_rdkit_geometries(self):
+        """
+        Use RDKit to guess geometry.
+
+        Save mol files of both crude and refined.
+        Saves coordinates on atoms.
+        """
+        rdmol, rdatom_idx = self.rd_build()
+
+        atoms = len(self.molecule.atoms)
+        dist_geom_attempts = 1
+        if atoms > 3:  # this check prevents the number of attempts from being negative
+            dist_geom_attempts = 5 * (
+                atoms - 3
+            )  # number of conformer attempts is just a linear scaling with molecule size, due to time considerations in practice, it is probably more like 3^(n-3) or something like that
+
+        rdmol, min_e_id = self.rd_embed(rdmol, dist_geom_attempts)
+        self.save_coordinates_from_rdmol(rdmol, min_e_id, rdatom_idx)
+
+    def rd_build(self):
+        """
+        Import rmg molecule and create rdkit molecule with the same atom labeling.
+        """
+        return self.molecule.to_rdkit_mol(remove_h=False, return_mapping=True)
+
+    def rd_embed(self, rdmol, num_conf_attempts):
+        """
+        Embed the RDKit molecule and create the crude molecule file.
+        """
+        # `good_embed` is a flag to indicate conformers are not from random coordinates or 2D coordinates
+        # `good_opt` is a flag to indicate at least one conformer is successfully optimized using force field
+        good_embed, good_opt = True, False
+        AllChem.EmbedMultipleConfs(rdmol, num_conf_attempts, randomSeed=1)
+
+        if rdmol.GetNumConformers() == 0:
+            good_embed = False
+            # Occasionally, ETKDG fails to embed some molecules
+            # Try to embed using random coordinates. However, there
+            # are still cases that it can fails:
+            # https://github.com/rdkit/rdkit/issues/2996
+            AllChem.EmbedMultipleConfs(
+                rdmol, num_conf_attempts, useRandomCoords=True, randomSeed=1
+            )
+
+            if rdmol.GetNumConformers() == 0:
+                # As a workaround, one can also build a molecule using its 2D Geometry
+                # and optimize the molecule from the 2D geometry.
+                for _ in range(num_conf_attempts):
+                    # Since it can only add one conformer at a time, clearConfs is set to False
+                    # to keep the previously generated 2D geometries
+                    AllChem.Compute2DCoords(
+                        rdmol, nSample=10, sampleSeed=1, clearConfs=False
+                    )
+
+                if rdmol.GetNumConformers() == 0:
+                    # EDKTG + random coords + 2D should be able to cover almost all
+                    # the cases. This is to check and report if further workaround
+                    # needs to be implemented
+                    raise RuntimeError(
+                        f"RDKit has issue in embedding the conformer of {self.molecule}."
+                        f" Please raise an issue on the RMG Github page mentioning the"
+                        f" error and the molecule."
+                    )
+
+        energy = 0.0
+        min_e_id = 0
+        min_e = (
+            9.999999e99  # start with a very high number, which would never be reached
+        )
+
+        crude = Chem.Mol(rdmol.ToBinary())
+
+        for i in range(rdmol.GetNumConformers()):
+            try:
+                AllChem.UFFOptimizeMolecule(rdmol, confId=i)
+            except RuntimeError:
+                # The optimization fails usually due to a failure in the linearSearch step.
+                # Skip the optimization for this conformer
+                pass
+            else:
+                good_opt = True
+            energy = AllChem.UFFGetMoleculeForceField(rdmol, confId=i).CalcEnergy()
+            if energy < min_e:
+                min_e_id = i
+                min_e = energy
+
+        if not good_embed and not good_opt:
+            # cannot embed and force field opt correctly.
+            logger.debug(f"Encountered a molecule {AllChem.MolToInchi(rdmol)} that cannot be embedded and optimized correctly.")
+
+        with open(self.get_crude_mol_file_path(), "w") as out_3d_crude:
+            out_3d_crude.write(Chem.MolToMolBlock(crude, confId=min_e_id))
+
+        with open(self.get_refined_mol_file_path(), "w") as out_3d:
+            out_3d.write(Chem.MolToMolBlock(rdmol, confId=min_e_id))
+
+        return rdmol, min_e_id
+
+    def save_coordinates_from_rdmol(self, rdmol, min_e_id, rdatom_idx):
+        # Save xyz coordinates on each atom in molecule ****
+        for atom in self.molecule.atoms:
+            point = rdmol.GetConformer(min_e_id).GetAtomPosition(atom.sorting_label)
+            atom.coords = np.array([point.x, point.y, point.z])
+
+    def save_coordinates_from_qm_data(self, qmdata):
+        """
+        Save geometry info from QMData (eg CCLibData)
+        """
+        raise NotImplementedError
