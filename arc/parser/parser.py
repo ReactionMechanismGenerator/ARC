@@ -34,8 +34,7 @@ def determine_ess(log_file_path: str,
     """
     ess_name = None
     if log_file_path.endswith('.yml') or log_file_path.endswith('.yaml'):
-        content = read_yaml_file(log_file_path)
-        ess_name = content.get('adapter', 'yaml')
+        ess_name = 'yaml'
         return ess_name
     if os.path.splitext(log_file_path)[-1] in ['.xyz', '.dat', '.geometry']:
         ess_name = 'terachem'
@@ -73,7 +72,7 @@ def determine_ess(log_file_path: str,
     return ess_name
 
 
-def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
+def parse_xyz_from_file(log_file_path: str) -> Optional[Dict[str, tuple]]:
     """
     Fallback for parse_geometry()
 
@@ -85,19 +84,15 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     - other: Molpro or QChem input file
 
     Args:
-        path (str): The file path.
+        log_file_path (str): The file path.
 
     Returns: Optional[Dict[str, tuple]]
         The parsed cartesian coordinates.
     """
-    if not os.path.isfile(path):
-        raise InputError(f'Could not find file {path}')
-    if path.endswith('.yml'):
-        content = read_yaml_file(path)
-        if isinstance(content, dict) and 'xyz' in content.keys():
-            return content['xyz']
-    lines = _get_lines_from_file(path)
-    file_extension = os.path.splitext(path)[1]
+    if not os.path.isfile(log_file_path):
+        raise InputError(f'Could not find file {log_file_path}')
+    lines = _get_lines_from_file(log_file_path)
+    file_extension = os.path.splitext(log_file_path)[1]
     xyz = None
     relevant_lines = list()
     if file_extension == '.xyz':
@@ -108,7 +103,7 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
                 num_of_atoms = int(splits[0])
                 break
         else:
-            raise ParserError(f'Could not identify the number of atoms line in the xyz file {path}')
+            raise ParserError(f'Could not identify the number of atoms line in the xyz file {log_file_path}')
         index = len(lines) - i - 1
         relevant_lines = lines[index + 2: index + 2 + num_of_atoms]
     elif file_extension == '.gjf':
@@ -122,16 +117,6 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
                 splits = line.split()
                 if len(splits) == 2 and all([s.isdigit() for s in splits]):
                     start_parsing = True
-    elif 'out' in file_extension or 'log' in file_extension:
-        xyz = ess_factory(path).parse_geometry()
-    elif "yml" in file_extension or 'yaml' in file_extension:
-        content = read_yaml_file(path=path)
-        if "xyz" in content.keys():
-            xyz = content["xyz"]
-        elif "opt_xyz" in content.keys():
-            xyz = content["opt_xyz"]
-        if isinstance(xyz, str):
-            xyz = str_to_xyz(xyz)
     else:
         record = False
         for line in lines:
@@ -144,7 +129,7 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
             elif 'geometry={' in line:
                 record = True
         if not relevant_lines:
-            raise ParserError(f'Could not parse xyz coordinates from file {path}')
+            raise ParserError(f'Could not parse xyz coordinates from file {log_file_path}')
     if xyz is None and relevant_lines:
         xyz = str_to_xyz(''.join([line for line in relevant_lines if line]))
     return xyz
@@ -177,7 +162,7 @@ def make_parser(parse_method: str,
                 result = method()
         if result is None and fallback is not None:
             try:
-                result = fallback(log_file_path, raise_error)
+                result = fallback(log_file_path=log_file_path)
             except Exception as e:
                 logger.error(f'Fallback parsing failed for {log_file_path}: {e}')
         if result is None and raise_error:
