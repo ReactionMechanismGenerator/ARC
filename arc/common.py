@@ -24,7 +24,6 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import qcelemental as qcel
 
 # don't import any ARC module other than exceptions and imports, to avoid circular imports
 from arc.exceptions import AtomTypeError, ILPSolutionError, InputError, ResonanceError, SettingsError
@@ -508,29 +507,7 @@ def get_number_with_ordinal_indicator(number: int) -> str:
     """
     return f'{number}{get_ordinal_indicator(number)}'
 
-
-def get_atom_radius(symbol: str) -> float:
-    """
-    Get the atom covalent radius of an atom in Angstroms.
-
-    Args:
-        symbol (str): The atomic symbol.
-
-    Raises:
-        TypeError: If ``symbol`` is of wrong type.
-
-    Returns: float
-        The atomic covalent radius (None if not found).
-    """
-    if not isinstance(symbol, str):
-        raise TypeError(f'The symbol argument must be string, got {symbol} which is a {type(symbol)}')
-    try:
-        r = qcel.covalentradii.get(symbol, units='angstrom')
-    except qcel.exceptions.NotAnElementError:
-        r = None
-    return r
-
-def read_element_dicts() -> Tuple[dict, dict, dict]:
+def read_element_dicts() -> Tuple[dict, dict, dict, dict]:
     """
     Read the element dictionaries from the elements.yml data file.
 
@@ -538,16 +515,35 @@ def read_element_dicts() -> Tuple[dict, dict, dict]:
         - A dictionary of element symbol by name.
         - A dictionary of element number by symbol.
         - A dictionary of element mass by symbol, including isotope and occurrence frequency.
+        - A dictionary of covalent radii by element symbol.
     """
     elements_path = os.path.join(ARC_PATH, 'data', 'elements.yml')
     contents = read_yaml_file(elements_path)
     symbol_by_number = contents['symbol_by_number']
     number_by_symbol = {value: key for key, value in symbol_by_number.items()}
     mass_by_symbol = contents['mass_by_symbol']
-    return symbol_by_number, number_by_symbol, mass_by_symbol
+    covalent_radii = contents['covalent_radii']
+    covalent_radii = {element['symbol']: element['radius'] for element in covalent_radii}
+    return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
 
 
-SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL = read_element_dicts()
+SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
+
+
+def get_atom_radius(symbol: str) -> Optional[float]:
+    """
+    Get the atom covalent radius of an atom in Angstroms.
+
+    Args:
+        symbol (str): The atomic symbol.
+
+    Returns: float
+        The atomic covalent radius (None if not found).
+    """
+    if not isinstance(symbol, str):
+        raise TypeError(f'The symbol argument must be string, got {symbol} which is a {type(symbol)}')
+    return COVALENT_RADII.get(symbol, None)
+
 
 def get_element_mass(input_element: Union[int, str],
                      isotope: Optional[int] = None,
