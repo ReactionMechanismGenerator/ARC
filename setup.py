@@ -49,7 +49,13 @@ ext_modules = [
     Extension('arc.molecule.kekulize', ['arc/molecule/kekulize.pyx'], include_dirs=['.']),
 ]
 
+if 'main' in sys.argv:
+    # This is for `python setup.py build_ext main`
+    sys.argv.remove('main')
+    ext_modules.extend(ext_modules)
+
 ext_modules = list(OrderedDict.fromkeys(ext_modules))
+
 
 setup(
     name='ARC-Molecule',

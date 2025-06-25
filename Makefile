@@ -11,6 +11,7 @@ DEVTOOLS_DIR := devtools
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
         lite check-env compile
 
+
 # Default target
 all: help
 
@@ -112,9 +113,9 @@ check-env:
 	@echo "Python version:"; python -V
 	@echo "PYTHONPATH:"; echo $$PYTHONPATH
 
+
 compile:
-	# bash $(DEVTOOLS_DIR)/compile.sh
-	@echo "Compiling ARC's Cython module (arc.molecule)..."
+	@echo "Compiling ARC's Cython module (arc.molecule)…"
 	@ python utilities.py check-python
-	python setup.py build_ext --inplace --build-temp .
+	python setup.py build_ext main --inplace --build-temp .
 	@ python utilities.py check-dependencies
