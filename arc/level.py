@@ -42,7 +42,7 @@ class Level(object):
     """
 
     def __init__(self,
-                 repr: Optional[Union[str, dict, Level]] = None,
+                 repr: Optional[Union[str, dict, 'Level']] = None,
                  method: Optional[str] = None,
                  basis: Optional[str] = None,
                  auxiliary_basis: Optional[str] = None,
@@ -54,7 +54,7 @@ class Level(object):
                  compatible_ess: Optional[List[str]] = None,
                  solvation_method: Optional[str] = None,
                  solvent: Optional[str] = None,
-                 solvation_scheme_level: Optional[Level] = None,
+                 solvation_scheme_level: Optional['Level'] = None,
                  args: Optional[Union[Dict[str, str], Iterable, str]] = None,
                  ):
         self.repr = repr
@@ -103,7 +103,7 @@ class Level(object):
             # it wasn't set by the user, try determining it
             self.deduce_software()
 
-    def __eq__(self, other: Level) -> bool:
+    def __eq__(self, other: 'Level') -> bool:
         """
         Determine equality between Level object instances.
         """
