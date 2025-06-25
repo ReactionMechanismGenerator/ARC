@@ -536,41 +536,28 @@ class TestARCReaction(unittest.TestCase):
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()
-        reactants, products = self.rxn1.get_reactants_and_products(arc=True)
+        reactants, products = self.rxn1.get_reactants_and_products()
         for spc in reactants + products:
             self.assertIsInstance(spc, ARCSpecies)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
 
-        reactants, products = self.rxn1.get_reactants_and_products(arc=False)
-        for spc in reactants + products:
-            self.assertIsInstance(spc, Species)
-        self.assertEqual(len(reactants), 2)
-        self.assertEqual(len(products), 2)
-
-        reactants, products = self.rxn5.get_reactants_and_products(arc=True)
+        reactants, products = self.rxn5.get_reactants_and_products()
         for spc in reactants + products:
             self.assertIsInstance(spc, ARCSpecies)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertEqual(reactants[0].label, reactants[1].label)
 
-        reactants, products = self.rxn5.get_reactants_and_products(arc=False)
-        for spc in reactants + products:
-            self.assertIsInstance(spc, Species)
-        self.assertEqual(len(reactants), 2)
-        self.assertEqual(len(products), 2)
-        self.assertNotEqual(products[0].label, products[1].label)
-
         h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
         n2h2 = ARCSpecies(label='N2H4', smiles='NN')
         n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
         rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
-        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=False)
+        reactants, products = rxn1.get_reactants_and_products(return_copies=False)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertIs(products[0], products[1])
-        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=True)
+        reactants, products = rxn1.get_reactants_and_products(return_copies=True)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertIsNot(products[0], products[1])
