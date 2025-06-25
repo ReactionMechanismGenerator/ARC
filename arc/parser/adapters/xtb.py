@@ -38,7 +38,7 @@ class XTBParser(ESSAdapter, ABC):
 
     def parse_geometry(self) -> Optional[Dict[str, tuple]]:
         """
-        Parse the latest xyz geometry from an xTB log file.
+        Parse the xyz geometry from an ESS log file.
 
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
@@ -73,10 +73,10 @@ class XTBParser(ESSAdapter, ABC):
 
     def parse_frequencies(self) -> Optional['np.ndarray']:
         """
-        Parse the frequencies from an xTB freq job output file.
+        Parse the frequencies from a freq job output file.
 
         Returns: Optional[np.ndarray]
-            The parsed frequencies (in cm^-1), including negative (imaginary) ones.
+            The parsed frequencies (in cm^-1).
         """
         freqs = []
         lines = _get_lines_from_file(self.log_file_path)
@@ -120,13 +120,12 @@ class XTBParser(ESSAdapter, ABC):
 
         return np.array(freqs, dtype=np.float64) if freqs else None
 
-    def parse_normal_mode_displacement(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
         """
-        Parse frequencies and normal mode displacements from xTB frequency job.
+        Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[Optional[np.ndarray], Optional[np.ndarray]]
+        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
-            Displacement array shape: (n_modes, n_atoms, 3)
         """
         # Locate the g98.out file in the same directory as the log file
         g98_path = os.path.join(os.path.dirname(self.log_file_path), 'g98.out')

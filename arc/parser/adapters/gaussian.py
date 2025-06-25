@@ -74,7 +74,7 @@ class GaussianParser(ESSAdapter, ABC):
 
     def parse_geometry(self) -> Optional[Dict[str, tuple]]:
         """
-        Parse the latest xyz geometry from an ESS log file by searching from the end.
+        Parse the xyz geometry from an ESS log file.
         Try to find the 'Standard orientation:' first, and if not found, fall back to the 'Input orientation:'.
 
         Returns: Optional[Dict[str, tuple]]
@@ -119,7 +119,7 @@ class GaussianParser(ESSAdapter, ABC):
         Parse the frequencies from a freq job output file.
 
         Returns: Optional[np.ndarray]
-            The parsed frequencies (in cm^-1), or None if not found.
+            The parsed frequencies (in cm^-1).
         """
         frequencies = list()
         found_block = False
@@ -136,13 +136,12 @@ class GaussianParser(ESSAdapter, ABC):
             return np.array(frequencies, dtype=np.float64)
         return None
 
-    def parse_normal_mode_displacement(self) -> Optional[Tuple['np.ndarray', 'np.ndarray']]:
+    def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
         """
-        Parse frequencies and normal mode displacement from Gaussian log file.
+        Parse frequencies and normal mode displacement.
 
-        Returns: Tuple[np.ndarray, np.ndarray]
+        Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
-            Displacement array shape: (n_modes, n_atoms, 3)
         """
         freqs = list()
         displacements = list()  # Will store modes as [mode1, mode2, ...] where mode = [atom1_vec, atom2_vec, ...]
