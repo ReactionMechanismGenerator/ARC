@@ -1,4 +1,4 @@
-name: arc_env
+name: arc_env_new
 channels:
   - rmg
   - conda-forge
@@ -6,8 +6,8 @@ channels:
 
 dependencies:
   # ─── core (locked) ─────────────────────────────
-  - conda-forge::python >=3.9
-  - conda-forge::numpy  >=1.10.0,<2
+  - conda-forge::python ==3.9.*
+  - conda-forge::numpy  ==1.26.* # Was >=1.10.0,<2
 
   # ─── rmg wheels ───────────────────────────────
   - rmg::pydas   >=1.0.3
@@ -35,6 +35,7 @@ dependencies:
   - conda-forge::mpmath
   - conda-forge::networkx
   - conda-forge::numdifftools
+  - conda-forge::numexpr >=2.8
   - conda-forge::openbabel >=3
   - conda-forge::pandas
   - conda-forge::paramiko >=2.6.0
