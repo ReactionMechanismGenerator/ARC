@@ -1,32 +1,28 @@
-r"""
-The constants module contains physical constants relevant in chemistry applications.
+"""
+Physical constants for chemistry and molecular modeling.
 
-The constants defined in this module are listed in the table below:
+This module provides fundamental physical constants frequently used in chemistry and related scientific computations.
+All constants are defined in SI units unless otherwise noted.
 
-.. table:: Physical constants defined in the :mod:`molecule.constants` module
-    
-    ======================= =================== =========================================================== ============================================================
-    Symbol                  Constant            Value                                                       Description
-    ======================= =================== =========================================================== ============================================================
-    :math:`E_\mathrm{h}`    :data:`E_h`         :math:`4.35974434 \times 10^{-18} \ \mathrm{J}`             Hartree energy
-    :math:`E_\mathrm{h, kJ/mol}` :data:`E_h_kJmol` :math:`2625.5 \ \mathrm{kJ/mol}`                         Hartree energy in kJ/mol
-    :math:`F`               :data:`F`           :math:`96485.3365 \ \mathrm{C/mol}`                         Faraday constant
-    :math:`G`               :data:`G`           :math:`6.67384 \times 10^{-11} \ \mathrm{m^3/kg \cdot s^2}` Newtonian gravitational constant
-    :math:`N_\mathrm{A}`    :data:`Na`          :math:`6.02214179 \times 10^{23} \ \mathrm{mol^{-1}}`       Avogadro constant
-    :math:`R`               :data:`R`           :math:`8.314472 \ \mathrm{J/mol \cdot K}`                   gas law constant
-    :math:`a_0`             :data:`a0`          :math:`5.2917721092 \times 10^{-11} \ \mathrm{m}`           Bohr radius
-    :math:`c`               :data:`c`           :math:`299792458 \ \mathrm{m/s}`                            speed of light in a vacuum
-    :math:`e`               :data:`e`           :math:`1.602176565 \times 10^{-19} \ \mathrm{C}`            elementary charge
-    :math:`g`               :data:`g`           :math:`9.80665 \ \mathrm{m/s^2}`                            standard acceleration due to gravity
-    :math:`h`               :data:`h`           :math:`6.62606896 \times 10^{-34} \ \mathrm{J \cdot s}`     Planck constant
-    :math:`\hbar`           :data:`hbar`        :math:`1.054571726 \times 10^{-34} \ \mathrm{J \cdot s}`    reduced Planck constant
-    :math:`k_\mathrm{B}`    :data:`kB`          :math:`1.3806504 \times 10^{-23} \ \mathrm{J/K}`            Boltzmann constant
-    :math:`m_\mathrm{e}`    :data:`m_e`         :math:`9.10938291 \times 10^{-31} \ \mathrm{kg}`            electron rest mass
-    :math:`m_\mathrm{n}`    :data:`m_n`         :math:`1.674927351 \times 10^{-27} \ \mathrm{kg}`           neutron rest mass
-    :math:`m_\mathrm{p}`    :data:`m_p`         :math:`1.672621777 \times 10^{-27} \ \mathrm{kg}`           proton rest mass
-    :math:`m_\mathrm{u}`    :data:`amu`         :math:`1.660538921 \times 10^{-27} \ \mathrm{kg}`           atomic mass unit
-    :math:`\pi`             :data:`pi`          :math:`3.14159 \ldots`
-    ======================= =================== =========================================================== ============================================================
+Attributes:
+E_h (float): Hartree energy, 4.35974434e-18 J.
+E_h_kJmol (float): Hartree energy in kJ/mol, 2625.5 kJ/mol.
+F (float): Faraday constant, 96485.3365 C/mol.
+G (float): Newtonian gravitational constant, 6.67384e-11 m^3/(kg^1·s^2).
+Na (float): Avogadro constant, 6.02214179e23 mol^-1.
+R (float): Gas law constant, 8.314472 J/(mol^1·K^1).
+a0 (float): Bohr radius, 5.2917721092e-11 m.
+c (float): Speed of light in vacuum, 299792458 m/s.
+e (float): Elementary charge, 1.602176565e-19 C.
+g (float): Standard acceleration due to gravity, 9.80665 m/s^2.
+h (float): Planck constant, 6.62606896e-34 J·s.
+hbar (float): Reduced Planck constant, 1.054571726e-34 J·s.
+kB (float): Boltzmann constant, 1.3806504e-23 J/K.
+m_e (float): Electron rest mass, 9.10938291e-31 kg.
+m_n (float): Neutron rest mass, 1.674927351e-27 kg.
+m_p (float): Proton rest mass, 1.672621777e-27 kg.
+amu (float): Atomic mass unit, 1.660538921e-27 kg.
+pi (float): Pi, 3.14159...
 """
 
 import math
