@@ -158,7 +158,7 @@ def from_adjacency_list(adjlist, group=False, saturate_h=False, check_consistenc
 
     # Interpret the first line if it contains a label
     if len(lines[0].split()) == 1:
-        label = lines.pop(0)
+        _ = lines.pop(0)
         if len(lines) == 0:
             raise InvalidAdjacencyListError('No atoms specified in adjacency list.')
 
@@ -557,7 +557,8 @@ def to_adjacency_list(atoms, multiplicity, metal='', facet='', label=None, group
 
     # Don't remove hydrogen atoms if the molecule consists only of hydrogen atoms
     try:
-        if remove_h and all([atom.element.symbol == 'H' for atom in atoms]): remove_h = False
+        if remove_h and all([atom.element.symbol == 'H' for atom in atoms]):
+            remove_h = False
     except AttributeError:
         pass
 
