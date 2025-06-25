@@ -8,8 +8,6 @@ This module contains unit tests for the arc.lot module
 import os
 import unittest
 
-from arkane.modelchem import LevelOfTheory
-
 from arc.common import ARC_PATH, read_yaml_file
 from arc.level import Level, assign_frequency_scale_factor, get_params_from_arkane_level_of_theory_as_str
 
@@ -89,10 +87,6 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(level_1, level_2)
         self.assertNotEqual(level_1, level_3)
 
-        arkane_level = LevelOfTheory(method='b3lyp', basis='6311+g(3df,2p)', software='gaussian')
-        level_4 = LevelOfTheory(method='b3lyp', basis='6311+g(3df,2p)', software='gaussian')
-        self.assertEqual(level_4, arkane_level)
-
     def test_build(self):
         """Test building a Level object from a string or dict representation"""
         level_1 = Level(repr='wB97xd/def2-tzvp')
@@ -124,35 +118,6 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(str(level_3),
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
-
-    def test_to_arkane(self):
-        """Test converting Level to LevelOfTheory"""
-        level_1 = Level(repr='wB97xd/def2-tzvp')
-        self.assertEqual(level_1.to_arkane_level_of_theory(),
-                         LevelOfTheory(method='wb97xd', basis='def2tzvp', software='gaussian'))
-        self.assertEqual(level_1.to_arkane_level_of_theory(variant='freq'),
-                         LevelOfTheory(method='wb97xd', basis='def2tzvp', software='gaussian'))
-        level_2 = Level(repr='CBS-QB3')
-        self.assertEqual(level_2.to_arkane_level_of_theory(),
-                         LevelOfTheory(method='cbs-qb3', software='gaussian'))
-        self.assertEqual(level_2.to_arkane_level_of_theory(variant='AEC'),
-                         LevelOfTheory(method='cbs-qb3', software='gaussian'))
-        self.assertEqual(level_2.to_arkane_level_of_theory(variant='freq'),
-                         LevelOfTheory(method='cbs-qb3'))
-        self.assertEqual(level_2.to_arkane_level_of_theory(variant='BAC'),
-                         LevelOfTheory(method='cbs-qb3', software='gaussian'))
-        self.assertIsNone(level_2.to_arkane_level_of_theory(variant='BAC', bac_type='m'))  # might change in the future
-        level_3 = Level(repr={'method': 'DLPNO-CCSD(T)',
-                              'basis': 'def2-TZVp',
-                              'auxiliary_basis': 'def2-tzvp/c',
-                              'solvation_method': 'SMD',
-                              'solvent': 'water',
-                              'solvation_scheme_level': 'APFD/def2-TZVp'})
-        self.assertEqual(level_3.to_arkane_level_of_theory(),
-                         LevelOfTheory(method='dlpno-ccsd(t)', basis='def2tzvp', software='orca'))
-        self.assertEqual(level_3.to_arkane_level_of_theory(comprehensive=True),
-                         LevelOfTheory(method='dlpnoccsd(t)', basis='def2tzvp', auxiliary_basis='def2tzvp/c',
-                                       solvent='water', solvation_method='smd', software='orca'))
 
     def test_ess_methods_yml(self):
         """Test reading the ess_methods.yml file"""

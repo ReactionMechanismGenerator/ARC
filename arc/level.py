@@ -2,21 +2,14 @@
 A module for working with levels of theory.
 """
 
-from __future__ import annotations
-
 import os
 from typing import Dict, Iterable, List, Optional, Union
-
-import arkane.encorr.data as arkane_data
-from arkane.encorr.bac import BAC
-from arkane.modelchem import METHODS_THAT_REQUIRE_SOFTWARE, LevelOfTheory, standardize_name
 
 from arc.common import ARC_PATH, get_logger, get_ordered_intersection_of_two_lists, read_yaml_file
 from arc.imports import settings
 
 
 logger = get_logger()
-
 
 levels_ess, supported_ess = settings['levels_ess'], settings['supported_ess']
 
@@ -116,9 +109,6 @@ class Level(object):
         """
         if isinstance(other, Level):
             return str(self) == str(other)
-        if isinstance(other, LevelOfTheory):
-            if self.method == other.method and self.basis == other.basis:
-                return True
         return False
 
     def __str__(self) -> str:
@@ -312,126 +302,9 @@ class Level(object):
 
         self.args = args
 
-    def to_arkane_level_of_theory(self,
-                                  variant: Optional[str] = None,
-                                  bac_type: str = 'p',
-                                  comprehensive: bool = False,
-                                  raise_error: bool = False,
-                                  warn: bool = True,
-                                  ) -> Optional[LevelOfTheory]:
-        """
-        Convert ``Level`` to an Arkane ``LevelOfTheory`` instance.
-
-        Args:
-            variant (str, optional): Return a variant of the Arkane ``LevelOfTheory`` that matches an Arkane query.
-                                     Allowed values are ``'freq'``, ``'AEC'``, ``'BEC'``. Returns ``None`` if no
-                                     functioning variant was found.
-            bac_type (str, optional): The BAC type ('p' or 'm') to use when searching for a ``LevelOfTheory`` variant
-                                      for BAC.
-            comprehensive (bool, optional): Whether to consider all relevant arguments if not looking for a variant.
-            raise_error (bool, optional): Whether to raise an error if an AEC variant could not be found.
-            warn (bool, optional): Whether to output a warning if an AEC variant could not be found.
-
-        Returns:
-            Optional[LevelOfTheory]: The respective Arkane ``LevelOfTheory`` object
-        """
-        level_aec = read_yaml_file(os.path.join(ARC_PATH, 'data', 'AEC.yml'))
-        if self.method in level_aec.keys():
-            return None
-        if variant is None:
-            if not comprehensive:
-                # only add basis and software if needed
-                kwargs = {'method': self.method}
-                if self.basis is not None:
-                    kwargs['basis'] = self.basis
-                kwargs['software'] = self.software
-                return LevelOfTheory(**kwargs)
-            else:
-                # consider all relevant arguments
-                kwargs = self.__dict__.copy()
-                del kwargs['solvation_scheme_level']
-                del kwargs['method_type']
-                del kwargs['repr']
-                del kwargs['compatible_ess']
-                del kwargs['dispersion']
-                del kwargs['args']
-                if self.args is not None and self.args and all([val for val in self.args.values()]):
-                    # only pass keyword arguments to Arkane (not blocks)
-                    if any([key == 'keyword' for key in self.args.keys()]):
-                        kwargs['args'] = list()
-                        for key1, val1 in self.args.items():
-                            if key1 == 'keyword':
-                                for val2 in val1.values():
-                                    kwargs['args'].append(val2)
-                                break
-                    else:
-                        kwargs['args'] = None
-                if self.dispersion is not None:
-                    if 'args' not in kwargs:
-                        kwargs['args'] = [self.dispersion]
-                    else:
-                        kwargs['args'].append(self.dispersion)
-                if kwargs['method'] is not None:
-                    kwargs['method'].replace('f12a', 'f12').replace('f12b', 'f12')
-                if kwargs['basis'] is not None:
-                    kwargs['basis'].replace('f12a', 'f12').replace('f12b', 'f12')
-                return LevelOfTheory(**kwargs)
-        else:
-            # search for a functioning variant
-            if variant not in ['freq', 'AEC', 'BAC']:
-                raise ValueError(f'variant must be either "freq", "AEC", or "BAC", got "{variant}".')
-            kwargs = {'method': self.method}
-            if self.basis is not None:
-                kwargs['basis'] = self.basis
-            if standardize_name(self.method) in METHODS_THAT_REQUIRE_SOFTWARE:
-                # add software if mandatory (otherwise, Arkane won't accept this object initialization)
-                kwargs['software'] = self.software
-            var_2 = LevelOfTheory(**kwargs)
-            kwargs['software'] = self.software  # add or overwrite software
-            # start w/ the software argument (var_1) in case there are several entries that only vary by software
-            try:
-                var_1 = LevelOfTheory(**kwargs)
-            except ValueError:
-                var_1 = None
-
-            if variant == 'freq':
-                return var_2
-
-            if variant == 'AEC':
-                try:
-                    arkane_data.atom_energies[var_1]
-                    return var_1
-                except KeyError:
-                    try:
-                        arkane_data.atom_energies[var_2]
-                        return var_2
-                    except KeyError:
-                        if raise_error:
-                            raise ValueError(f'Missing Arkane atom energy corrections for {var_1}\n'
-                                             f'(If you did not mean to compute thermo, set the compute_thermo '
-                                             f'argument to False to avoid this error.)')
-                        else:
-                            if warn:
-                                logger.warning(f'Missing Arkane atom energy corrections for {var_1}.')
-                            return None
-
-            if variant == 'BAC':
-                if bac_type not in ['p', 'm']:
-                    raise ValueError(f'bac_type must be either "p" or "m", got "{bac_type}".')
-                bac = BAC(level_of_theory=var_1, bac_type=bac_type)
-                if bac.bacs is None:
-                    bac = BAC(level_of_theory=var_2, bac_type=bac_type)
-                    if bac.bacs is None:
-                        logger.warning(f'Missing Arkane BAC for {var_2}.')
-                        return None
-                    else:
-                        return var_2
-                else:
-                    return var_1
-
     def deduce_method_type(self):
         """
-        Determine the type of a model chemistry:
+        Determine the model chemistry type:
         DFT, wavefunction, force field, semi-empirical, or composite
         """
         wave_function_methods = ['hf', 'cc', 'ci', 'mp2', 'mp3', 'cp', 'cep', 'nevpt', 'dmrg', 'ri', 'cas', 'ic', 'mr',
