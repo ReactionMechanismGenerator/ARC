@@ -162,7 +162,7 @@ def make_parser(parse_method: str,
                 result = method()
         if result is None and fallback is not None:
             try:
-                result = fallback(log_file_path=log_file_path)
+                result = fallback(log_file_path)
             except Exception as e:
                 logger.error(f'Fallback parsing failed for {log_file_path}: {e}')
         if result is None and raise_error:
