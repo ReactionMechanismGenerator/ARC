@@ -9,7 +9,6 @@ ASE: https://wiki.fysik.dtu.dk/ase/index.html, https://core.ac.uk/download/84004
 import datetime
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
-import numpy as np
 import subprocess
 
 from arc.common import ARC_PATH, get_logger, is_xyz_linear, save_yaml_file, read_yaml_file
