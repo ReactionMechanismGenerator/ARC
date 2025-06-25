@@ -150,7 +150,7 @@ def parse_xyz_from_file(path: str) -> Optional[Dict[str, tuple]]:
     return xyz
 
 
-def 1parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
+def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
     """
     Parse all geometries from an xyz trajectory file or an ESS output file.
 
