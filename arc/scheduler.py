@@ -11,7 +11,6 @@ import shutil
 import time
 
 import numpy as np
-from IPython.display import display
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from arc import parser, plotter
@@ -61,6 +60,7 @@ from arc.species.vectors import get_angle, calculate_dihedral_angle
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
+
 
 logger = get_logger()
 
