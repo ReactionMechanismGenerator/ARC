@@ -3,7 +3,8 @@ A module for parsing information from various files.
 """
 
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
+import re
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, Union, Match
 
 
 from arc.common import get_logger, read_yaml_file
@@ -243,6 +244,129 @@ parse_polarizability = make_parser(
     return_type=Optional[float],
     error_message='Could not parse polarizability from {path}',
 )
+
+
+def parse_scan_args(file_path: str) -> dict:
+    """
+    Get the scan arguments, including which internal coordinates (IC) are being scanned, which are frozen,
+    what is the step size and the number of atoms, etc.
+
+    Args:
+        file_path (str): The path to a readable output file.
+
+    Raises:
+        NotImplementedError: If files other than Gaussian log is input
+
+    Returns: dict
+        A dictionary that contains the scan arguments as well as step number, step size, number of atom::
+
+              {'scan': <list, atom indexes of the torsion to be scanned>,
+               'freeze': <list, list of internal coordinates identified by atom indexes>,
+               'step': <int, number of steps to scan>,
+               'step_size': <float, the size of each step>,
+               'n_atom': <int, the number of atoms of the molecule>,
+               }
+    """
+    ess_name = determine_ess(log_file_path=file_path, raise_error=False)
+    scan_args = {'scan': None, 'freeze': [],
+                 'step': 0, 'step_size': 0, 'n_atom': 0}
+    if ess_name == 'gaussian':
+        try:
+            # g09, g16
+            scan_blk = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
+                                        'Isotopes and Nuclear Properties', regex=False)[0][1:-1]
+        except IndexError:  # Cannot find any block
+            # g03
+            scan_blk_1 = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
+                                          'GradGradGradGrad', regex=False)[0][1:-2]
+            scan_blk_2 = parse_str_blocks(file_path, 'NAtoms=',
+                                          'One-electron integrals computed', regex=False)[0][:1]
+            scan_blk = scan_blk_1 + scan_blk_2
+        scan_pat = r'[DBA]?(\s+\d+){2,4}\s+S\s+\d+[\s\d.]+'
+        frz_pat = r'[DBA]?(\s+\d+){2,4}\s+F'
+        value_pat = r'[\d.]+'
+        for line in scan_blk:
+            if re.search(scan_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_len = len(values) - 2  # atom indexes + step + stepsize
+                scan_args['scan'] = [int(values[i]) for i in range(scan_len)]
+                scan_args['step'] = int(values[-2])
+                scan_args['step_size'] = float(values[-1])
+            if re.search(frz_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
+            if 'NAtoms' in line:
+                scan_args['n_atom'] = int(line.split()[1])
+    else:
+        raise NotImplementedError(f'parse_scan_args() can currently only parse Gaussian output files, got {ess_name}')
+    return scan_args
+
+
+def parse_str_blocks(file_path: str,
+                     head_pat: Union[Match, str],
+                     tail_pat: Union[Match, str],
+                     regex: bool = True,
+                     tail_count: int = 1,
+                     block_count: int = 1,
+                     ) -> List[str]:
+    """
+    Return a list of blocks defined by the head pattern and the tail pattern.
+
+    Args:
+        file_path (str): The path to the readable file.
+        head_pat (str/regex): Str pattern or regular expression of the head of the block.
+        tail_pat (str/regex): Str pattern or regular expresion of the tail of the block.
+        regex (bool, optional): Use regex (True) or str pattern (False) to search.
+        tail_count (int, optional): The number of times that the tail repeats.
+        block_count (int, optional): The max number of blocks to search. -1 for any number.
+
+    Raises:
+        InputError: If the file could not be found.
+
+    Returns: List[str]
+        List of str blocks.
+    """
+    if not os.path.isfile(file_path):
+        raise InputError('Could not find file {0}'.format(file_path))
+    with open(file_path, 'r') as f:
+        blks = []
+        # Different search mode
+        if regex:
+            def search(x, y):
+                return re.search(x, y)
+        else:
+            def search(x, y):
+                return x in y
+        # 'search' for the head or 'read' until the tail
+        mode = 'search'
+        line = f.readline()
+        while line != '':
+            if mode == 'search':
+                # Stop searching if enough blocks were found.
+                if (len(blks)) == block_count:
+                    break
+                # Check if matching the head pattern.
+                else:
+                    match = search(head_pat, line)
+                    # Switch to 'read' mode.
+                    if match:
+                        tail_repeat = 0
+                        mode = 'read'
+                        blks.append([])
+                        blks[-1].append(line)
+            elif mode == 'read':
+                blks[-1].append(line)
+                match = search(tail_pat, line)
+                if match:
+                    tail_repeat += 1
+                    # If there are enough tail patterns, switch to 'search' mode.
+                    if tail_repeat == tail_count:
+                        mode = 'search'
+            line = f.readline()
+        # Remove the last incomplete search
+        if len(blks) > 0 and (tail_repeat != tail_count):
+            blks.pop()
+        return blks
 
 
 def parse_trajectory(path: str) -> Optional[List[Dict[str, tuple]]]:
