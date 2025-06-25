@@ -807,7 +807,7 @@ def are_h_abs_wells_reversed(rxn: 'ARCReaction',
     """
     r_star_2 = product_dict['r_label_map']['*2']
     p_star_2 = product_dict['p_label_map']['*2']
-    r_species, p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)
+    r_species, p_species = rxn.get_reactants_and_products(return_copies=True)
     reactants_reversed = len(r_species[0].mol.atoms) < r_star_2
     products_reversed = len(product_dict['products'][0].atoms) >= p_star_2
     same_order_between_rxn_prods_and_dict_prods = p_species[0].is_isomorphic(product_dict['products'][0])
@@ -850,7 +850,7 @@ def h_abstraction(reaction: 'ARCReaction',
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
-        reactants, products = reaction.get_reactants_and_products(arc=True, return_copies=False)
+        reactants, products = reaction.get_reactants_and_products(return_copies=False)
         reactant = reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
         reactant_2 = reactants[int(not reactants_reversed)]  # Get R(*3)j.
         product = products[int(not products_reversed)]  # Get R(*3)-H(*2).
