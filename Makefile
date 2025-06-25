@@ -62,11 +62,15 @@ install-all: install
 
 install:
 	@echo "Installing all external ARC dependencies..."
-	bash $(DEVTOOLS_DIR)/install_all.sh
+	bash $(DEVTOOLS_DIR)/install_all.sh --rmg-rms
 
 install-ci:
 	@echo "Installing all external ARC dependencies for CI (no clean)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-clean --rmg-rms
+
+install-lite:
+	@echo "Installing ARC's lite version (no external dependencies)..."
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-ext --rmg-rms
 
 install-molecule:
 	bash $(DEVTOOLS_DIR)/install_molecule.sh

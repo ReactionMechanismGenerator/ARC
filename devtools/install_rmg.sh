@@ -7,75 +7,70 @@ echo ">>> Starting RMG-Py installer..."
 # CONFIGURATION
 ###############################################################################
 # default values
-PATH_MODE=path        # {path|pip}
+MODE=path           # {path|pip}
 INSTALL_RMS=false
 USE_SSH=false
-ENV_NAME="rmg_env"   # conda environment name
+ENV_NAME="rmg_env"
 
-while getopts ":prsh" opt; do
-  case $opt in
-      p) PATH_MODE=pip   ;;   # -p  → pip-install
-      r) INSTALL_RMS=true ;;  # -r  → install RMS
-      s) USE_SSH=true    ;;   # -s  → clone via SSH
-      h|\?) cat <<EOF
-Usage: $0 [-p] [-r] [-s]
-  -p   pip-install RMG-Py instead of adding to PATH
-  -r   install Reaction Mechanism Simulator
-  -s   use SSH to clone repos
+TEMP=$(getopt -o prsh --long pip,rms,ssh,help -- "$@")
+[[ $? -eq 0 ]] || { echo "Flag parsing failed"; exit 1; }
+eval set -- "$TEMP"
+while true; do
+    case "$1" in
+        -p|--pip) MODE=pip; shift ;;
+        -r|--rms) INSTALL_RMS=true; shift ;;
+        -s|--ssh) USE_SSH=true; shift ;;
+        -h|--help)
+cat <<EOF
+Usage: $0 [--pip] [--rms] [--ssh]
+
+  -p, --pip   install RMG-Py as a wheel (no PATH edits)
+  -r, --rms   also install Reaction Mechanism Simulator
+  -s, --ssh   clone with git@github … instead of https://
 EOF
-          exit 0 ;;
-  esac
+            exit 0 ;;
+        --) shift; break ;;
+        *)  echo "Internal getopt error"; exit 1 ;;
+    esac
 done
-shift $((OPTIND-1))   # remove parsed flags from $@
 
 # Detect conda frontend
 if command -v micromamba &>/dev/null; then
-    COMMAND=micromamba
+    COMMAND_PKG=micromamba
 elif command -v mamba &>/dev/null; then
-    COMMAND=mamba
+    COMMAND_PKG=mamba
 elif command -v conda &>/dev/null; then
-    COMMAND=conda
+    COMMAND_PKG=conda
 else
     echo "❌ No conda/mamba/micromamba found in PATH."
     exit 1
 fi
 
-echo "✔️ Using $COMMAND to manage environments"
+echo "✔️ Using $COMMAND_PKG to manage environments"
 
 ###############################################################################
-# ── locate ARC root ───────────────────────────────────────────────────────
+# Paths and clones
+###############################################################################
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ARC_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || \
-            printf '%s\n' "$(dirname "$SCRIPT_DIR")")"
+            cd "$SCRIPT_DIR/.." && pwd)"
+CLONE_ROOT="$(dirname "$ARC_ROOT")"
+cd "$CLONE_ROOT" || exit 1
+echo "📂  Clone root: $CLONE_ROOT"
 
-# ── set clone root to the parent of ARC ───────────────────────────────────
-CLONE_ROOT="$(dirname "$ARC_ROOT")"      # ← this is ~/code when ARC is ~/code/ARC
-cd "$CLONE_ROOT"
-echo "📂  Cloning into: $CLONE_ROOT"
-
-clone_repo() {
-    local repo_name=$1
-    local ssh_url=$2
-    local https_url=$3
-    if [[ -d "$repo_name" ]]; then
-        echo "✔️ $repo_name already exists, skipping clone"
-    else
-        local url="$([ "$USE_SSH" == true ] && echo "$ssh_url" || echo "$https_url")"
-        echo "📦 Cloning $repo_name with --depth 1"
-        git clone --depth 1 "$url" "$repo_name"
-    fi
+clone() {            # $1 repo name   $2 ssh url   $3 https url
+    [[ -d $1/.git ]] && { echo "✔️  $1 exists"; return; }
+    git clone --depth 1 "${USE_SSH:+$2}" "${USE_SSH:+}" \
+                          "${USE_SSH:-$3}" "$1"
 }
+clone RMG-Py        git@github.com:ReactionMechanismGenerator/RMG-Py.git \
+                    https://github.com/ReactionMechanismGenerator/RMG-Py.git
+clone RMG-database  git@github.com:ReactionMechanismGenerator/RMG-database.git \
+                    https://github.com/ReactionMechanismGenerator/RMG-database.git
 
-clone_repo RMG-Py \
-    git@github.com:ReactionMechanismGenerator/RMG-Py.git \
-    https://github.com/ReactionMechanismGenerator/RMG-Py.git
+export RMG_PY_PATH=$CLONE_ROOT/RMG-Py
+export RMG_DB_PATH=$CLONE_ROOT/RMG-database
 
-clone_repo RMG-database \
-    git@github.com:ReactionMechanismGenerator/RMG-database.git \
-    https://github.com/ReactionMechanismGenerator/RMG-database.git
-
-export RMG_PY_PATH="$(realpath RMG-Py)"
-export RMG_DB_PATH="$(realpath RMG-database)"
 
 ###############################################################################
 # CREATE OR UPDATE rmg_env
@@ -87,19 +82,19 @@ if [[ ! -f environment.yml ]]; then
     exit 1
 fi
 
-if $COMMAND env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     echo ">>> Updating existing environment: $ENV_NAME"
-    $COMMAND env update -n "$ENV_NAME" -f environment.yml --prune -y
+    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune -y
 else
     echo ">>> Creating new environment: $ENV_NAME"
-    $COMMAND env create -n "$ENV_NAME" -f environment.yml -y
+    $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y
 fi
 
 ###############################################################################
 # COMPILE RMG
 ###############################################################################
 echo "🔧 Compiling RMG-Py..."
-$COMMAND run -n "$ENV_NAME" make -j"$(nproc)"
+$COMMAND_PKG run -n "$ENV_NAME" make -j"$(nproc)"
 
 ###############################################################################
 # UPDATE SHELL PATH
@@ -120,7 +115,7 @@ NEW_LINE='export PATH="$PATH:'"$RMG_PY_PATH"'"'
 
 
 # If PATH_ADD is true, add RMG-Py to PATH
-if [ "$PATH_MODE" == path ]; then
+if [ "$MODE" == path ]; then
     if grep -Eq "$ACTIVE_RE" "$RC"; then
         printf 'ℹ️  RMG-Py already active in %s\n' "$RC"
 
@@ -134,7 +129,7 @@ if [ "$PATH_MODE" == path ]; then
     fi
 else
     # pip install
-    $COMMAND run -n "$ENV_NAME" pip install -e "$RMG_PY_PATH"
+    $COMMAND_PKG run -n "$ENV_NAME" pip install -e "$RMG_PY_PATH"
     echo "📦 RMG-Py installed via pip in $ENV_NAME"
 fi
 
@@ -169,18 +164,18 @@ if [ "$INSTALL_RMS" = true ]; then
         JULIA_PATH=$(which julia)
         echo "Using Julia at: $JULIA_PATH"
         # Set the micromamba/conda/mamba env config vars
-        # Find the base path - check COMMAND is micromamba, mamba, or conda
-        if [ "$COMMAND" = "micromamba" ]; then
+        # Find the base path - check COMMAND_PKG is micromamba, mamba, or conda
+        if [ "$COMMAND_PKG" = "micromamba" ]; then
             BASE_PATH=$(micromamba info --base | awk -F': +' '/base environment/ {print $2; exit}')
-        elif [ "$COMMAND" = "mamba" ] || [ "$COMMAND" = "conda" ]; then
+        elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then
             BASE_PATH=$(conda info --base)
         else
-            echo "❌ Unknown command: $COMMAND"
+            echo "❌ Unknown command: $COMMAND_PKG"
             exit 1
         fi
 
-        # Check if COMMAND is not micromamba
-        if [ "$COMMAND" != "micromamba" ]; then
+        # Check if COMMAND_PKG is not micromamba
+        if [ "$COMMAND_PKG" != "micromamba" ]; then
             conda env config vars set -n "$ENV_NAME" \
                 JULIA_CONDAPKG_BACKEND=Null \
                 JULIA_PYTHONCALL_EXE=$BASE_PATH/envs/$ENV_NAME/bin/python \
@@ -205,10 +200,10 @@ EOF
 
         # install pyjuliacall
         echo "📦 Installing PyJuliaCall in $ENV_NAME"
-        $COMMAND install -n "$ENV_NAME" -c conda-forge pyjuliacall -y
+        $COMMAND_PKG install -n "$ENV_NAME" -c conda-forge pyjuliacall -y
         export RMS_BRANCH=${RMS_BRANCH:-for_rmg}
         echo "📦 Installing ReactionMechanismSimulator - BRANCH: $RMS_BRANCH"
-        $COMMAND run -n "$ENV_NAME" julia -e '
+        $COMMAND_PKG run -n "$ENV_NAME" julia -e '
             using Pkg;
             Pkg.add(Pkg.PackageSpec(
                 name="ReactionMechanismSimulator",
@@ -219,7 +214,7 @@ EOF
             Pkg.instantiate();
         ' || echo "RMS install error – continuing anyway ¯\_(ツ)_/¯"   # conda-run executes in env :contentReference[oaicite:1]{index=1}
         echo "Checking if RMS is installed..."
-$COMMAND run -n "$ENV_NAME" python - <<'PY'
+$COMMAND_PKG run -n "$ENV_NAME" python - <<'PY'
 from juliacall import Main
 import sys
 pk_ok = Main.seval('Base.identify_package("ReactionMechanismSimulator") !== nothing')

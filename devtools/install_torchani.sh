@@ -4,7 +4,7 @@ set -euo pipefail
 # Enable tracing of each command, but tee it to a logfile
 exec 3>&1 4>&2
 trap 'exec 2>&4 1>&3' EXIT
-exec 1> >(tee tani_env_setup.log) 2>&1
+exec 1> >(tee   .log) 2>&1
 set -x
 
 echo ">>> Starting TANI environment setup at $(date)"
