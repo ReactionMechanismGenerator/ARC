@@ -224,6 +224,7 @@ class ARCSpecies(object):
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
         thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
+        rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
@@ -333,6 +334,7 @@ class ARCSpecies(object):
         self.conformer_energies = list()
         self.initial_xyz = None
         self.thermo = None
+        self.rmg_thermo = None
         self.rmg_kinetics = None
         self._number_of_atoms = None
         self._number_of_heavy_atoms = None
