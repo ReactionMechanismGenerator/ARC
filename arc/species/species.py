@@ -24,7 +24,7 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         sort_atoms_in_descending_label_order,
                         )
 from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError
-from arc.imports import home, settings
+from arc.imports import settings
 from arc.level import Level
 import arc.molecule.element as elements
 from arc.molecule.atomtype import ATOMTYPES
@@ -918,49 +918,46 @@ class ARCSpecies(object):
             bool: Whether self.mol should be regenerated
         """
         regen_mol = True
-        rmg_spc = Species()
-        arkane_spc = ArkaneSpecies(species=rmg_spc)
-        # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         yml_content = read_yaml_file(self.yml_path)
-        arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
-        self.label = label or self.label or arkane_spc.label
-        self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
-                                       numbers=arkane_spc.conformer.number.value)
+        self.label = label or self.label or yml_content['label']
+        self.final_xyz = xyz_from_data(coords=yml_content['conformer']['coordinates']['value']['object'],
+                                       numbers=yml_content['conformer']['number']['value']['object'])
         if 'mol' in yml_content:
             self.mol = rmg_mol_from_dict_repr(representation=yml_content['mol'], is_ts=yml_content['is_ts'])
             if self.mol is not None:
                 regen_mol = False
         if regen_mol:
-            if arkane_spc.adjacency_list is not None:
+            if yml_content.get('adjacency_list', None):
                 try:
-                    self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                    self.mol = Molecule().from_adjacency_list(adjlist=yml_content['adjacency_list'],
                                                               raise_atomtype_exception=False)
                 except ValueError:
-                    print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
+                    print(f"Could not read adjlist:\n{yml_content['adjacency_list']}")  # should *not* be logging
                     raise
-            elif arkane_spc.inchi is not None:
-                self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
-            elif arkane_spc.smiles is not None:
-                self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
+            elif yml_content.get('inchi', None):
+                self.mol = Molecule().from_inchi(inchistr=yml_content['inchi'], raise_atomtype_exception=False)
+            elif yml_content.get('smiles', None):
+                self.mol = Molecule().from_smiles(yml_content['smiles'], raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
-            self.multiplicity = arkane_spc.conformer.spin_multiplicity
+            self.multiplicity = yml_content['conformer']['spin_multiplicity']
         if self.optical_isomers is None:
-            self.optical_isomers = arkane_spc.conformer.optical_isomers
-        if self.external_symmetry is None:
-            external_symmetry_mode = None
-            for mode in arkane_spc.conformer.modes:
-                if isinstance(mode, (NonlinearRotor, LinearRotor)):
-                    external_symmetry_mode = mode
-                    break
-            if external_symmetry_mode is not None:
-                self.external_symmetry = external_symmetry_mode.symmetry
+            self.optical_isomers = yml_content['conformer']['optical_isomers']
+        if self.external_symmetry is None and 'modes' in yml_content['conformer']:
+            for mode in yml_content['conformer']['modes']:
+                self.external_symmetry = mode.get('symmetry', None)
         if self.initial_xyz is not None:
             self.mol_from_xyz()
         if self.e0 is None:
-            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+            self.e0 = yml_content['conformer']['E0']['value'] # should already be in kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'J/mol':
+                self.e0 *= 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'cal/mol':
+                self.e0 *= 4.184 * 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'kcal/mol':
+                self.e0 *= 4.184
         return regen_mol
 
     def set_mol_list(self):
@@ -1384,25 +1381,6 @@ class ARCSpecies(object):
                                     mol=mol,
                                     )
             self.initial_xyz = new_xyz
-
-    def determine_symmetry(self) -> None:
-        """
-        Determine the external symmetry and chirality (optical isomers) of the species.
-        """
-        xyz = self.get_xyz()
-        symmetry, optical_isomers = determine_symmetry(xyz)
-        if self.optical_isomers is None:
-            self.optical_isomers = self.optical_isomers or optical_isomers
-        elif self.optical_isomers != optical_isomers:
-            logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
-                           f"{self.optical_isomers} and {optical_isomers}, respectively. "
-                           f"Using the user input of {self.optical_isomers}")
-        if self.external_symmetry is None:
-            self.external_symmetry = self.external_symmetry or symmetry
-        elif self.external_symmetry != symmetry:
-            logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
-                           f"{self.external_symmetry} and {symmetry}, respectively. "
-                           f"Using the user input of {self.external_symmetry}")
 
     def determine_multiplicity(self,
                                smiles: str,
@@ -2884,40 +2862,3 @@ def rmg_mol_to_dict_repr(mol: Molecule,
             'props': mol.props,
             'atom_order': [atom.id for atom in mol.atoms]
             }
-
-
-def determine_symmetry(xyz: dict) -> Tuple[int, int]:
-    """
-    Determine external symmetry and chirality (optical isomers) of the species.
-
-    Args:
-        xyz (dict): The 3D coordinates.
-
-    Returns: Tuple[int, int]
-        - The external symmetry number.
-        - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
-    """
-    atom_numbers = list()
-    for symbol in xyz['symbols']:
-        atom_numbers.append(get_element(symbol).number)
-    # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
-    coords = np.array(xyz['coords'], np.float64)
-    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
-    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
-    if not os.path.exists(scr_dir):
-        os.makedirs(scr_dir)
-    symmetry = optical_isomers = 1
-    qmdata = QMData(
-        groundStateDegeneracy=1,  # Only needed to check if valid QMData.
-        numberOfAtoms=len(atom_numbers),
-        atomicNumbers=atom_numbers,
-        atomCoords=(coords, 'angstrom'),
-        energy=(0.0, 'kcal/mol')  # Dummy
-    )
-    symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
-    pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)
-    pg = pgc.calculate()
-    if pg is not None:
-        symmetry = pg.symmetry_number
-        optical_isomers = 2 if pg.chiral else optical_isomers
-    return symmetry, optical_isomers
