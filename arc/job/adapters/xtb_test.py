@@ -12,7 +12,7 @@ import unittest
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.adapters.xtb_adapter import xTBAdapter
 from arc.level import Level
-from arc.parser import parse_e_elect, parse_frequencies, parse_geometry
+from arc.parser.parser import parse_e_elect, parse_frequencies, parse_geometry
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
