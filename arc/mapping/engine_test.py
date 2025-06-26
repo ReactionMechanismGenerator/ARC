@@ -15,8 +15,6 @@ from arc.mapping.engine import *
 from arc.reaction import ARCReaction
 from arc.species.vectors import calculate_dihedral_angle
 
-from qcelemental.models.molecule import Molecule as QCMolecule
-
 from arc.molecule import Molecule
 
 
@@ -663,26 +661,6 @@ class TestMappingEngine(unittest.TestCase):
         """Test the get_arc_species() function."""
         self.assertIsInstance(get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
         self.assertIsInstance(get_arc_species(Molecule(smiles='C')), ARCSpecies)
-
-    def test_create_qc_mol(self):
-        """Test the create_qc_mol() function."""
-        qcmol1 = create_qc_mol(species=ARCSpecies(label='S1', smiles='C'))
-        self.assertIsInstance(qcmol1, QCMolecule)
-        self.assertEqual(qcmol1.molecular_charge, 0)
-        self.assertEqual(qcmol1.molecular_multiplicity, 1)
-        for symbol, expected_symbol in zip(qcmol1.symbols, ['C', 'H', 'H', 'H', 'H']):
-            self.assertEqual(symbol, expected_symbol)
-
-        qcmol2 = create_qc_mol(species=[ARCSpecies(label='S1', smiles='C'),
-                                        ARCSpecies(label='S2', smiles='N[CH2]')],
-                                       charge=0,
-                                       multiplicity=2,
-                                       )
-        self.assertIsInstance(qcmol2, QCMolecule)
-        self.assertEqual(qcmol2.molecular_charge, 0)
-        self.assertEqual(qcmol2.molecular_multiplicity, 2)
-        for symbol, expected_symbol in zip(qcmol2.symbols, ['C', 'H', 'H', 'H', 'H', 'N', 'C', 'H', 'H', 'H', 'H']):
-            self.assertEqual(symbol, expected_symbol)
 
     def test_check_species_before_mapping(self):
         """Test the check_species_before_mapping() function."""

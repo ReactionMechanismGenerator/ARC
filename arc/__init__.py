@@ -12,6 +12,7 @@ import arc.utils
 
 import arc.job
 import arc.family
+import arc.mapping
 import arc.molecule
 import arc.parser
 import arc.reaction
