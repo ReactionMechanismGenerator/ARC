@@ -555,7 +555,7 @@ def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
                   backbone_map: Dict[int, int],
                   ) -> Dict[int, int]:
-    """
+    r"""
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
     If more than one hydrogen atom is bonded to a given heavy atom forming a "terminal" internal rotor,
