@@ -13,7 +13,7 @@ from arc.constants import E_h_kJmol
 from arc.species.converter import xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
-from arc.parser import _get_lines_from_file
+from arc.parser.parser import _get_lines_from_file
 
 
 class CfourParser(ESSAdapter, ABC):
