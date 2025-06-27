@@ -7,26 +7,29 @@ echo ">>> Starting RMG-Py installer..."
 # CONFIGURATION
 ###############################################################################
 # default values
-MODE=path           # {path|pip}
+# default values ────────────────────────────────────────────────────────────
+MODE=path           # {path|pip|conda}
 INSTALL_RMS=false
 USE_SSH=false
 ENV_NAME="rmg_env"
 
-TEMP=$(getopt -o prsh --long pip,rms,ssh,help -- "$@")
+TEMP=$(getopt -o prsch --long pip,conda,rms,ssh,help -- "$@")
 [[ $? -eq 0 ]] || { echo "Flag parsing failed"; exit 1; }
 eval set -- "$TEMP"
 while true; do
     case "$1" in
-        -p|--pip) MODE=pip; shift ;;
-        -r|--rms) INSTALL_RMS=true; shift ;;
-        -s|--ssh) USE_SSH=true; shift ;;
+        -p|--pip)    MODE=pip;   shift ;;
+        -c|--conda)  MODE=conda; shift ;;
+        -r|--rms)    INSTALL_RMS=true; shift ;;
+        -s|--ssh)    USE_SSH=true; shift ;;
         -h|--help)
 cat <<EOF
-Usage: $0 [--pip] [--rms] [--ssh]
+Usage: $0 [--pip] [--conda] [--rms] [--ssh]
 
-  -p, --pip   install RMG-Py as a wheel (no PATH edits)
-  -r, --rms   also install Reaction Mechanism Simulator
-  -s, --ssh   clone with git@github … instead of https://
+  -p, --pip     install RMG-Py as an editable pip package
+  -c, --conda   export RMG-Py & database into the activation/deactivation hooks of a conda-like environment
+  -r, --rms     also install Reaction Mechanism Simulator
+  -s, --ssh     clone via git@… instead of https://
 EOF
             exit 0 ;;
         --) shift; break ;;
@@ -113,6 +116,51 @@ fi
 echo "🔧 Compiling RMG-Py..."
 $COMMAND_PKG run -n "$ENV_NAME" make -j"$(nproc)"
 
+
+###############################################################################
+# Inject (PY)PATH hooks into any conda-like env
+###############################################################################
+add_rmg_hooks () {
+    local env_name="$1"
+    if [[ $COMMAND_PKG != micromamba && $COMMAND_PKG != mamba && $COMMAND_PKG != conda ]]; then
+        echo "❌ Cannot add hooks: $COMMAND_PKG is not a conda-like package manager."
+        return 1
+    elif [[ $COMMAND_PKG == micromamba ]]; then
+        local env_prefix=$(micromamba info --base)/envs/"$env_name"
+    else
+        local env_prefix=$(conda info --base)/envs/"$env_name"
+    fi
+    local act_dir="$env_prefix/etc/conda/activate.d"
+    local deact_dir="$env_prefix/etc/conda/deactivate.d"
+    mkdir -p "$act_dir" "$deact_dir"
+
+    # ---------- activation hook ----------
+    cat >"$act_dir/99-rmg.sh" <<EOF
+# added by installer on $(date +%F)
+export RMG_PY_PATH="$RMG_PY_PATH"
+export RMG_DB_PATH="$RMG_DB_PATH"
+
+# prepend once
+case ":\$PATH:" in *":\$RMG_PY_PATH:"*) ;; \
+  *) export PATH="\$RMG_PY_PATH:\$PATH" ;; esac
+
+case "\${PYTHONPATH:+:\$PYTHONPATH:}" in *":\$RMG_PY_PATH:"*) ;; \
+  *) export PYTHONPATH="\${PYTHONPATH:+\$RMG_PY_PATH:\$PYTHONPATH}" || \
+     export PYTHONPATH="\$RMG_PY_PATH" ;; esac
+EOF
+
+    # ---------- deactivation hook ----------
+    cat >"$deact_dir/99-rmg.sh" <<'EOF'
+_strip () { local n=":$1:"; local s=":$2:"; echo "${s//$n/:}" | sed 's/^://;s/:$//'; }
+export PATH=$(_strip "$RMG_PY_PATH" "$PATH")
+export PYTHONPATH=$(_strip "$RMG_PY_PATH" "${PYTHONPATH:-}")
+unset RMG_PY_PATH RMG_DB_PATH
+EOF
+
+    echo "🔗 RMG hooks added to $env_name"
+}
+
+
 ###############################################################################
 # UPDATE SHELL PATH
 ###############################################################################
@@ -144,10 +192,21 @@ if [ "$MODE" == path ]; then
         printf '✅  No entry found; adding new active line\n'
         printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
     fi
+elif [ "$MODE" == conda ]; then
+    # conda envs already have the RMG_PY_PATH in PATH, so no need to add it
+    add_rmg_hooks "$ENV_NAME"
 else
     # pip install
     $COMMAND_PKG run -n "$ENV_NAME" pip install -e "$RMG_PY_PATH"
     echo "📦 RMG-Py installed via pip in $ENV_NAME"
+fi
+
+ARC_ENV=arc_env
+if [[ "$MODE" == "conda" ]]; then
+    echo "📦 Adding RMG hooks ARC to $ARC_ENV"
+    add_rmg_hooks "$ARC_ENV"
+else
+    echo "ℹ️ Skipping ARC hooks as ARC is not cloned or not in conda mode."
 fi
 
 
