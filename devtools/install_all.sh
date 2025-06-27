@@ -97,7 +97,7 @@ fi
 if [[ $SKIP_EXT == false ]]; then
     # map of friendly names → installer scripts
     declare -A EXT_INSTALLERS=(
-        [GCN\ CPU]=install_gcn_cpu.sh
+        [GCN\ CPU]=install_gcn.sh
         [AutoTST]=install_autotst.sh
         [KinBot]=install_kinbot.sh
         [OpenBabel]=install_ob.sh
@@ -106,11 +106,28 @@ if [[ $SKIP_EXT == false ]]; then
         [TorchANI]=install_torchani.sh
     )
 
+        # installer-specific flag whitelists
+    declare -A EXT_FLAG_WHITELIST=(
+        [install_gcn.sh]="--conda"
+        [install_autotst.sh]="--conda"
+        # add more later, e.g.  [install_xtb.sh]="--cuda --prefix"
+    )
+
+
     for name in "${!EXT_INSTALLERS[@]}"; do
+        script="${EXT_INSTALLERS[$name]}"
         echo "=== Installing $name ==="
-        run_devtool "${EXT_INSTALLERS[$name]}"
-        
+
+        # filter EXT_ARGS by whitelist for this script
+        allowed=()
+        for arg in "${EXT_ARGS[@]}"; do
+            [[ " ${EXT_FLAG_WHITELIST[$script]} " == *" ${arg} "* ]] && \
+                allowed+=("$arg")
+        done
+
+        run_devtool "$script" "${allowed[@]}"
     done
+
 else
     echo "ℹ️  --no-ext flag set. Skipping external-dependency installs."
 fi
