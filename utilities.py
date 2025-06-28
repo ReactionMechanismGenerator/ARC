@@ -78,7 +78,7 @@ def _check_pydqed():
     try:
         import pydqed
     except ImportError:
-        print('{0:<30}{1}'.format('pydqed', 'Not found. Necessary for estimating statmech for pressure dependence.'))
+        # print('{0:<30}{1}'.format('pydqed', 'Not found. Necessary for estimating statmech for pressure dependence.'))
         missing = True
     else:
         version = pydqed.__version__
