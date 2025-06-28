@@ -17,8 +17,8 @@ dependencies:
   - conda-forge::ase ==3.22.1
   - conda-forge::cairo
   - conda-forge::cairocffi
-  - conda-forge::cclib >=1.6.3,<1.9
-  - conda-forge::coolprop
+  #- conda-forge::cclib >=1.6.3,<1.9
+  #- conda-forge::coolprop
   - conda-forge::coverage
   - conda-forge::cython >=0.25.2,<3.1
   - conda-forge::ffmpeg
@@ -30,7 +30,7 @@ dependencies:
   - conda-forge::jupyter
   - conda-forge::mako
   - conda-forge::markupsafe
-  - conda-forge::matplotlib >=1.5
+  - conda-forge::matplotlib
   - conda-forge::mopac
   - conda-forge::mpmath
   - conda-forge::networkx
@@ -58,6 +58,3 @@ dependencies:
   - conda-forge::xlrd
   - conda-forge::xlwt
   - conda-forge::pytables
-
-  # ─── cantera build ────────────────────────────
-  - cantera::cantera =2.6
