@@ -418,26 +418,26 @@ class Level(object):
                     self.compatible_ess.append(ess)
 
 
-def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
-    """
-    Get the method, basis set, and software (if any) of an str representation of an Arkane LevelOfTheory object instance.
-
-    Args:
-        arkane_level (str): The Arkane level.
-
-    Returns:
-        Dict[str, str]: Keys are 'method', 'basis', 'software'.
-    """
-    # LevelOfTheory(method='b3lyp',basis='6311+g(3df,2p)',software='gaussian')
-    level_dict = {'method': '',
-                  'basis': '',
-                  'software': '',
-                  }
-    for key in level_dict.keys():
-        if key in arkane_level:
-            splits = arkane_level.split(f"{key}='")
-            level_dict[key] = splits[1].split("'")[0]
-    return level_dict
+# def get_params_from_arkane_level_of_theory_as_str(arkane_level: str) -> Dict[str, str]:
+#     """
+#     Get the method, basis set, and software (if any) of an str representation of an Arkane LevelOfTheory object instance.
+#
+#     Args:
+#         arkane_level (str): The Arkane level.
+#
+#     Returns:
+#         Dict[str, str]: Keys are 'method', 'basis', 'software'.
+#     """
+#     # LevelOfTheory(method='b3lyp',basis='6311+g(3df,2p)',software='gaussian')
+#     level_dict = {'method': '',
+#                   'basis': '',
+#                   'software': '',
+#                   }
+#     for key in level_dict.keys():
+#         if key in arkane_level:
+#             splits = arkane_level.split(f"{key}='")
+#             level_dict[key] = splits[1].split("'")[0]
+#     return level_dict
 
 
 def assign_frequency_scale_factor(level: Union[str, Level]) -> Optional[int]:

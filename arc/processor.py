@@ -85,6 +85,7 @@ def process_arc_project(thermo_adapter: str,
     bde_report = dict()
 
     output_directory = os.path.join(project_directory, 'output')
+    calcs_directory = os.path.join(project_directory, 'calcs')
     libraries_path = os.path.join(output_directory, 'RMG libraries')
     if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
@@ -106,13 +107,14 @@ def process_arc_project(thermo_adapter: str,
                     if output_dict[species.label]['convergence']:
                         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                             output_directory=output_directory,
+                                                            calcs_directory=calcs_directory,
                                                             output_dict=output_dict,
                                                             bac_type=None,
                                                             sp_level=sp_level,
                                                             freq_scale_factor=freq_scale_factor,
                                                             species=species,
                                                             )
-                        statmech_adapter.compute_thermo(kinetics_flag=True)
+                        statmech_adapter.compute_thermo()
                     else:
                         logger.error(f'Species {species.label} did not converge, cannot compute a rate coefficient '
                                      f'for {reaction.label}')
@@ -121,6 +123,7 @@ def process_arc_project(thermo_adapter: str,
                 if species_converged:
                     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                         output_directory=output_directory,
+                                                        calcs_directory=calcs_directory,
                                                         output_dict=output_dict,
                                                         bac_type=None,
                                                         sp_level=sp_level,
@@ -155,13 +158,14 @@ def process_arc_project(thermo_adapter: str,
             if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
                 statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter,
                                                     output_directory=output_directory,
+                                                    calcs_directory=calcs_directory,
                                                     output_dict=output_dict,
                                                     bac_type=bac_type,
                                                     sp_level=sp_level,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
+                statmech_adapter.compute_thermo(e0_only=species.e0_only)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
                 elif not species.e0_only and species not in unconverged_species:

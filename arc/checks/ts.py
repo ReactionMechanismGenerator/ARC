@@ -212,8 +212,7 @@ def compute_rxn_e0(reaction: 'ARCReaction',
                                             freq_scale_factor=freq_scale_factor,
                                             species=species,
                                             )
-        statmech_adapter.compute_thermo(kinetics_flag=True,
-                                        e0_only=True,
+        statmech_adapter.compute_thermo(e0_only=True,
                                         skip_rotors=True,
                                         )
     return rxn_copy

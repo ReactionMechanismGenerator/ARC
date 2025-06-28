@@ -784,7 +784,11 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
         return
 
     for i, spc in enumerate(species_list):
-        if spc.thermo is not None and spc.include_in_thermo_lib:
+        thermo_key = 'thermo_data' if hasattr(spc.thermo, 'thermo_data') else 'nasa' if hasattr(spc.thermo, 'nasa') else None
+        if thermo_key is None:
+            logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo library.')
+            continue
+        if spc.thermo is not None and 'thermo_data' and spc.include_in_thermo_lib:
             if spc.label not in species_dict:
                 adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
                 species_dict[spc.label] = adjlist
@@ -798,7 +802,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
     index = {i + 1},
     label = "{spc.label}",
     molecule = \"\"\"\n{species_dict[spc.label]}\n\"\"\",
-    thermo = {repr(spc.thermo)},
+    thermo = {repr(spc.thermo[thermo_key])},
     shortDesc = u\"\"\"{comment}\"\"\",
     longDesc = u\"\"\"\n{spc.long_thermo_description}\n\"\"\",
 )
