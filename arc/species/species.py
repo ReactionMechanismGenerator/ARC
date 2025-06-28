@@ -244,7 +244,7 @@ class ARCSpecies(object):
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
         rxn_label (str): The reaction string (relevant for TSs).
         rxn_index (int): The reaction index which is the respective key to the Scheduler rxn_dict.
-        arkane_file (str): Path to the Arkane Species file generated in processor.
+        arkane_file (str): Path to the Arkane Species file.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         keep_mol (bool): Label to prevent the generation of a new Molecule object.
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
