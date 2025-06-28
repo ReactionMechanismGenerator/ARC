@@ -1298,7 +1298,7 @@ def is_angle_linear(angle: float,
     return (180 - tolerance < angle <= 180) or (0 <= angle < tolerance)
 
 
-def is_xyz_linear(xyz: dict) -> bool:
+def is_xyz_linear(xyz: Optional[dict]) -> Optional[bool]:
     """
     Determine whether the xyz coords represents a linear molecule.
 
@@ -1308,6 +1308,8 @@ def is_xyz_linear(xyz: dict) -> bool:
     Returns:
         bool: Whether the molecule is linear, ``True`` if it is.
     """
+    if not xyz or 'coords' not in xyz or 'symbols' not in xyz:
+        return None
     coordinates = np.array(xyz['coords'])
     n_atoms = len(coordinates)
     if n_atoms == 1:
