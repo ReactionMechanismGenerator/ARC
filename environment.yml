@@ -6,15 +6,15 @@ channels:
 
 dependencies:
   # ─── core (locked) ─────────────────────────────
-  - conda-forge::python ==3.9.*
-  - conda-forge::numpy  ==1.26.* # Was >=1.10.0,<2
+  - conda-forge::python >=3.9.*
+  - conda-forge::numpy  >=1.26.* # Was >=1.10.0,<2   # 2.1.0
 
   # ─── rmg wheels ───────────────────────────────
   - rmg::pydas   >=1.0.3
   - rmg::pydqed  >=1.0.3
 
   # ─── conda-forge packages ─────────────────────
-  - conda-forge::ase ==3.22.1
+  - conda-forge::ase >=3.22.1
   - conda-forge::cairo
   - conda-forge::cairocffi
   #- conda-forge::cclib >=1.6.3,<1.9
