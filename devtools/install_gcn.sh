@@ -46,7 +46,6 @@ done
 
 # ── determine CUDA vs CPU ───────────────────────────────────────────────────
 if [[ -n "$TSGCN_CUDA_REQ" ]]; then
-  # user override
   case "$TSGCN_CUDA_REQ" in
     9.2|10.1|10.2|11.0)
       CUDA="cudatoolkit=${TSGCN_CUDA_REQ}"
@@ -57,28 +56,19 @@ if [[ -n "$TSGCN_CUDA_REQ" ]]; then
       exit 1
       ;;
   esac
-
 elif $FORCE_CPU; then
   CUDA="cpuonly"
   CUDA_VERSION="cpu"
-
 else
-  # auto-detect via nvcc
   if command -v nvcc &>/dev/null; then
     VER=$(nvcc --version | grep -oP "release \K[0-9]+\.[0-9]+")
-    echo "Detected nvcc CUDA $VER"
     CUDA="cudatoolkit=$VER"
     CUDA_VERSION="cu${VER/./}"
-
-  # or via nvidia-smi
   elif command -v nvidia-smi &>/dev/null; then
     VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | cut -d. -f1-2)
-    echo "Detected NVIDIA-driver CUDA $VER"
     CUDA="cudatoolkit=$VER"
     CUDA_VERSION="cu${VER/./}"
-
   else
-    echo "No CUDA toolchain found: defaulting to CPU build"
     CUDA="cpuonly"
     CUDA_VERSION="cpu"
   fi
@@ -89,9 +79,7 @@ echo "→ Installing with $CUDA on platform $CUDA_VERSION"
 # ── functions ─────────────────────────────────────────────────────────────
 write_hook () {             # env_name  repo_path
     local env="$1" repo="$2"
-    # skip if env missing
     $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$env" || return 0
-
     local prefix
     if [[ $COMMAND_PKG == micromamba ]]; then
         prefix="$(micromamba info --base)/envs/$env"
@@ -101,17 +89,16 @@ write_hook () {             # env_name  repo_path
     local act="$prefix/etc/conda/activate.d/zzz-tsgcn.sh"
     local deact="$prefix/etc/conda/deactivate.d/zzz-tsgcn.sh"
     mkdir -p "${act%/*}" "${deact%/*}"
-    rm -f "$act" "$deact"                  # ensure fresh copy each run
+    rm -f "$act" "$deact"
 
-    # --- activate ----------------------------------------------------------
+    # activate hook
     cat >"$act" <<EOF
 # TS-GCN hook – $(date +%F)
 export TSGCN_ROOT="$repo"
-case ":\$PYTHONPATH:" in *":\$TSGCN_ROOT:"*) ;; \
-  *) export PYTHONPATH="\$TSGCN_ROOT:\${PYTHONPATH:-}" ;; esac
+case ":\$PYTHONPATH:" in *":\$TSGCN_ROOT:") ;; *) export PYTHONPATH="\$TSGCN_ROOT:\${PYTHONPATH:-}" ;; esac
 EOF
 
-    # --- deactivate --------------------------------------------------------
+    # deactivate hook
     cat >"$deact" <<'EOF'
 _strip () { local n=":$1:"; local s=":$2:"; echo "${s//$n/:}" | sed 's/^://;s/:$//'; }
 export PYTHONPATH=$(_strip "$TSGCN_ROOT" ":${PYTHONPATH:-}:")
@@ -120,97 +107,58 @@ EOF
     echo "🔗 PYTHONPATH hook refreshed in $env"
 }
 
-# ── locate folders relative to this script ────────────────────────────────
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-ARC_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"      # …/ARC_Mol
-CLONE_ROOT="$(cd "$ARC_ROOT/.." && pwd)"      # directory that *contains* ARC_Mol
+# ── locate folders ─────────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CLONE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$CLONE_ROOT"
 
-if command -v micromamba &> /dev/null; then
-    echo "✔️ Micromamba is installed."
+# choose backend
+if command -v micromamba &>/dev/null; then
     COMMAND_PKG=micromamba
-elif command -v mamba &> /dev/null; then
-    echo "✔️ Mamba is installed."
+elif command -v mamba &>/dev/null; then
     COMMAND_PKG=mamba
-elif command -v conda &> /dev/null; then
-    echo "✔️ Conda is installed."
+else
     COMMAND_PKG=conda
-else
-    echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
-    exit 1
 fi
 
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    eval "$(micromamba shell hook --shell=bash)"
-else
-    BASE=$(conda info --base)
-    # shellcheck source=/dev/null
-    . "$BASE/etc/profile.d/conda.sh"
-fi
+eval "\$($COMMAND_PKG shell hook --shell=bash)"
 
+# clone/update repo
+if [ -d TS-GCN ]; then cd TS-GCN && git fetch && git checkout main && git pull; else git clone https://github.com/ReactionMechanismGenerator/TS-GCN && cd TS-GCN; fi
 
-echo ">>> Cloning or updating TS-GCN..."
-if [ -d TS-GCN ]; then
-    cd TS-GCN
-    git fetch origin
-    git checkout main
-    git pull origin main
-else
-    git clone https://github.com/ReactionMechanismGenerator/TS-GCN
-    cd TS-GCN
-fi
-
-# 3. PATH vs hooks ----------------------------------------------------------
+# 3. PATH vs hooks
 if [[ $MODE == path ]]; then
-    GCN_LINE="export PYTHONPATH=\$PYTHONPATH:$(pwd)"
-    if ! grep -Fqx "$GCN_LINE" ~/.bashrc; then
-        echo "$GCN_LINE" >> ~/.bashrc
-        echo "✔️ Added TS-GCN path to ~/.bashrc"
-    else
-        echo "ℹ️ TS-GCN path already exists in ~/.bashrc"
-    fi
+    GCN_LINE="export PYTHONPATH=\\$PYTHONPATH:$(pwd)"
+    grep -Fqx "$GCN_LINE" ~/.bashrc || { echo "$GCN_LINE" >> ~/.bashrc; echo "✔️ Added TS-GCN path to ~/.bashrc"; }
 fi
 
-# ---------------------------------------------------------------------------
-# create / update env *here* (unchanged)
-if grep -q '^conda_env:' Makefile; then
-    echo ">>> Creating GCN conda environment via Makefile"
-    # --- pick the fastest Conda frontend just for create_env.sh ---------------
-    if command -v micromamba >/dev/null; then
-        _backend="micromamba"
-    elif command -v mamba >/dev/null; then
-        _backend="mamba"
+# 4. inline env creation & install
+if [[ -f environment.yml ]]; then
+    echo "Creating/updating ts_gcn environment"
+    if $COMMAND_PKG env list | awk '{print $1}' | grep -qx ts_gcn; then
+        $COMMAND_PKG env update -n ts_gcn -f environment.yml --prune -y
     else
-        _backend="conda"          # fallback to classic
+        $COMMAND_PKG env create -n ts_gcn -f environment.yml -y
     fi
-    echo "⚡ Using $_backend for create_env.sh"
-    # run make in a subshell so the alias doesn't leak
-(
-  alias conda="$_backend"
-  export CUDA CUDA_VERSION
 
-  # map CUDA_VERSION → select index in create_env.sh’s menu
-  case "$CUDA_VERSION" in
-    cu92)  pick=1 ;;
-    cu101) pick=2 ;;
-    cu102) pick=3 ;;
-    cu110) pick=4 ;;
-    cpu)   pick=5 ;;
-    *)     pick=5 ;;
-  esac
+    conda activate ts_gcn
+    echo "Installing PyTorch + torchvision with $CUDA"
+    $COMMAND_PKG install -n ts_gcn pytorch torchvision $CUDA -c pytorch -y
 
-  echo "→ Auto-selecting menu item #$pick for CUDA install"
-  # pipe the choice into create_env.sh via make
-  printf '%s\n' "$pick" | make conda_env
-)
-
-
+    TORCH_VER=$(python -c "import torch; print(torch.__version__)" | cut -c1-4)0
+    WHEEL_URL="https://pytorch-geometric.com/whl/torch-${TORCH_VER}+${CUDA_VERSION}.html"
+    pip install torch-scatter   -f "$WHEEL_URL"
+    pip install torch-sparse    -f "$WHEEL_URL"
+    pip install torch-cluster   -f "$WHEEL_URL"
+    pip install torch-spline-conv -f "$WHEEL_URL"
+    pip install torch-geometric
+    echo "✅ ts_gcn environment ready"
 else
-    echo "❌ Makefile target 'conda_env' not found. Please check TS-GCN repo."
+    echo "❌ environment.yml not found."
     exit 1
 fi
 
-# 4. write hooks *after* env exists -----------------------------------------
+# 5. write hooks
 if [[ $MODE == conda ]]; then
     write_hook ts_gcn "$(pwd)"
     if $COMMAND_PKG env list | awk '{print $1}' | grep -qx arc_env; then
