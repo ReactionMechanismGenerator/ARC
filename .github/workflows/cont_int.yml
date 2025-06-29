@@ -52,6 +52,7 @@ jobs:
         repository: ReactionMechanismGenerator/RMG-Py
         path: RMG-Py
         ref: ${{ env.RMG_PY_COMMIT }}
+        fetch-depth: 0   
 
     - name: Cache RMG-database
       id: cache-rmg-db
