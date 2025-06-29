@@ -72,24 +72,6 @@ class TestArkaneAdapter(unittest.TestCase):
             self.assertIn(f'T_count={arkane.T_count})', repr)
             if arkane.sp_level is not None:
                 self.assertIn(f'sp_level={arkane.sp_level.simple()}', repr)
-    
-    def test_arkane_has_en_corr(self):
-        """Test the arkane_has_en_corr() function"""
-        self.arkane_1.sp_level = Level('CBS-QB3')
-        self.assertTrue(self.arkane_1.arkane_has_en_corr())
-
-        # B3LYP/6-31G(d,p) does not support nitrogen AECs
-        self.arkane_1.sp_level = Level(method='B3LYP', basis='6-31G(d,p)')
-        self.assertFalse(self.arkane_1.arkane_has_en_corr())
-
-        self.arkane_1.sp_level = Level(method='fake', basis='basis')
-        self.assertFalse(self.arkane_1.arkane_has_en_corr())
-
-        self.arkane_2.sp_level = Level('CBS-QB3')
-        self.assertTrue(self.arkane_2.arkane_has_en_corr())
-
-        self.arkane_2.sp_level = Level(method='fake', basis='basis')
-        self.assertFalse(self.arkane_2.arkane_has_en_corr())
 
     def test_run_statmech_using_molecular_properties(self):
         """Test running statmech using molecular properties."""

@@ -15,7 +15,7 @@ import arc.checks.ts as ts
 from arc.common import ARC_PATH, almost_equal_lists
 from arc.job.factory import job_factory
 from arc.level import Level
-from arc.parser import parse_normal_mode_displacement, parse_xyz_from_file
+from arc.parser.parser import parse_normal_mode_displacement, parse_xyz_from_file
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess
 from arc.utils.wip import work_in_progress

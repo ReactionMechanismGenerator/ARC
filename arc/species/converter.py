@@ -7,7 +7,6 @@ import numpy as np
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
-import qcelemental as qcel
 from ase import Atoms
 from openbabel import openbabel as ob
 from openbabel import pybel
@@ -17,22 +16,17 @@ from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
-from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-import rmgpy.constants as constants
-from rmgpy.exceptions import AtomTypeError
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-from rmgpy.statmech import Conformer
-
-from arc.common import (almost_equal_lists,
+from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
+                        almost_equal_lists,
                         calc_rmsd,
                         get_atom_radius,
                         get_logger,
                         generate_resonance_structures,
                         is_str_float,
                         )
-from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
+import arc.constants as constants
+from arc.exceptions import AtomTypeError, ConverterError, InputError, SanitizationError, SpeciesError
+from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.xyz_to_smiles import xyz_to_smiles
 from arc.species.zmat import (KEY_FROM_LEN,
@@ -94,8 +88,8 @@ def str_to_xyz(xyz_str: str,
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
         xyz_str = os.path.join(project_directory, xyz_str)
     if os.path.isfile(xyz_str):
-        from arc.parser import parse_xyz_from_file
-        return parse_xyz_from_file(xyz_str)
+        from arc.parser.parser import parse_geometry
+        return parse_geometry(xyz_str)
     xyz_str = xyz_str.replace(',', ' ')
     if len(xyz_str.splitlines()) and len(xyz_str.splitlines()[0]) == 1:
         # this is a zmat
@@ -107,7 +101,7 @@ def str_to_xyz(xyz_str: str,
         for line in xyz_str.splitlines():
             if line.strip():
                 splits = line.split()
-                symbol = symbol_by_number[int(splits[1])]
+                symbol = SYMBOL_BY_NUMBER[int(splits[1])]
                 coord = (float(splits[3]), float(splits[4]), float(splits[5]))
                 xyz_dict['symbols'] += (symbol,)
                 xyz_dict['isotopes'] += (get_most_common_isotope_for_element(symbol),)
@@ -327,7 +321,7 @@ def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
         Tuple[list, list]: Coords and atomic numbers.
     """
     coords = xyz_to_coords_list(xyz)
-    z_list = [qcel.periodictable.to_Z(symbol) for symbol in xyz['symbols']]
+    z_list = [NUMBER_BY_SYMBOL(symbol) for symbol in xyz['symbols']]
     return coords, z_list
 
 
@@ -361,9 +355,31 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
-    dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
-                                          b=np.array(xyz_to_coords_list(xyz_dict)))
+    dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
+                           b=np.array(xyz_to_coords_list(xyz_dict)))
     return dmat
+
+
+def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Compute the Euclidean distance matrix between rows of two arrays.
+
+    This function is equivalent to `scipy.spatial.distance.cdist(a, b, 'Euclidean')`
+    but implemented using pure NumPy for zero dependencies.
+
+    Args:
+        a (np.ndarray): First array of shape (m, d)
+        b (np.ndarray): Second array of shape (n, d)
+
+    Returns:
+        np.ndarray: Distance matrix of shape (m, n) where element (i, j) is the
+                    Euclidean distance between a[i] and b[j]
+    """
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
+    sq_diff = diff ** 2
+    return np.sqrt(np.sum(sq_diff, axis=-1))
 
 
 def xyz_file_format_to_xyz(xyz_file: str) -> dict:
@@ -437,7 +453,7 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     if numbers is not None and symbols is not None:
         raise ConverterError('Must set either "numbers" or "symbols". Got both.')
     if numbers is not None:
-        symbols = tuple(symbol_by_number[number] for number in numbers)
+        symbols = tuple(SYMBOL_BY_NUMBER[number] for number in numbers)
     if len(coords) != len(symbols):
         raise ConverterError(f'The length of the coordinates ({len(coords)}) is different than the length of the '
                              f'numbers/symbols ({len(symbols)}).')
@@ -578,7 +594,20 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
     Returns:
         List[float]: The corresponding list of mass in amu.
     """
-    return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+    symbols, isotopes = xyz['symbols'], xyz.get('isotopes', None)
+    masses = list()
+    for i, symbol in enumerate(symbols):
+        isotope_list = MASS_BY_SYMBOL[symbol]
+        if isotopes:
+            isotope_number = isotopes[i]
+            mass = next((m[1] for m in isotope_list if m[0] == isotope_number), None)
+            if mass is None:
+                raise ValueError(f"No mass found for {symbol} isotope {isotope_number}")
+        else:
+            # Use the most abundant isotope if not specified
+            mass = max(isotope_list, key=lambda x: x[2])[1]
+        masses.append(mass)
+    return masses
 
 
 def hartree_to_si(e: float,
@@ -595,62 +624,6 @@ def hartree_to_si(e: float,
         raise ValueError(f'Expected a float, got {e} which is a {type(e)}.')
     factor = 0.001 if kilo else 1
     return e * constants.E_h * constants.Na * factor
-
-
-def rmg_conformer_to_xyz(conformer):
-    """
-    Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
-
-    Notes:
-        Only the xyz information (symbols and coordinates) will be taken from the Conformer object. Other properties
-        such as electronic energy will not be converted.
-
-        We also assume that we can get the isotope number by rounding the mass
-
-    Args:
-        conformer (Conformer): An rmgpy.statmech.Conformer object containing the desired xyz coordinates
-
-    Raises:
-        TypeError: If conformer is not an rmgpy.statmech.Conformer object
-
-    Returns:
-        dict: The ARC xyz format
-    """
-    if not isinstance(conformer, Conformer):
-        raise TypeError(f'Expected conformer to be an rmgpy.statmech.Conformer object but instead got {conformer}, '
-                        f'which is a {type(conformer)} object.')
-
-    symbols = tuple(symbol_by_number[n] for n in conformer.number.value)
-    isotopes = tuple(int(round(m)) for m in conformer.mass.value)
-    coords = tuple(tuple(coord) for coord in conformer.coordinates.value)
-
-    xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
-    return xyz_dict
-
-
-def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
-    """
-    Convert the Arc dict xyz style into an rmgpy.statmech.Conformer object containing these coordinates.
-
-    Notes:
-        Only the xyz information will be supplied to the newly created Conformer object
-
-    Args:
-        xyz_dict (dict): The ARC dict xyz style coordinates
-
-    Returns:
-        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates.
-    """
-    if xyz_dict is None:
-        return None
-    xyz_dict = check_xyz_dict(xyz_dict)
-    mass_and_number = (get_element_mass(*args) for args in zip(xyz_dict['symbols'], xyz_dict['isotopes']))
-    mass, number = zip(*mass_and_number)
-    mass = ArrayQuantity(mass, 'amu')
-    number = ArrayQuantity(number, '')
-    coordinates = ArrayQuantity(xyz_dict['coords'], 'angstroms')
-    conformer = Conformer(number=number, mass=mass, coordinates=coordinates)
-    return conformer
 
 
 def standardize_xyz_string(xyz_str, isotope_format=None):
@@ -1275,7 +1248,7 @@ def get_most_common_isotope_for_element(element_symbol):
     if element_symbol == 'X':
         # this is a dummy atom (such as in a zmat)
         return None
-    mass_list = mass_by_symbol[element_symbol]
+    mass_list = MASS_BY_SYMBOL[element_symbol]
     if len(mass_list[0]) == 2:
         # isotope contribution is unavailable, just get the first entry
         isotope = mass_list[0][0]
@@ -1887,16 +1860,14 @@ def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bond
     else:
         mol1_copy = mol1.copy(deep=True)
         mol2_copy = mol2.copy(deep=True)
-    spc1 = Species(molecule=[mol1_copy])
-    spc2 = Species(molecule=[mol2_copy])
 
     if not convert_to_single_bonds:
-        generate_resonance_structures(spc1, filter_structures=filter_structures)
-        generate_resonance_structures(spc2, filter_structures=filter_structures)
+        mol_list_1 = generate_resonance_structures(mol1_copy, filter_structures=filter_structures)
+        mol_list_2 = generate_resonance_structures(mol2_copy, filter_structures=filter_structures)
 
-    for molecule1 in spc1.molecule:
-        for molecule2 in spc2.molecule:
-            if molecule1.is_isomorphic(molecule2, save_order=True):
+    for molecule_1 in mol_list_1:
+        for molecule_2 in mol_list_2:
+            if molecule_1.is_isomorphic(molecule_2, save_order=True):
                 return True
     return False
 

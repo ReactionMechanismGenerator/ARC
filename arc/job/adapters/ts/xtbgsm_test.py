@@ -12,7 +12,7 @@ import unittest
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.xtb_gsm import xTBGSMAdapter
 from arc.level import Level
-from arc.parser import parse_trajectory
+from arc.parser.parser import parse_trajectory
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 

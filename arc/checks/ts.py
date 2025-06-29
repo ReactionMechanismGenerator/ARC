@@ -2,7 +2,6 @@
 A module for checking the quality of TS-related calculations, contains helper functions for Scheduler.
 """
 
-import logging
 import os
 
 import numpy as np
@@ -213,8 +212,7 @@ def compute_rxn_e0(reaction: 'ARCReaction',
                                             freq_scale_factor=freq_scale_factor,
                                             species=species,
                                             )
-        statmech_adapter.compute_thermo(kinetics_flag=True,
-                                        e0_only=True,
+        statmech_adapter.compute_thermo(e0_only=True,
                                         skip_rotors=True,
                                         )
     return rxn_copy
@@ -411,7 +409,7 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction
             rotor['success'] = False
             if 'pivTS' not in rotor['invalidation_reason']:
                 rotor['invalidation_reason'] += 'Pivots participate in the TS reaction zone (code: pivTS). '
-                logging.info(f"\nNot considering rotor {key} with pivots {rotor['pivots']} in TS {reaction.ts_species.label}\n")
+                logger.info(f"\nNot considering rotor {key} with pivots {rotor['pivots']} in TS {reaction.ts_species.label}\n")
 
 
 def get_rxn_zone_atom_indices(reaction: 'ARCReaction',

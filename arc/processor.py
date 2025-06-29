@@ -17,7 +17,6 @@ logger = get_logger()
 
 THERMO_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_thermo.py')
 KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py')
-R = 8.31446261815324  # J/(mol*K)
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 
@@ -39,7 +38,6 @@ def process_arc_project(thermo_adapter: str,
                         T_count: int = 50,
                         lib_long_desc: str = '',
                         compare_to_rmg: bool = True,
-                        three_params: bool = True,
                         skip_nmd: bool = False,
                         ) -> None:
     """
@@ -67,9 +65,6 @@ def process_arc_project(thermo_adapter: str,
         lib_long_desc (str, optional): A multiline description of levels of theory for the resulting RMG libraries.
         compare_to_rmg (bool, optional): If ``True``, ARC's calculations will be compared against estimations
                                          from RMG's database.
-        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
-                                       format (``True``, default) or classical two-parameter Arrhenius equation format
-                                       (``False``).
         skip_nmd (bool, optional): Whether to skip the normal mode displacement check analysis. Defaults to ``False``.
     """
     T_min = T_min or (300, 'K')
@@ -86,6 +81,7 @@ def process_arc_project(thermo_adapter: str,
     bde_report = dict()
 
     output_directory = os.path.join(project_directory, 'output')
+    calcs_directory = os.path.join(project_directory, 'calcs')
     libraries_path = os.path.join(output_directory, 'RMG libraries')
     if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
@@ -107,13 +103,14 @@ def process_arc_project(thermo_adapter: str,
                     if output_dict[species.label]['convergence']:
                         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                             output_directory=output_directory,
+                                                            calcs_directory=calcs_directory,
                                                             output_dict=output_dict,
                                                             bac_type=None,
                                                             sp_level=sp_level,
                                                             freq_scale_factor=freq_scale_factor,
                                                             species=species,
                                                             )
-                        statmech_adapter.compute_thermo(kinetics_flag=True)
+                        statmech_adapter.compute_thermo()
                     else:
                         logger.error(f'Species {species.label} did not converge, cannot compute a rate coefficient '
                                      f'for {reaction.label}')
@@ -122,6 +119,7 @@ def process_arc_project(thermo_adapter: str,
                 if species_converged:
                     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                         output_directory=output_directory,
+                                                        calcs_directory=calcs_directory,
                                                         output_dict=output_dict,
                                                         bac_type=None,
                                                         sp_level=sp_level,
@@ -131,7 +129,6 @@ def process_arc_project(thermo_adapter: str,
                                                         T_min=T_min,
                                                         T_max=T_max,
                                                         T_count=T_count,
-                                                        three_params=three_params,
                                                         skip_nmd=skip_nmd,
                                                         )
                     statmech_adapter.compute_high_p_rate_coefficient()
@@ -156,13 +153,14 @@ def process_arc_project(thermo_adapter: str,
             if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
                 statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter,
                                                     output_directory=output_directory,
+                                                    calcs_directory=calcs_directory,
                                                     output_dict=output_dict,
                                                     bac_type=bac_type,
                                                     sp_level=sp_level,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
+                statmech_adapter.compute_thermo(e0_only=species.e0_only)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
                 elif not species.e0_only and species not in unconverged_species:

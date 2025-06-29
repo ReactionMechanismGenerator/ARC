@@ -9,40 +9,33 @@ import os
 from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
-import rmgpy.molecule.element as elements
-from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import is_linear
-from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError
-from rmgpy.molecule.molecule import Atom, Molecule
-from rmgpy.molecule.resonance import generate_kekule_structure
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.statmech import NonlinearRotor, LinearRotor
-from rmgpy.transport import TransportData
-
-from arc.common import (almost_equal_coords,
+from arc.common import (SYMBOL_BY_NUMBER,
+                        almost_equal_coords,
                         convert_list_index_0_to_1,
-                        determine_symmetry,
                         dfs,
                         get_logger,
                         get_single_bond_length,
                         generate_resonance_structures,
                         is_angle_linear,
+                        is_xyz_linear,
+                        is_obj_of_rmg_species_type,
                         read_yaml_file,
-                        rmg_mol_from_dict_repr,
-                        rmg_mol_to_dict_repr,
                         timedelta_from_str,
                         sort_atoms_in_descending_label_order,
                         )
-from arc.exceptions import InputError, RotorError, SpeciesError, TSError
+from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError
 from arc.imports import settings
 from arc.level import Level
-from arc.parser import (parse_1d_scan_energies,
-                        parse_dipole_moment,
-                        parse_polarizability,
-                        parse_xyz_from_file,
-                        process_conformers_file,
-                        )
+import arc.molecule.element as elements
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.resonance import generate_kekule_structure
+from arc.parser.parser import (parse_1d_scan_energies,
+                               parse_dipole_moment,
+                               parse_polarizability,
+                               parse_xyz_from_file,
+                               process_conformers_file,
+                               )
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -98,7 +91,6 @@ class ARCSpecies(object):
     Args:
         label (str, optional): The species label.
         is_ts (bool, optional): Whether the species represents a transition state.
-        rmg_species (Species, optional): An RMG Species object to be converted to an ARCSpecies object.
         mol (Molecule, optional): An ``RMG Molecule``. Atom order corresponds to the order in .initial_xyz
         xyz (list, str, dict, optional): Entries are either string-format coordinates, file paths, or ARC's dict format.
                                          (If there's only one entry, it could be given directly, not in a list).
@@ -218,12 +210,12 @@ class ARCSpecies(object):
         initial_xyz (dict): The initial geometry guess.
         final_xyz (dict): The optimized species geometry.
         _radius (float): The species radius in Angstrom.
+        _is_linear (bool): Whether the species is linear. ``True`` if it is.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         _number_of_atoms (int): The number of atoms in the species/TS.
         mol (Molecule): An ``RMG Molecule`` object used for BAC determination.
                         Atom order corresponds to the order in .initial_xyz
         mol_list (list): A list of localized structures generated from 'mol', if possible.
-        rmg_species (Species): An RMG Species object to be converted to an ARCSpecies object.
         bond_corrections (dict): The bond additivity corrections (BAC) to be used. Determined from the structure
                                  if not directly given.
         run_time (timedelta): Overall species execution time.
@@ -232,8 +224,8 @@ class ARCSpecies(object):
         compute_thermo (bool): Whether to calculate thermodynamic properties for this species.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
-        thermo (HeatCapacityModel): The thermodata calculated by ARC.
-        rmg_thermo (Dict[str, int]): The RMG thermo, 'H298' in kJ/mol and 'S298' in J/mol*K.
+        thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
+        rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
@@ -253,7 +245,7 @@ class ARCSpecies(object):
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
         rxn_label (str): The reaction string (relevant for TSs).
         rxn_index (int): The reaction index which is the respective key to the Scheduler rxn_dict.
-        arkane_file (str): Path to the Arkane Species file generated in processor.
+        arkane_file (str): Path to the Arkane Species file.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         keep_mol (bool): Label to prevent the generation of a new Molecule object.
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
@@ -321,7 +313,6 @@ class ARCSpecies(object):
                  occ: Optional[int] = None,
                  optical_isomers: Optional[int] = None,
                  preserve_param_in_scan: Optional[list] = None,
-                 rmg_species: Optional[Species] = None,
                  run_time: Optional[datetime.timedelta] = None,
                  rxn_label: Optional[str] = None,
                  rxn_index: Optional[int] = None,
@@ -349,6 +340,7 @@ class ARCSpecies(object):
         self._number_of_atoms = None
         self._number_of_heavy_atoms = None
         self._radius = None
+        self._is_linear = None
         self.mol = mol
         self.mol_list = None
         self.adjlist = adjlist
@@ -413,7 +405,6 @@ class ARCSpecies(object):
             self.final_xyz = None
             self.number_of_rotors = 0
             self.rotors_dict = dict()
-            self.rmg_species = rmg_species
             self.tsg_spawned = False
             regen_mol = True
             if bond_corrections is None:
@@ -435,21 +426,6 @@ class ARCSpecies(object):
                     elif smiles:
                         self.mol = Molecule(smiles=smiles)
                 self.set_mol_list()
-            elif self.rmg_species is not None:
-                # an RMG Species was given
-                if not isinstance(self.rmg_species, Species):
-                    raise SpeciesError(f'The rmg_species parameter has to be a valid RMG Species object. '
-                                       f'Got: {type(self.rmg_species)}')
-                if not self.rmg_species.molecule:
-                    raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
-                if not self.rmg_species.label and not label:
-                    raise SpeciesError('If an RMG Species given, it must have a label or a label must be given '
-                                       'separately')
-                self.label = self.label or self.rmg_species.label
-                if self.mol is None:
-                    self.mol = self.rmg_species.molecule[0]
-                self.multiplicity = self.rmg_species.molecule[0].multiplicity
-                self.charge = self.rmg_species.molecule[0].get_net_charge()
 
             self.process_xyz(xyz)
             if multiplicity is not None:
@@ -480,7 +456,7 @@ class ARCSpecies(object):
                 # We don't care about BACs in TSs
                 if self.mol is None:
                     if self.compute_thermo:
-                        logger.warning(f'No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
+                        logger.warning(f'No structure (SMILES, adjList, or Molecule) was given for '
                                        f'species {self.label}, NOT using bond additivity corrections (BAC) for thermo '
                                        f'computation.')
                 else:
@@ -511,7 +487,7 @@ class ARCSpecies(object):
                                f'Got {self.charge} which is a {type(self.charge)}.')
         if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
-            raise SpeciesError(f'No structure (xyz, SMILES, adjList, RMG Species or Molecule) '
+            raise SpeciesError(f'No structure (xyz, SMILES, adjList, or Molecule) '
                                f'was given for species {self.label}')
         if self.preserve_param_in_scan is not None:
             if not isinstance(self.preserve_param_in_scan, list):
@@ -609,6 +585,23 @@ class ARCSpecies(object):
     def radius(self, value):
         """Allow setting the radius"""
         self._radius = value
+
+    @property
+    def is_linear(self) -> float:
+        """
+        Determine whether the species is linear
+
+        Returns:
+            bool: ``True`` if the species is linear, ``False`` otherwise.
+        """
+        if self._is_linear is None:
+            self._is_linear = is_xyz_linear(self.get_xyz())
+        return self._is_linear
+
+    @is_linear.setter
+    def is_linear(self, value):
+        """Allow setting the is_linear property"""
+        self._is_linear = value
 
     def copy(self):
         """
@@ -946,49 +939,46 @@ class ARCSpecies(object):
             bool: Whether self.mol should be regenerated
         """
         regen_mol = True
-        rmg_spc = Species()
-        arkane_spc = ArkaneSpecies(species=rmg_spc)
-        # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         yml_content = read_yaml_file(self.yml_path)
-        arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
-        self.label = label or self.label or arkane_spc.label
-        self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
-                                       numbers=arkane_spc.conformer.number.value)
+        self.label = label or self.label or yml_content['label']
+        self.final_xyz = xyz_from_data(coords=yml_content['conformer']['coordinates']['value']['object'],
+                                       numbers=yml_content['conformer']['number']['value']['object'])
         if 'mol' in yml_content:
             self.mol = rmg_mol_from_dict_repr(representation=yml_content['mol'], is_ts=yml_content['is_ts'])
             if self.mol is not None:
                 regen_mol = False
         if regen_mol:
-            if arkane_spc.adjacency_list is not None:
+            if yml_content.get('adjacency_list', None):
                 try:
-                    self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                    self.mol = Molecule().from_adjacency_list(adjlist=yml_content['adjacency_list'],
                                                               raise_atomtype_exception=False)
                 except ValueError:
-                    print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
+                    print(f"Could not read adjlist:\n{yml_content['adjacency_list']}")  # should *not* be logging
                     raise
-            elif arkane_spc.inchi is not None:
-                self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
-            elif arkane_spc.smiles is not None:
-                self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
+            elif yml_content.get('inchi', None):
+                self.mol = Molecule().from_inchi(inchistr=yml_content['inchi'], raise_atomtype_exception=False)
+            elif yml_content.get('smiles', None):
+                self.mol = Molecule().from_smiles(yml_content['smiles'], raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
-            self.multiplicity = arkane_spc.conformer.spin_multiplicity
+            self.multiplicity = yml_content['conformer']['spin_multiplicity']
         if self.optical_isomers is None:
-            self.optical_isomers = arkane_spc.conformer.optical_isomers
-        if self.external_symmetry is None:
-            external_symmetry_mode = None
-            for mode in arkane_spc.conformer.modes:
-                if isinstance(mode, (NonlinearRotor, LinearRotor)):
-                    external_symmetry_mode = mode
-                    break
-            if external_symmetry_mode is not None:
-                self.external_symmetry = external_symmetry_mode.symmetry
+            self.optical_isomers = yml_content['conformer']['optical_isomers']
+        if self.external_symmetry is None and 'modes' in yml_content['conformer']:
+            for mode in yml_content['conformer']['modes']:
+                self.external_symmetry = mode.get('symmetry', None)
         if self.initial_xyz is not None:
             self.mol_from_xyz()
         if self.e0 is None:
-            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+            self.e0 = yml_content['conformer']['E0']['value'] # should already be in kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'J/mol':
+                self.e0 *= 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'cal/mol':
+                self.e0 *= 4.184 * 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'kcal/mol':
+                self.e0 *= 4.184
         return regen_mol
 
     def set_mol_list(self):
@@ -1039,13 +1029,12 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 2
         return None
 
-    def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
+    def is_isomorphic(self, other: Union['ARCSpecies', Molecule]) -> Optional[bool]:
         """
         Determine whether the species is isomorphic with ``other``.
 
         Args:
-            other (Union[ARCSpecies, Species, Molecule]): An ARCSpecies, RMG Species, or RMG Molecule object instance
-                                                          to compare isomorphism with.
+            other (Union[ARCSpecies, Molecule]): An ARCSpecies, or Molecule object instance to compare isomorphism with.
 
         Returns:
             Optional[bool]: Whether the species is isomorphic with ``other``.
@@ -1064,7 +1053,7 @@ class ARCSpecies(object):
                 return False
             else:
                 return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
-        if isinstance(other, Species):
+        if is_obj_of_rmg_species_type(other):
             for other_mol in other.molecule:
                 if self.mol_list is not None and len(self.mol_list):
                     for mol_ in [self.mol] + self.mol_list:
@@ -1073,7 +1062,7 @@ class ARCSpecies(object):
                 else:
                     return self.mol.copy(deep=True).is_isomorphic(other_mol.copy(deep=True))
             return False
-        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
+        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or Molecule '
                            f'object instances, got {other} which is of type {type(other)}.')
 
     def generate_conformers(self,
@@ -1414,25 +1403,6 @@ class ARCSpecies(object):
                                     )
             self.initial_xyz = new_xyz
 
-    def determine_symmetry(self) -> None:
-        """
-        Determine the external symmetry and chirality (optical isomers) of the species.
-        """
-        xyz = self.get_xyz()
-        symmetry, optical_isomers = determine_symmetry(xyz)
-        if self.optical_isomers is None:
-            self.optical_isomers = self.optical_isomers or optical_isomers
-        elif self.optical_isomers != optical_isomers:
-            logger.warning(f"User input of optical isomers for {self.label} and ARC's calculation differ: "
-                           f"{self.optical_isomers} and {optical_isomers}, respectively. "
-                           f"Using the user input of {self.optical_isomers}")
-        if self.external_symmetry is None:
-            self.external_symmetry = self.external_symmetry or symmetry
-        elif self.external_symmetry != symmetry:
-            logger.warning(f"User input of external symmetry for {self.label} and ARC's calculation differ: "
-                           f"{self.external_symmetry} and {symmetry}, respectively. "
-                           f"Using the user input of {self.external_symmetry}")
-
     def determine_multiplicity(self,
                                smiles: str,
                                adjlist: str,
@@ -1489,7 +1459,7 @@ class ARCSpecies(object):
         if xyz:
             electrons = 0
             for symbol in xyz['symbols']:
-                for number, symb in symbol_by_number.items():
+                for number, symb in SYMBOL_BY_NUMBER.items():
                     if symbol == symb:
                         electrons += number
                         break
@@ -1725,7 +1695,7 @@ class ARCSpecies(object):
             shape_index = 0
             comment += '; The molecule is monoatomic'
         else:
-            if is_linear(coordinates=np.array(self.get_xyz()['coords'])):
+            if is_xyz_linear(self.get_xyz()):
                 shape_index = 1
                 comment += '; The molecule is linear'
             else:
@@ -2291,6 +2261,140 @@ class TSGuess(object):
             self.execution_time = datetime.datetime.now() - self.t0
 
 
+class ThermoData(object):
+    """
+    A set of thermodynamic properties for a species.
+    """
+
+    def __init__(self,
+                 H298=None,
+                 S298=None,
+                 Tdata=None,
+                 Cpdata=None,
+                 Cp0=None,
+                 CpInf=None,
+                 Tmin=None,
+                 Tmax=None,
+                 comment='',
+                 ):
+        """
+        Args:
+            H298 (tuple): Standard enthalpy at 298 K as (value, units)
+            S298 (tuple): Standard entropy at 298 K as (value, units)
+            Tdata (tuple): Temperature data points as (list, units)
+            Cpdata (tuple): Heat capacity data as (list, units)
+            Cp0 (tuple): Heat capacity at 0 K as (value, units)
+            CpInf (tuple): Heat capacity at infinite temperature as (value, units)
+            Tmin (tuple): Minimum temperature as (value, units)
+            Tmax (tuple): Maximum temperature as (value, units)
+            comment (str): Additional comments or description
+        """
+        self.H298 = H298
+        self.S298 = S298
+        self.Tdata = Tdata
+        self.Cpdata = Cpdata
+        self.Cp0 = Cp0
+        self.CpInf = CpInf
+        self.Tmin = Tmin
+        self.Tmax = Tmax
+        self.comment = comment
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the ThermoData object.
+        """
+        attributes = list()
+        if self.H298 is not None:
+            attributes.append(f'H298={self.H298!r}')
+        if self.S298 is not None:
+            attributes.append(f'S298={self.S298!r}')
+        if self.Tdata is not None:
+            attributes.append(f'Tdata={self.Tdata!r}')
+        if self.Cpdata is not None:
+            attributes.append(f'Cpdata={self.Cpdata!r}')
+        if self.Cp0 is not None:
+            attributes.append(f'Cp0={self.Cp0!r}')
+        if self.CpInf is not None:
+            attributes.append(f'CpInf={self.CpInf!r}')
+        if self.Tmin is not None:
+            attributes.append(f'Tmin={self.Tmin!r}')
+        if self.Tmax is not None:
+            attributes.append(f'Tmax={self.Tmax!r}')
+        if self.comment:
+            attributes.append(f'comment="""{self.comment}"""')
+        return f"ThermoData({', '.join(attributes)})"
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a ThermoData object.
+        """
+        return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
+                             self.Cp0, self.CpInf, self.Tmin, self.Tmax,
+                             self.comment))
+
+
+class TransportData(object):
+    """
+    A set of transport properties used in molecular simulations and kinetic models.
+    """
+    def __init__(self,
+                 shapeIndex=None,
+                 epsilon=None,
+                 sigma=None,
+                 dipoleMoment=None,
+                 polarizability=None,
+                 rotrelaxcollnum=None,
+                 comment='',
+                 ):
+        """
+        Args:
+            shapeIndex (int): Index describing molecular geometry:
+                - 0: Monoatomic
+                - 1: Linear
+                - 2: Nonlinear
+            epsilon (float):  Lennard-Jones well depth in J/mol.
+            sigma (float): Lennard-Jones collision diameter in Angstroms.
+            dipoleMoment (float): Dipole moment in Debye.
+            polarizability (float): Polarizability volume in cubic Angstroms.
+            rotrelaxcollnum (float): Rotational relaxation collision number at 298 K.
+       """
+        self.shapeIndex = shapeIndex
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.dipoleMoment = dipoleMoment
+        self.polarizability = polarizability
+        self.rotrelaxcollnum = rotrelaxcollnum
+        self.comment = comment
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the TransportData object.
+        """
+        attributes = list()
+        if self.shapeIndex is not None:
+            attributes.append('shapeIndex={0!r}'.format(self.shapeIndex))
+        if self.epsilon is not None:
+            attributes.append('epsilon={0!r}'.format(self.epsilon))
+        if self.sigma is not None:
+            attributes.append('sigma={0!r}'.format(self.sigma))
+        if self.dipoleMoment is not None:
+            attributes.append('dipoleMoment={0!r}'.format(self.dipoleMoment))
+        if self.polarizability is not None:
+            attributes.append('polarizability={0!r}'.format(self.polarizability))
+        if self.rotrelaxcollnum is not None:
+            attributes.append('rotrelaxcollnum={0!r}'.format(self.rotrelaxcollnum))
+        if self.comment:
+            attributes.append('comment="""{0!s}"""'.format(self.comment))
+        return 'TransportData({0!s})'.format(', '.join(attributes))
+
+    def __reduce__(self):
+        """
+        A helper function used when picking a TransportData object.
+        """
+        return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
+                                self.polarizability, self.rotrelaxcollnum, self.comment))
+
+
 def determine_occ(xyz, charge):
     """
     Determines the number of occupied orbitals for an MRCI calculation.
@@ -2484,7 +2588,7 @@ def check_xyz(xyz: dict,
     symbols = xyz['symbols']
     electrons = 0
     for symbol in symbols:
-        for number, element_symbol in symbol_by_number.items():
+        for number, element_symbol in SYMBOL_BY_NUMBER.items():
             if symbol == element_symbol:
                 electrons += number
                 break
@@ -2696,3 +2800,86 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
         fragments.append(frag_indices)
     return molecules, fragments
+
+
+def rmg_mol_from_dict_repr(representation: dict,
+                           is_ts: bool = False,
+                           ) -> Optional[Molecule]:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
+        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
+
+    Returns:
+        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
+
+    """
+    mol = Molecule(multiplicity=representation['multiplicity'],
+                   props=representation['props'])
+    atoms = {atom_dict['id']: Atom(element=elements.get_element(value=atom_dict['element']['number'],
+                                                       isotope=atom_dict['element']['isotope']),
+                                   radical_electrons=atom_dict['radical_electrons'],
+                                   charge=atom_dict['charge'],
+                                   lone_pairs=atom_dict['lone_pairs'],
+                                   id=atom_dict['id'],
+                                   props=atom_dict['props'],
+                                   ) for atom_dict in representation['atoms']}
+    for atom_dict in representation['atoms']:
+        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
+    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
+    for i, atom_1 in enumerate(atoms.values()):
+        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
+            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
+            mol.add_bond(bond)
+    mol.update_atomtypes(raise_exception=False)
+    mol.update_multiplicity()
+    if not is_ts:
+        mol.identify_ring_membership()
+        mol.update_connectivity_values()
+    return mol
+
+
+def rmg_mol_to_dict_repr(mol: Molecule,
+                         reset_atom_ids: bool = False,
+                         testing: bool = False,
+                         ) -> dict:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        mol (Molecule): The RMG ``Molecule`` object instance.
+        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
+                                         Useful when copying the object to avoid duplicate atom IDs between
+                                         different object instances.
+        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
+
+    Returns:
+        dict: The corresponding dict representation.
+    """
+    mol = mol.copy(deep=True)
+    if testing:
+        counter = 0
+        for atom in mol.atoms:
+            atom.id = counter
+            counter += 1
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
+        mol.assign_atom_ids()
+    return {'atoms': [{'element': {'number': atom.element.number,
+                                   'isotope': atom.element.isotope,
+                                   },
+                       'radical_electrons': atom.radical_electrons,
+                       'charge': atom.charge,
+                       'label': atom.label,
+                       'lone_pairs': atom.lone_pairs,
+                       'id': atom.id,
+                       'props': atom.props,
+                       'atomtype': atom.atomtype.label,
+                       'edges': {atom_2.id: bond.order
+                                 for atom_2, bond in atom.edges.items()},
+                       } for atom in mol.atoms],
+            'multiplicity': mol.multiplicity,
+            'props': mol.props,
+            'atom_order': [atom.id for atom in mol.atoms]
+            }

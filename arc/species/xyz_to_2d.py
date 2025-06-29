@@ -161,7 +161,7 @@ class MolGraph(object):
         return formula
 
     def to_rmg_mol(self):
-        import rmgpy.molecule.molecule as rmg_molecule
+        import arc.molecule.molecule as rmg_molecule
 
         rmg_atoms = [rmg_molecule.Atom(element=atom.symbol, coords=atom.coords) for atom in self]
         mapping = {atom: rmg_atom for atom, rmg_atom in zip(self.atoms, rmg_atoms)}
