@@ -1,26 +1,90 @@
-#!/bin/bash -l
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# ── command-line flags ────────────────────────────────────────────────
-MODE=path   # {path|conda}
+# ── defaults ───────────────────────────────────────────────────────────────
+MODE="path"           # or "conda"
+TSGCN_CUDA_REQ=""
+FORCE_CPU=false
 
-TEMP=$(getopt -o ch --long conda,help -- "$@")
+# ── parse flags ────────────────────────────────────────────────────────────
+TEMP=$(getopt -o h --long cuda:,cpu,conda,path,help -- "$@")
 eval set -- "$TEMP"
 while true; do
   case "$1" in
-      -c|--conda) MODE=conda; shift ;;
-      -h|--help)
-cat <<EOF
-Usage: $0 [--conda]
+    --cuda)
+      TSGCN_CUDA_REQ="$2"
+      shift 2
+      ;;
+    --cpu)
+      FORCE_CPU=true
+      shift
+      ;;
+    --conda)
+      MODE="conda"
+      shift
+      ;;
+    --path)
+      MODE="path"
+      shift
+      ;;
+    -h|--help)
+      cat <<EOF
+Usage: $0 [--cuda <9.2|10.1|10.2|11.0>] [--cpu] [--conda|--path] [--help]
 
-  -c, --conda  write PYTHONPATH hooks into ts_gcn (and arc_env if it exists)
-               instead of modifying ~/.bashrc
+  --cuda   request a specific CUDA version (overrides auto-detect)
+  --cpu    force a CPU-only install
+  --conda  install hooks into conda activate/deactivate
+  --path   append TS-GCN to ~/.bashrc
+  -h       this help
 EOF
-          exit 0 ;;
-      --) shift; break ;;
-      *)  echo "Internal getopt error"; exit 1 ;;
+      exit 0
+      ;;
+    --) shift; break ;;
+    *)  echo "Invalid flag: $1" >&2; exit 1 ;;
   esac
 done
+
+# ── determine CUDA vs CPU ───────────────────────────────────────────────────
+if [[ -n "$TSGCN_CUDA_REQ" ]]; then
+  # user override
+  case "$TSGCN_CUDA_REQ" in
+    9.2|10.1|10.2|11.0)
+      CUDA="cudatoolkit=${TSGCN_CUDA_REQ}"
+      CUDA_VERSION="cu${TSGCN_CUDA_REQ/./}"
+      ;;
+    *)
+      echo "Error: unsupported --cuda version: $TSGCN_CUDA_REQ" >&2
+      exit 1
+      ;;
+  esac
+
+elif $FORCE_CPU; then
+  CUDA="cpuonly"
+  CUDA_VERSION="cpu"
+
+else
+  # auto-detect via nvcc
+  if command -v nvcc &>/dev/null; then
+    VER=$(nvcc --version | grep -oP "release \K[0-9]+\.[0-9]+")
+    echo "Detected nvcc CUDA $VER"
+    CUDA="cudatoolkit=$VER"
+    CUDA_VERSION="cu${VER/./}"
+
+  # or via nvidia-smi
+  elif command -v nvidia-smi &>/dev/null; then
+    VER=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n1 | cut -d. -f1-2)
+    echo "Detected NVIDIA-driver CUDA $VER"
+    CUDA="cudatoolkit=$VER"
+    CUDA_VERSION="cu${VER/./}"
+
+  else
+    echo "No CUDA toolchain found: defaulting to CPU build"
+    CUDA="cpuonly"
+    CUDA_VERSION="cpu"
+  fi
+fi
+
+echo "→ Installing with $CUDA on platform $CUDA_VERSION"
 
 # ── functions ─────────────────────────────────────────────────────────────
 write_hook () {             # env_name  repo_path
@@ -121,10 +185,25 @@ if grep -q '^conda_env:' Makefile; then
     fi
     echo "⚡ Using $_backend for create_env.sh"
     # run make in a subshell so the alias doesn't leak
-    (
-    alias conda="$_backend" # This alias is only for this subshell - so we can use the fastest Conda frontend
-    make conda_env
-    )
+(
+  alias conda="$_backend"
+  export CUDA CUDA_VERSION
+
+  # map CUDA_VERSION → select index in create_env.sh’s menu
+  case "$CUDA_VERSION" in
+    cu92)  pick=1 ;;
+    cu101) pick=2 ;;
+    cu102) pick=3 ;;
+    cu110) pick=4 ;;
+    cpu)   pick=5 ;;
+    *)     pick=5 ;;
+  esac
+
+  echo "→ Auto-selecting menu item #$pick for CUDA install"
+  # pipe the choice into create_env.sh via make
+  printf '%s\n' "$pick" | make conda_env
+)
+
 
 else
     echo "❌ Makefile target 'conda_env' not found. Please check TS-GCN repo."
