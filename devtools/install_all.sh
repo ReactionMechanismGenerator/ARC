@@ -72,10 +72,10 @@ echo "=== Installing RMG ==="
 run_devtool install_rmg.sh "${RMG_ARGS[@]}"
 
 
-# # 2) PyRDL
-# echo "=== Installing PyRDL ==="
-# bash devtools/install_pyrdl.sh
-# ! $SKIP_CLEAN && cleanup_disk
+ # 2) PyRDL
+ echo "=== Installing PyRDL ==="
+ bash devtools/install_pyrdl.sh
+[ ! "$SKIP_CLEAN" = true ] && cleanup_disk
 
 # 3) ARC itself (skip env creation in CI or if user requests it)
 if [[ -z "${CI:-}" ]] && [[ -z "${SKIP_ARC:-}" ]]; then
