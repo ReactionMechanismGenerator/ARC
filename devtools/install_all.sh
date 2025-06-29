@@ -97,7 +97,7 @@ fi
 if [[ $SKIP_EXT == false ]]; then
     # map of friendly names → installer scripts
     declare -A EXT_INSTALLERS=(
-        [GCN\ CPU]=install_gcn.sh
+#        [GCN\ CPU]=install_gcn.sh
         [AutoTST]=install_autotst.sh
         [KinBot]=install_kinbot.sh
         [OpenBabel]=install_ob.sh
@@ -108,7 +108,7 @@ if [[ $SKIP_EXT == false ]]; then
 
         # installer-specific flag whitelists
     declare -A EXT_FLAG_WHITELIST=(
-        [install_gcn.sh]="--conda"
+#        [install_gcn.sh]="--conda"
         [install_autotst.sh]="--conda"
         # add more later, e.g.  [install_xtb.sh]="--cuda --prefix"
     )
