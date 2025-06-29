@@ -127,9 +127,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         T_min (tuple, optional): The minimum temperature for kinetics computations, e.g., (500, 'K').
         T_max (tuple, optional): The maximum temperature for kinetics computations, e.g., (3000, 'K').
         T_count (int, optional): The number of temperature points between t_min and t_max for kinetics computations.
-        three_params (bool, optional): Instruct Arkane to compute the high pressure kinetic rate coefficients in the
-                                       modified three-parameter Arrhenius equation format (``True``, default) or
-                                       classical two-parameter Arrhenius equation format (``False``).
     """
     def __init__(self,
                  output_directory: str,
@@ -146,7 +143,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                  T_min: tuple = None,
                  T_max: tuple = None,
                  T_count: int = 50,
-                 three_params: bool = True,
                  ):
         self.output_directory = output_directory
         self.calcs_directory = calcs_directory
@@ -162,7 +158,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.T_min = T_min
         self.T_max = T_max
         self.T_count = T_count
-        self.three_params = three_params
         if not self.output_directory or not self.calcs_directory:
             raise InputError(f'Output and calcs directories must be given, got: {self.output_directory}, {self.calcs_directory}')
 
@@ -203,12 +198,90 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         """
         statmech_dir = create_statmech_dir(calcs_directory=self.calcs_directory,
                                            subdir='thermo',
-                                           delete_existing_subdir=True,
-                                           )
+                                           delete_existing_subdir=True)
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
-        self.generate_species_files(statmech_dir, skip_rotors)
+        self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=True)
         run_arkane(statmech_dir)
         self.parse_arkane_thermo_output(statmech_dir)
+
+    def compute_high_p_rate_coefficient(self,
+                                        skip_rotors: bool = False,
+                                        estimate_dh_rxn: bool = False,
+                                        require_ts_convergence: bool = True,
+                                        verbose: bool = False,
+                                        ) -> None:
+        """
+        Generate a high pressure rate coefficient for a reaction.
+        Populates the reaction.kinetics attribute.
+
+        Args:
+            skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
+            estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
+                                              Useful for checking that the reaction could in principle be computed even
+                                              when thermodynamic properties of reactants and products were still not computed.
+            require_ts_convergence (bool, optional): Whether to attempt computing a rate only for converged TS species.
+            verbose (bool, optional): Whether to log messages.
+        """
+        self.filter_out_unconverged_reactions(require_ts_convergence=require_ts_convergence)
+        statmech_dir = create_statmech_dir(calcs_directory=self.calcs_directory,
+                                           subdir='kinetics',
+                                           delete_existing_subdir=True)
+        self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
+        self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
+        self.generate_ts_files(statmech_dir, skip_rotors)
+        run_arkane(statmech_dir)
+        self.parse_arkane_kinetics_output(statmech_dir)
+        for reaction in self.reactions:
+            plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
+            clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', reaction.ts_species.label),
+                                   is_ts=True)
+
+    def set_reaction_dh_rxn(self, estimate_dh_rxn: bool):
+        """
+        Set the reaction enthalpy of reaction at 298 K (dh_rxn298) for the given reaction.
+
+        Args:
+            estimate_dh_rxn (bool): Whether to estimate the enthalpy of reaction.
+                                    If True, uses electronic energies or E0 values if available.
+        """
+        for reaction in self.reactions:
+            est_dh_rxn = estimate_dh_rxn \
+                         or any(spc.thermo is None for spc in reaction.r_species + reaction.p_species)
+            if not est_dh_rxn:
+                reaction.dh_rxn298 = \
+                    sum([product.thermo.get_enthalpy(298) * reaction.get_species_count(product, well=1)
+                         for product in reaction.p_species]) \
+                    - sum([reactant.thermo.get_enthalpy(298) * reaction.get_species_count(reactant, well=0)
+                           for reactant in reaction.r_species])
+            elif all([spc.e_elect is not None for spc in reaction.r_species + reaction.p_species]):
+                reaction.dh_rxn298 = \
+                    sum([product.e_elect * 1e3 * reaction.get_species_count(product, well=1)
+                         for product in reaction.p_species]) \
+                    - sum([reactant.e_elect * 1e3 * reaction.get_species_count(reactant, well=0)
+                           for reactant in reaction.r_species])
+            elif all([spc.e0 is not None for spc in reaction.r_species + reaction.p_species]):
+                reaction.dh_rxn298 = \
+                    sum([product.e0 * 1e3 * reaction.get_species_count(product, well=1)
+                         for product in reaction.p_species]) \
+                    - sum([reactant.e0 * 1e3 * reaction.get_species_count(reactant, well=0)
+                           for reactant in reaction.r_species])
+
+    def filter_out_unconverged_reactions(self, require_ts_convergence: bool = True) -> None:
+        """
+        Filter out reactions with unconverged transition states.
+
+        Args:
+            require_ts_convergence (bool): Whether to filter out reactions with unconverged TSs.
+        """
+        if require_ts_convergence:
+            self.reactions = [reaction for reaction in self.reactions if
+                              self.output_dict[reaction.ts_species.label]['convergence']]
+            unconverged_rxns = [reaction for reaction in self.reactions if
+                                not self.output_dict[reaction.ts_species.label]['convergence']]
+            if unconverged_rxns:
+                logger.warning(f'The following reactions have unconverged TSs and will not be computed:')
+                for reaction in unconverged_rxns:
+                    logger.warning(f'  {reaction.label} with TS {reaction.ts_species.label}')
 
     def generate_arkane_input(self, statmech_dir: str, skip_rotors: bool = False) -> None:
         """
@@ -266,17 +339,50 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             t_count=self.T_count,
         )
 
-    def generate_species_files(self, statmech_dir: str, skip_rotors: bool) -> None:
-        """Generate individual species input files."""
+    def generate_species_files(self, statmech_dir: str,
+                               skip_rotors: bool,
+                               check_compute_thermo: bool = False,
+                               ) -> None:
+        """
+        Generate individual species input files.
+
+        Args:
+            statmech_dir (str): The path to the statmech directory.
+            skip_rotors (bool): Whether to skip internal rotor consideration.
+            check_compute_thermo (bool, optional): Whether to check if species.compute_thermo is True.
+                                                   Default: ``False``.
+        """
         species_dir = os.path.join(statmech_dir, 'species')
         os.makedirs(species_dir, exist_ok=True)
         for spc in self.species:
-            if not spc.compute_thermo:
+            if check_compute_thermo and not spc.compute_thermo:
                 continue
             self.generate_species_file(spc, species_dir, skip_rotors)
 
+    def generate_ts_files(self, statmech_dir: str,
+                          skip_rotors: bool,
+                          ) -> None:
+        """
+        Generate individual species input files.
+
+        Args:
+            statmech_dir (str): The path to the statmech directory.
+            skip_rotors (bool): Whether to skip internal rotor consideration.
+        """
+        ts_dir = os.path.join(statmech_dir, 'TSs')
+        os.makedirs(ts_dir, exist_ok=True)
+        for ts in [rxn.ts_species for rxn in self.reactions]:
+            self.generate_species_file(ts, ts_dir, skip_rotors)
+
     def generate_species_file(self, species, species_dir: str, skip_rotors: bool) -> None:
-        """Generate input file for a single species."""
+        """
+        Generate input file for a single species.
+
+        Args:
+            species (ARCSpecies): The species object to generate the file for.
+            species_dir (str): The directory to save the species file in.
+            skip_rotors (bool): Whether to skip internal rotor consideration.
+        """
         file_path = os.path.join(species_dir, f'{species.label}.py')
         species.arkane_file = file_path
         if os.path.isfile(file_path):
@@ -296,7 +402,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             f.write(content)
 
     def parse_arkane_thermo_output(self, statmech_dir: str) -> None:
-        """Parse Arkane output and assign results to species."""
+        """Parse Arkane thermodynamic output and assign results to species."""
         output_path = os.path.join(statmech_dir, 'output.py')
         if not os.path.isfile(output_path):
             logger.error(f'Missing Arkane output: {output_path}')
@@ -311,6 +417,18 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             parse_species_thermo(species, output_content)
             clean_output_directory(os.path.join(self.output_directory, 'Species', species.label))
 
+    def parse_arkane_kinetics_output(self, statmech_dir: str) -> None:
+        """Parse Arkane kinetic output and assign results to reactions."""
+        output_path = os.path.join(statmech_dir, 'output.py')
+        if not os.path.isfile(output_path):
+            logger.error(f'Missing Arkane output: {output_path}')
+            return
+
+        with open(output_path, 'r', encoding='utf-8') as f:
+            output_content = f.read()
+
+        for rxn in self.reactions:
+            parse_reaction_kinetics(rxn, output_content)
 
 
 
@@ -321,128 +439,6 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
 
 
-    # def compute_high_p_rate_coefficient(self,
-    #                                     skip_rotors: bool = False,
-    #                                     estimate_dh_rxn: bool = False,
-    #                                     require_ts_convergence: bool = True,
-    #                                     verbose: bool = False,
-    #                                     ) -> None:
-    #     """
-    #     Generate a high pressure rate coefficient for a reaction.
-    #     Populates the reaction.kinetics attribute.
-    #
-    #     Args:
-    #         skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
-    #         estimate_dh_rxn (bool, optional): Whether to estimate DH reaction instead of computing it. Default: ``False``.
-    #                                           Useful for checking that the reaction could in principle be computed even
-    #                                           when thermodynamic properties of reactants and products were still not computed.
-    #         require_ts_convergence (bool, optional): Whether to attempt computing a rate only for converged TS species.
-    #         verbose (bool, optional): Whether to log messages. Default: ``True``.
-    #     """
-    #     arkane.input.transition_state_dict, arkane.input.reaction_dict = dict(), dict()
-    #     ts_species = self.species_dict[self.reaction.ts_label]
-    #     if self.output_dict[ts_species.label]['convergence'] or not require_ts_convergence:
-    #         success = True
-    #         arkane_output_path = self.generate_arkane_species_file(species=ts_species,
-    #                                                                bac_type=None,
-    #                                                                skip_rotors=skip_rotors,
-    #                                                                )
-    #         arkane_ts_species = arkane_transition_state(ts_species.label, ts_species.arkane_file)
-    #         arkane_ts_species, statmech_success = self.run_statmech(arkane_species=arkane_ts_species,
-    #                                                                 arkane_file_path=ts_species.arkane_file,
-    #                                                                 arkane_output_path=arkane_output_path,
-    #                                                                 bac_type=None,
-    #                                                                 sp_level=self.sp_level,
-    #                                                                 plot=False,
-    #                                                                 )
-    #         if not statmech_success:
-    #             logger.error(f'Could not run statmech job for TS species {ts_species.label} '
-    #                          f'of reaction {self.reaction.label}')
-    #         else:
-    #             ts_species.e0 = arkane_ts_species.conformer.E0.value_si * 0.001  # Convert to kJ/mol.
-    #             check_ts(reaction=self.reaction,
-    #                      checks=['energy', 'freq'],
-    #                      rxn_zone_atom_indices=ts_species.rxn_zone_atom_indices,
-    #                      skip_nmd=self.skip_nmd,
-    #                      )
-    #             if require_ts_convergence and not ts_passed_checks(species=self.reaction.ts_species,
-    #                                                                exemptions=['warnings', 'IRC', 'E0'],
-    #                                                                verbose=True,
-    #                                                                ):
-    #                 logger.error(f'TS {self.reaction.ts_species.label} did not pass all checks, '
-    #                              f'not computing rate coefficient.')
-    #                 return None
-    #             est_dh_rxn = estimate_dh_rxn \
-    #                          or any(spc.thermo is None for spc in self.reaction.r_species + self.reaction.p_species)
-    #             if not est_dh_rxn:
-    #                 self.reaction.dh_rxn298 = \
-    #                     sum([product.thermo.get_enthalpy(298) * self.reaction.get_species_count(product, well=1)
-    #                          for product in self.reaction.p_species]) \
-    #                     - sum([reactant.thermo.get_enthalpy(298) * self.reaction.get_species_count(reactant, well=0)
-    #                            for reactant in self.reaction.r_species])
-    #             elif all([spc.e_elect is not None for spc in self.reaction.r_species + self.reaction.p_species]):
-    #                 self.reaction.dh_rxn298 = \
-    #                     sum([product.e_elect * 1e3 * self.reaction.get_species_count(product, well=1)
-    #                          for product in self.reaction.p_species]) \
-    #                     - sum([reactant.e_elect * 1e3 * self.reaction.get_species_count(reactant, well=0)
-    #                            for reactant in self.reaction.r_species])
-    #             elif all([spc.e0 is not None for spc in self.reaction.r_species + self.reaction.p_species]):
-    #                 self.reaction.dh_rxn298 = \
-    #                     sum([product.e0 * 1e3 * self.reaction.get_species_count(product, well=1)
-    #                          for product in self.reaction.p_species]) \
-    #                     - sum([reactant.e0 * 1e3 * self.reaction.get_species_count(reactant, well=0)
-    #                            for reactant in self.reaction.r_species])
-    #             reactant_labels, product_labels = list(), list()
-    #             for reactant in self.reaction.r_species:
-    #                 reactant_labels.extend([reactant.label] * self.reaction.get_species_count(reactant, well=0))
-    #             for product in self.reaction.p_species:
-    #                 product_labels.extend([product.label] * self.reaction.get_species_count(product, well=1))
-    #             arkane_rxn = arkane_reaction(label=self.reaction.label,
-    #                                          reactants=reactant_labels,
-    #                                          products=product_labels,
-    #                                          transitionState=self.reaction.ts_label,
-    #                                          tunneling='Eckart')
-    #             kinetics_job = KineticsJob(reaction=arkane_rxn,
-    #                                        Tmin=self.T_min,
-    #                                        Tmax=self.T_max,
-    #                                        Tcount=self.T_count,
-    #                                        three_params=self.three_params,
-    #                                        )
-    #             kinetics_job.reaction.transition_state.frequency = kinetics_job.reaction.transition_state.frequency \
-    #                                                                or arkane_ts_species.frequency
-    #             if verbose:
-    #                 if self.three_params:
-    #                     msg = 'using the modified three-parameter Arrhenius equation k = A * (T/T0)^n * exp(-Ea/RT)'
-    #                 else:
-    #                     msg = 'using the classical two-parameter Arrhenius equation k = A * exp(-Ea/RT)'
-    #                 logger.info(f'Calculating rate coefficient for reaction {self.reaction.label} {msg}.')
-    #             try:
-    #                 kinetics_job.execute(output_directory=arkane_output_path, plot=True)
-    #             except (ValueError, OverflowError) as e:
-    #                 # ValueError: One or both of the barrier heights of -9.3526 and 62.683 kJ/mol encountered in Eckart
-    #                 # method are invalid.
-    #                 #
-    #                 #   File "RMG-Py/arkane/kinetics.py", line 136, in execute
-    #                 #     generateKinetics(Tlist.value_si)
-    #                 #   File "RMG-Py/arkane/kinetics.py", line 179, in generateKinetics
-    #                 #     klist[i] = reaction.calculateTSTRateCoefficient(Tlist[i])
-    #                 #   File "rmgpy/reaction.py", line 818, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
-    #                 #   File "rmgpy/reaction.py", line 844, in rmgpy.reaction.Reaction.calculateTSTRateCoefficient
-    #                 # OverflowError: math range error
-    #                 if verbose:
-    #                     logger.error(f'Failed to generate kinetics for {self.reaction.label}, got:\n{e}')
-    #                 success = False
-    #             if success:
-    #                 self.reaction.kinetics = {'A': kinetics_job.reaction.kinetics.A.value,
-    #                                           'n': kinetics_job.reaction.kinetics.n.value,
-    #                                           'Ea': kinetics_job.reaction.kinetics.Ea.value,
-    #                                           }
-    #                 plotter.log_kinetics(ts_species.label, path=arkane_output_path)
-    #
-    #     # Initialize the Arkane species_dict in case another reaction uses the same species.
-    #     arkane.input.species_dict = dict()
-    #     clean_output_directory(species_path=os.path.join(self.output_directory, 'rxns', ts_species.label),
-    #                            is_ts=True)
 
     # def run_statmech(self,
     #                  arkane_species: Union[Species, TransitionState],
@@ -806,7 +802,12 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
 
 def run_arkane(statmech_dir: str) -> None:
-    """Execute an Arkane calculation within statmech_dir that contains an 'input.py' file."""
+    """
+    Execute an Arkane calculation within statmech_dir that contains an 'input.py' file.
+
+    Args:
+        statmech_dir (str): The path to the statmech directory containing the 'input.py' file.
+    """
     if not os.path.isdir(statmech_dir):
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not exist.')
         return
@@ -837,7 +838,7 @@ Arkane input.py
     if std_err:
         logger.error(f'Arkane run failed:\n{std_err}')
     else:
-        logger.info(f'Arkane run completed:\n{std_out}')
+        logger.debug(f'Arkane run completed:\n{std_out}')
 
 
 def get_atomic_energy_corrections(arc_species: 'ARCSpecies',
@@ -1100,6 +1101,45 @@ def parse_species_thermo(species, output_content: str) -> None:
     if thermo_match:
         thermo_block = thermo_match.group(1)
         species.thermo.update(parse_thermo_block(thermo_block))
+
+
+def parse_reaction_kinetics(reaction, output_content: str) -> None:
+    """
+    Parse Arrhenius kinetics data for a single reaction from Arkane output.
+
+    Args:
+        reaction: The reaction object (must have a .label attribute).
+        output_content (str): The full Arkane output file content.
+
+    Populates:
+        reaction.kinetics (dict): A dictionary with Arrhenius parameters and units.
+    """
+    e0 = parse_e0(reaction.ts_species.label, output_content)
+    if e0 is not None:
+        reaction.ts_species.e0 = e0
+    kinetics_pattern = (rf"kinetics\(\s*label\s*=\s*['\"]{re.escape(reaction.label)}['\"].*?kinetics\s*=\s*Arrhenius\((.*?)\)\s*\)")
+    kinetics_match = re.search(kinetics_pattern, output_content, re.DOTALL)
+    if not kinetics_match:
+        logger.warning(f"Kinetics block not found in the Arkane output file for reaction: {reaction.label}")
+        return
+    arrhenius_block = kinetics_match.group(1)
+    arrhenius_data = dict()
+    patterns = {
+        'A': r"A\s*=\s*\(\s*([-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?),\s*['\"]([^'\"]+)['\"]\)",
+        'n': r"n\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+        'Ea': r"Ea\s*=\s*\(([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*['\"]([^'\"]+)['\"]\)",
+        'T0': r"T0\s*=\s*\(([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*['\"]([^'\"]+)['\"]\)",
+        'Tmin': r"Tmin\s*=\s*\(([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*['\"]([^'\"]+)['\"]\)",
+        'Tmax': r"Tmax\s*=\s*\(([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*['\"]([^'\"]+)['\"]\)"}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, arrhenius_block)
+        if match:
+            if key == 'n':
+                arrhenius_data[key] = match.group(1)
+            else:
+                value, unit = match.groups()
+                arrhenius_data[key] = (value, unit)
+    reaction.kinetics = arrhenius_data
 
 
 def parse_e0(label: str, content: str) -> float | None:
