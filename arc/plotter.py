@@ -531,9 +531,9 @@ def draw_kinetics_plots(rxn_list: list,
     for rxn in rxn_list:
         if rxn.kinetics is not None:
             units, conversion_factor = get_rxn_units_and_conversion_factor(rxn)
-            arc_k = [calculate_arrhenius_rate_coefficient(A=rxn.kinetics['A'],
+            arc_k = [calculate_arrhenius_rate_coefficient(A=rxn.kinetics['A'][0],
                                                           n=rxn.kinetics['n'],
-                                                          Ea=rxn.kinetics['Ea'],
+                                                          Ea=rxn.kinetics['Ea'][0],
                                                           T=T,
                                                           ) for T in temperatures]
             rmg_rxns = list()
@@ -874,7 +874,6 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
             logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
                            f'kinetics library.')
             continue
-        units = get_rxn_units_and_conversion_factor(rxn)[0]
         rxn.ts_species.make_ts_report()
         if 'rotors' not in rxn.ts_species.long_thermo_description:
             rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
@@ -886,7 +885,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
-    kinetics = Arrhenius(A=({rxn.kinetics['A']:.2e}, '{units}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea']:.2f}, 'kJ/mol'),
+    kinetics = Arrhenius(A=({rxn.kinetics['A'][0]:.2e}, '{rxn.kinetics['A'][1]}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea'][0]:.2f}, '{rxn.kinetics['Ea'][1]}'),
                          T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
     longDesc = 
 \"\"\"

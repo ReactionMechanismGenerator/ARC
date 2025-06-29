@@ -51,8 +51,9 @@ class ARCReaction(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
-        kinetics (Dict[str, float], optional): The high pressure limit rate coefficient calculated by ARC.
-                                               Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
+        kinetics (Dict[str, Union[float, Tuple[float, str]]], optional): The high pressure limit rate coefficient
+                                                                         calculated by ARC. Keys are 'A' (value, unit),
+                                                                         n (value), and Ea (value, unit).
 
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
@@ -65,8 +66,9 @@ class ARCReaction(object):
         p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
         dh_rxn298 (float): The heat of reaction at 298K in J/mol.
-        kinetics (Dict[str, float]): The high pressure limit rate coefficient calculated by ARC.
-                                     Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
+        kinetics (Dict[str, Union[float, Tuple[float, str]]]): The high pressure limit rate coefficient
+                                                               calculated by ARC. Keys are 'A' (value, unit),
+                                                               n (value), and Ea (value, unit).
         rmg_kinetics (List[Dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
                                                Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
                                                and a 'comment' key with a description of the source of the kinetics.
@@ -98,7 +100,7 @@ class ARCReaction(object):
                  reaction_dict: Optional[dict] = None,
                  species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
-                 kinetics: Dict[str, float] = None,
+                 kinetics: Dict[str, Union[float, Tuple[float, str]]] = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
