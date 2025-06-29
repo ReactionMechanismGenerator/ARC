@@ -12,7 +12,7 @@ on:
     - cron: '0 0 * * *'
 
 env:
-  RMG_PY_COMMIT: 6615d10
+  RMG_PY_COMMIT: 15d91e4ea30e282a83c34c34287e6f2c4f97c603
 
 jobs:
   build:
