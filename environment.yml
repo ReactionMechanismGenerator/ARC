@@ -4,7 +4,6 @@ channels:
   - conda-forge  # modern science stack
   - cantera      # cantera 2.6 build
   - defaults     # only for legacy libs like libboost 1.67
-channel_priority: strict
 
 dependencies:
   # ——— hard pins ————————————————————————————————
