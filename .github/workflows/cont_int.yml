@@ -45,14 +45,22 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-rmg-
 
-    - name: Checkout RMG-Py at specific commit
+    # - name: Checkout RMG-Py at specific commit
+    #   if: steps.cache-rmg-py.outputs.cache-hit != 'true'
+    #   uses: actions/checkout@v3
+    #   with:
+    #     repository: ReactionMechanismGenerator/RMG-Py
+    #     path: RMG-Py
+    #     ref: ${{ env.RMG_PY_COMMIT }}^1
+    #     fetch-depth: 0
+
+    - name: Clone & checkout RMG-Py at specific SHA
       if: steps.cache-rmg-py.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/RMG-Py
-        path: RMG-Py
-        ref: ${{ env.RMG_PY_COMMIT }}^1
-        fetch-depth: 0
+      run: |
+        git clone --filter=blob:none --no-checkout https://github.com/ReactionMechanismGenerator/RMG-Py.git RMG-Py
+        cd RMG-Py
+        git fetch --no-tags --prune origin ${RMG_PY_COMMIT}
+        git checkout --detach ${RMG_PY_COMMIT}
 
     - name: Cache RMG-database
       id: cache-rmg-db
