@@ -190,8 +190,6 @@ def calculate_bond_symmetry_number(molecule, atom1, atom2):
     return symmetry_number
 
 
-################################################################################
-
 def calculate_axis_symmetry_number(molecule):
     r"""
     Get the axis symmetry number correction. The "axis" refers to a series
@@ -361,8 +359,6 @@ def calculate_axis_symmetry_number(molecule):
     return symmetry_number
 
 
-################################################################################
-
 def calculate_cyclic_symmetry_number(molecule):
     """
     Get the symmetry number correction for cyclic regions of a molecule.
@@ -480,9 +476,6 @@ def calculate_cyclic_symmetry_number(molecule):
     return symmetry_number
 
 
-################################################################################
-
-
 def _indistinguishable(atom1, atom2):
     """
     Determine if two atoms are feasibly indistinguishable based on connections
@@ -510,8 +503,6 @@ def _indistinguishable(atom1, atom2):
                 break
         else:
             return False
-
-    # We were able to match up all neighbors
     return True
 
 

@@ -7,6 +7,7 @@ from arc.molecule.molecule import Molecule
 from arc.molecule.resonance import generate_optimal_aromatic_resonance_structures
 from arc.molecule.symmetry import (calculate_atom_symmetry_number, calculate_axis_symmetry_number,
     calculate_bond_symmetry_number, calculate_cyclic_symmetry_number, _indistinguishable)
+from arc.species.species import ARCSpecies
 #TODO: change Species when ARC is updated for Species
 # from rmgpy.species import Species
 
@@ -325,8 +326,8 @@ multiplicity 3
         """
         Test the Species.get_symmetry_number() (total symmetry) on c1ccccc1
         """
-        molecule = Molecule().from_smiles('c1ccccc1')
-        species = Species(molecule=[molecule])
+        molecule = Molecule(smiles='c1ccccc1')
+        species = ARCSpecies(label='S1', mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 12)
 
@@ -334,7 +335,7 @@ multiplicity 3
         """
         Test the Species.get_symmetry_number() (total symmetry) on [CH2][CH]C=C
         """
-        species = Species().from_smiles('[CH2][CH]C=C')
+        species = ARCSpecies(label='S1', smiles='[CH2][CH]C=C')
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 2)
 
@@ -343,7 +344,7 @@ multiplicity 3
         Test the Species.get_symmetry_number() (total symmetry) on Allyl, [CH2]C=C
         """
         molecule = Molecule().from_smiles('[CH2]C=C')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 2)
 
@@ -352,7 +353,7 @@ multiplicity 3
         Test the Species.getSymmetryNumer() for C[CH]C=CC
         and ensures that it is differet than the molecule object
         """
-        spc = Species(molecule=[Molecule().from_smiles('C[CH]C=CC')])
+        spc = ARCSpecies(label='S1', mol=Molecule(smiles='C[CH]C=CC'))
         symmetry_number = spc.get_symmetry_number()
         self.assertEqual(symmetry_number, 18,
                          'the symmetry number for C[CH]C=CC is 18, but RMG returned {}'.format(symmetry_number))
@@ -364,15 +365,15 @@ multiplicity 3
         This molecule's resonance isomer hybrid should return more symmetry
         than the base molecule object.
         """
-        molecule = Molecule().from_smiles('C[CH]C=CC')
-        species = Species(molecule=[molecule])
+        molecule = Molecule(smiles='C[CH]C=CC')
+        species = ARCSpecies(label='S1', mol=molecule)
         self.assertEqual(molecule.get_symmetry_number() * 2, species.get_symmetry_number())
 
     def test_axis_symmetry_number_allyl(self):
         """
         Test the Molecule.calculate_axis_symmetry_number() on [CH2]C=C
         """
-        spc = Species(molecule=[Molecule().from_smiles('[CH2]C=C')])
+        spc = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]C=C'))
         molecule = spc.get_resonance_hybrid()
         self.assertEqual(calculate_axis_symmetry_number(molecule), 1)
 
@@ -382,7 +383,7 @@ multiplicity 3
         on [CH2]C=C using the resonance hybrid structure
         """
         molecule = Molecule().from_smiles('[CH2]C=C')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         resonance_hybrid = species.get_resonance_hybrid()
         for atom in resonance_hybrid.atoms:
             if atom.symbol == 'C':
@@ -398,7 +399,7 @@ multiplicity 3
         Test the Molecule.calculate_atom_symmetry_number() for the edge carbons
         on [CH2]C=C
         """
-        spc = Species(molecule=[Molecule().from_smiles('[CH2]C=C')])
+        spc = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]C=C'))
         molecule = spc.get_resonance_hybrid()
         for atom in molecule.atoms:
             if atom.symbol == 'C':
@@ -414,7 +415,7 @@ multiplicity 3
         on [CH2]C=C
         """
         molecule = Molecule().from_smiles('[CH2]C=C')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         resonance_hybrid = species.get_resonance_hybrid()
         for atom in resonance_hybrid.atoms:
             if atom.symbol == 'C':
@@ -428,7 +429,7 @@ multiplicity 3
         """
         Test the Molecule.calculate_atom_symmetry_number() on [CH2]C=C
         """
-        spc = Species(molecule=[Molecule().from_smiles('[CH2]C=C')])
+        spc = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]C=C'))
         molecule = spc.get_resonance_hybrid()
         symmetry_number = 1
         for atom in molecule.atoms:
@@ -440,7 +441,7 @@ multiplicity 3
         """
         Test the Molecule.calculate_bond_symmetry_number() on [CH2]C=C
         """
-        spc = Species(molecule=[Molecule().from_smiles('[CH2]C=C')])
+        spc = ARCSpecies(label='S1', mol=Molecule(smiles='[CH2]C=C'))
         molecule = spc.get_resonance_hybrid()
         symmetry_number = 1
         for atom1 in molecule.atoms:
@@ -454,7 +455,7 @@ multiplicity 3
         Test the Species.get_symmetry_number() (total symmetry) on c1ccccc1C
         """
         molecule = Molecule().from_smiles('c1ccccc1C')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 6)
 
@@ -463,7 +464,7 @@ multiplicity 3
         Test the Species.get_symmetry_number() (total symmetry) from issue # 332
         """
         molecule = Molecule().from_smiles('C1(C(C(C(C(C1C2CCC2)C3CCC3)C4CCC4)C5CCC5)C6CCC6)C7CCC7')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 12)
 
@@ -472,7 +473,7 @@ multiplicity 3
         Test the Species.get_symmetry_number() (total symmetry) on c1ccccc1Cl
         """
         molecule = Molecule().from_smiles('c1ccccc1Cl')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(label='S1', mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 2)
 
@@ -482,7 +483,7 @@ multiplicity 3
         using kecle structure
         """
         molecule = Molecule().from_smiles('c1ccccc1[O]')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 2)
 
@@ -500,7 +501,7 @@ multiplicity 3
         Test the Species.get_symmetry_number() (total symmetry) on Cc1ccccc1C
         """
         molecule = Molecule().from_smiles('Cc1ccccc1C')
-        species = Species(molecule=[molecule])
+        species = ARCSpecies(mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 18)
 
@@ -508,8 +509,8 @@ multiplicity 3
         """
         Test the Species.get_symmetry_number() (total symmetry) on Cc1ccc(C)cc1
         """
-        molecule = Molecule().from_smiles('Cc1ccc(C)cc1')
-        species = Species(molecule=[molecule])
+        molecule = Molecule(smiles='Cc1ccc(C)cc1')
+        species = ARCSpecies(mol=molecule)
         symmetry_number = species.get_symmetry_number()
         self.assertEqual(symmetry_number, 36)
 
@@ -517,97 +518,97 @@ multiplicity 3
         """
         Test the Molecule.calculate_symmetry_number() on CC
         """
-        self.assertEqual(Species().from_smiles('CC').get_symmetry_number(), 18)
+        self.assertEqual(ARCSpecies(label='S1', smiles='CC').get_symmetry_number(), 18)
 
     def test_total_symmetry_number1(self):
         """
         Test the Molecule.calculate_symmetry_number() on C=C=[C]C(C)(C)[C]=C=C
         """
-        self.assertEqual(Species().from_smiles('C=C=[C]C(C)(C)[C]=C=C').get_symmetry_number(), 18)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C=C=[C]C(C)(C)[C]=C=C').get_symmetry_number(), 18)
 
     def test_symmetry_number_hydroxyl(self):
         """
         Test the Molecule.calculate_symmetry_number() on [OH]
         """
-        self.assertEqual(Species().from_smiles('[OH]').get_symmetry_number(), 1)
+        self.assertEqual(ARCSpecies(label='S1', smiles='[OH]').get_symmetry_number(), 1)
 
     def test_symmetry_number_oxygen(self):
         """
         Test the Molecule.calculate_symmetry_number() on O=O
         """
-        self.assertEqual(Species().from_smiles('O=O').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='O=O').get_symmetry_number(), 2)
 
     def test_symmetry_number_dicarbon(self):
         """
         Test the Molecule.calculate_symmetry_number() on [C]#[C]
         """
-        self.assertEqual(Species().from_smiles('[C]#[C]').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='[C]#[C]').get_symmetry_number(), 2)
 
     def test_symmetry_number_hydrogen(self):
         """
         Test the Molecule.calculate_symmetry_number() on [H][H]
         """
-        self.assertEqual(Species().from_smiles('[H][H]').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(smiles='[H][H]').get_symmetry_number(), 2)
 
     def test_symmetry_number_acetylene(self):
         """
         Test the Molecule.calculate_symmetry_number() on C#C
         """
-        self.assertEqual(Species().from_smiles('C#C').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C#C').get_symmetry_number(), 2)
 
     def test_symmetry_number_butadiyne(self):
         """
         Test the Molecule.calculate_symmetry_number() on C#CC#C
         """
-        self.assertEqual(Species().from_smiles('C#CC#C').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C#CC#C').get_symmetry_number(), 2)
 
     def test_symmetry_number_methane(self):
         """
         Test the Molecule.calculate_symmetry_number() on CH4
         """
-        self.assertEqual(Species().from_smiles('C').get_symmetry_number(), 12)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C').get_symmetry_number(), 12)
 
     def test_symmetry_number_formaldehyde(self):
         """
         Test the Molecule.calculate_symmetry_number() on C=O
         """
-        self.assertEqual(Species().from_smiles('C=O').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C=O').get_symmetry_number(), 2)
 
     def test_symmetry_number_methyl(self):
         """
         Test the Molecule.calculate_symmetry_number() on [CH3]
         """
-        self.assertEqual(Species().from_smiles('[CH3]').get_symmetry_number(), 6)
+        self.assertEqual(ARCSpecies(label='S1', smiles='[CH3]').get_symmetry_number(), 6)
 
     def test_symmetry_number_water(self):
         """
         Test the Molecule.calculate_symmetry_number() on H2O
         """
-        self.assertEqual(Species().from_smiles('O').get_symmetry_number(), 2)
+        self.assertEqual(ARCSpecies(label='S1', smiles='O').get_symmetry_number(), 2)
 
     def test_symmetry_number_ethylene(self):
         """
         Test the Molecule.calculate_symmetry_number() on C=C
         """
-        self.assertEqual(Species().from_smiles('C=C').get_symmetry_number(), 4)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C=C').get_symmetry_number(), 4)
 
     def test_symmetry_number_ethenyl(self):
         """
         Test the Molecule.calculate_symmetry_number() on C=[CH].
         """
-        self.assertEqual(Species().from_smiles('C=[CH]').get_symmetry_number(), 1)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C=[CH]').get_symmetry_number(), 1)
 
     def test_symmetry_number_cyclic(self):
         """
         Test the Molecule.calculate_symmetry_number() on C1=C=C=1
         """
-        self.assertEqual(Species().from_smiles('C1=C=C=1').get_symmetry_number(), 6)
+        self.assertEqual(ARCSpecies(label='S1', smiles='C1=C=C=1').get_symmetry_number(), 6)
 
     def test_symmetry_number__s1_total(self):
         """
         Test the Molecule.calculate_symmetry_number() on [CH]1CCC1CC1CC1
         """
-        self.assertEqual(Species().from_smiles('[CH]1CCC1CC1CC1').get_symmetry_number(), 1)
+        self.assertEqual(ARCSpecies(label='S1', smiles='[CH]1CCC1CC1CC1').get_symmetry_number(), 1)
 
     def test_cyclic_symmetry_number_s1(self):
         """
@@ -661,7 +662,7 @@ multiplicity 3
         """
         Test the Molecule.calculate_symmetry_number() on CC1CC(C)C1
         """
-        self.assertEqual(Species().from_smiles('CC1CC(C)C1').get_symmetry_number(), 36)
+        self.assertEqual(ARCSpecies(label='S1', smiles='CC1CC(C)C1').get_symmetry_number(), 36)
 
     def test_indistinguishable(self):
         """
