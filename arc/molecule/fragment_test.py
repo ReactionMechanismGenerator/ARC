@@ -9,9 +9,9 @@ from arc.molecule.molecule import Atom, Bond, Molecule
 # from molecule.species import Species
 # TODO: This species is from Molecule github repo - so should we also be bringing it in?
 from arc.species.species import ARCSpecies
-from rmgpy.species import Species
-
+# from rmgpy.species import Species
 import arc.molecule.fragment
+
 
 class TestCuttingLabel(unittest.TestCase):
 

@@ -8,7 +8,7 @@ from arc.molecule.resonance import generate_optimal_aromatic_resonance_structure
 from arc.molecule.symmetry import (calculate_atom_symmetry_number, calculate_axis_symmetry_number,
     calculate_bond_symmetry_number, calculate_cyclic_symmetry_number, _indistinguishable)
 #TODO: change Species when ARC is updated for Species
-from rmgpy.species import Species
+# from rmgpy.species import Species
 
 
 class TestMoleculeSymmetry(unittest.TestCase):

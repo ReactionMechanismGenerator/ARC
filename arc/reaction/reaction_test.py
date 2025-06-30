@@ -10,10 +10,6 @@ import os
 import shutil
 import unittest
 
-# from molecule.species import Species
-# TODO: This species is from Molecule github repo - so should we also be bringing it in?
-from rmgpy.species import Species
-
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
