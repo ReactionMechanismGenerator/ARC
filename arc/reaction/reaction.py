@@ -4,9 +4,7 @@ A module for representing a reaction.
 
 from typing import Dict, List, Optional, Tuple, Union
 
-from arkane.common import get_element_mass
-
-from arc.common import get_logger
+from arc.common import MASS_BY_SYMBOL, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products
 from arc.species.converter import (check_xyz_dict,
@@ -870,7 +868,7 @@ class ARCReaction(object):
         masses = list()
         for reactant in self.get_reactants_and_products()[0]:
             for atom in reactant.mol.atoms:
-                masses.append(get_element_mass(atom.element.symbol)[0])
+                masses.append(MASS_BY_SYMBOL[atom.element.symbol])
         return masses
 
     def get_bonds(self) -> Tuple[list, list]:
