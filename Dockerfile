@@ -60,7 +60,7 @@ WORKDIR /home/rmguser/Code
 # ------------------------------------------------------------------ clone & checkout
 WORKDIR /home/rmguser/Code
 RUN git clone --filter=blob:none --no-checkout https://github.com/ReactionMechanismGenerator/RMG-Py.git RMG-Py \
- && git -C RMG-Py checkout --detach 15d91e4ea30e282a83c34c34287e6f2c4f97c603  \
+ && git -C RMG-Py checkout --detach 55464c54d1fa61b531e865682df598d33718597d  \
  && git clone --filter=blob:none --depth 1 https://github.com/ReactionMechanismGenerator/RMG-database.git RMG-database
 #                     ↑ same “first parent” trick (caret) as on the CLI :contentReference[oaicite:0]{index=0}
 
