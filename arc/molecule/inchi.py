@@ -6,9 +6,11 @@ from rdkit import Chem
 
 import arc.molecule.element as elements
 import arc.molecule.pathfinder as pathfinder
-from arc.exceptions import InchiException
+from arc.exceptions import ActionError, InchiException
 from arc.molecule.adjlist import ConsistencyChecker
+from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.converter import to_rdkit_mol
+from arc.molecule.group import Group, GroupBond
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.util import agglomerate, partition, generate_combo, swap
 
@@ -691,10 +693,6 @@ def _convert_3_atom_2_bond_path(start, mol):
     with a number of actions that reflect the changes in bond orders and unpaired
     electrons that the molecule should undergo.
     """
-    #from molecule.data.kinetics.family import ReactionRecipe
-    # TODO: import from rmgpy.data.kinetics.family for now
-    from rmgpy.data.kinetics.family import ReactionRecipe
-
     paths = pathfinder.find_allyl_end_with_charge(start)
 
     for path in paths:
@@ -1122,3 +1120,243 @@ class AugmentedInChI(InChI):
         # default to None
         self.u_indices = u_indices or None
         self.p_indices = p_indices or None
+
+
+class ReactionRecipe(object):
+    """
+    Represent a list of actions that, when executed, result in the conversion
+    of a set of reactants to a set of products. There are currently five such
+    actions:
+
+    ============= ============================= ================================
+    Action Name   Arguments                     Description
+    ============= ============================= ================================
+    CHANGE_BOND   `center1`, `order`, `center2` change the bond order of the bond between `center1` and `center2` by `order`; do not break or form bonds
+    FORM_BOND     `center1`, `order`, `center2` form a new bond between `center1` and `center2` of type `order`
+    BREAK_BOND    `center1`, `order`, `center2` break the bond between `center1` and `center2`, which should be of type `order`
+    GAIN_RADICAL  `center`, `radical`           increase the number of free electrons on `center` by `radical`
+    LOSE_RADICAL  `center`, `radical`           decrease the number of free electrons on `center` by `radical`
+    GAIN_PAIR     `center`, `pair`              increase the number of lone electron pairs on `center` by `pair`
+    LOSE_PAIR     `center`, `pair`              decrease the number of lone electron pairs on `center` by `pair`
+    ============= ============================= ================================
+
+    The actions are stored as a list in the `actions` attribute. Each action is
+    a list of items; the first is the action name, while the rest are the
+    action parameters as indicated above.
+    """
+
+    def __init__(self, actions=None):
+        self.actions = actions or []
+
+    def add_action(self, action):
+        """
+        Add an `action` to the reaction recipe, where `action` is a list
+        containing the action name and the required parameters, as indicated in
+        the table above.
+        """
+        self.actions.append(action)
+
+    def get_reverse(self):
+        """
+        Generate a reaction recipe that, when applied, does the opposite of
+        what the current recipe does, i.e., it is the recipe for the reverse
+        of the reaction that this is the recipe for.
+        """
+        other = ReactionRecipe()
+        for action in reversed(self.actions):  # Play the reverse recipe in the reverse order
+            if action[0] == 'CHANGE_BOND':
+                other.add_action(['CHANGE_BOND', action[1], str(-int(action[2])), action[3]])
+            elif action[0] == 'FORM_BOND':
+                other.add_action(['BREAK_BOND', action[1], action[2], action[3]])
+            elif action[0] == 'BREAK_BOND':
+                other.add_action(['FORM_BOND', action[1], action[2], action[3]])
+            elif action[0] == 'LOSE_RADICAL':
+                other.add_action(['GAIN_RADICAL', action[1], action[2]])
+            elif action[0] == 'GAIN_RADICAL':
+                other.add_action(['LOSE_RADICAL', action[1], action[2]])
+            elif action[0] == 'GAIN_CHARGE':
+                other.add_action(['LOSE_CHARGE', action[1], action[2]])
+            elif action[0] == 'LOSE_CHARGE':
+                other.add_action(['GAIN_CHARGE', action[1], action[2]])
+            elif action[0] == 'LOSE_PAIR':
+                other.add_action(['GAIN_PAIR', action[1], action[2]])
+            elif action[0] == 'GAIN_PAIR':
+                other.add_action(['LOSE_PAIR', action[1], action[2]])
+        return other
+
+    def _apply(self, struct, forward, unique):
+        """
+        Apply the reaction recipe to the set of molecules contained in
+        `structure`, a single Structure object that contains one or more
+        structures. The `forward` parameter is used to indicate
+        whether the forward or reverse recipe should be applied. The atoms in
+        the structure should be labeled with the appropriate atom centers.
+        """
+
+        pattern = isinstance(struct, Group)
+        struct.props['validAromatic'] = True
+
+        for action in self.actions:
+            if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
+
+                # We are about to change the connectivity of the atoms in
+                # struct, which invalidates any existing vertex connectivity
+                # information; thus we reset it
+                struct.reset_connectivity_values()
+
+                label1, info, label2 = action[1:]
+
+                if label1 != label2:
+                    # Find associated atoms
+                    atom1 = struct.get_labeled_atoms(label1)[0]
+                    atom2 = struct.get_labeled_atoms(label2)[0]
+                else:
+                    atoms = struct.get_labeled_atoms(label1)  # should never have more than two if this action is valid
+                    if len(atoms) > 2:
+                        raise ActionError('Invalid atom labels encountered.')
+                    atom1, atom2 = atoms
+
+                if atom1 is None or atom2 is None or atom1 is atom2:
+                    raise ActionError('Invalid atom labels encountered.')
+
+                # Apply the action
+                if action[0] == 'CHANGE_BOND':
+                    info = int(info)
+                    # Check first to see if we have a bond
+                    if not struct.has_bond(atom1, atom2):
+                        if info < 1:
+                            raise ActionError('Attempted to change a nonexistent bond.')
+                        # If we do not have a bond, it might be because we are trying to change a vdW bond
+                        # Lets see if one of that atoms is a surface site,
+                        # If we have a surface site, we will make a single bond, then change it by info - 1
+                        is_vdW_bond = False
+                        for atom in (atom1, atom2):
+                            if atom.is_surface_site():
+                                is_vdW_bond = True
+                                break
+                        if not is_vdW_bond: # no surface site, so no vdW bond
+                            raise ActionError('Attempted to change a nonexistent bond.')
+                        else: # we found a surface site, so we will make a single bond
+                            bond = GroupBond(atom1, atom2, order=[1]) if pattern else Bond(atom1, atom2, order=1)
+                            struct.add_bond(bond)
+                            atom1.apply_action(['FORM_BOND', label1, 1, label2])
+                            atom2.apply_action(['FORM_BOND', label1, 1, label2])
+                            # Now subtract 1 from info
+                            info -= 1
+                            # If info is 0, then we can continue since we don't have to change the bond
+                            if info == 0:
+                                continue
+                    bond = struct.get_bond(atom1, atom2)
+                    if bond.is_benzene():
+                        struct.props['validAromatic'] = False
+                    if forward:
+                        atom1.apply_action(['CHANGE_BOND', label1, info, label2])
+                        atom2.apply_action(['CHANGE_BOND', label1, info, label2])
+                        bond.apply_action(['CHANGE_BOND', label1, info, label2])
+                        if pattern:
+                            if bond.is_van_der_waals():
+                                if atom1.is_surface_site():
+                                    atom1.atomtype = [ATOMTYPES['Xv']]
+                                else:
+                                    atom2.atomtype = [ATOMTYPES['Xv']]
+                    else:
+                        atom1.apply_action(['CHANGE_BOND', label1, -info, label2])
+                        atom2.apply_action(['CHANGE_BOND', label1, -info, label2])
+                        bond.apply_action(['CHANGE_BOND', label1, -info, label2])
+                        if pattern:
+                            if bond.is_van_der_waals():
+                                if atom1.is_surface_site():
+                                    atom1.atomtype = [ATOMTYPES['Xv']]
+                                else:
+                                    atom2.atomtype = [ATOMTYPES['Xv']]
+                elif (action[0] == 'FORM_BOND' and forward) or (action[0] == 'BREAK_BOND' and not forward):
+                    # Form bond between atom1 and atom2
+                    if struct.has_bond(atom1, atom2):
+                        raise ActionError('Attempted to create an existing bond.')
+                    if info not in (1, 0):  # Can only form single or vdW bonds
+                        raise ActionError('Attempted to create bond of type {:!r}'.format(info))
+                    # we need to make sure we are not forming
+                    # a surface bond to an atom that is already bonded to the surface
+                    if atom1.is_surface_site() and atom2.is_bonded_to_surface():
+                        raise ActionError('Attempted to form a surface bond to an atom already bonded to surface.')
+                    elif atom2.is_surface_site() and atom1.is_bonded_to_surface():
+                        raise ActionError('Attempted to form a surface bond to an atom already bonded to surface.')
+                    bond = GroupBond(atom1, atom2, order=[info]) if pattern else Bond(atom1, atom2, order=info)
+                    struct.add_bond(bond)
+                    atom1.apply_action(['FORM_BOND', label1, info, label2])
+                    atom2.apply_action(['FORM_BOND', label1, info, label2])
+                elif (action[0] == 'BREAK_BOND' and forward) or (action[0] == 'FORM_BOND' and not forward):
+                    # Break bond between atom1 and atom2
+                    if not struct.has_bond(atom1, atom2):
+                        if info == 0:
+                            if atom1.is_surface_site() or atom2.is_surface_site():
+                                # We are trying to break a vdW bond, but the atoms are not connected in
+                                # the graph. The bond will break when we split the merged products
+                                # in the `apply_recipe()` functions. Thus, there is nothing to do here,
+                                # so we continue to the next action.
+                                continue
+                        raise ActionError('Attempted to remove a nonexistent bond.')
+                    bond = struct.get_bond(atom1, atom2)
+                    struct.remove_bond(bond)
+                    atom1.apply_action(['BREAK_BOND', label1, info, label2])
+                    atom2.apply_action(['BREAK_BOND', label1, info, label2])
+
+            elif action[0] in ['LOSE_RADICAL', 'GAIN_RADICAL', 'LOSE_CHARGE', 'GAIN_CHARGE']:
+
+                label, change = action[1:]
+                change = int(change)
+
+                # Find associated atom
+                atoms = struct.get_labeled_atoms(label)
+                for atom in atoms:
+                    if atom is None:
+                        raise ActionError('Unable to find atom with label "{0}" while applying '
+                                                 'reaction recipe.'.format(label))
+
+                    # Apply the action
+                    for i in range(change):
+                        if (action[0] == 'GAIN_RADICAL' and forward) or (action[0] == 'LOSE_RADICAL' and not forward):
+                            atom.apply_action(['GAIN_RADICAL', label, 1])
+                        elif (action[0] == 'LOSE_RADICAL' and forward) or (action[0] == 'GAIN_RADICAL' and not forward):
+                            atom.apply_action(['LOSE_RADICAL', label, 1])
+                        elif (action[0] == 'LOSE_CHARGE' and forward) or (action[0] == 'GAIN_CHARGE' and not forward):
+                            atom.apply_action(['LOSE_CHARGE', label, 1])
+                        elif (action[0] == 'GAIN_CHARGE' and forward) or (action[0] == 'LOSE_CHARGE' and not forward):
+                            atom.apply_action(['GAIN_CHARGE', label, 1])
+
+            elif action[0] in ['LOSE_PAIR', 'GAIN_PAIR']:
+
+                label, change = action[1:]
+                change = int(change)
+
+                # Find associated atom
+                atoms = struct.get_labeled_atoms(label)
+
+                for atom in atoms:
+                    if atom is None:
+                        raise ActionError('Unable to find atom with label "{0}" while applying '
+                                                 'reaction recipe.'.format(label))
+
+                    # Apply the action
+                    for i in range(change):
+                        if (action[0] == 'GAIN_PAIR' and forward) or (action[0] == 'LOSE_PAIR' and not forward):
+                            atom.apply_action(['GAIN_PAIR', label, 1])
+                        elif (action[0] == 'LOSE_PAIR' and forward) or (action[0] == 'GAIN_PAIR' and not forward):
+                            atom.apply_action(['LOSE_PAIR', label, 1])
+
+            else:
+                raise ActionError('Unknown action "' + action[0] + '" encountered.')
+
+    def apply_forward(self, struct, unique=True):
+        """
+        Apply the forward reaction recipe to `molecule`, a single
+        :class:`Molecule` object.
+        """
+        return self._apply(struct, True, unique)
+
+    def apply_reverse(self, struct, unique=True):
+        """
+        Apply the reverse reaction recipe to `molecule`, a single
+        :class:`Molecule` object.
+        """
+        return self._apply(struct, False, unique)
