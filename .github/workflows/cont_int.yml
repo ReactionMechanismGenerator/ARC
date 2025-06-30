@@ -11,6 +11,8 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+env:
+  RMG_PY_COMMIT: 55464c54d1fa61b531e865682df598d33718597d
 
 jobs:
   build:
@@ -37,22 +39,28 @@ jobs:
     - name: Cache RMG-Py
       id: cache-rmg-py
       uses: actions/cache@v3
-      env:
-        CACHE_NUMBER: 2
       with:
         path: RMG-Py
-        key: ${{ runner.os }}-rmg-main
+        key: ${{ runner.os }}-rmg-${{ env.RMG_PY_COMMIT }}
         restore-keys: |
           ${{ runner.os }}-rmg-
 
-    - name: Checkout RMG-py
+    # - name: Checkout RMG-Py at specific commit
+    #   if: steps.cache-rmg-py.outputs.cache-hit != 'true'
+    #   uses: actions/checkout@v3
+    #   with:
+    #     repository: ReactionMechanismGenerator/RMG-Py
+    #     path: RMG-Py
+    #     ref: ${{ env.RMG_PY_COMMIT }}^1
+    #     fetch-depth: 0
+
+    - name: Clone & checkout RMG-Py at specific SHA
       if: steps.cache-rmg-py.outputs.cache-hit != 'true'
-      uses: actions/checkout@v3
-      with:
-        repository: ReactionMechanismGenerator/RMG-Py
-        path: RMG-Py
-        ref: main
-        fetch-depth: 1
+      run: |
+        git clone --filter=blob:none --no-checkout https://github.com/ReactionMechanismGenerator/RMG-Py.git RMG-Py
+        cd RMG-Py
+        git fetch --no-tags --prune origin ${RMG_PY_COMMIT}
+        git checkout --detach ${RMG_PY_COMMIT}
 
     - name: Cache RMG-database
       id: cache-rmg-db
@@ -64,6 +72,7 @@ jobs:
           key: ${{ runner.os }}-rmgdb-main
           restore-keys: |
             ${{ runner.os }}-rmgdb-
+
     - name: Checkout RMG-database
       if: steps.cache-rmg-db.outputs.cache-hit != 'true'
       uses: actions/checkout@v3
@@ -71,7 +80,7 @@ jobs:
         repository: ReactionMechanismGenerator/RMG-database
         path: RMG-database
         ref: main
-        fetch-depth: 1
+        fetch-depth: 0
 
     - name: Cache AutoTST
       id: cache-autotst
@@ -135,7 +144,7 @@ jobs:
           ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
 
     - name: Set up miniconda
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v3.2.0
       with:
           auto-update-conda: true
           environment-file: environment.yml
