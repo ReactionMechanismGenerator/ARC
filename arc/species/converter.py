@@ -12,7 +12,7 @@ from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
-from rdkit.Chem import SDWriter
+from rdkit.Chem import AllChem, SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
@@ -1781,7 +1781,7 @@ def rdkit_conf_from_mol(mol: Molecule,
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
     try:
-        Chem.AllChem.EmbedMolecule(rd_mol)
+        AllChem.EmbedMolecule(rd_mol)
     except:
         pass
     conf = None
