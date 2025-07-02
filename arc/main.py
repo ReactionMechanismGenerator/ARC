@@ -145,9 +145,6 @@ class ARC(object):
                                         Default: 'Arkane'.
         kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
                                           Default: 'Arkane'.
-        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
-                                       format (``True``, default) or classical two-parameter Arrhenius equation format
-                                       (``False``).
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         trsh_rotors (bool, optional): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
@@ -222,8 +219,6 @@ class ARC(object):
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         fine_only (bool): If ``self.job_types['fine'] and not self.job_types['opt']`` ARC will not run optimization
                           jobs without fine=True
-        three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
-                             format (``True``) or classical two-parameter Arrhenius equation format (``False``).
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         trsh_rotors (bool): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
@@ -276,7 +271,6 @@ class ARC(object):
                  T_max: Optional[Tuple[float, str]] = None,
                  T_count: int = 50,
                  thermo_adapter: str = 'Arkane',
-                 three_params: bool = True,
                  trsh_ess_jobs: bool = True,
                  trsh_rotors: bool = True,
                  ts_adapters: List[str] = None,
@@ -315,7 +309,6 @@ class ARC(object):
         self.compare_to_rmg = compare_to_rmg
         self.compute_thermo = compute_thermo
         self.compute_rates = compute_rates
-        self.three_params = three_params
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
         self.compute_transport = compute_transport
@@ -536,8 +529,6 @@ class ARC(object):
             restart_dict['T_count'] = self.T_count
         if self.thermo_adapter != 'arkane':
             restart_dict['thermo_adapter'] = self.thermo_adapter
-        if not self.three_params:
-            restart_dict['three_params'] = self.three_params
         if not self.trsh_ess_jobs:
             restart_dict['trsh_ess_jobs'] = self.trsh_ess_jobs
         if not self.trsh_rotors:
@@ -649,7 +640,6 @@ class ARC(object):
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
                             compare_to_rmg=self.compare_to_rmg,
-                            three_params=self.three_params,
                             sp_level=self.arkane_level_of_theory,
                             skip_nmd=self.skip_nmd,
                             )
