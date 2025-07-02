@@ -925,7 +925,7 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
 def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     """
     Check whether a torsion is symmetric.
-    If a torsion well is "well defined" and not smeared, it could be symmetric.
+    If a torsion well is "well-defined" and not smeared, it could be symmetric.
     Check the groups attached to the rotor pivots to determine whether it is indeed symmetric
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
     (they're all the same).
@@ -1054,7 +1054,7 @@ def determine_well_width_tolerance(mean_width):
     """
     Determine the tolerance by which well widths are determined to be nearly equal.
 
-    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs::
+    Fitted to a polynomial trendline for the following data of (mean, tolerance) pairs::
 
         (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
 
