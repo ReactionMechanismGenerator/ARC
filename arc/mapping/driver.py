@@ -29,10 +29,10 @@ from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
 from arc.common import logger
 from arc.species.converter import check_molecule_list_order
 
-from rmgpy.exceptions import ActionError, AtomTypeError
+from arc.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Molecule
+    from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
 
 
@@ -221,7 +221,7 @@ def map_rxn(rxn: 'ARCReaction',
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=False)
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
     reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
     label_species_atoms(reactants), label_species_atoms(products)
     

@@ -10,7 +10,7 @@ import shutil
 import unittest
 import warnings
 
-from rmgpy.molecule.molecule import Molecule
+from arc.molecule.molecule import Molecule
 
 from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC

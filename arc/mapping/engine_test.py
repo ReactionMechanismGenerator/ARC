@@ -13,12 +13,10 @@ import itertools
 from arc.common import ARC_PATH
 from arc.mapping.engine import *
 from arc.reaction import ARCReaction
+from arc.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
 
-from qcelemental.models.molecule import Molecule as QCMolecule
-
-from rmgpy.molecule import Molecule
-from rmgpy.species import Species
+from arc.molecule import Molecule
 
 
 class TestMappingEngine(unittest.TestCase):

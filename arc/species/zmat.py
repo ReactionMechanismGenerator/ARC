@@ -32,14 +32,13 @@ import operator
 import re
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-from rmgpy.molecule.molecule import Molecule
-
 from arc.common import get_logger, is_angle_linear, key_by_val, determine_top_group_indices
 from arc.exceptions import ZMatError
+from arc.molecule.molecule import Molecule
 from arc.species.vectors import calculate_param, get_vector_length
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Atom
+    from arc.molecule.molecule import Atom
 
 
 logger = get_logger()

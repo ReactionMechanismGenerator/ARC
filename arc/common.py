@@ -26,20 +26,13 @@ import numpy as np
 import pandas as pd
 import qcelemental as qcel
 
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.element import get_element
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.qm.qmdata import QMData
-from rmgpy.qm.symmetry import PointGroupCalculator
-
+# don't import any ARC module other than exceptions and imports, to avoid circular imports
 from arc.exceptions import InputError, SettingsError
-from arc.imports import home, settings
+from arc.imports import settings
 
 
 if TYPE_CHECKING:
-    from rmgpy.species import Species
+    from arc.molecule.molecule import Molecule
 
 
 logger = logging.getLogger('arc')
@@ -1426,120 +1419,6 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
     return new_list
 
 
-def rmg_mol_to_dict_repr(mol: Molecule,
-                         reset_atom_ids: bool = False,
-                         testing: bool = False,
-                         ) -> dict:
-    """
-    Generate a dict representation of an RMG ``Molecule`` object instance.
-
-    Args:
-        mol (Molecule): The RMG ``Molecule`` object instance.
-        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
-                                         Useful when copying the object to avoid duplicate atom IDs between
-                                         different object instances.
-        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
-
-    Returns:
-        dict: The corresponding dict representation.
-    """
-    mol = mol.copy(deep=True)
-    if testing:
-        counter = 0
-        for atom in mol.atoms:
-            atom.id = counter
-            counter += 1
-    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
-        mol.assign_atom_ids()
-    return {'atoms': [{'element': {'number': atom.element.number,
-                                   'isotope': atom.element.isotope,
-                                   },
-                       'radical_electrons': atom.radical_electrons,
-                       'charge': atom.charge,
-                       'label': atom.label,
-                       'lone_pairs': atom.lone_pairs,
-                       'id': atom.id,
-                       'props': atom.props,
-                       'atomtype': atom.atomtype.label,
-                       'edges': {atom_2.id: bond.order
-                                 for atom_2, bond in atom.edges.items()},
-                       } for atom in mol.atoms],
-            'multiplicity': mol.multiplicity,
-            'props': mol.props,
-            'atom_order': [atom.id for atom in mol.atoms]
-            }
-
-
-def rmg_mol_from_dict_repr(representation: dict,
-                           is_ts: bool = False,
-                           ) -> Optional[Molecule]:
-    """
-    Generate a dict representation of an RMG ``Molecule`` object instance.
-
-    Args:
-        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
-        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
-
-    Returns:
-        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
-
-    """
-    mol = Molecule(multiplicity=representation['multiplicity'],
-                   props=representation['props'])
-    atoms = {atom_dict['id']: Atom(element=get_element(value=atom_dict['element']['number'],
-                                                       isotope=atom_dict['element']['isotope']),
-                                   radical_electrons=atom_dict['radical_electrons'],
-                                   charge=atom_dict['charge'],
-                                   lone_pairs=atom_dict['lone_pairs'],
-                                   id=atom_dict['id'],
-                                   props=atom_dict['props'],
-                                   ) for atom_dict in representation['atoms']}
-    for atom_dict in representation['atoms']:
-        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
-    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
-    for i, atom_1 in enumerate(atoms.values()):
-        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
-            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
-            mol.add_bond(bond)
-    mol.update_atomtypes(raise_exception=False)
-    mol.update_multiplicity()
-    if not is_ts:
-        mol.identify_ring_membership()
-        mol.update_connectivity_values()
-    return mol
-
-
-def generate_resonance_structures(object_: Union['Species', Molecule],
-                                  keep_isomorphic: bool = False,
-                                  filter_structures: bool = True,
-                                  save_order: bool = True,
-                                  ) -> Optional[List[Molecule]]:
-    """
-    Safely generate resonance structures for either an RMG Molecule or an RMG Species object instances.
-
-    Args:
-        object_ (Species, Molecule): The object to generate resonance structures for.
-        keep_isomorphic (bool, optional): Whether to keep isomorphic isomers.
-        filter_structures (bool, optional): Whether to filter resonance structures.
-        save_order (bool, optional): Whether to make sure atom order is preserved.
-
-    Returns:
-        Optional[List[Molecule]]: If a ``Molecule`` object instance was given, the function returns a list of resonance
-                                  structures (each is a ``Molecule`` object instance). If a ``Species`` object instance
-                                  is given, the resonance structures are stored within the given object
-                                  (in a .molecule attribute), and the function returns ``None``.
-    """
-    result = None
-    try:
-        result = object_.generate_resonance_structures(keep_isomorphic=keep_isomorphic,
-                                                       filter_structures=filter_structures,
-                                                       save_order=save_order,
-                                                       )
-    except (AtomTypeError, ILPSolutionError, ResonanceError, TypeError, ValueError):
-        pass
-    return result
-
-
 def calc_rmsd(x: Union[list, np.array],
               y: Union[list, np.array],
               ) -> float:
@@ -1595,7 +1474,7 @@ def safe_copy_file(source: str,
             break
 
 
-def dfs(mol: Molecule,
+def dfs(mol: 'Molecule',
         start: int,
         sort_result: bool = True,
         ) -> List[int]:
@@ -1648,7 +1527,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
 def is_xyz_mol_match(mol: 'Molecule',
                      xyz: dict) -> bool:
     """
-    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    A helper function that matches RMG's Molecule object to an xyz,
     used in _scissors to match xyz and the cut products.
     This function only checks the molecular formula.
 
