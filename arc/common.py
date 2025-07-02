@@ -711,44 +711,7 @@ def get_bonds_from_dmat(dmat: np.ndarray,
     return bonds
 
 
-def determine_symmetry(xyz: dict) -> Tuple[int, int]:
-    """
-    Determine external symmetry and chirality (optical isomers) of the species.
-
-    Args:
-        xyz (dict): The 3D coordinates.
-
-    Returns: Tuple[int, int]
-        - The external symmetry number.
-        - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
-    """
-    atom_numbers = list()
-    for symbol in xyz['symbols']:
-        atom_numbers.append(get_element(symbol).number)
-    # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
-    coords = np.array(xyz['coords'], np.float64)
-    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
-    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
-    if not os.path.exists(scr_dir):
-        os.makedirs(scr_dir)
-    symmetry = optical_isomers = 1
-    qmdata = QMData(
-        groundStateDegeneracy=1,  # Only needed to check if valid QMData.
-        numberOfAtoms=len(atom_numbers),
-        atomicNumbers=atom_numbers,
-        atomCoords=(coords, 'angstrom'),
-        energy=(0.0, 'kcal/mol')  # Dummy
-    )
-    symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
-    pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)
-    pg = pgc.calculate()
-    if pg is not None:
-        symmetry = pg.symmetry_number
-        optical_isomers = 2 if pg.chiral else optical_isomers
-    return symmetry, optical_isomers
-
-
-def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]:
+def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: bool = 1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
