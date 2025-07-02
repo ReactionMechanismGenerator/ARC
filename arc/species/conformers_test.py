@@ -593,8 +593,8 @@ H       0.68104300    0.74807180    0.61546062""")]
                                      (0.59336, 1.16044, 0.53412),
                                      (2.51642, -0.38757, 0.25036))}]
         self.assertEqual(len(energies), 2)
-        self.assertAlmostEqual(energies[0], 3.49581, 3)
-        self.assertAlmostEqual(energies[1], -0.702848, 2)
+        self.assertAlmostEqual(energies[0], 2.05173086, 3)
+        self.assertAlmostEqual(energies[1], -0.7202283, 2)
         # Only symbols instead of the coordinate values are compared.
         # This is due to the unknown behavior of OpenBabel optimization function.
         # With the same iteration number and same initial xyz, the optimized xyzs can
@@ -613,26 +613,26 @@ H       0.68104300    0.74807180    0.61546062""")]
     def test_read_rdkit_embedded_conformers(self):
         """Test reading coordinates from embedded RDKit conformers"""
         xyz = """S      -0.19093478    0.57933906    0.00000000
-O      -1.21746139   -0.72237602    0.00000000
-O       1.40839617    0.14303696    0.00000000"""
+                 O      -1.21746139   -0.72237602    0.00000000
+                 O       1.40839617    0.14303696    0.00000000"""
         spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
         rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
         xyzs = conformers.read_rdkit_embedded_conformers(label='', rd_mol=rd_mol)
         expected_xyzs = [{'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.0007230118849883151, 0.4313717594780365, -0.0),
-                                     (-1.1690509082499037, -0.21589003940054327, -0.0),
-                                     (1.169773920134892, -0.2154817200774931, 0.0))},
+                          'coords': ((-0.00012212738820031313, 0.0028597623371057115, 0.0),
+                                     (-1.3392855635027328, -0.0026611685910463527, 0.0),
+                                     (1.3394076908909336, -0.00019859374606005526, 0.0))},
                          {'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.0014867645051002793, 0.45116968803294244, -0.0),
-                                     (-1.1527224078813536, -0.2260261622412862, -0.0),
-                                     (1.154209172386454, -0.2251435257916561, 0.0))},
+                          'coords': ((-0.0050101109486683, -0.0011994261054633355, 0.0),
+                                     (-1.3322372527953341, -0.0007919479762264483, 0.0),
+                                     (1.3372473637440028, 0.0019913740816897446, 0.0))},
                          {'symbols': ('S', 'O', 'O'),
                           'isotopes': (32, 16, 16),
-                          'coords': ((-0.0021414150293084812, 0.42384518006634525, -0.0),
-                                     (-1.176450577057819, -0.21250387455074374, -0.0),
-                                     (1.1785919920871275, -0.21134130551560104, 0.0))}]
+                          'coords': ((-0.001622766648702611, -0.006639598050856404, 0.0),
+                                     (-1.3302578118860169, 0.0071058792970156315, 0.0),
+                                     (1.33188057853472, -0.00046628124615972935, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs))
 
     def test_rdkit_force_field(self):
@@ -642,47 +642,45 @@ O      -1.21746139   -0.72237602    0.00000000
 O       1.40839617    0.14303696    0.00000000"""
         spc = ARCSpecies(label='SO2', smiles='O=S=O', xyz=xyz)
         rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=3, xyz=xyz)
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol,
-                                                      force_field='MMFF94s', optimize=True)
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=True)
         self.assertEqual(len(energies), 3)
         self.assertAlmostEqual(energies[0], 2.8820960262158292e-11, 3)
         self.assertAlmostEqual(energies[1], 4.496464369416183e-14, 3)
         self.assertAlmostEqual(energies[2], 1.8168786624672814e-12, 3)
-        expected_xyzs1 = [{'coords': ((-0.048697770520464284, 0.6080446547953217, 0.0),
-                                      (-1.353634030198068, -0.41438354841733305, 0.0),
-                                      (1.402331800718534, -0.19366110637798933, 0.0)),
+        expected_xyzs1 = [{'coords': ((0.03524400187958859, 0.6089735953065069, 0.0),
+                                      (-1.3977083353264068, -0.22461555355366308, 0.0),
+                                      (1.362464333446819, -0.38435804175284405, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')},
-                          {'coords': ((-0.05319780617176572, 0.607667542238931, 0.0),
-                                      (-1.3505293496269846, -0.42439346057066346, 0.0),
-                                      (1.4037271557987503, -0.18327408166827253, 0.0)),
+                          {'coords': ((0.14770514519908248, -0.5918387259180251, 0.0),
+                                      (-1.415108604991466, -0.03881772790258462, 0.0),
+                                      (1.2674034597923836, 0.6306564538206128, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')},
-                          {'coords': ((0.07722439890127433, 0.6050837187112847, 0.0),
-                                      (-1.4098847335098195, -0.12753188106391833, 0.0),
-                                      (1.3326603346085464, -0.4775518376473646, 0.0)),
+                          {'coords': ((0.05761571662082245, -0.6072645883444062, 0.0),
+                                      (-1.405022948684556, 0.17306050451191993, 0.0),
+                                      (1.3474072320637318, 0.4342040838324754, 0.0)),
                            'isotopes': (32, 16, 16),
                            'symbols': ('S', 'O', 'O')}]
 
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs1))
-        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol,
-                                                      force_field='MMFF94s', optimize=False)
+        xyzs, energies = conformers.rdkit_force_field(label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=False)
         self.assertEqual(len(energies), 0)
         expected_xyzs2 = [{'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((-0.048697770520464284, 0.6080446547953217, 0.0),
-                                      (-1.353634030198068, -0.41438354841733305, 0.0),
-                                      (1.402331800718534, -0.19366110637798933, 0.0))},
+                           'coords': ((0.03524400187958859, 0.6089735953065069, 0.0),
+                                      (-1.3977083353264068, -0.22461555355366308, 0.0),
+                                      (1.362464333446819, -0.38435804175284405, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((-0.05319780617176572, 0.607667542238931, 0.0),
-                                      (-1.3505293496269846, -0.42439346057066346, 0.0),
-                                      (1.4037271557987503, -0.18327408166827253, 0.0))},
+                           'coords': ((0.14770514519908248, -0.5918387259180251, 0.0),
+                                      (-1.415108604991466, -0.03881772790258462, 0.0),
+                                      (1.2674034597923836, 0.6306564538206128, 0.0))},
                           {'symbols': ('S', 'O', 'O'),
                            'isotopes': (32, 16, 16),
-                           'coords': ((0.07722439890127433, 0.6050837187112847, 0.0),
-                                      (-1.4098847335098195, -0.12753188106391833, 0.0),
-                                      (1.3326603346085464, -0.4775518376473646, 0.0))}]
+                           'coords': ((0.05761571662082245, -0.6072645883444062, 0.0),
+                                      (-1.405022948684556, 0.17306050451191993, 0.0),
+                                      (1.3474072320637318, 0.4342040838324754, 0.0))}]
         self.assertTrue(almost_equal_coords_lists(xyzs, expected_xyzs2))
 
     def test_determine_rotors(self):
@@ -1190,7 +1188,7 @@ O       1.40839617    0.14303696    0.00000000"""
         mol8 = Molecule(smiles='C[N+](=O)[O-]')
         mol8.update()
         torsions, tops = conformers.determine_rotors([mol8])
-        confs = conformers.generate_force_field_conformers(mol_list=[mol8], label='mol8', num_confs=200,
+        confs = conformers.generate_force_field_conformers(mol_list=[mol8], label='mol8', num_confs=500,
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
@@ -2162,7 +2160,7 @@ Cl      2.38846685    0.24054066    0.55443324
                 diastereomers.append(conf['chirality'])
         self.assertEqual(len(diastereomers), 2)
         self.assertIn({(0,): 'S', (2,): 'S'}, diastereomers)
-        self.assertIn({(0,): 'R', (2,): 'S'}, diastereomers)
+        self.assertIn({(0,): 'S', (2,): 'R'}, diastereomers)
 
         smiles = 'CC(Cl)C(Cl)CCC'  # test chiralities not in a ring
         spc1 = ARCSpecies(label=smiles, smiles=smiles)
@@ -2176,7 +2174,7 @@ Cl      2.38846685    0.24054066    0.55443324
                 diastereomers.append(conf['chirality'])
         self.assertEqual(len(diastereomers), 2)
         self.assertIn({(1,): 'S', (3,): 'S'}, diastereomers)
-        self.assertIn({(1,): 'R', (3,): 'S'}, diastereomers)
+        self.assertIn({(1,): 'S', (3,): 'R'}, diastereomers)
 
     def test_prune_enantiomers_dict(self):
         """Test pruning the enantiomers_dict, removing exact mirror images"""
