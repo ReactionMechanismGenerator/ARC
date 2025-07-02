@@ -49,12 +49,10 @@ from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
 import arc.molecule.group as gr
-
 from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_single_bond_length,
-                        generate_resonance_structures,
-                        logger,
+                        get_logger,
                         )
 from arc.exceptions import ConformerError, InputError
 from arc.molecule.converter import to_ob_mol
@@ -64,6 +62,8 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
 
+
+logger = get_logger()
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -213,7 +213,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         success = False
         mol_copy = mol_list.copy(deep=True)
         mol_copy.reactive = True
-        new_mol_list = generate_resonance_structures(mol_copy)
+        new_mol_list = generate_resonance_structures_safely(mol_copy)
         try:
             success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
         except TypeError:
