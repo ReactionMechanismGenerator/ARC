@@ -9,18 +9,7 @@ import os
 from math import isclose
 from typing import Dict, List, Optional, Tuple, Union
 
-import rmgpy.molecule.element as elements
-from arkane.common import ArkaneSpecies, symbol_by_number
-from arkane.statmech import is_linear
-from rmgpy.exceptions import AtomTypeError, InvalidAdjacencyListError
-from rmgpy.molecule.molecule import Atom, Molecule
-from rmgpy.molecule.resonance import generate_kekule_structure
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.statmech import NonlinearRotor, LinearRotor
-from rmgpy.transport import TransportData
-
-from arc.common import (almost_equal_coords,
+import arc.molecule.element as elements
                         convert_list_index_0_to_1,
                         determine_symmetry,
                         dfs,
@@ -29,17 +18,15 @@ from arc.common import (almost_equal_coords,
                         generate_resonance_structures,
                         is_angle_linear,
                         read_yaml_file,
-                        rmg_mol_from_dict_repr,
-                        rmg_mol_to_dict_repr,
                         timedelta_from_str,
                         sort_atoms_in_descending_label_order,
                         )
-from arc.exceptions import InputError, RotorError, SpeciesError, TSError
+from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError
 from arc.imports import settings
 from arc.level import Level
-from arc.parser import (parse_1d_scan_energies,
-                        parse_dipole_moment,
-                        parse_polarizability,
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.resonance import generate_kekule_structure, generate_resonance_structures_safely
                         parse_xyz_from_file,
                         process_conformers_file,
                         )
@@ -98,7 +85,6 @@ class ARCSpecies(object):
     Args:
         label (str, optional): The species label.
         is_ts (bool, optional): Whether the species represents a transition state.
-        rmg_species (Species, optional): An RMG Species object to be converted to an ARCSpecies object.
         mol (Molecule, optional): An ``RMG Molecule``. Atom order corresponds to the order in .initial_xyz
         xyz (list, str, dict, optional): Entries are either string-format coordinates, file paths, or ARC's dict format.
                                          (If there's only one entry, it could be given directly, not in a list).
@@ -223,7 +209,6 @@ class ARCSpecies(object):
         mol (Molecule): An ``RMG Molecule`` object used for BAC determination.
                         Atom order corresponds to the order in .initial_xyz
         mol_list (list): A list of localized structures generated from 'mol', if possible.
-        rmg_species (Species): An RMG Species object to be converted to an ARCSpecies object.
         bond_corrections (dict): The bond additivity corrections (BAC) to be used. Determined from the structure
                                  if not directly given.
         run_time (timedelta): Overall species execution time.
@@ -321,7 +306,6 @@ class ARCSpecies(object):
                  occ: Optional[int] = None,
                  optical_isomers: Optional[int] = None,
                  preserve_param_in_scan: Optional[list] = None,
-                 rmg_species: Optional[Species] = None,
                  run_time: Optional[datetime.timedelta] = None,
                  rxn_label: Optional[str] = None,
                  rxn_index: Optional[int] = None,
@@ -413,7 +397,6 @@ class ARCSpecies(object):
             self.final_xyz = None
             self.number_of_rotors = 0
             self.rotors_dict = dict()
-            self.rmg_species = rmg_species
             self.tsg_spawned = False
             regen_mol = True
             if bond_corrections is None:
@@ -435,21 +418,6 @@ class ARCSpecies(object):
                     elif smiles:
                         self.mol = Molecule(smiles=smiles)
                 self.set_mol_list()
-            elif self.rmg_species is not None:
-                # an RMG Species was given
-                if not isinstance(self.rmg_species, Species):
-                    raise SpeciesError(f'The rmg_species parameter has to be a valid RMG Species object. '
-                                       f'Got: {type(self.rmg_species)}')
-                if not self.rmg_species.molecule:
-                    raise SpeciesError('If an RMG Species given, it must have a non-empty molecule list')
-                if not self.rmg_species.label and not label:
-                    raise SpeciesError('If an RMG Species given, it must have a label or a label must be given '
-                                       'separately')
-                self.label = self.label or self.rmg_species.label
-                if self.mol is None:
-                    self.mol = self.rmg_species.molecule[0]
-                self.multiplicity = self.rmg_species.molecule[0].multiplicity
-                self.charge = self.rmg_species.molecule[0].get_net_charge()
 
             self.process_xyz(xyz)
             if multiplicity is not None:
@@ -480,7 +448,7 @@ class ARCSpecies(object):
                 # We don't care about BACs in TSs
                 if self.mol is None:
                     if self.compute_thermo:
-                        logger.warning(f'No structure (SMILES, adjList, RMG Species, or RMG Molecule) was given for '
+                        logger.warning(f'No structure (SMILES, adjList, or Molecule) was given for '
                                        f'species {self.label}, NOT using bond additivity corrections (BAC) for thermo '
                                        f'computation.')
                 else:
@@ -511,7 +479,7 @@ class ARCSpecies(object):
                                f'Got {self.charge} which is a {type(self.charge)}.')
         if not self.is_ts and self.initial_xyz is None and self.final_xyz is None and self.mol is None \
                 and not self.conformers:
-            raise SpeciesError(f'No structure (xyz, SMILES, adjList, RMG Species or Molecule) '
+            raise SpeciesError(f'No structure (xyz, SMILES, adjList, or Molecule) '
                                f'was given for species {self.label}')
         if self.preserve_param_in_scan is not None:
             if not isinstance(self.preserve_param_in_scan, list):
@@ -946,49 +914,50 @@ class ARCSpecies(object):
             bool: Whether self.mol should be regenerated
         """
         regen_mol = True
-        rmg_spc = Species()
-        arkane_spc = ArkaneSpecies(species=rmg_spc)
-        # The data from the YAML file is loaded into the `species` argument of the `load_yaml` method in Arkane
         yml_content = read_yaml_file(self.yml_path)
-        arkane_spc.load_yaml(path=self.yml_path, label=label, pdep=False)
-        self.label = label or self.label or arkane_spc.label
-        self.final_xyz = xyz_from_data(coords=arkane_spc.conformer.coordinates.value,
-                                       numbers=arkane_spc.conformer.number.value)
+        self.label = label or self.label or yml_content['label']
+        self.final_xyz = xyz_from_data(coords=yml_content['conformer']['coordinates']['value']['object'],
+                                       numbers=yml_content['conformer']['number']['value']['object'])
         if 'mol' in yml_content:
             self.mol = rmg_mol_from_dict_repr(representation=yml_content['mol'], is_ts=yml_content['is_ts'])
             if self.mol is not None:
                 regen_mol = False
         if regen_mol:
-            if arkane_spc.adjacency_list is not None:
+            if yml_content.get('adjacency_list', None):
                 try:
-                    self.mol = Molecule().from_adjacency_list(adjlist=arkane_spc.adjacency_list,
+                    self.mol = Molecule().from_adjacency_list(adjlist=yml_content['adjacency_list'],
                                                               raise_atomtype_exception=False)
                 except ValueError:
-                    print(f'Could not read adjlist:\n{arkane_spc.adjacency_list}')  # should *not* be logging
+                    print(f"Could not read adjlist:\n{yml_content['adjacency_list']}")  # should *not* be logging
                     raise
-            elif arkane_spc.inchi is not None:
-                self.mol = Molecule().from_inchi(inchistr=arkane_spc.inchi, raise_atomtype_exception=False)
-            elif arkane_spc.smiles is not None:
-                self.mol = Molecule().from_smiles(arkane_spc.smiles, raise_atomtype_exception=False)
+            elif yml_content.get('inchi', None):
+                self.mol = Molecule().from_inchi(inchistr=yml_content['inchi'], raise_atomtype_exception=False)
+            elif yml_content.get('smiles', None):
+                self.mol = Molecule().from_smiles(yml_content['smiles'], raise_atomtype_exception=False)
         if self.mol is not None:
             self.multiplicity = self.mol.multiplicity
             self.charge = self.mol.get_net_charge()
         if self.multiplicity is None:
-            self.multiplicity = arkane_spc.conformer.spin_multiplicity
+            self.multiplicity = yml_content['conformer']['spin_multiplicity']
+        if self.external_symmetry is None and 'conformer' in yml_content and 'modes' in yml_content['conformer']:
+            for mode in yml_content['conformer']['modes']:
+                if mode['class'] == 'NonlinearRotor' or mode['class'] == 'LinearRotor':
+                    self.external_symmetry = mode.get('symmetry', None)
         if self.optical_isomers is None:
-            self.optical_isomers = arkane_spc.conformer.optical_isomers
-        if self.external_symmetry is None:
-            external_symmetry_mode = None
-            for mode in arkane_spc.conformer.modes:
-                if isinstance(mode, (NonlinearRotor, LinearRotor)):
-                    external_symmetry_mode = mode
-                    break
-            if external_symmetry_mode is not None:
-                self.external_symmetry = external_symmetry_mode.symmetry
+            self.optical_isomers = yml_content['conformer']['optical_isomers']
+        if self.external_symmetry is None and 'modes' in yml_content['conformer']:
+            for mode in yml_content['conformer']['modes']:
+                self.external_symmetry = mode.get('symmetry', None)
         if self.initial_xyz is not None:
             self.mol_from_xyz()
         if self.e0 is None:
-            self.e0 = arkane_spc.conformer.E0.value_si * 0.001  # convert to kJ/mol
+            self.e0 = yml_content['conformer']['E0']['value'] # should already be in kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'J/mol':
+                self.e0 *= 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'cal/mol':
+                self.e0 *= 4.184 * 0.001  # convert to kJ/mol
+            if yml_content['conformer']['E0']['units'] == 'kcal/mol':
+                self.e0 *= 4.184
         return regen_mol
 
     def set_mol_list(self):
@@ -1039,13 +1008,12 @@ class ARCSpecies(object):
             return len(xyz['symbols']) == 2
         return None
 
-    def is_isomorphic(self, other: Union['ARCSpecies', Species, Molecule]) -> Optional[bool]:
+    def is_isomorphic(self, other: Union['ARCSpecies', Molecule]) -> Optional[bool]:
         """
         Determine whether the species is isomorphic with ``other``.
 
         Args:
-            other (Union[ARCSpecies, Species, Molecule]): An ARCSpecies, RMG Species, or RMG Molecule object instance
-                                                          to compare isomorphism with.
+            other (Union[ARCSpecies, Molecule]): An ARCSpecies, or Molecule object instance to compare isomorphism with.
 
         Returns:
             Optional[bool]: Whether the species is isomorphic with ``other``.
@@ -1064,16 +1032,8 @@ class ARCSpecies(object):
                 return False
             else:
                 return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
-        if isinstance(other, Species):
-            for other_mol in other.molecule:
-                if self.mol_list is not None and len(self.mol_list):
-                    for mol_ in [self.mol] + self.mol_list:
-                        if mol_.copy(deep=True).is_isomorphic(other_mol.copy(deep=True)):
-                            return True
-                else:
-                    return self.mol.copy(deep=True).is_isomorphic(other_mol.copy(deep=True))
             return False
-        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or RMG Molecule '
+        raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or Molecule '
                            f'object instances, got {other} which is of type {type(other)}.')
 
     def generate_conformers(self,

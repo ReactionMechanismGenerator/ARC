@@ -9,8 +9,6 @@ import os
 import shutil
 import unittest
 
-from rmgpy.species import Species
-
 from arc.common import ARC_PATH
 from arc.job.adapters.ts.kinbot_ts import KinBotAdapter, HAS_KINBOT
 from arc.reaction import ARCReaction

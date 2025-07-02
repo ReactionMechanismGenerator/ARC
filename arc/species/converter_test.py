@@ -13,13 +13,10 @@ from ase import Atoms
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-
 import arc.species.converter as converter
 from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
 from arc.species.zmat import _compare_zmats, xyz_to_zmat
@@ -541,8 +538,8 @@ H       0.63003260   -0.63003260   -0.63003260
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
                           H      -0.50949998    0.00000000    0.00000000"""
         cls.spc1 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
-        spc = Species().from_adjacency_list(nh_s_adj)
-        cls.spc2 = ARCSpecies(label='NH2(S)', rmg_species=spc, xyz=nh_s_xyz)
+        mol = Molecule().from_adjacency_list(nh_s_adj)
+        cls.spc2 = ARCSpecies(label='NH2(S)', mol=mol, xyz=nh_s_xyz)
 
         cls.spc3 = ARCSpecies(label='NCN(S)', smiles='[N]=C=[N]', multiplicity=1, charge=0)
 

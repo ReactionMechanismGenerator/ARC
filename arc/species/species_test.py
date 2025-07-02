@@ -9,15 +9,11 @@ import os
 import shutil
 import unittest
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.transport import TransportData
-
 from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
+from arc.molecule.molecule import Molecule
 from arc.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
@@ -35,6 +31,8 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 rmg_mol_from_dict_repr,
+                                 rmg_mol_to_dict_repr,
                                  split_mol,
                                  )
 from arc.species.xyz_to_2d import MolGraph
@@ -50,15 +48,14 @@ class TestARCSpecies(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
-        cls.spc1_rmg.label = 'vinoxy'
-        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
-                                                               C       0.63642204    0.05717653    0.10011041
-                                                               O       1.50082619   -0.82476680    0.32598015
-                                                               H      -1.27691852    0.84199331   -0.29048852
-                                                               H      -1.17606821   -1.00974165   -0.10030145
-                                                               H       0.99232452    1.08896899    0.06242974""")
+        mol = Molecule(smiles='C=C[O]')
+        cls.spc1 = ARCSpecies(label='vinoxy', mol=mol,
+                              xyz="""C      -0.68324480   -0.04685539   -0.10883672
+                                     C       0.63642204    0.05717653    0.10011041
+                                     O       1.50082619   -0.82476680    0.32598015
+                                     H      -1.27691852    0.84199331   -0.29048852
+                                     H      -1.17606821   -1.00974165   -0.10030145
+                                     H       0.99232452    1.08896899    0.06242974""")
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
@@ -131,16 +128,11 @@ class TestARCSpecies(unittest.TestCase):
 """
         n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
                     'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
-                    'coords': ((1.359965, -0.537228, -0.184462),
-                               (2.339584, -0.30093, -0.289911),
-                               (1.2713739999999998, -1.27116, 0.51544),
-                               (0.669838, 0.659561, 0.217548),
-                               (0.61618, 0.715758, 1.2316809999999996),
-                               (-0.669836, 0.659561, -0.217548),
-                               (-0.616179, 0.715757, -1.231682),
-                               (-1.3599669999999997, -0.537227, 0.184463),
-                               (-2.339586, -0.300928, 0.289904),
-                               (-1.2713739999999998, -1.271158, -0.51544))}
+                    'coords': ((1.359965, -0.537228, -0.184462), (2.339584, -0.30093, -0.289911),
+                               (1.2713739999999998, -1.27116, 0.51544), (0.669838, 0.659561, 0.217548),
+                               (0.61618, 0.715758, 1.2316809999999998), (-0.669836, 0.659561, -0.217548),
+                               (-0.616179, 0.715757, -1.231682), (-1.3599669999999997, -0.537227, 0.184463),
+                               (-2.339586, -0.300928, 0.289904), (-1.2713739999999998, -1.271158, -0.51544))}
 
         n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
         n4h6 = ARCSpecies(yml_path=n4h6_yml_path)
@@ -218,10 +210,8 @@ class TestARCSpecies(unittest.TestCase):
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
         rmg_mol = Molecule(smiles='C=C[O]')
-        rmg_spc = Species(smiles='[CH2]C=O')
         arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
         self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
-        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
         self.assertTrue(self.spc1.is_isomorphic(arc_spc))
         self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
@@ -314,14 +304,6 @@ class TestARCSpecies(unittest.TestCase):
         spc12.generate_conformers()
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
-
-    def test_from_rmg_species(self):
-        """Test the conversion of an RMG species into an ARCSpecies"""
-        self.spc1_rmg.label = None
-        self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label='vinoxy')
-        self.assertEqual(self.spc.label, 'vinoxy')
-        self.assertEqual(self.spc.multiplicity, 2)
-        self.assertEqual(self.spc.charge, 0)
 
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""

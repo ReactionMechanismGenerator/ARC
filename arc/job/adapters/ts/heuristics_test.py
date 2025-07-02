@@ -11,9 +11,6 @@ import os
 import unittest
 import shutil
 
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
 from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
