@@ -13,22 +13,10 @@ from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
-from arc.main import ARC, StatmechEnum, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
 servers = settings['servers']
-
-
-class TestEnumerationClasses(unittest.TestCase):
-    """
-    Contains unit tests for various enumeration classes.
-    """
-
-    def test_statmech_enum(self):
-        """Test the StatmechEnum class"""
-        self.assertEqual(StatmechEnum('arkane').value, 'arkane')
-        with self.assertRaises(ValueError):
-            StatmechEnum('wrong')
 
 
 class TestARC(unittest.TestCase):
