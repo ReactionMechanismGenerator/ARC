@@ -276,9 +276,8 @@ class TorchANIAdapter(JobAdapter):
                                                         output["opt_xyz"] if "opt_xyz" in output.keys() else None, \
                                                         output["freqs"] if "freqs" in output.keys() else None
         if self.freqs is not None:
-            self.freqs = self.freqs[6 if \
-                is_linear(np.array(self.xyz["coords"] or self.opt_xyz["coords"]))\
-                    else 5:]
+            dofs = 6 if is_xyz_linear(self.xyz["coords"] or self.opt_xyz["coords"]) else 5
+            self.freqs = self.freqs[dofs:]
 
     def execute_queue(self):
         """
