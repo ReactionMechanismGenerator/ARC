@@ -1827,48 +1827,44 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bonds=False):
+def check_isomorphism(mol1: 'Molecule',
+                      mol2: 'Molecule',
+                      filter_structures: bool = True,
+                      convert_to_single_bonds: bool = False) -> bool:
     """
-    Convert ``mol1`` and ``mol2`` to RMG Species objects, and generate resonance structures.
-    Then check Species isomorphism.
-    This function first makes copies of the molecules, since isIsomorphic() changes atom orders.
+    Check isomorphism between two molecules, handling resonance structures and bond conversion.
 
     Args:
-        mol1 (Molecule): An RMG Molecule object.
-        mol2 (Molecule): An RMG Molecule object.
-        filter_structures (bool, optional): Whether to apply the filtration algorithm when generating
-                                            resonance structures. ``True`` to apply.
-        convert_to_single_bonds (bool, optional): Whether to convert both molecules to single bonds,
-                                                  avoiding a bond order comparison (only compares connectivity).
-                                                  Resonance structures will not be generated.
+        mol1 (Molecule): First RMG Molecule object
+        mol2 (Molecule): Second RMG Molecule object
+        filter_structures (bool): Apply resonance structure filtration when True
+        convert_to_single_bonds (bool): Convert to single bonds (compares connectivity only) when True
 
-    Returns:
-        bool: Whether one of the molecules in the Species derived from ``mol1``
-              is isomorphic to one of the molecules in the Species derived from ``mol2``. ``True`` if it is.
+    Returns: bool
+        True if any resonance structure of mol1 is isomorphic to any resonance structure of mol2
     """
-
     if mol1 is None or mol2 is None:
-        logger.error('Cannot check isomorphism without the molecule objects.')
+        logger.error('Cannot check isomorphism without molecule objects')
         return False
 
-    mol1.reactive, mol2.reactive = True, True
+    mol1_copy = mol1.copy(deep=True)
+    mol2_copy = mol2.copy(deep=True)
+    mol1_copy.reactive = mol2_copy.reactive = True
+
     if convert_to_single_bonds:
-        mol1_copy = mol1.to_single_bonds(raise_atomtype_exception=False)
-        mol2_copy = mol2.to_single_bonds(raise_atomtype_exception=False)
+        mol1_copy = mol1_copy.to_single_bonds(raise_atomtype_exception=False)
+        mol2_copy = mol2_copy.to_single_bonds(raise_atomtype_exception=False)
+        mol_list_1 = [mol1_copy]
+        mol_list_2 = [mol2_copy]
     else:
-        mol1_copy = mol1.copy(deep=True)
-        mol2_copy = mol2.copy(deep=True)
-    spc1 = Species(molecule=[mol1_copy])
-    spc2 = Species(molecule=[mol2_copy])
+        mol_list_1 = generate_resonance_structures_safely(mol1_copy, filter_structures=filter_structures)
+        mol_list_2 = generate_resonance_structures_safely(mol2_copy, filter_structures=filter_structures)
 
-    if not convert_to_single_bonds:
-        generate_resonance_structures(spc1, filter_structures=filter_structures)
-        generate_resonance_structures(spc2, filter_structures=filter_structures)
-
-    for molecule1 in spc1.molecule:
-        for molecule2 in spc2.molecule:
-            if molecule1.is_isomorphic(molecule2, save_order=True):
-                return True
+    if mol_list_1 and mol_list_2:
+        for m1 in mol_list_1:
+            for m2 in mol_list_2:
+                if m1.is_isomorphic(m2, save_order=True):
+                    return True
     return False
 
 
