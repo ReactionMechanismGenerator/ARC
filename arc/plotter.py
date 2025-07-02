@@ -17,13 +17,10 @@ from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Optional, Tuple, Union
 
 import py3Dmol as p3D
-import qcelemental as qcel
 from rdkit import Chem
 
 from arc.common import (NUMBER_BY_SYMBOL,
                         calculate_arrhenius_rate_coefficient,
-
-from arc.common import (calculate_arrhenius_rate_coefficient,
                         extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
@@ -752,7 +749,7 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
                 f.write(' Number     Number      Type              X           Y           Z\n')
                 f.write(' ---------------------------------------------------------------------\n')
                 for i, symbol in enumerate(xyz['symbols']):
-                    el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
+                    el_num, x, y, z = NUMBER_BY_SYMBOL(symbol), xs[i], ys[i], zs[i]
                     f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
                 f.write(' ---------------------------------------------------------------------\n')
                 f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
