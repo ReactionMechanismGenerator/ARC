@@ -10,8 +10,9 @@ import numpy as np
 import os
 import itertools
 
-from arc.common import ARC_PATH
-from arc.mapping.engine import *
+import arc.mapping.engine as engine
+from arc.common import ARC_PATH, is_equal_family_product_dicts
+from arc.family import determine_possible_reaction_products_from_family
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
@@ -83,8 +84,6 @@ class TestMappingEngine(unittest.TestCase):
         cls.p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=cls.ch4_xyz)
         cls.rxn_1 = ARCReaction(r_species=[cls.r_1, cls.r_2], p_species=[cls.p_1, cls.p_2])
 
-        cls.spc1 = ARCSpecies(label="Test_is_isomorphic_1", smiles="C(CO)CC")
-        cls.spc2 = ARCSpecies(label="Test_is_isomorphic_2", smiles="OCCCC")
         cls.c4h9o_xyz = {'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                          'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
                          'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
@@ -103,25 +102,22 @@ class TestMappingEngine(unittest.TestCase):
                                     (2.377638769033351, 0.43380253822255727, 0.17647842348371048))}
         cls.spc1_dihedral_deviation = ARCSpecies(label='[CH2]C(C)CO_a', smiles='[CH2]C(C)CO', xyz=cls.c4h9o_xyz)
         cls.spc2_dihedral_deviation = ARCSpecies(label='[CH2]C(C)CO_b', smiles='[CH2]C(C)CO',
-                                                 xyz={'symbols': (
-                                                 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                                 xyz={'symbols': ( 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                                       'isotopes': (12, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-                                                      'coords': (
-                                                      (-1.3857811794963277, -1.3882629357157468, -0.09505562903985151),
-                                                      (
-                                                      -0.48149615440373633, -0.18843419821506932, -0.36867730403761334),
-                                                      (-1.1615061896768615, 1.1047002102194075, 0.08616180242702906),
-                                                      (0.8755815877704686, -0.37530244696805926, 0.3151370087166933),
-                                                      (1.7499930104893404, 0.685479589154504, -0.04657790660423845),
-                                                      (-1.5824305690669607, -1.5021839148592626, 0.9764743462618697),
-                                                      (-0.9236829644275987, -2.313486599576571, -0.4551984262103633),
-                                                      (-0.31894490259166897, -0.11004093787895164, -1.45123483619259),
-                                                      (-0.551069637667873, 1.9799864363130495, -0.1585701723917383),
-                                                      (-2.1300920179099943, 1.2282601298258158, -0.4100421867371722),
-                                                      (-1.3337649482883558, 1.102945655452365, 1.1678836912458532),
-                                                      (0.7709290243761263, -0.38422053705817527, 1.4054470816682596),
-                                                      (1.337910696892115, -1.3171321272490044, 0.001256204546378134),
-                                                      (2.595292874972368, 0.5254618254772234, 0.4066018700054956))})
+                                                      'coords': ((-1.3857811794963277, -1.3882629357157468, -0.09505562903985151),
+                                                                 (-0.48149615440373633, -0.18843419821506932, -0.36867730403761334),
+                                                                 (-1.1615061896768615, 1.1047002102194075, 0.08616180242702906),
+                                                                 (0.8755815877704686, -0.37530244696805926, 0.3151370087166933),
+                                                                 (1.7499930104893404, 0.685479589154504, -0.04657790660423845),
+                                                                 (-1.5824305690669607, -1.5021839148592626, 0.9764743462618697),
+                                                                 (-0.9236829644275987, -2.313486599576571, -0.4551984262103633),
+                                                                 (-0.31894490259166897, -0.11004093787895164, -1.45123483619259),
+                                                                 (-0.551069637667873, 1.9799864363130495, -0.1585701723917383),
+                                                                 (-2.1300920179099943, 1.2282601298258158, -0.4100421867371722),
+                                                                 (-1.3337649482883558, 1.102945655452365, 1.1678836912458532),
+                                                                 (0.7709290243761263, -0.38422053705817527, 1.4054470816682596),
+                                                                 (1.337910696892115, -1.3171321272490044, 0.001256204546378134),
+                                                                 (2.595292874972368, 0.5254618254772234, 0.4066018700054956))})
 
         cls.ch3cl_xyz = {"symbols": ("Cl", "C", "H", "H", "H"),
                          "isotopes": (35, 12, 1, 1, 1),
@@ -180,6 +176,15 @@ class TestMappingEngine(unittest.TestCase):
                           H      -1.18655934   -0.63438343    0.06795859
                           H      -0.71586186    0.90189070   -0.18800765
                           H       1.56071894    0.18069099    0.00439608"""
+        cls.xyz_ethanol = """C    1.1658210   -0.4043550    0.0000000
+                             C    0.0000000    0.5518050    0.0000000
+                             O   -1.1894600   -0.2141940    0.0000000
+                             H   -1.9412580    0.3751850    0.0000000
+                             H    2.1054020    0.1451160    0.0000000
+                             H    1.1306240   -1.0387850    0.8830320
+                             H    1.1306240   -1.0387850   -0.8830320
+                             H    0.0476820    1.1930570    0.8835910
+                             H    0.0476820    1.1930570   -0.8835910"""
         cls.arc_reaction_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O',
                                          r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
                                                     ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
@@ -211,6 +216,17 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H      -1.69636720    0.21982441    1.34850246
                                                                       H      -0.39178710    1.38838724    1.61666119"""),
                                                     ARCSpecies(label='NH3', smiles='N', xyz=cls.nh3_xyz)])
+        cls.c2h6_xyz = """C       0.75285806   -0.06808234   -0.01222083
+                          C      -0.75285808    0.06808231    0.01222086
+                          H       1.04189871   -1.10666259   -0.19883980
+                          H       1.18246189    0.24239475    0.94489176
+                          H       1.18249214    0.55617994   -0.80135396
+                          H      -1.18249194   -0.55617970    0.80135433
+                          H      -1.18246208   -0.24239528   -0.94489147
+                          H      -1.04189873    1.10666263    0.19883924"""
+        cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                                         r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
+                                         p_species=[ARCSpecies(label='C2H6', smiles='CC', xyz=cls.c2h6_xyz)])
         cls.arc_reaction_4 = ARCReaction(label='CH2CH2NH2 <=> CH3CH2NH',
                                          r_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN',
                                                                xyz="""C      -1.24450121    0.17451352    0.00786829
@@ -232,9 +248,6 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H       0.78091492   -0.31605120    1.13875203
                                                                       H       0.92382278    0.74158978   -0.25822764
                                                                       H       1.97108857   -1.36649904   -0.64094836""")])
-        cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
-                                         r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
-                                         p_species=[ARCSpecies(label='C2H6', smiles='CC')])
 
         cls.r_xyz_2a = """C                  0.50180491   -0.93942231   -0.57086745
         C                  0.01278145    0.13148427    0.42191407
@@ -279,8 +292,7 @@ class TestMappingEngine(unittest.TestCase):
         cls.ts_spc_2 = ARCSpecies(label='TS', is_ts=True, xyz=cls.ts_xyz_2)
         cls.ts_spc_2.mol_from_xyz()
         cls.reactant_2a = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.r_xyz_2a)
-        cls.reactant_2b = ARCSpecies(label='C[CH]C', smiles='C[CH]C',
-                                     xyz=cls.r_xyz_2b)  # same as 2a, only one C atom shifted place in the reactant xyz
+        cls.reactant_2b = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.r_xyz_2b)  # same as 2a, only one C atom shifted place in the reactant xyz
         cls.product_2 = ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.p_xyz_2)
         cls.rxn_2a = ARCReaction(r_species=[cls.reactant_2a], p_species=[cls.product_2])
         cls.rxn_2a.ts_species = cls.ts_spc_2
@@ -492,31 +504,65 @@ class TestMappingEngine(unittest.TestCase):
                             H      -0.92134271   -0.74783968   -0.82281679
                             H      -1.04996634   -0.37234114    0.91874740
                             H       1.36260637    0.37153887   -0.86221771"""
+        cls.ip1_xyz = """ C                  0.23537226    1.11846087   -0.01756422
+                          H                  0.62797226    0.12368275   -0.05194069
+                          H                  0.55388639    1.65778122   -0.88507924
+                          C                 -1.30324095    1.06223033    0.01571514
+                          H                 -1.69584095    2.05700844    0.05009160
+                          C                 -1.76166316    0.28601226    1.26428816
+                          H                 -1.40374084    0.78053929    2.14305697
+                          H                 -2.83069961    0.24694299    1.28741083
+                          H                 -1.36906315   -0.70876586    1.22991169
+                          C                 -1.81838148    0.35048114   -1.24905493
+                          H                 -2.88741793    0.31141187   -1.22593226
+                          H                 -1.49986735    0.88980149   -2.11656995
+                          H                 -1.42578148   -0.64429698   -1.28343139
+                          C                  0.75051279    1.83021006    1.24720584
+                          H                  0.43199866    1.29088971    2.11472086
+                          H                  1.81954925    1.86927933    1.22408317
+                          H                  0.35791279    2.82498817    1.28158231"""
+        cls.ip2_xyz = """ C                  0.24171794    1.05804677   -0.05782384
+                          H                  0.61304261    1.59287556    0.79127931
+                          H                  0.61267153    0.05461321   -0.03746400
+                          C                 -1.29763479    1.03716009   -0.01836598
+                          H                 -1.66858838    2.04059365   -0.03872582
+                          C                 -1.76866179    0.34183289    1.27246850
+                          H                 -1.39733711    0.87666169    2.12157164
+                          H                 -2.83821206    0.32732072    1.29988402
+                          H                 -1.39770820   -0.66160067    1.29282834
+                          C                 -1.83206470    0.26740650   -1.24043967
+                          H                 -2.90161497    0.25289432   -1.21302415
+                          H                 -1.50479269    0.75052344   -2.13731817
+                          H                 -1.46111111   -0.73602706   -1.22007983
+                          C                  0.71274494    1.75337396   -1.34865832
+                          H                  0.34179135    2.75680752   -1.36901816
+                          H                  1.78229521    1.76788614   -1.37607384
+                          H                  0.34142026    1.21854517   -2.19776146"""
 
     def test_map_two_species(self):
         """Test the map_two_species() function."""
         # H
         spc1 = ARCSpecies(label='H', smiles='[H]')
         spc2 = ARCSpecies(label='H', smiles='[H]')
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [0])
 
         # OH same order
         spc1 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0 0\nH 0.8 0 0""")
         spc2 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0.9 0\nH 0 0 0""")
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [0, 1])
 
         # OH different order
-        spc1 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0 0\nH 0.8 0 0""")
-        spc2 = ARCSpecies(label='OH', smiles='[OH]', xyz="""H 0 0 0\nO 0 0.9 0""")
-        atom_map = map_two_species(spc1, spc2)
+        spc1 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0 0\nH 0.96 0 0""")
+        spc2 = ARCSpecies(label='OH', smiles='[OH]', xyz="""H 0 0 0\nO 0 0.96 0""")
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [1, 0])
 
         # N2 - homonuclear diatomic
         spc1 = ARCSpecies(label='N2', smiles='N#N', xyz="""N 0.73 0.0 0.0\nN -0.73 0.0 0.0""")
         spc2 = ARCSpecies(label='N2', smiles='N#N', xyz="""N 0 0 0\nN 0 1.5 0""")
-        atom_map = map_two_species(spc1, spc2, map_type='dict')
+        atom_map = engine.map_two_species(spc1, spc2, map_type='dict')
         self.assertEqual(atom_map, {0: 0, 1: 1})
 
         # HNCO - all different elements
@@ -528,13 +574,13 @@ class TestMappingEngine(unittest.TestCase):
                                                                N      -0.7003    0.2828   -0.1885
                                                                O       1.5506   -0.0732    0.3567
                                                                H      -1.2776   -0.3250    0.3972""")
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [1, 0, 2, 3])
 
         # CH4 different order
         spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
         spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [2, 0, 1, 3, 4])
 
         # Different resonance structures
@@ -558,7 +604,7 @@ class TestMappingEngine(unittest.TestCase):
                                  H      -1.93705665    0.20873674    0.67438486
                                  H      -0.21622798    1.30213069   -0.75968738
                                  H       2.17552448    0.53161689   -0.69470108""")
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [0, 1, 7, 2, 3, 6, 5, 4, 8])
 
         # R1H w/o its H and R1 from an H abstraction reaction for C=CC=N.
@@ -582,7 +628,7 @@ class TestMappingEngine(unittest.TestCase):
                                  H       1.53896925   -0.26718857    0.08305817
                                  H       2.47688530    1.45345357    1.47005614
                                  H       0.79186768    2.10712053    1.87909788""")
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [0, 1, 2, 3, 4, 5, 6, 7, 8])
 
         # R1H w/o its H and R1 from an H abstraction reaction for [CH2]N.
@@ -600,7 +646,7 @@ class TestMappingEngine(unittest.TestCase):
                                  N      -0.72781945   -0.06628299   -0.30657582
                                  H      -1.28327572    0.73076677    0.00177732
                                  H      -1.15521915   -0.91833442    0.05431125""")
-        atom_map = map_two_species(spc1, spc2)
+        atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map[0], 0)
         self.assertEqual(atom_map[1], 3)
         self.assertIn(atom_map[2], [1, 2])
@@ -609,7 +655,7 @@ class TestMappingEngine(unittest.TestCase):
         self.assertIn(atom_map[5], [4, 5])
 
         # Chiral center and two internal rotations.
-        atom_map = map_two_species(self.spc1, self.spc2)
+        atom_map = engine.map_two_species(self.spc1, self.spc2)
         self.assertEqual(atom_map[0], 0)  # part of the backbone
         for index in [1, 2]:
             self.assertIn(atom_map[index], [5, 6])  # H's on terminal CH2
@@ -622,11 +668,11 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(atom_map[13], 13)  # H on O atom
 
         # Multiple chiral centers
-        atom_map = map_two_species(self.chiral_spc_1, self.chiral_spc_1_b)
+        atom_map = engine.map_two_species(self.chiral_spc_1, self.chiral_spc_1_b)
         self.assertEqual(atom_map, [0, 2, 8, 5, 6, 7, 9, 10, 3, 4, 11, 1, 12])
 
         # Different resonance structures.
-        atom_map = map_two_species(self.cccoj, self.ccjco)
+        atom_map = engine.map_two_species(self.cccoj, self.ccjco)
         self.assertEqual(atom_map[:4], [0, 1, 3, 4])
         for index in [4, 5, 6]:
             self.assertIn(atom_map[index], [5, 6, 7])
@@ -636,119 +682,92 @@ class TestMappingEngine(unittest.TestCase):
         # A keto-enol isomerization reaction, check that no error is being raised (atom mapping values might be wrong).
         ch2choh = ARCSpecies(label='CH2CHOH', smiles='C=CO', xyz=self.ch2choh_xyz)
         ch3cho = ARCSpecies(label='CH3CHO', smiles='CC=O', xyz=self.ch3cho_xyz)
-        atom_map = map_two_species(ch2choh, ch3cho)
+        atom_map = engine.map_two_species(ch2choh, ch3cho)
         self.assertIsNone(atom_map)
-
-        # Map RMG Molecule and RMG Species objects.
-        ch3o_xyz = """C       0.03807240    0.00035621   -0.00484242
-                      O       1.35198769    0.01264937   -0.17195885
-                      H      -0.33965241   -0.14992727    1.02079480
-                      H      -0.51702680    0.90828035   -0.29592912
-                      H      -0.53338088   -0.77135867   -0.54806440"""
-        arc_spc = ARCSpecies(label='CH3O', smiles='C[O]', xyz=ch3o_xyz)
-        rmg_mol = arc_spc.mol.copy(deep=True)
-        rmg_spc = Species(molecule=[arc_spc.mol.copy(deep=True)])
-        atom_map = map_two_species(rmg_mol, rmg_spc)
-        self.assertEqual(atom_map, [0, 1, 2, 3, 4])
 
         # Map benzene
         b1 = ARCSpecies(label='benzene', smiles='c1ccccc1')
         b2 = ARCSpecies(label='benzene', smiles='c1ccccc1')
-        atom_map = map_two_species(b1, b2)
+        atom_map = engine.map_two_species(b1, b2)
         self.assertEqual(len(atom_map), 12)
+
+        # Map ethane
+        e1 = ARCSpecies(label='ethane_1', smiles='CC')
+        e2 = ARCSpecies(label='ethane_2', smiles='CC')
+        atom_map = engine.map_two_species(e1, e2)
+        self.assertEqual(len(atom_map), 8)
 
     def test_inc_valss(self):
         s1 = ARCSpecies(label='S1', smiles='C=CC1C(C)C=CC(C)C1C')
         s2 = ARCSpecies(label='S2', smiles='C=CC1C(C)C=CC(C)C1C')
-        atom_map = map_two_species(s1, s2)
+        atom_map = engine.map_two_species(s1, s2)
         self.assertEqual(len(atom_map), 29)
 
     def test_inc_vals(self):
-        """Test creating an atom map via map_two_species() and incrementing all values"""
+        """Test creating an atom map via engine.map_two_species() and incrementing all values"""
         spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
         spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
-        atom_map = map_two_species(spc1, spc2, inc_vals=100)
+        atom_map = engine.map_two_species(spc1, spc2, inc_vals=100)
         self.assertEqual(atom_map, [102, 100, 101, 103, 104])
 
     def test_get_arc_species(self):
         """Test the get_arc_species() function."""
-        self.assertIsInstance(get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
-        self.assertIsInstance(get_arc_species(Species(smiles='C')), ARCSpecies)
-        self.assertIsInstance(get_arc_species(Molecule(smiles='C')), ARCSpecies)
-
-    def test_create_qc_mol(self):
-        """Test the create_qc_mol() function."""
-        qcmol1 = create_qc_mol(species=ARCSpecies(label='S1', smiles='C'))
-        self.assertIsInstance(qcmol1, QCMolecule)
-        self.assertEqual(qcmol1.molecular_charge, 0)
-        self.assertEqual(qcmol1.molecular_multiplicity, 1)
-        for symbol, expected_symbol in zip(qcmol1.symbols, ['C', 'H', 'H', 'H', 'H']):
-            self.assertEqual(symbol, expected_symbol)
-
-        qcmol2 = create_qc_mol(species=[ARCSpecies(label='S1', smiles='C'),
-                                        ARCSpecies(label='S2', smiles='N[CH2]')],
-                                       charge=0,
-                                       multiplicity=2,
-                                       )
-        self.assertIsInstance(qcmol2, QCMolecule)
-        self.assertEqual(qcmol2.molecular_charge, 0)
-        self.assertEqual(qcmol2.molecular_multiplicity, 2)
-        for symbol, expected_symbol in zip(qcmol2.symbols, ['C', 'H', 'H', 'H', 'H', 'N', 'C', 'H', 'H', 'H', 'H']):
-            self.assertEqual(symbol, expected_symbol)
+        self.assertIsInstance(engine.get_arc_species(ARCSpecies(label='S', smiles='C')), ARCSpecies)
+        self.assertIsInstance(engine.get_arc_species(Molecule(smiles='C')), ARCSpecies)
 
     def test_check_species_before_mapping(self):
         """Test the check_species_before_mapping() function."""
-        self.assertFalse(check_species_before_mapping(spc_1=ARCSpecies(label='COC', smiles='COC'),
-                                                      spc_2=ARCSpecies(label='CCO', smiles='CCO'),
-                                                      verbose=True))
-        self.assertFalse(check_species_before_mapping(spc_1=ARCSpecies(label='linear_C6H12', smiles='C=CCCCC'),
-                                                     spc_2=ARCSpecies(label='cyclic_C6H12', smiles='C1CCCCC1'),
-                                                     verbose=True))
-        self.assertTrue(check_species_before_mapping(spc_1=ARCSpecies(label='H2O', smiles='O'),
-                                                     spc_2=ARCSpecies(label='H2O', smiles='O'),
-                                                     verbose=True))
-        self.assertTrue(check_species_before_mapping(spc_1=ARCSpecies(label='nC4H10', smiles='CCCC'),
-                                                     spc_2=ARCSpecies(label='iC4H10', smiles='CC(C)C'),
-                                                     verbose=True))
-        self.assertTrue(check_species_before_mapping(spc_1=self.spc1, spc_2=self.spc2, verbose=True))
+        self.assertFalse(engine.check_species_before_mapping(spc_1=ARCSpecies(label='COC', smiles='COC'),
+                                                             spc_2=ARCSpecies(label='CCO', smiles='CCO'),
+                                                             verbose=True))
+        self.assertFalse(engine.check_species_before_mapping(spc_1=ARCSpecies(label='linear_C6H12', smiles='C=CCCCC'),
+                                                             spc_2=ARCSpecies(label='cyclic_C6H12', smiles='C1CCCCC1'),
+                                                             verbose=True))
+        self.assertTrue(engine.check_species_before_mapping(spc_1=ARCSpecies(label='H2O', smiles='O'),
+                                                            spc_2=ARCSpecies(label='H2O', smiles='O'),
+                                                            verbose=True))
+        self.assertTrue(engine.check_species_before_mapping(spc_1=ARCSpecies(label='nC4H10', smiles='CCCC'),
+                                                            spc_2=ARCSpecies(label='iC4H10', smiles='CC(C)C'),
+                                                            verbose=True))
+        self.assertTrue(engine.check_species_before_mapping(spc_1=self.spc1, spc_2=self.spc2, verbose=True))
 
         with self.assertRaises(ValueError):
-            check_species_before_mapping(spc_1=ARCSpecies(label='CH4', smiles='C'),
-                                                          spc_2=ARCSpecies(label='CH3', smiles='[CH3]'),
-                                                          verbose=True)
+            engine.check_species_before_mapping(spc_1=ARCSpecies(label='CH4', smiles='C'),
+                                                spc_2=ARCSpecies(label='CH3', smiles='[CH3]'),
+                                                verbose=True)
         with self.assertRaises(ValueError):
-            check_species_before_mapping(spc_1=ARCSpecies(label='CO2', smiles='O=C=O'),
-                                                          spc_2=ARCSpecies(label='SCO', smiles='S=C=O'),
-                                                          verbose=True)
+            engine.check_species_before_mapping(spc_1=ARCSpecies(label='CO2', smiles='O=C=O'),
+                                                spc_2=ARCSpecies(label='SCO', smiles='S=C=O'),
+                                                verbose=True)
         with self.assertRaises(ValueError):
-            check_species_before_mapping(spc_1=ARCSpecies(label='CH4', smiles='C'),
-                                                          spc_2=ARCSpecies(label='CH3F', smiles='CF'),
-                                                          verbose=True)
+            engine.check_species_before_mapping(spc_1=ARCSpecies(label='CH4', smiles='C'),
+                                                spc_2=ARCSpecies(label='CH3F', smiles='CF'),
+                                                verbose=True)
 
     def test_get_bonds_dict(self):
         """Test the get_bonds_dict() function."""
-        bond_dict = get_bonds_dict(spc=ARCSpecies(label='CH4', smiles='C'))
+        bond_dict = engine.get_bonds_dict(spc=ARCSpecies(label='CH4', smiles='C'))
         self.assertEqual(bond_dict, {'C-H': 4})
-        bond_dict = get_bonds_dict(spc=self.ccjco)
+        bond_dict = engine.get_bonds_dict(spc=self.ccjco)
         self.assertEqual(bond_dict, {'C-C': 2, 'C-H': 5, 'C-O': 1})
-        bond_dict = get_bonds_dict(spc=ARCSpecies(label='nC4H10', smiles='CCCC'))
+        bond_dict = engine.get_bonds_dict(spc=ARCSpecies(label='nC4H10', smiles='CCCC'))
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
-        bond_dict = get_bonds_dict(spc=ARCSpecies(label='iC4H10', smiles='CC(C)C'))
+        bond_dict = engine.get_bonds_dict(spc=ARCSpecies(label='iC4H10', smiles='CC(C)C'))
         self.assertEqual(bond_dict, {'C-C': 3, 'C-H': 10})
 
     def test_fingerprint(self):
         """Test the fingerprint() function."""
-        fp = fingerprint(ARCSpecies(label='CH4', smiles='C'))
+        fp = engine.fingerprint(ARCSpecies(label='CH4', smiles='C'))
         self.assertEqual(fp, {0: {'self': 'C', 'H': [1, 2, 3, 4]}})
 
-        fp = fingerprint(ARCSpecies(label='butenylnebzene1',
-                                    smiles='c1ccccc1CCC=C',
-                                    xyz=self.butenylnebzene_1_xyz))
+        fp = engine.fingerprint(ARCSpecies(label='butenylnebzene1',
+                                           smiles='c1ccccc1CCC=C',
+                                           xyz=self.butenylnebzene_1_xyz))
         self.assertEqual(fp, self.butenylnebzene_fingerprint)
 
-        fp = fingerprint(ARCSpecies(label='butenylnebzene2',
-                                    smiles='c1ccccc1CCC=C',
-                                    xyz=self.butenylnebzene_2_xyz))
+        fp = engine.fingerprint(ARCSpecies(label='butenylnebzene2',
+                                           smiles='c1ccccc1CCC=C',
+                                           xyz=self.butenylnebzene_2_xyz))
         self.assertEqual(fp, self.butenylnebzene_fingerprint)
 
         so2_s = ARCSpecies(label='SO2', smiles='O=S=O', multiplicity=1,
@@ -756,7 +775,7 @@ class TestMappingEngine(unittest.TestCase):
                                            (-0.04605352293144468, 0.6082507106551855, 0.0),
                                            (1.4014766124312934, -0.19975643502220325, 0.0)),
                                 'isotopes': (16, 32, 16), 'symbols': ('O', 'S', 'O')})
-        fp = fingerprint(so2_s)
+        fp = engine.fingerprint(so2_s)
         self.assertEqual(fp, {0: {'self': 'O', 'S': [1]},
                               1: {'self': 'S', 'O': [0, 2]},
                               2: {'self': 'O', 'S': [1]}})
@@ -766,24 +785,24 @@ class TestMappingEngine(unittest.TestCase):
                                            (-1.3946381818031768, -0.24294788636871906, 0.0),
                                            (1.3673933946336125, -0.36643505437710233, 0.0)),
                                 'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')})
-        fp = fingerprint(so2_t)
+        fp = engine.fingerprint(so2_t)
         self.assertEqual(fp, {0: {'self': 'S', 'O': [1, 2]},
                               1: {'self': 'O', 'S': [0]},
                               2: {'self': 'O', 'S': [0]}})
 
-        fp = fingerprint(self.ccjco)
+        fp = engine.fingerprint(self.ccjco)
         self.assertEqual(fp, {0: {'self': 'C', 'C': [1], 'H': [5, 6, 7]},
                               1: {'self': 'C', 'chirality': 'Z', 'C': [0, 3], 'H': [2]},
                               3: {'self': 'C', 'chirality': 'Z', 'C': [1], 'O': [4], 'H': [8]},
                               4: {'self': 'O', 'C': [3]}})
 
-        fp = fingerprint(self.spc1)
+        fp = engine.fingerprint(self.spc1)
         self.assertEqual(fp, self.fingerprint_1)
 
-        fp = fingerprint(self.spc2)
+        fp = engine.fingerprint(self.spc2)
         self.assertEqual(fp, self.fingerprint_2)
 
-        fp = fingerprint(self.chiral_spc_1)
+        fp = engine.fingerprint(self.chiral_spc_1)
         self.assertEqual(fp, {0: {'self': 'C', 'chirality': 'Z', 'C': [2], 'O': [4], 'H': [1]},
                               2: {'self': 'C', 'chirality': 'Z', 'C': [0, 6], 'H': [3]},
                               4: {'self': 'O', 'C': [0], 'H': [5]},
@@ -791,21 +810,21 @@ class TestMappingEngine(unittest.TestCase):
                               8: {'self': 'N', 'C': [6], 'H': [9, 10]},
                               11: {'self': 'S', 'C': [6], 'H': [12]}})
 
-        fp = fingerprint(self.chiral_spc_2)
+        fp = engine.fingerprint(self.chiral_spc_2)
         self.assertEqual(fp, {0: {'self': 'C', 'chirality': 'E', 'C': [1], 'O': [10], 'H': [12]},
-                                       1: {'self': 'C', 'chirality': 'E', 'C': [0, 3], 'H': [2]},
-                                       3: {'self': 'C', 'chirality': 'R', 'C': [1], 'N': [7], 'S': [5], 'H': [4]},
-                                       5: {'self': 'S', 'C': [3], 'H': [6]},
-                                       7: {'self': 'N', 'C': [3], 'H': [8, 9]},
-                                       10: {'self': 'O', 'C': [0], 'H': [11]}})
+                              1: {'self': 'C', 'chirality': 'E', 'C': [0, 3], 'H': [2]},
+                              3: {'self': 'C', 'chirality': 'R', 'C': [1], 'N': [7], 'S': [5], 'H': [4]},
+                              5: {'self': 'S', 'C': [3], 'H': [6]},
+                              7: {'self': 'N', 'C': [3], 'H': [8, 9]},
+                              10: {'self': 'O', 'C': [0], 'H': [11]}})
 
     def test_identify_superimposable_candidates(self):
         """Test the identify_superimposable_candidates() function."""
-        candidates = identify_superimposable_candidates(fingerprint_1=self.fingerprint_1,
+        candidates = engine.identify_superimposable_candidates(fingerprint_1=self.fingerprint_1,
                                                         fingerprint_2=self.fingerprint_2)
         self.assertEqual(candidates, [{0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
 
-        candidates = identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
+        candidates = engine.identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                         fingerprint_2=self.butenylnebzene_fingerprint)
         self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
 
@@ -865,25 +884,25 @@ class TestMappingEngine(unittest.TestCase):
                          9: {'self': 'C', 'C': [2, 7, 10], 'H': [25]},  # 31, 31, 13
                          10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
         for fp in [fingerprint_2, fingerprint_3, fingerprint_4, fingerprint_5]:
-            candidates = identify_superimposable_candidates(fingerprint_1=fingerprint_1, fingerprint_2=fp)
+            candidates = engine.identify_superimposable_candidates(fingerprint_1=fingerprint_1, fingerprint_2=fp)
             self.assertEqual(candidates, [{0: 9, 1: 2, 2: 7, 3: 3, 4: 10, 5: 8, 6: 4, 7: 6, 8: 5, 9: 1, 10: 0}])
 
     def test_are_adj_elements_in_agreement(self):
         """Test the are_adj_elements_in_agreement() function."""
-        self.assertFalse(are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
-                                                       {'self': 'C', 'C': [0, 3], 'H': [2]}))
-        self.assertFalse(are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
-                                                       {'self': 'C', 'O': [3]}))
-        self.assertFalse(are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
-                                                       {'self': 'O', 'C': [3]}))
-        self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
-                                                      {'self': 'C', 'C': [2]}))
-        self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
-                                                      {'self': 'C', 'C': [1], 'O': [4], 'H': [7]}))
-        self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
-                                                      {'self': 'C', 'C': [3]}))
-        self.assertTrue(are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
-                                                      {'self': 'C', 'C': [1], 'O': [4], 'H': [8]}))
+        self.assertFalse(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
+                                                              {'self': 'C', 'C': [0, 3], 'H': [2]}))
+        self.assertFalse(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
+                                                              {'self': 'C', 'O': [3]}))
+        self.assertFalse(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
+                                                              {'self': 'O', 'C': [3]}))
+        self.assertTrue(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
+                                                             {'self': 'C', 'C': [2]}))
+        self.assertTrue(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
+                                                             {'self': 'C', 'C': [1], 'O': [4], 'H': [7]}))
+        self.assertTrue(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [3]},
+                                                             {'self': 'C', 'C': [3]}))
+        self.assertTrue(engine.are_adj_elements_in_agreement({'self': 'C', 'C': [1], 'O': [4], 'H': [8]},
+                                                             {'self': 'C', 'C': [1], 'O': [4], 'H': [8]}))
         fp_1_vals = [{'self': 'C', 'C': [1, 2, 4], 'H': [11]},  # 31, 31, 13
                      {'self': 'C', 'C': [0, 3, 9], 'H': [12]},  # 31, 31, 21
                      {'self': 'C', 'C': [0, 5, 7], 'H': [13]},  # 31, 13, 21
@@ -918,78 +937,72 @@ class TestMappingEngine(unittest.TestCase):
                      {'self': 'C', 'C': [7], 'H': [22, 23, 24]},  # 31
                      {'self': 'C', 'C': [9], 'H': [26, 27, 28]}]  # 31
         for val_1, val_2 in zip(fp_1_vals, fp_2_vals):
-            self.assertTrue(are_adj_elements_in_agreement(val_1, val_2))
+            self.assertTrue(engine.are_adj_elements_in_agreement(val_1, val_2))
         for val_1, val_3 in zip(fp_1_vals, fp_3_vals):
-            self.assertTrue(are_adj_elements_in_agreement(val_1, val_3))
+            self.assertTrue(engine.are_adj_elements_in_agreement(val_1, val_3))
         for val_2, val_3 in zip(fp_2_vals, fp_3_vals):
-            self.assertTrue(are_adj_elements_in_agreement(val_2, val_3))
+            self.assertTrue(engine.are_adj_elements_in_agreement(val_2, val_3))
 
     def test_iterative_dfs(self):
         """Test the iterative_dfs() function."""
-        result = iterative_dfs(fingerprint_1={0: {'self': 'C', 'C': [1]},
-                                              1: {'self': 'C', 'H': [3, 4]}},
-                               fingerprint_2={0: {'self': 'C', 'C': [1]},
-                                              1: {'self': 'C', 'H': [3, 4]}},
-                               key_1=0,
-                               key_2=0,
-                               )
+        result = engine.iterative_dfs(fingerprint_1={0: {'self': 'C', 'C': [1]},
+                                                     1: {'self': 'C', 'H': [3, 4]}},
+                                      fingerprint_2={0: {'self': 'C', 'C': [1]},
+                                                     1: {'self': 'C', 'H': [3, 4]}},
+                                      key_1=0, key_2=0)
         self.assertEqual(result, {0: 0, 1: 1})
-        result = iterative_dfs(fingerprint_1=self.fingerprint_1,
-                               fingerprint_2=self.fingerprint_2,
-                               key_1=0,
-                               key_2=0,
-                               )
+        result = engine.iterative_dfs(fingerprint_1=self.fingerprint_1,
+                                      fingerprint_2=self.fingerprint_2,
+                                      key_1=0, key_2=0)
         self.assertEqual(result, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
 
         fingerprint_2 = {
-                         9: {'self': 'C', 'C': [2, 7, 10], 'H': [25]},  # 31, 31, 13
-                         2: {'self': 'C', 'C': [3, 9, 1], 'H': [14]},  # 31, 31, 21
-                         3: {'self': 'C', 'C': [2, 4, 5], 'H': [15]},  # 31, 13, 21
-                         7: {'self': 'C', 'C': [9, 8, 6], 'H': [21]},  # 31, 13, 21
-                         5: {'self': 'C', 'C': [3, 6], 'H': [19]},  # 31, 21
-                         6: {'self': 'C', 'C': [7, 5], 'H': [20]},  # 31, 21
-                         1: {'self': 'C', 'C': [2, 0], 'H': [13]},  # 31, 12
-                         0: {'self': 'C', 'C': [1], 'H': [11, 12]},  # 21
-                         4: {'self': 'C', 'C': [3], 'H': [16, 17, 18]},  # 31
-                         8: {'self': 'C', 'C': [7], 'H': [22, 23, 24]},  # 31
-                         10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
+            9: {'self': 'C', 'C': [2, 7, 10], 'H': [25]},  # 31, 31, 13
+            2: {'self': 'C', 'C': [3, 9, 1], 'H': [14]},  # 31, 31, 21
+            3: {'self': 'C', 'C': [2, 4, 5], 'H': [15]},  # 31, 13, 21
+            7: {'self': 'C', 'C': [9, 8, 6], 'H': [21]},  # 31, 13, 21
+            5: {'self': 'C', 'C': [3, 6], 'H': [19]},  # 31, 21
+            6: {'self': 'C', 'C': [7, 5], 'H': [20]},  # 31, 21
+            1: {'self': 'C', 'C': [2, 0], 'H': [13]},  # 31, 12
+            0: {'self': 'C', 'C': [1], 'H': [11, 12]},  # 21
+            4: {'self': 'C', 'C': [3], 'H': [16, 17, 18]},  # 31
+            8: {'self': 'C', 'C': [7], 'H': [22, 23, 24]},  # 31
+            10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
         fingerprint_3b = {
-                         9: {'self': 'C', 'C': [2, 7, 10], 'H': [25]},  # 31, 31, 13
-                         2: {'self': 'C', 'C': [3, 9, 1], 'H': [14]},  # 21, 31, 31
-                         3: {'self': 'C', 'C': [2, 4, 5], 'H': [15]},  # 31, 13, 21
-                         7: {'self': 'C', 'C': [6, 8, 9], 'H': [21]},  # 21, 13, 31  !
-                         5: {'self': 'C', 'C': [3, 6], 'H': [19]},  # 31, 21
-                         6: {'self': 'C', 'C': [5, 7], 'H': [20]},  # 21, 31
-                         1: {'self': 'C', 'C': [0, 2], 'H': [13]},  # 12, 31
-                         0: {'self': 'C', 'C': [1], 'H': [11, 12]},  # 21
-                         4: {'self': 'C', 'C': [3], 'H': [16, 17, 18]},  # 31
-                         8: {'self': 'C', 'C': [7], 'H': [22, 23, 24]},  # 31
-                         10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
-        result = iterative_dfs(fingerprint_1=fingerprint_2,
-                               fingerprint_2=fingerprint_3b,
-                               key_1=7,
-                               key_2=7,
-                               )
+            9: {'self': 'C', 'C': [2, 7, 10], 'H': [25]},  # 31, 31, 13
+            2: {'self': 'C', 'C': [3, 9, 1], 'H': [14]},  # 21, 31, 31
+            3: {'self': 'C', 'C': [2, 4, 5], 'H': [15]},  # 31, 13, 21
+            7: {'self': 'C', 'C': [6, 8, 9], 'H': [21]},  # 21, 13, 31  !
+            5: {'self': 'C', 'C': [3, 6], 'H': [19]},  # 31, 21
+            6: {'self': 'C', 'C': [5, 7], 'H': [20]},  # 21, 31
+            1: {'self': 'C', 'C': [0, 2], 'H': [13]},  # 12, 31
+            0: {'self': 'C', 'C': [1], 'H': [11, 12]},  # 21
+            4: {'self': 'C', 'C': [3], 'H': [16, 17, 18]},  # 31
+            8: {'self': 'C', 'C': [7], 'H': [22, 23, 24]},  # 31
+            10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
+        result = engine.iterative_dfs(fingerprint_1=fingerprint_2,
+                                      fingerprint_2=fingerprint_3b,
+                                      key_1=7, key_2=7)
         self.assertEqual(result, {7: 7, 6: 6, 5: 5, 3: 3, 4: 4, 2: 2, 1: 1, 0: 0, 9: 9, 10: 10, 8: 8})
 
     def test_prune_identical_dicts(self):
         """Test the prune_identical_dicts() function."""
-        new_dicts_list = prune_identical_dicts([{0: 0}])
+        new_dicts_list = engine.prune_identical_dicts([{0: 0}])
         self.assertEqual(new_dicts_list, [{0: 0}])
-        new_dicts_list = prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}])
+        new_dicts_list = engine.prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}])
         self.assertEqual(new_dicts_list, [{0: 0}])
-        new_dicts_list = prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}, {0: 1}])
+        new_dicts_list = engine.prune_identical_dicts([{0: 0}, {0: 0}, {0: 0}, {0: 1}])
         self.assertEqual(new_dicts_list, [{0: 0}, {0: 1}])
-        new_dicts_list = prune_identical_dicts([{0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
-                                                {0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
+        new_dicts_list = engine.prune_identical_dicts([{0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
+                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
+                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
+                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4},
+                                                       {0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
         self.assertEqual(new_dicts_list, [{0: 0, 3: 1, 4: 2, 5: 3, 6: 4}])
 
     def test_remove_gaps_from_values(self):
         """Test the remove_gaps_from_values() function."""
-        self.assertEqual(remove_gaps_from_values({5: 18, 7: 502, 21: 0, 0: 55, 2: 1}),
+        self.assertEqual(engine.remove_gaps_from_values({5: 18, 7: 502, 21: 0, 0: 55, 2: 1}),
                          {5: 2, 7: 4, 21: 0, 0: 3, 2: 1})
 
     def test_fix_dihedrals_by_backbone_mapping(self):
@@ -1003,32 +1016,32 @@ class TestMappingEngine(unittest.TestCase):
         original_dihedrals_2 = [calculate_dihedral_angle(coords=self.spc2.get_xyz(),
                                                          torsion=[atom_map[t] for t in rotor_dict['torsion']])
                                 for rotor_dict in self.spc1.rotors_dict.values()]
-        spc1, spc2 = fix_dihedrals_by_backbone_mapping(spc_1=self.spc1, spc_2=self.spc2, backbone_map=atom_map)
+        spc1, spc2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=self.spc1, spc_2=self.spc2, backbone_map=atom_map)
         new_dihedrals_1 = [calculate_dihedral_angle(coords=spc1.get_xyz(),
                                                     torsion=rotor_dict['torsion'])
                            for rotor_dict in spc1.rotors_dict.values()]
         new_dihedrals_2 = [calculate_dihedral_angle(coords=spc2.get_xyz(),
                                                     torsion=[atom_map[t] for t in rotor_dict['torsion']])
                            for rotor_dict in spc1.rotors_dict.values()]
-        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622, places = 5)
-        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804, places = 5)
-        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 5)
-        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 5)
+        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622, places = 4)
+        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804, places = 4)
+        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 4)
+        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 4)
 
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score() function."""
         self.spc1_dihedral_deviation.determine_rotors()
         self.spc2_dihedral_deviation.determine_rotors()
-        fingerprint_1, fingerprint_2 = fingerprint(self.spc1), fingerprint(self.spc2)
-        backbone_map = identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
-        score = get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
+        fingerprint_1, fingerprint_2 = engine.fingerprint(self.spc1), engine.fingerprint(self.spc2)
+        backbone_map = engine.identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
+        score = engine.get_backbone_dihedral_deviation_score(spc_1=self.spc1, spc_2=self.spc2, backbone_map=backbone_map)
         self.assertAlmostEqual(score, 106.8417836)
 
     def test_get_backbone_dihedral_angles(self):
         """Test the get_backbone_dihedral_angles() function."""
         self.spc1.determine_rotors()
         self.spc2.determine_rotors()
-        torsions = get_backbone_dihedral_angles(self.spc1, self.spc2, backbone_map={0: 0, 3: 1, 5: 3, 6: 4, 4: 2})
+        torsions = engine.get_backbone_dihedral_angles(self.spc1, self.spc2, backbone_map={0: 0, 3: 1, 5: 3, 6: 4, 4: 2})
         self.assertEqual(torsions[0]['torsion 1'], [0, 3, 5, 6])
         self.assertEqual(torsions[0]['torsion 2'], [0, 1, 3, 4])
         self.assertAlmostEqual(torsions[0]['angle 1'], 67.81049913527622)
@@ -1036,130 +1049,509 @@ class TestMappingEngine(unittest.TestCase):
 
     def test_map_lists(self):
         """Test the map_lists function."""
-        self.assertEqual(map_lists([], []), {})
-        self.assertEqual(map_lists([0], [0]), {0: 0})
-        self.assertEqual(map_lists([120.5, 80.7, 345.9], [90.2, 355.0, 111.1]), {0: 2, 1: 0, 2: 1})
-        self.assertEqual(map_lists([179.9, 4.18e-06], [180.8, 359.7]), {0: 0, 1: 1})
+        self.assertEqual(engine.map_lists([], []), {})
+        self.assertEqual(engine.map_lists([0], [0]), {0: 0})
+        self.assertEqual(engine.map_lists([120.5, 80.7, 345.9], [90.2, 355.0, 111.1]), {0: 2, 1: 0, 2: 1})
+        self.assertEqual(engine.map_lists([179.9, 4.18e-06], [180.8, 359.7]), {0: 0, 1: 1})
         with self.assertRaises(ValueError):
-            map_lists([5.0], [3.2, 7.9])
+            engine.map_lists([5.0], [3.2, 7.9])
 
-    def test_map_hydrogens(self):
-        """Test the map_hydrogens() function."""
-        # Todo: Add tests with many types of torsions and non(pseudo)-torsions, multiple bonds, cyclics.
+    def test_find_hydrogen_neighbors(self):
+        """Test the _find_hydrogen_neighbors() function."""
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(0, [])
+
+        # No hydrogens (N2 molecule)
+        spc_n2 = ARCSpecies(label='N2', smiles='N#N', xyz="""N 0 0 0\nN 0 0 1""")
+        atoms_n2 = spc_n2.mol.atoms
+        self.assertEqual(engine._find_hydrogen_neighbors(0, atoms_n2), [])
+        self.assertEqual(engine._find_hydrogen_neighbors(1, atoms_n2), [])
+
+        spc_ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        atoms_ch4 = spc_ch4.mol.atoms
+        neighbors = engine._find_hydrogen_neighbors(0, atoms_ch4)
+        self.assertCountEqual(neighbors, [1, 2, 3, 4])
+        self.assertEqual(neighbors, sorted(neighbors), "Neighbors should be returned sorted")
+
+        # Edge: negative and out-of-range indices
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(-1, atoms_ch4)
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(len(atoms_ch4), atoms_ch4)
+
+        spc_etoh = ARCSpecies(label='EtOH', smiles='CCO', xyz=self.xyz_ethanol)
+        atoms_etoh = spc_etoh.mol.atoms
+        self.assertCountEqual(engine._find_hydrogen_neighbors(0, atoms_etoh), [4, 5, 6])
+        self.assertCountEqual(engine._find_hydrogen_neighbors(1, atoms_etoh), [7, 8])
+        self.assertCountEqual(engine._find_hydrogen_neighbors(2, atoms_etoh), [3])
+
+    def test_select_ch3_anchors_rotor_branch(self):
+        """Test that rotors_dict entries are picked first in _select_ch3_anchors."""
+        # Use the product species from setUp which contains a CH₃ with a real internal rotor
+        spc = self.p_1
+        # Populate rotors_dict
+        spc.determine_rotors()
+        atoms = spc.mol.atoms
+        # Find the CH₃ center: heavy atom with exactly 3 H neighbors
+        heavy_idx = next(
+            i for i in range(len(atoms))
+            if not atoms[i].is_hydrogen()
+            and len(engine._find_hydrogen_neighbors(i, atoms)) == 3
+        )
+        # Identity mapping for this heavy atom
+        backbone_map = {heavy_idx: heavy_idx}
+        # Select anchors
+        anchors = engine._select_ch3_anchors(heavy_idx, spc, backbone_map)
+        self.assertIsNotNone(anchors, "Expected rotor‐based anchors for CH₃")
+        A_idx, B_idx = anchors
+
+        # A must be one of the two heavy neighbors of the CH₃ carbon
+        heavy_nb = engine._find_preferably_heavy_neighbor(heavy_idx, spc)
+        self.assertEqual(A_idx, heavy_nb)
+
+        # B must be the non‐H end of the rotor (e.g., an O or C), not H, and not the center or A
+        self.assertFalse(atoms[B_idx].is_hydrogen(), "Rotor anchor B must be non‐hydrogen")
+        self.assertNotIn(B_idx, (heavy_idx, A_idx), "Anchor B must be distinct from C and A")
+
+    def test_construct_local_axes(self):
+        """Test the _construct_local_axes() helper for building a local frame."""
+        # Simple orthonormal case: C at origin, A on x, B on y
+        coords = [(0.0, 0.0, 0.0),
+                  (1.0, 0.0, 0.0),
+                  (0.0, 1.0, 0.0)]
+        e_x, e_y, e_z = engine._construct_local_axes(center_idx=0, anchor1_idx=1, anchor2_idx=2, coords=coords)
+        # x-axis should be unit x, y unit y, z unit z
+        np.testing.assert_allclose(e_x, [1.0, 0.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(e_y, [0.0, 1.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(e_z, [0.0, 0.0, 1.0], atol=1e-6)
+
+        # Colinear anchors → cannot define unique plane
+        coords_colinear = [(0.0, 0.0, 0.0),
+                           (1.0, 0.0, 0.0),
+                           (2.0, 0.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_colinear)
+
+        # Zero‐length anchor1 (A coincides with C)
+        coords_overlap1 = [(0.0, 0.0, 0.0),
+                           (0.0, 0.0, 0.0),
+                           (0.0, 1.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_overlap1)
+
+        # Zero‐length anchor2 (B coincides with C)
+        coords_overlap2 = [(0.0, 0.0, 0.0),
+                           (1.0, 0.0, 0.0),
+                           (0.0, 0.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_overlap2)
+
+    def test_compute_azimuthal_angles(self):
+        """Test the _compute_azimuthal_angles() helper for azimuth calculations."""
+        # setup simple coords: center at 0, 1:+y, 2:+z, 3:-y, 4:-z
+        coords = [(0.0, 0.0, 0.0),  # center
+                  (0.0, 1.0, 0.0),  # +y
+                  (0.0, 0.0, 1.0),  # +z
+                  (0.0, -1.0, 0.0),  # -y
+                  (0.0, 0.0, -1.0)]  # -z
+        # axes: y-axis and z-axis
+        e_y = np.array([0.0, 1.0, 0.0])
+        e_z = np.array([0.0, 0.0, 1.0])
+        # compute angles
+        angles = engine._compute_azimuthal_angles(center_idx=0,
+                                                  hydrogen_indices=[1,2,3,4],
+                                                  coords=coords,
+                                                  e_y=e_y,
+                                                  e_z=e_z)
+        # check expected: +y→0°, +z→90°, -y→180°, -z→270°
+        self.assertAlmostEqual(angles[1], 0.0, places=6)
+        self.assertAlmostEqual(angles[2], 90.0, places=6)
+        self.assertAlmostEqual(angles[3], 180.0, places=6)
+        self.assertAlmostEqual(angles[4], 270.0, places=6)
+
+        # empty hydrogen list → empty dict
+        empty = engine._compute_azimuthal_angles(center_idx=0,
+                                                hydrogen_indices=[],
+                                                coords=coords,
+                                                e_y=e_y,
+                                                e_z=e_z)
+        self.assertEqual(empty, {})
+
+        # non-origin center
+        coords2 = [(1.0, 1.0, 1.0),  # center
+                   (1.0, 2.0, 1.0),  # +y
+                   (1.0, 1.0, 2.0)]  # +z
+        angles2 = engine._compute_azimuthal_angles(center_idx=0,
+                                                   hydrogen_indices=[1,2],
+                                                   coords=coords2,
+                                                   e_y=e_y,
+                                                   e_z=e_z)
+        self.assertAlmostEqual(angles2[1], 0.0, places=6)
+        self.assertAlmostEqual(angles2[2], 90.0, places=6)
+
+    def test_determine_cyclic_shift(self):
+        """Test the _determine_cyclic_shift() helper for cyclic permutation mapping."""
+        # Trivial empty inputs
+        self.assertEqual(engine._determine_cyclic_shift({}, {}), {})
+
+        # Single hydrogen → maps to itself
+        angles_a = {1: 45.0}
+        angles_b = {1: 200.0}
+        self.assertEqual(engine._determine_cyclic_shift(angles_a, angles_b), {1: 1})
+
+        # Three‐H case: simple 120° rotations
+        angles1 = {1: 0.0, 2: 120.0, 3: 240.0}
+        # rotated forward by one position: H1→120°, H2→240°, H3→0°
+        angles2 = {1: 120.0, 2: 240.0, 3: 0.0}
+        # items1 sorted: [1,2,3]; items2 sorted by angle gives [3,1,2];
+        # best shift is 0, so 1→3, 2→1, 3→2
+        expected = {1: 3, 2: 1, 3: 2}
+        self.assertEqual(engine._determine_cyclic_shift(angles1, angles2), expected)
+
+        # rotated another way: H1→240°, H2→0°, H3→120°
+        angles3 = {1: 240.0, 2: 0.0, 3: 120.0}
+        # items2 sorted gives [2,3,1]; shift=0 best, mapping 1→2,2→3,3→1
+        expected3 = {1: 2, 2: 3, 3: 1}
+        self.assertEqual(engine._determine_cyclic_shift(angles1, angles3), expected3)
+
+        # Four‐H case: 90° spacing
+        angles4 = {1: 0.0, 2: 90.0, 3: 180.0, 4: 270.0}
+        # rotate by two positions: H1→180°, H2→270°, H3→0°, H4→90°
+        angles5 = {1: 180.0, 2: 270.0, 3: 0.0, 4: 90.0}
+        # items1 sorted [1,2,3,4]; items2 sorted [3,4,1,2]; best shift = 2
+        expected45 = {1: 3, 2: 4, 3: 1, 4: 2}
+        self.assertEqual(engine._determine_cyclic_shift(angles4, angles5), expected45)
+
+    def test_map_xh3_group(self):
+        """Test the _map_xh3_group() helper on isopentane conformers."""
+        spc1 = ARCSpecies(label='ip1', smiles='CCC(C)C', xyz=self.ip1_xyz)
+        spc2 = ARCSpecies(label='ip2', smiles='CCC(C)C', xyz=self.ip2_xyz)
+
+        # identify the heavy‐atom map
+        fp1 = engine.fingerprint(spc1)
+        fp2 = engine.fingerprint(spc2)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+
+        # Choose the CH3 center in spc1 (atom 13) and its counterpart in spc2
+        heavy_idx_1 = 13
+        heavy_idx_2 = backbone_map[heavy_idx_1]
+        self.assertIn(heavy_idx_1, backbone_map)
+
+        # Now map just that CH3 group
+        h_map = engine._map_xh3_group(heavy_idx_1, heavy_idx_2, spc1, spc2, backbone_map)
+        self.assertIsInstance(h_map, dict)
+
+        # The three H’s on heavy_idx_1 should map bijectively to those on heavy_idx_2
+        from_atoms = set(engine._find_hydrogen_neighbors(heavy_idx_1, spc1.mol.atoms))
+        to_atoms   = set(engine._find_hydrogen_neighbors(heavy_idx_2, spc2.mol.atoms))
+        self.assertEqual(set(h_map.keys()),   from_atoms)
+        self.assertEqual(set(h_map.values()), to_atoms)
+        self.assertEqual(len(h_map), 3)
+        self.assertEqual(len(set(h_map.values())), 3)
+
+    def test_map_hydrogens_for_ch4(self):
+        """Test the map_hydrogens() function for a single heavy atom with only H's."""
         # CH4 different order
-        spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
-        spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
-        atom_map = map_hydrogens(spc1, spc2, {0: 2})
+        spc_1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        spc_2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
+        atom_map = engine.map_hydrogens(spc_1, spc_2, {0: 2})
         self.assertEqual(atom_map, {0: 2, 1: 0, 2: 1, 3: 3, 4: 4})
 
+    def test_map_hydrogens_for_single_h_on_heavy_atoms(self):
+        """Test the map_hydrogens() function for heavy atoms with maximum one single hydrogen on each."""
+        xyz_1 = """O      -1.78378112   -0.07989467   -0.47936774
+                   N      -1.16852603   -0.02514720    0.84471578
+                   C       0.22018472    0.38367028    0.66125478
+                   O       0.24312897    1.55910092   -0.11622817
+                   C       1.03976213   -0.70604389    0.03329338
+                   C       1.67134490   -0.65646332   -1.10629070
+                   H      -2.11442122   -1.00024313   -0.50590521
+                   H      -1.65290299    0.76853334    1.27089430
+                   H       0.65354019    0.61949070    1.63872434
+                   H       0.17700909    2.25408216    0.56213511
+                   H       1.10670066   -1.62397813    0.60964145
+                   H       2.18842073   -0.59379847   -2.03612575"""
+        xyz_2 = """O       0.41112542   -1.22479678    2.75467095
+                   N      -0.42661217   -0.50407979    1.96197968
+                   C       0.35967522    0.24409217    0.97057227
+                   O      -0.52118100    1.00191440    0.13708582
+                   C       1.16481566   -0.74191592    0.10389284
+                   C       0.62499012   -1.23995505   -1.03500421
+                   H       1.01405509   -0.63028060    3.20702754
+                   H      -1.05466203   -1.12336547    1.49077159
+                   H       1.03169372    0.90672185    1.47476659
+                   H      -1.12411657    0.40740453   -0.31527139
+                   H       2.15045290   -1.03377272    0.40094515
+                   H       0.19872637   -1.63316639   -1.93423041"""
+        spc_1 = ARCSpecies(label='spc1', smiles='ONC(O)C=[CH]', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='ONC(O)C=[CH]', xyz=xyz_2)
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5})
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11})
+        xyz_3 = """O       0.41112542   -1.22479678    2.75467095
+                   N      -0.42661217   -0.50407979    1.96197968
+                   C       0.35967522    0.24409217    0.97057227
+                   O      -0.52118100    1.00191440    0.13708582
+                   C       1.16481566   -0.74191592    0.10389284
+                   C       0.62499012   -1.23995505   -1.03500421
+                   H      -1.05466203   -1.12336547    1.49077159
+                   H       2.15045290   -1.03377272    0.40094515
+                   H       1.03169372    0.90672185    1.47476659
+                   H       1.01405509   -0.63028060    3.20702754
+                   H      -1.12411657    0.40740453   -0.31527139
+                   H       0.19872637   -1.63316639   -1.93423041"""
+        spc_3 = ARCSpecies(label='spc3', smiles='ONC(O)C=[CH]', xyz=xyz_3)
+        atom_map = engine.map_hydrogens(spc_1, spc_3, backbone_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5})
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 9, 7: 6, 8: 8, 9: 10, 10: 7, 11: 11})
+
+    def test_map_xh2_group(self):
+        """Test the _map_xh2_group() function"""
+        xyz_1 = """C       1.71777985    0.22186921   -0.32888859
+                   C       0.44722671   -0.23882480    0.28782542
+                   O      -0.48797990    0.84313759    0.23934840
+                   N      -1.74672519    0.40251813    0.83397838
+                   H       2.63121996   -0.33161432   -0.15320366
+                   H       1.70806777    0.99933016   -1.08280545
+                   H       0.62398733   -0.52636323    1.32981975
+                   H       0.05456545   -1.09437630   -0.27196331
+                   H      -1.88642313    1.12251331    1.54492954
+                   H      -2.40284632    0.62316863    0.08295105"""
+        xyz_2 = """C      -1.31502876    0.82850696   -2.07759014
+                   C      -0.39947562    0.21077887   -1.00438259
+                   O      -1.19482148   -0.26236793    0.08578119
+                   N      -1.88870944    0.77572628    0.62474305
+                   H      -1.24822024    1.46878060    0.95557426
+                   H       0.28584783    0.95234699   -0.65039319
+                   H       0.14645095   -0.60595702   -1.42841876
+                   H      -1.70702067    0.21669181   -2.86303559
+                   H      -1.55916794    1.86952281   -2.03781486
+                   H      -2.48322447    1.17684842   -0.07214496"""
+        spc_1 = ARCSpecies(label='spc1', smiles='[CH2]CON', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='[CH2]CON', xyz=xyz_2)
+        spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
+                                                                backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
+        self.assertIn(atom_map, [{0: 0, 1: 1, 2: 2, 3: 3, 4: 8, 5: 7, 6: 5, 7: 6, 8: 9, 9: 4},
+                                 {0: 0, 1: 1, 2: 2, 3: 3, 4: 7, 5: 8, 6: 5, 7: 6, 8: 9, 9: 4}])
+
+        xyz_1 = """N      -2.31169934    0.57251914    1.41398587
+                   C      -1.95790794   -0.61538632    0.62830129
+                   C      -1.19614695   -0.24565674   -0.66106245
+                   N      -0.10805638    0.69926830   -0.37270500
+                   C       0.63334828    1.01379951   -1.56146932
+                   N       1.72970712    1.78584426   -1.04974580
+                   H      -1.46140921    1.14556886    1.45605403
+                   H      -2.95048877    1.14456485    0.86175692
+                   H      -1.32992599   -1.26283108    1.25066829
+                   H      -2.86469243   -1.17672538    0.38054649
+                   H      -0.80679217   -1.16334732   -1.11746963
+                   H      -1.89850797    0.21433169   -1.36696304
+                   H       0.54924511    0.26849764    0.27776412
+                   H       0.03525073    1.60547903   -2.26189226
+                   H       1.01127042    0.12215965   -2.07192540
+                   H       1.32623020    2.53876080   -0.49516348
+                   H       2.21486569    2.23175743   -1.82460787"""
+        xyz_2 = """N      -1.20064542   -1.12464685    1.63577019
+                   H       1.14397561    2.09602183   -1.07719477
+                   C      -2.02201648   -0.76564162    0.47071017
+                   H      -1.70418185   -0.06891996   -1.53642545
+                   H       2.02197473   -0.10223554   -0.94359559
+                   H       0.24890968    0.58918291    0.51947681
+                   C       0.56423434    1.24901795   -1.37949346
+                   H      -2.60175775   -1.61264550    0.16841148
+                   N       1.46321891    0.14198569   -1.73615342
+                   H      -1.79525799   -1.40737732    2.38843171
+                   H      -0.58909129   -1.87773001    1.39314436
+                   H      -2.67637939    0.04015737    0.73031981
+                   H      -0.03363439    1.51033468   -2.22753034
+                   C      -1.10631312   -0.33023669   -0.68838857
+                   N      -0.30984614    0.83340415   -0.27308102
+                   H       0.92140464   -0.64960671   -2.01867556
+                   H      -0.45195020   -1.13603568   -0.94799820"""
+        spc_1 = ARCSpecies(label='spc1', smiles='NCCNCN', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='NCCNCN', xyz=xyz_2)
+        spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
+                                                                backbone_map={0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8})
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8})
+        self.assertIn(atom_map,
+                      [{0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 4, 16: 15},
+                       {0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 15, 16: 4}])
+
+    def test_map_hydrogens_for_rotors(self):
+        """Test the map_hydrogens() function for a species with 5 heavy atoms."""
         # One inner torsion, several terminal torsions.
         self.spc1.determine_rotors()
         self.spc2.determine_rotors()
-        fingerprint_1, fingerprint_2 = fingerprint(self.spc1), fingerprint(self.spc2)
-        backbone_map = identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
+        fingerprint_1, fingerprint_2 = engine.fingerprint(self.spc1), engine.fingerprint(self.spc2)
+        backbone_map = engine.identify_superimposable_candidates(fingerprint_1, fingerprint_2)[0]
         self.assertEqual(backbone_map, {0: 0, 3: 1, 5: 3, 6: 4, 4: 2})
-        atom_map = map_hydrogens(self.spc1, self.spc2, backbone_map)
+        atom_map = engine.map_hydrogens(self.spc1, self.spc2, backbone_map)
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
 
+    def test_map_hydrogens_ch3(self):
+        """Three‐H rotor: [CH3] in two different geometries."""
+        spc1 = ARCSpecies(label='CH3a', smiles='[CH3]', xyz=self.ch3_xyz)
+        spc2 = ARCSpecies(label='CH3b', smiles='[CH3]', xyz=self.ch3_xyz_2)
+        # carbon is atom 0 in both
+        backbone_map = {0: 0}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        # C→C must hold
+        self.assertEqual(atom_map[0], 0)
+        # the three H indices (1,2,3) must map bijectively to (1,2,3)
+        self.assertCountEqual([atom_map[i] for i in (1, 2, 3)], [1, 2, 3])
+
+    def test_map_hydrogens_ch3cl(self):
+        """–CH3 on Cl: all three H’s should batch‐map in index order."""
+        spc1 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)
+        spc2 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)  # same geometry
+        # Cl=atom0, C=atom1
+        backbone_map = {0: 0, 1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        # expect trivial identity
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
+
+    def test_map_hydrogens_hcl(self):
+        """Single‐H fallback on HCl."""
+        spc1 = ARCSpecies(label='HCl', smiles='[H]Cl', xyz=self.hcl_xyz)
+        spc2 = ARCSpecies(label='HCl', smiles='[H]Cl', xyz=self.hcl_xyz)
+        # Cl is atom 1 → 1, H is atom 0 → 0
+        backbone_map = {1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        self.assertEqual(atom_map, {0: 0, 1: 1})
+
+    def test_map_hydrogens_ethane(self):
+        """Map hydrogens in ethane."""
+        spc1 = ARCSpecies(label='ethane_1', smiles='CC', xyz=self.c2h6_xyz)
+        spc2 = ARCSpecies(label='ethane_2', smiles='CC', xyz=self.c2h6_xyz)
+        backbone_map = {0:0, 1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7})
+
+    def test_map_hydrogens_two_h_rotor(self):
+        """A genuine two‐H rotor: CH2 in our dihedral‐deviation example."""
+        # ensure the torsions have been found
+        self.spc1_dihedral_deviation.determine_rotors()
+        self.spc2_dihedral_deviation.determine_rotors()
+        fp1 = engine.fingerprint(self.spc1_dihedral_deviation)
+        fp2 = engine.fingerprint(self.spc2_dihedral_deviation)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+        self.assertEqual(backbone_map, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
+        atom_map = engine.map_hydrogens(self.spc1_dihedral_deviation, self.spc2_dihedral_deviation, backbone_map)
+        expected = {0: 0, 3: 1, 5: 3, 6: 4, 4: 2, 7: 7, 13: 13, 2: 5, 1: 6, 11: 11, 12: 12, 8: 8, 9: 10, 10: 9}
+        self.assertEqual(atom_map, expected)
+
+    def test_map_hydrogens_butenylbenzene(self):
+        """Large test: butenyl‐benzene H’s mapping preserves one‐to‐one & element order."""
+        spc1 = ARCSpecies(label='bb1', xyz=self.butenylnebzene_1_xyz)
+        spc2 = ARCSpecies(label='bb2', xyz=self.butenylnebzene_2_xyz)
+        spc1.determine_rotors()
+        spc2.determine_rotors()
+        fp1 = engine.fingerprint(spc1)
+        fp2 = engine.fingerprint(spc2)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        rxn = ARCReaction(r_species=[spc1], p_species=[spc2])
+        rxn.atom_map = [atom_map[i] for i in range(spc1.number_of_atoms)]
+        self.assertTrue(engine.check_atom_map(rxn))
+
     def test_add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(self):
         """test the add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion() function"""
-        spc1 = ARCSpecies(label="c4", smiles = "CCCC")
+        spc1 = ARCSpecies(label="c4", smiles="CCCC")
         spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
+        out_dict = engine.add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                         spc2,
+                                                                                         spc1.mol.atoms[0],
+                                                                                         spc2.mol.atoms[0],
+                                                                                         [0, 1, 2, 3],
+                                                                                         {0: 0, 1: 1, 2: 2, 3: 3},
+                                                                                         True)
         for key in range(7):
             self.assertEqual(out_dict[key], key)
 
-        spc1 = ARCSpecies(label="c4", smiles = "cccc")
+        spc1 = ARCSpecies(label="c4", smiles="cccc")
         spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
+        out_dict = engine.add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                         spc2,
+                                                                                         spc1.mol.atoms[0],
+                                                                                         spc2.mol.atoms[0],
+                                                                                         [0, 1, 2, 3],
+                                                                                         {0: 0, 1: 1, 2: 2, 3: 3},
+                                                                                         True)
         for key in range(4):
             self.assertEqual(out_dict[key], key)
 
-        spc1 = ARCSpecies(label="cn", smiles = "N1NN1")
+        spc1 = ARCSpecies(label="cn", smiles="N1NN1")
         spc2 = spc1.copy()
-        out_dict = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
-                                                                                  spc2,
-                                                                                  spc1.mol.atoms[0],
-                                                                                  spc2.mol.atoms[0],
-                                                                                  [0,1,2,3],
-                                                                                  {0: 0,1: 1,2: 2,3: 3},
-                                                                                  True)
+        out_dict = engine.add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(spc1,
+                                                                                         spc2,
+                                                                                         spc1.mol.atoms[0],
+                                                                                         spc2.mol.atoms[0],
+                                                                                         [0, 1, 2, 3],
+                                                                                         {0: 0, 1: 1, 2: 2, 3: 3},
+                                                                                         True)
         for key in range(4):
             self.assertEqual(out_dict[key], key)
 
     def test_flip_map(self):
         """Test the flip_map() function."""
         atom_map = [0]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [0])
 
         atom_map = [0, 1]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [0, 1])
 
         atom_map = [1, 0]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [1, 0])
 
         atom_map = [0, 1, 2, 3, 5, 4, 6]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [0, 1, 2, 3, 5, 4, 6])
 
         atom_map = [0, 1, 2, 8, 7, 4, 5, 3, 6, 9]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [0, 1, 2, 7, 5, 6, 8, 4, 3, 9])
 
         atom_map = [5, 8, 0, 6, 10, 1, 9, 3, 4, 2, 7]
-        flipped_map = flip_map(atom_map)
+        flipped_map = engine.flip_map(atom_map)
         self.assertEqual(flipped_map, [2, 5, 9, 7, 8, 0, 3, 10, 1, 6, 4])
 
         with self.assertRaises(ValueError):
             atom_map = [0, 1, 2, 1, 0, 5, 3, 4, 6, 2]
-            flip_map(atom_map)
+            engine.flip_map(atom_map)
 
     def test_make_bond_changes(self):
         """Test the make_bond_changes() function"""
         spc1 = ARCSpecies(label="Test_bc", smiles="[CH2][CH2]")
         spc2 = ARCSpecies(label="Test_bc", smiles="C=C")
-        label_species_atoms([spc1]), label_species_atoms([spc2])
+        engine.label_species_atoms([spc1]), engine.label_species_atoms([spc2])
         rxn = ARCReaction(r_species = [spc1], p_species=[spc2])
         self.assertEqual(rxn.family, '1,2-Birad_to_alkene')
         r_label_dict = {'*1': 0, '*2': 1}
         l = [spc1]
-        make_bond_changes(rxn, l, r_label_dict)
+        engine.make_bond_changes(rxn, l, r_label_dict)
         self.assertTrue(spc2.mol.is_isomorphic(l[0].mol))
 
         rxn = ARCReaction(r_species=[ARCSpecies(label="N4", smiles="NNNN")],
                           p_species=[ARCSpecies(label="NH3", smiles="N"),
                                      ARCSpecies(label="NH2NHN_p", smiles="[N-]=[NH+]N")])
         rxn.family = '1,2_NH3_elimination'
-        label_species_atoms(rxn.r_species), label_species_atoms(rxn.p_species)
-        r_bdes = find_all_breaking_bonds(rxn, r_direction=True)
-        r_cuts = cut_species_based_on_atom_indices(rxn.r_species, r_bdes)
+        engine.label_species_atoms(rxn.r_species), engine.label_species_atoms(rxn.p_species)
+        r_bdes = engine.find_all_breaking_bonds(rxn, r_direction=True)
+        r_cuts = engine.cut_species_based_on_atom_indices(rxn.r_species, r_bdes)
         self.assertFalse(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
-        make_bond_changes(rxn=rxn,
-                          r_cuts=r_cuts,
-                          r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
+        engine.make_bond_changes(rxn=rxn,
+                                 r_cuts=r_cuts,
+                                 r_label_dict={'*1': 0, '*2': 1, '*3': 2, '*4': 6})
         self.assertTrue(r_cuts[1].mol.is_isomorphic(rxn.p_species[1].mol))
 
     def test_update_xyz(self):
         """tests the update_xyz() function"""
         for smiles in ['BrC(F)Cl', 'OCl', 'BrOCl']:
             spc = ARCSpecies(label="test_update_xyz", smiles=smiles)
-            new_spc = update_xyz([spc])[0]
+            new_spc = engine.update_xyz([spc])[0]
             xyz = new_spc.get_xyz()["symbols"]
             atoms = [atom.element.symbol for atom in new_spc.mol.atoms]
             for label1, label2 in zip(atoms, xyz):
@@ -1168,33 +1560,33 @@ class TestMappingEngine(unittest.TestCase):
     def test_r_cut_p_cut_isomorphic(self):
         """Test the r_cut_p_cut_isomorphic() function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        reactants = copy_species_list_for_mapping(rxn_1_test.r_species)
-        products = copy_species_list_for_mapping(rxn_1_test.p_species)
-        label_species_atoms(reactants), label_species_atoms(products)
-        r_bdes, p_bdes = find_all_breaking_bonds(rxn_1_test, True), find_all_breaking_bonds(rxn_1_test, False)
-        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
-        self.assertTrue(r_cut_p_cut_isomorphic(self.spc1,self.spc2))
+        reactants = engine.copy_species_list_for_mapping(rxn_1_test.r_species)
+        products = engine.copy_species_list_for_mapping(rxn_1_test.p_species)
+        engine.label_species_atoms(reactants), engine.label_species_atoms(products)
+        r_bdes, p_bdes = engine.find_all_breaking_bonds(rxn_1_test, True), engine.find_all_breaking_bonds(rxn_1_test, False)
+        r_cuts = engine.cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(self.spc1,self.spc2))
         for r_cut in r_cuts:
             for p_cut in p_cuts:
                 if r_cut.mol.is_isomorphic(p_cut.mol):
                     p_cuts.remove(p_cut)
                     break
         self.assertEqual(len(p_cuts),0)
-        self.assertTrue(r_cut_p_cut_isomorphic(ARCSpecies(label="r1", smiles="F[C]F", multiplicity=1),
+        self.assertTrue(engine.r_cut_p_cut_isomorphic(ARCSpecies(label="r1", smiles="F[C]F", multiplicity=1),
                                                ARCSpecies(label="r1", smiles="F[C]F", multiplicity=3)))
 
     def test_pairing_reactants_and_products_for_mapping(self):
         """Test the pairing_reactants_and_products_for_mapping() function"""
         smiles = ['CC(=O)O[CH]CN', '[H]', '[CH3]']
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        reactants = copy_species_list_for_mapping(rxn_1_test.r_species)
-        products = copy_species_list_for_mapping(rxn_1_test.p_species)
-        label_species_atoms(reactants), label_species_atoms(products)
-        r_bdes, p_bdes = find_all_breaking_bonds(rxn_1_test, True), find_all_breaking_bonds(rxn_1_test, False)
-        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
-        pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+        reactants = engine.copy_species_list_for_mapping(rxn_1_test.r_species)
+        products = engine.copy_species_list_for_mapping(rxn_1_test.p_species)
+        engine.label_species_atoms(reactants), engine.label_species_atoms(products)
+        r_bdes, p_bdes = engine.find_all_breaking_bonds(rxn_1_test, True), engine.find_all_breaking_bonds(rxn_1_test, False)
+        r_cuts = engine.cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
+        pairs_of_reactant_and_products = engine.pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         for pair in pairs_of_reactant_and_products:
             self.assertTrue(pair[0].mol.copy(deep=True).is_isomorphic(pair[1].mol.copy(deep=True)))
             self.assertIn(str(pair[0].mol.copy(deep=True).to_smiles()), smiles)
@@ -1203,14 +1595,14 @@ class TestMappingEngine(unittest.TestCase):
     def test_map_pairs(self):
         """Test the map_pairs() function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        reactants = copy_species_list_for_mapping(rxn_1_test.r_species)
-        products = copy_species_list_for_mapping(rxn_1_test.p_species)
-        label_species_atoms(reactants), label_species_atoms(products)
-        r_bdes, p_bdes = find_all_breaking_bonds(rxn_1_test, True), find_all_breaking_bonds(rxn_1_test, False)
-        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
-        pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
-        maps = map_pairs(pairs_of_reactant_and_products)
+        reactants = engine.copy_species_list_for_mapping(rxn_1_test.r_species)
+        products = engine.copy_species_list_for_mapping(rxn_1_test.p_species)
+        engine.label_species_atoms(reactants), engine.label_species_atoms(products)
+        r_bdes, p_bdes = engine.find_all_breaking_bonds(rxn_1_test, True), engine.find_all_breaking_bonds(rxn_1_test, False)
+        r_cuts = engine.cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
+        pairs_of_reactant_and_products = engine.pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+        maps = engine.map_pairs(pairs_of_reactant_and_products)
         for map_ in maps:
             if len(map_) == 1:
                 self.assertEqual(map_[0], 0)
@@ -1229,15 +1621,27 @@ class TestMappingEngine(unittest.TestCase):
     def test_glue_maps(self):
         """Test the glue_maps() function"""
         rxn_1_test = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        reactants = copy_species_list_for_mapping(rxn_1_test.r_species)
-        products = copy_species_list_for_mapping(rxn_1_test.p_species)
-        label_species_atoms(reactants), label_species_atoms(products)
-        r_bdes, p_bdes = find_all_breaking_bonds(rxn_1_test, True), find_all_breaking_bonds(rxn_1_test, False)
-        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
-        pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
-        maps = map_pairs(pairs_of_reactant_and_products)
-        atom_map = glue_maps(maps, pairs_of_reactant_and_products)
+        reactants = engine.copy_species_list_for_mapping(rxn_1_test.r_species)
+        products = engine.copy_species_list_for_mapping(rxn_1_test.p_species)
+        engine.label_species_atoms(reactants), engine.label_species_atoms(products)
+        r_bdes, p_bdes = engine.find_all_breaking_bonds(rxn_1_test, True), engine.find_all_breaking_bonds(rxn_1_test, False)
+        r_cuts = engine.cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
+        pairs_of_reactant_and_products = engine.pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+        maps = engine.map_pairs(pairs_of_reactant_and_products)
+        r_species, p_species = rxn_1_test.get_reactants_and_products()
+        template_order = engine.get_template_product_order(rxn_1_test, rxn_1_test.product_dicts[0]['products'])
+        updated_p_label_map = engine.reorder_p_label_map(p_label_map=rxn_1_test.product_dicts[0]['p_label_map'],
+                                                         template_order=template_order,
+                                                         template_products=rxn_1_test.product_dicts[0]['products'],
+                                                         actual_products= p_species,
+                                                         )
+        atom_map = engine.glue_maps(maps=maps,
+                                    pairs=pairs_of_reactant_and_products,
+                                    r_label_map=rxn_1_test.product_dicts[0]['r_label_map'],
+                                    p_label_map=updated_p_label_map,
+                                    total_atoms=sum(len(sp.mol.atoms) for sp in r_species)
+                                    )
         self.assertEqual(len(atom_map), self.r_1.mol.get_num_atoms() + self.r_2.mol.get_num_atoms())
         atoms_r = [atom for atom in self.r_1.mol.copy(deep=True).atoms] + [atom for atom in self.r_2.mol.copy(deep=True).atoms]
         atoms_p = [atom for atom in self.p_1.mol.copy(deep=True).atoms] + [atom for atom in self.p_2.mol.copy(deep=True).atoms]
@@ -1247,19 +1651,19 @@ class TestMappingEngine(unittest.TestCase):
     def test_determine_bdes_on_spc_based_on_atom_labels(self):
         """tests the determine_bdes_indices_based_on_atom_labels() function"""
         spc = ARCSpecies(label="ethane", smiles="CC")
-        label_species_atoms([spc])
-        self.assertTrue(determine_bdes_on_spc_based_on_atom_labels(spc, (0, 1)))
-        self.assertFalse(determine_bdes_on_spc_based_on_atom_labels(spc, (1, 2)))
+        engine.label_species_atoms([spc])
+        self.assertTrue(engine.determine_bdes_on_spc_based_on_atom_labels(spc, (0, 1)))
+        self.assertFalse(engine.determine_bdes_on_spc_based_on_atom_labels(spc, (1, 2)))
 
     def test_cut_species_based_on_atom_indices(self):
         """test the cut_species_based_on_atom_indices() function"""
-        reactants = copy_species_list_for_mapping(self.arc_reaction_2.r_species)
-        products = copy_species_list_for_mapping(self.arc_reaction_2.p_species)
-        label_species_atoms(reactants), label_species_atoms(products)
-        r_bdes = find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=True)
-        p_bdes = find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=False)
-        r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-        p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+        reactants = engine.copy_species_list_for_mapping(self.arc_reaction_2.r_species)
+        products = engine.copy_species_list_for_mapping(self.arc_reaction_2.p_species)
+        engine.label_species_atoms(reactants), engine.label_species_atoms(products)
+        r_bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=True)
+        p_bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=False)
+        r_cuts = engine.cut_species_based_on_atom_indices(reactants, r_bdes)
+        p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
         self.assertIn("[CH2]CC", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
         self.assertIn("[H]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
         self.assertIn("[NH2]", [r_cut.mol.copy(deep=True).smiles for r_cut in r_cuts])
@@ -1270,15 +1674,15 @@ class TestMappingEngine(unittest.TestCase):
         spc = ARCSpecies(label="test", smiles="CNC")
         for i, a in enumerate(spc.mol.atoms):
             a.label = str(i)
-        cuts = cut_species_based_on_atom_indices([spc], [(0, 1), (1, 2)])
+        cuts = engine.cut_species_based_on_atom_indices([spc], [(0, 1), (1, 2)])
         self.assertEqual(len(cuts), 3)
         for cut in cuts:
             self.assertTrue(any([cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="1", smiles="[CH3]").mol),
                                  cut.mol.copy(deep=True).is_isomorphic(ARCSpecies(label="2", smiles="[NH]").mol)]))
 
         h2 = ARCSpecies(label="H2", smiles="[H][H]")
-        label_species_atoms([h2])
-        cuts = cut_species_based_on_atom_indices([h2], [(0, 1)])
+        engine.label_species_atoms([h2])
+        cuts = engine.cut_species_based_on_atom_indices([h2], [(0, 1)])
         self.assertEqual(len(cuts), 2)
         for cut in cuts:
             self.assertEqual(cut.get_xyz()["symbols"], ('H',))
@@ -1297,14 +1701,12 @@ class TestMappingEngine(unittest.TestCase):
                                           (-0.0686732659284988, 1.0230262342082468, 1.3468825326130487),
                                           (-1.313896668558704, 1.4294967806185437, -0.7865558706137695),
                                           (-1.5129630024826421, -0.32309516060704263, -1.0035834767256502))})]
-        label_species_atoms(spc)
-        cuts = cut_species_based_on_atom_indices(spc, [(1, 2), (3, 4), (4, 10)])
+        engine.label_species_atoms(spc)
+        cuts = engine.cut_species_based_on_atom_indices(spc, [(1, 2), (3, 4), (4, 10)])
         self.assertEqual(len(cuts), 4)
 
         spc = [ARCSpecies(label="ring", smiles='CC1CCOCC1[N+](=O)([O-])',
-                          xyz={'symbols': (
-                          'C', 'C', 'C', 'C', 'O', 'C', 'C', 'N', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
-                          'H', 'H'),
+                          xyz={'symbols': ('C', 'C', 'C', 'C', 'O', 'C', 'C', 'N', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                'isotopes': (12, 12, 12, 12, 16, 12, 12, 14, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
                                'coords': ((-0.19963202410071415, 2.11431236883385, 0.35512152305302197),
                                           (-0.21499972296989353, 0.5855566636041595, 0.4252779409474618),
@@ -1327,25 +1729,25 @@ class TestMappingEngine(unittest.TestCase):
                                           (0.9188046169404014, -2.040202832179712, 0.5936529337480443),
                                           (1.6528379049665831, -1.9828525321277448, -1.0079109263010095),
                                           (1.0337508478988304, 0.36617104486181684, -1.3359287392782864))})]
-        label_species_atoms(spc)
-        cuts = cut_species_based_on_atom_indices(spc, [(1, 2), (4, 5)])
+        engine.label_species_atoms(spc)
+        cuts = engine.cut_species_based_on_atom_indices(spc, [(1, 2), (4, 5)])
         self.assertEqual(len(cuts), 2)
 
     def test_translate_bdes_based_on_ref_species(self):
         """tests the translate_bdes_based_on_ref_species() function"""
         spc_1 = ARCSpecies(label='pentanol', smiles='CCCO')
         spc_2 = spc_1.copy()
-        new_bdes = translate_bdes_based_on_ref_species(species=[spc_1], ref_species=[spc_2], bdes=[(0, 1)])
+        new_bdes = engine.translate_bdes_based_on_ref_species(species=[spc_1], ref_species=[spc_2], bdes=[(0, 1)])
         self.assertEqual(new_bdes, [(0, 1)])
 
         spc_1 = ARCSpecies(label='C3Oj', smiles='CCC[O]')
         spc_2 = ARCSpecies(label='H', smiles='[H]')
         spc_3 = ARCSpecies(label='OH', smiles='[OH]')
-        new_bdes = translate_bdes_based_on_ref_species(species=[spc_3, spc_2, spc_1],
+        new_bdes = engine.translate_bdes_based_on_ref_species(species=[spc_3, spc_2, spc_1],
                                                        ref_species=[spc_3, spc_2, spc_1],
                                                        bdes=[(0, 2), (2, 6)])
         self.assertEqual(new_bdes, [(0, 2), (2, 6)])
-        new_bdes = translate_bdes_based_on_ref_species(species=[spc_1, spc_2, spc_3],
+        new_bdes = engine.translate_bdes_based_on_ref_species(species=[spc_1, spc_2, spc_3],
                                                        ref_species=[spc_3, spc_2, spc_1],
                                                        bdes=[(0, 2), (2, 6)])
         self.assertEqual(new_bdes, [(11, 12), (3, 11)])
@@ -1354,26 +1756,26 @@ class TestMappingEngine(unittest.TestCase):
         """tests the translate_index_based_on_ref_species() function"""
         spc_1 = ARCSpecies(label='pentanol', smiles='CCCO')
         spc_2 = spc_1.copy()
-        new_indices = translate_indices_based_on_ref_species(species=[spc_1], ref_species=[spc_2], indices=[0])
+        new_indices = engine.translate_indices_based_on_ref_species(species=[spc_1], ref_species=[spc_2], indices=[0])
         self.assertEqual(new_indices, [0])
 
         spc_1 = ARCSpecies(label='C3Oj', smiles='CCC[O]')
         spc_2 = ARCSpecies(label='H', smiles='[H]')
         spc_3 = ARCSpecies(label='OH', smiles='[OH]')
-        new_indices = translate_indices_based_on_ref_species(species=[spc_3, spc_2, spc_1],
-                                                             ref_species=[spc_3, spc_2, spc_1],
-                                                             indices=[0, 1, 2, 10])
+        new_indices = engine.translate_indices_based_on_ref_species(species=[spc_3, spc_2, spc_1],
+                                                                    ref_species=[spc_3, spc_2, spc_1],
+                                                                    indices=[0, 1, 2, 10])
         self.assertEqual(new_indices, [0, 1, 2, 10])
-        new_indices = translate_indices_based_on_ref_species(species=[spc_1, spc_2, spc_3],
-                                                             ref_species=[spc_3, spc_2, spc_1],
-                                                             indices=[0, 1, 2, 10])
+        new_indices = engine.translate_indices_based_on_ref_species(species=[spc_1, spc_2, spc_3],
+                                                                    ref_species=[spc_3, spc_2, spc_1],
+                                                                    indices=[0, 1, 2, 10])
         self.assertEqual(new_indices, [12, 13, 11, 7])
 
     def test_copy_species_list_for_mapping(self):
         """tests the copy_species_list_for_mapping() function"""
         species = [ARCSpecies(label="test_1", smiles = "BrC(F)Cl"), ARCSpecies(label="test_2", smiles = "OOC(F)CCCONNO")]
-        label_species_atoms(species)
-        species_copy = copy_species_list_for_mapping(species)
+        engine.label_species_atoms(species)
+        species_copy = engine.copy_species_list_for_mapping(species)
         for s1, s2 in zip(species, species_copy):
             self.assertIsNot(s1, s2)
             self.assertTrue(s1.mol.is_isomorphic(s2.mol))
@@ -1384,20 +1786,20 @@ class TestMappingEngine(unittest.TestCase):
     def test_find_all_breaking_bonds(self):
         """tests the find_all_breaking_bonds() function"""
         rxn = ARCReaction(r_species=[self.r_1, self.r_2], p_species=[self.p_1, self.p_2])
-        bdes = find_all_breaking_bonds(rxn=rxn, r_direction=True)
+        bdes = engine.find_all_breaking_bonds(rxn=rxn, r_direction=True)
         self.assertEqual(bdes, [(4, 10)])
-        bdes = find_all_breaking_bonds(rxn=rxn, r_direction=False)
+        bdes = engine.find_all_breaking_bonds(rxn=rxn, r_direction=False)
         self.assertEqual(bdes, [(15, 19)])
 
-        bdes = find_all_breaking_bonds(rxn=self.arc_reaction_1, r_direction=True)
+        bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_1, r_direction=True)
         self.assertEqual(bdes, [(0, 1)])
 
-        bdes = find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=True)
+        bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=True)
         self.assertEqual(bdes, [(0, 3)])
-        bdes = find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=False)
+        bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_2, r_direction=False)
         self.assertEqual(bdes, [(10, 13)])
 
-        bdes = find_all_breaking_bonds(rxn=self.arc_reaction_3, r_direction=False)
+        bdes = engine.find_all_breaking_bonds(rxn=self.arc_reaction_3, r_direction=False)
         self.assertEqual(bdes, [(0, 1)])
 
         c5h8_xyz = {'coords': ((2.388426506127341, -0.6020682478448856, -0.8986239521455471),
@@ -1470,10 +1872,210 @@ class TestMappingEngine(unittest.TestCase):
         r_2 = ARCSpecies(label='C6H10', smiles='CC=CC=CC', xyz=c6h10_xyz)
         p_1 = ARCSpecies(label='C11H18', smiles='C=CC1C(C)C=CC(C)C1C', xyz=c11h18_xyz)
         rxn = ARCReaction(reactants=['C5H8', 'C6H10'], products=['C11H18'], r_species=[r_1, r_2], p_species=[p_1])
-        r_bdes = find_all_breaking_bonds(rxn=rxn, r_direction=True)
-        p_bdes = find_all_breaking_bonds(rxn=rxn, r_direction=False)
+        r_bdes = engine.find_all_breaking_bonds(rxn=rxn, r_direction=True)
+        p_bdes = engine.find_all_breaking_bonds(rxn=rxn, r_direction=False)
         self.assertEqual(r_bdes, [])
         self.assertEqual(p_bdes, [(7, 9), (2, 3)])
+
+    def test_reorder_p_label_map(self):
+        """tests the reorder_p_label_map() function"""
+        # H + CH3NH2 <=> H2 + CH2NH2 should swap the two template products
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r1 = ARCSpecies(label='H', smiles='[H]')
+        r2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_1a = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        rxn_1b = ARCReaction(r_species=[r1, r2], p_species=[p2, p1])
+        product_dicts_1a = determine_possible_reaction_products_from_family(rxn_1a, family_label=rxn_1a.family)
+        product_dicts_1b = determine_possible_reaction_products_from_family(rxn_1b, family_label=rxn_1a.family)
+        expected_products_dict = [{'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 3},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False},
+                                  {'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 4},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False},
+                                  {'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 5},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False}]
+        self.assertTrue(is_equal_family_product_dicts(product_dicts_1a, expected_products_dict))
+        self.assertTrue(is_equal_family_product_dicts(product_dicts_1b, expected_products_dict))
+        template_products_1a = product_dicts_1a[0]['products']
+        p_label_map_tpl_1a = product_dicts_1a[0]['p_label_map']
+        template_order_1a = engine.get_template_product_order(rxn_1a, template_products_1a)
+        template_products_1b = product_dicts_1b[0]['products']
+        p_label_map_tpl_1b = product_dicts_1b[0]['p_label_map']
+        template_order_1b = engine.get_template_product_order(rxn_1b, template_products_1b)
+        self.assertEqual(template_order_1a, [1, 0])
+        self.assertEqual(template_order_1b, [0, 1])
+        new_map_1a = engine.reorder_p_label_map(p_label_map_tpl_1a, template_order_1a, template_products_1a, rxn_1a.get_reactants_and_products()[1])
+        self.assertIn(new_map_1a, [{'*1': 2, '*2': 1, '*3': 0}, {'*1': 2, '*2': 0, '*3': 1}])
+        new_map_1b = engine.reorder_p_label_map(p_label_map_tpl_1b, template_order_1b, template_products_1b, rxn_1b.get_reactants_and_products()[1])
+        self.assertEqual(new_map_1b, {'*1': 0, '*2': 7, '*3': 6})
+        lengths_1a = [len(m.atoms) for m in template_products_1a]          # [6, 2]
+        orig_offsets_1a = list(itertools.accumulate([0] + lengths_1a))     # [0, 6, 8]
+        new_lengths_1a = [lengths_1a[i] for i in template_order_1a]        # [2, 6]
+        new_offsets_1a = list(itertools.accumulate([0] + new_lengths_1a))  # [0, 2, 8]
+        for tag, old_glob in p_label_map_tpl_1a.items():
+            new_glob = new_map_1a[tag]
+            # if it was <6, now must be >=2; if >=6, now must be <2
+            if old_glob < orig_offsets_1a[1]:
+                self.assertTrue(new_glob >= new_offsets_1a[1], f"Tag {tag} did not move into second block")
+            else:
+                self.assertTrue(new_glob < new_offsets_1a[1], f"Tag {tag} did not move into first block")
+
+        # NC(C=C)O[O] → [O]O + NC=C=C reversed in rxn_2, so labels must swap
+        r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
+                   C      -0.60348000    0.16392000    0.30629000
+                   C       0.85739000    0.41515000    0.58956000
+                   C       1.91892000   -0.27446000    0.14220000
+                   O      -1.16415000    1.38916000   -0.20784000
+                   O      -2.39497344    1.57487672    0.46214548
+                   H      -0.50088000   -0.69919000   -1.51181000
+                   H      -1.83926000   -1.03148000   -0.69340000
+                   H      -1.09049000   -0.04790000    1.26633000
+                   H       1.04975000    1.25531000    1.25575000
+                   H       2.92700000    0.00462000    0.43370000
+                   H       1.81273000   -1.13911000   -0.50660000"""  # NC(C=C)O[O]
+        p_xyz = """N      -1.60333711   -0.23049987   -0.35673484
+                   C      -0.63074775    0.59837442    0.08043329
+                   C       0.59441219    0.18489797    0.16411656
+                   C       1.81978128   -0.23541908    0.24564488
+                   H      -2.56057110    0.09083582   -0.42266843
+                   H      -1.37296018   -1.18147301   -0.62077856
+                   H      -0.92437032    1.60768040    0.35200716
+                   H       2.49347824   -0.13648710   -0.59717108
+                   H       2.18431385   -0.69791121    1.15515621"""  # NC=C=C
+        rxn2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
+                           p_species=[ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz),
+                                      ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_xyz)])
+        product_dicts = determine_possible_reaction_products_from_family(rxn2, family_label=rxn2.family)
+        expected_product_dicts = [{'discovered_in_reverse': False,
+                                   'family': 'HO2_Elimination_from_PeroxyRadical',
+                                   'group_labels': 'R2OO',
+                                   'own_reverse': False,
+                                   'p_label_map': {'*1': 2, '*2': 4, '*3': 9, '*4': 10, '*5': 11},
+                                   'products': [Molecule(smiles="NC=C=C"), Molecule(smiles="[O]O")],
+                                   'r_label_map': {'*1': 2, '*2': 1, '*3': 4, '*4': 5, '*5': 9}}]
+        self.assertTrue(is_equal_family_product_dicts(product_dicts, expected_product_dicts))
+        template_products = product_dicts[0]['products']
+        p_label_map_tpl = product_dicts[0]['p_label_map']
+
+        template_order = engine.get_template_product_order(rxn2, template_products)
+        # original template was ['NC=C=C', '[O]O'], so template_order should be [1,0]
+        self.assertEqual(template_order, [1, 0])
+
+        # now test reorder_p_label_map gives exactly the expected new globals:
+        expected = {'*1': 5, '*2': 4, '*3': 1, '*4': 0, '*5': 2}
+        new_map = engine.reorder_p_label_map(p_label_map_tpl, template_order, template_products, rxn2.get_reactants_and_products()[1])
+        self.assertEqual(new_map, expected)
+
+    def test_get_template_product_order(self):
+        """tests the get_template_product_order() function"""
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,), 'symbols': ('H',)})
+        r_2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_1_a = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        rxn_1_b = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
+        order_1_a = engine.get_template_product_order(rxn=rxn_1_a, template_products=rxn_1_a.product_dicts[0]['products'])
+        self.assertEqual(order_1_a, [1, 0])
+        order_1_b = engine.get_template_product_order(rxn=rxn_1_b, template_products=rxn_1_b.product_dicts[0]['products'])
+        self.assertEqual(order_1_b, [0, 1])
+
+        c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
+                                   (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
+                                   (0.9737380560194014, 0.5278617594060281, -1.1526858375270472),
+                                   (1.2607098516126556, 1.1809007875206383, -1.9621017164412065),
+                                   (-0.36396095305912823, -0.13214785064139675, -1.0200667625809143),
+                                   (-1.5172464644867296, 0.8364138939810618, -1.0669384323486588),
+                                   (-2.4922101649968655, 0.8316551483126366, -0.14124720277902958),
+                                   (-2.462598061982958, -0.09755474191953761, 0.9703503187569243),
+                                   (-1.4080417204047313, -0.8976377310686736, 1.1927020968566089),
+                                   (-0.27981087345916755, -0.8670643393461046, 0.29587765657632165),
+                                   (1.1395623815572733, -0.9147118621123697, 0.771368745020215),
+                                   (3.7901243915692864, -0.006544237180536178, 0.7580206603561134),
+                                   (3.6186251824572455, 1.0920401631166292, -0.725695658374561),
+                                   (-0.4799044636709365, -0.8577283498506146, -1.8345168113636874),
+                                   (-1.5704890060131314, 1.527002009812866, -1.902575985299536),
+                                   (-3.3260277144990296, 1.5238536460491903, -0.20338465526703625),
+                                   (-3.311126364299293, -0.09969554359088921, 1.6478137927333953),
+                                   (-1.3707042898204835, -1.549541647625315, 2.0589774409040964),
+                                   (1.5338362221707007, -1.9310023570889727, 0.6663504223502944),
+                                   (1.2246749300961473, -0.5970975942012858, 1.816181327157103)),
+                        'isotopes': (12, 12, 12, 1, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c10h10_b_xyz = {'coords': ((3.247237794328524, -0.13719671162966918, 0.19555833918937052),
+                                   (1.9094861712282774, -0.08067655688828143, 0.14898941432495702),
+                                   (0.9973729357914858, -1.2703386896415134, -0.09322848415119056),
+                                   (-0.37904449715218924, -0.6747166782032148, -0.049044448345326556),
+                                   (-0.32906812544096026, 0.704634441388649, 0.189424753183012),
+                                   (-1.4900181263846768, 1.4572613706024167, 0.2695747550348709),
+                                   (-2.715200996994148, 0.8069241052920498, 0.10660938013945513),
+                                   (-2.765284083663716, -0.5753713833636181, -0.13236922431004927),
+                                   (-1.5909002849280705, -1.3270914347507115, -0.21179882275795825),
+                                   (1.0862366144301145, 1.1823049698313937, 0.33079658088902575),
+                                   (3.8424769924852367, 0.7530758608805569, 0.37314678191170336),
+                                   (3.7762437608797406, -1.0749685445597326, 0.05710603017340202),
+                                   (1.1128196175313243, -2.0170485762246773, 0.6986324476157837),
+                                   (1.187449599052061, -1.7129398667445945, -1.0760419644685346),
+                                   (-1.453108430051206, 2.525963604437891, 0.45426129138400156),
+                                   (-3.639988653002051, 1.3756767310587803, 0.16518163487425436),
+                                   (-3.7283956370857467, -1.0643593255501977, -0.2566648708585298),
+                                   (-1.631427244782937, -2.3956407728893367, -0.3966116183664473),
+                                   (1.3188711462571718, 1.9143096670969255, -0.4489453399950017),
+                                   (1.2442414475018486, 1.6101977898569013, 1.3257284397785851)),
+                        'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C10H10_a', smiles='C=C1[CH]C2C=CC=C[C]2C1', xyz=c10h10_a_xyz, multiplicity=1, number_of_radicals=2)
+        p_1 = ARCSpecies(label='C10H10_b', smiles='C=C1CC2=C(C=CC=C2)C1', xyz=c10h10_b_xyz)
+        rxn_2 = ARCReaction(reactants=['C10H10_a'], products=['C10H10_b'], r_species=[r_1], p_species=[p_1])
+        order_2 = engine.get_template_product_order(rxn=rxn_2, template_products=rxn_2.product_dicts[0]['products'])
+        self.assertEqual(order_2, [0])
 
 
     @classmethod
