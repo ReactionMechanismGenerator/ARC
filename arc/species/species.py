@@ -222,8 +222,8 @@ class ARCSpecies(object):
         compute_thermo (bool): Whether to calculate thermodynamic properties for this species.
         include_in_thermo_lib (bool): Whether to include in the output RMG library.
         e0_only (bool): Whether to only run statmech (w/o thermo) to compute E0.
-        thermo (HeatCapacityModel): The thermodata calculated by ARC.
-        rmg_thermo (Dict[str, int]): The RMG thermo, 'H298' in kJ/mol and 'S298' in J/mol*K.
+        thermo (ThermoData): The thermo data calculated by ARC with 'H298' in kJ/mol and 'S298' in J/mol*K.
+        rmg_thermo (ThermoData): The thermo data estimated by RMG with 'H298' in kJ/mol and 'S298' in J/mol*K for comparison.
         long_thermo_description (str): A description for the species entry in the thermo library outputted.
         ts_guesses (list): A list of TSGuess objects for each of the specified methods.
         successful_methods (list): Methods used to generate a TS guess that successfully generated an XYZ guess.
@@ -243,7 +243,7 @@ class ARCSpecies(object):
         ts_report (str): A description of all methods used for guessing a TS and their ranking.
         rxn_label (str): The reaction string (relevant for TSs).
         rxn_index (int): The reaction index which is the respective key to the Scheduler rxn_dict.
-        arkane_file (str): Path to the Arkane Species file generated in processor.
+        arkane_file (str): Path to the Arkane Species file.
         yml_path (str): Path to an Arkane YAML file representing a species (for loading the object).
         keep_mol (bool): Label to prevent the generation of a new Molecule object.
         checkfile (str): The local path to the latest checkfile by Gaussian for the species.
@@ -2068,7 +2068,7 @@ class TSGuess(object):
     Args:
         index (int, optional): A running index of all TSGuess objects belonging to an ARCSpecies object.
         method (str, optional): The method/source used for the xyz guess.
-        method_index (int, optional): A sub-index, used for cases where a single method generates several guesses.
+        method_index (int, optional): A subindex, used for cases where a single method generates several guesses.
                                       Counts separately for each direction, 'F' and 'R'.
         method_direction (str, optional): The reaction direction used for generating the guess ('F' or 'R').
         constraints (dict, optional): Any constraints to be used when first optimizing this guess
@@ -2087,7 +2087,7 @@ class TSGuess(object):
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
-        method_index (int): A sub-index, used for cases where a single method generates several guesses.
+        method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
         family (str): The RMG family that corresponds to the reaction, if applicable.
@@ -2335,6 +2335,140 @@ class TSGuess(object):
         """
         if self.t0 is not None:
             self.execution_time = datetime.datetime.now() - self.t0
+
+
+class ThermoData(object):
+    """
+    A set of thermodynamic properties for a species.
+    """
+
+    def __init__(self,
+                 H298=None,
+                 S298=None,
+                 Tdata=None,
+                 Cpdata=None,
+                 Cp0=None,
+                 CpInf=None,
+                 Tmin=None,
+                 Tmax=None,
+                 comment='',
+                 ):
+        """
+        Args:
+            H298 (tuple): Standard enthalpy at 298 K as (value, units)
+            S298 (tuple): Standard entropy at 298 K as (value, units)
+            Tdata (tuple): Temperature data points as (list, units)
+            Cpdata (tuple): Heat capacity data as (list, units)
+            Cp0 (tuple): Heat capacity at 0 K as (value, units)
+            CpInf (tuple): Heat capacity at infinite temperature as (value, units)
+            Tmin (tuple): Minimum temperature as (value, units)
+            Tmax (tuple): Maximum temperature as (value, units)
+            comment (str): Additional comments or description
+        """
+        self.H298 = H298
+        self.S298 = S298
+        self.Tdata = Tdata
+        self.Cpdata = Cpdata
+        self.Cp0 = Cp0
+        self.CpInf = CpInf
+        self.Tmin = Tmin
+        self.Tmax = Tmax
+        self.comment = comment
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the ThermoData object.
+        """
+        attributes = list()
+        if self.H298 is not None:
+            attributes.append(f'H298={self.H298!r}')
+        if self.S298 is not None:
+            attributes.append(f'S298={self.S298!r}')
+        if self.Tdata is not None:
+            attributes.append(f'Tdata={self.Tdata!r}')
+        if self.Cpdata is not None:
+            attributes.append(f'Cpdata={self.Cpdata!r}')
+        if self.Cp0 is not None:
+            attributes.append(f'Cp0={self.Cp0!r}')
+        if self.CpInf is not None:
+            attributes.append(f'CpInf={self.CpInf!r}')
+        if self.Tmin is not None:
+            attributes.append(f'Tmin={self.Tmin!r}')
+        if self.Tmax is not None:
+            attributes.append(f'Tmax={self.Tmax!r}')
+        if self.comment:
+            attributes.append(f'comment="""{self.comment}"""')
+        return f"ThermoData({', '.join(attributes)})"
+
+    def __reduce__(self):
+        """
+        A helper function used when pickling a ThermoData object.
+        """
+        return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
+                             self.Cp0, self.CpInf, self.Tmin, self.Tmax,
+                             self.comment))
+
+
+class TransportData(object):
+    """
+    A set of transport properties used in molecular simulations and kinetic models.
+    """
+    def __init__(self,
+                 shapeIndex=None,
+                 epsilon=None,
+                 sigma=None,
+                 dipoleMoment=None,
+                 polarizability=None,
+                 rotrelaxcollnum=None,
+                 comment='',
+                 ):
+        """
+        Args:
+            shapeIndex (int): Index describing molecular geometry:
+                - 0: Monoatomic
+                - 1: Linear
+                - 2: Nonlinear
+            epsilon (float):  Lennard-Jones well depth in J/mol.
+            sigma (float): Lennard-Jones collision diameter in Angstroms.
+            dipoleMoment (float): Dipole moment in Debye.
+            polarizability (float): Polarizability volume in cubic Angstroms.
+            rotrelaxcollnum (float): Rotational relaxation collision number at 298 K.
+       """
+        self.shapeIndex = shapeIndex
+        self.epsilon = epsilon
+        self.sigma = sigma
+        self.dipoleMoment = dipoleMoment
+        self.polarizability = polarizability
+        self.rotrelaxcollnum = rotrelaxcollnum
+        self.comment = comment
+
+    def __repr__(self):
+        """
+        Return a string representation that can be used to reconstruct the TransportData object.
+        """
+        attributes = list()
+        if self.shapeIndex is not None:
+            attributes.append('shapeIndex={0!r}'.format(self.shapeIndex))
+        if self.epsilon is not None:
+            attributes.append('epsilon={0!r}'.format(self.epsilon))
+        if self.sigma is not None:
+            attributes.append('sigma={0!r}'.format(self.sigma))
+        if self.dipoleMoment is not None:
+            attributes.append('dipoleMoment={0!r}'.format(self.dipoleMoment))
+        if self.polarizability is not None:
+            attributes.append('polarizability={0!r}'.format(self.polarizability))
+        if self.rotrelaxcollnum is not None:
+            attributes.append('rotrelaxcollnum={0!r}'.format(self.rotrelaxcollnum))
+        if self.comment:
+            attributes.append('comment="""{0!s}"""'.format(self.comment))
+        return 'TransportData({0!s})'.format(', '.join(attributes))
+
+    def __reduce__(self):
+        """
+        A helper function used when picking a TransportData object.
+        """
+        return (TransportData, (self.shapeIndex, self.epsilon, self.sigma, self.dipoleMoment,
+                                self.polarizability, self.rotrelaxcollnum, self.comment))
 
 
 def determine_occ(xyz, charge):
@@ -2622,7 +2756,7 @@ def check_label(label: str,
 
     Raises:
         TypeError: If the label is not a string type.
-        SpeciesError: If label is illegal and cannot be automatically fixed.
+        SpeciesError: If the label is illegal and cannot be automatically fixed.
 
     Returns: Tuple[str, Optional[str]]
         - A legal label.
