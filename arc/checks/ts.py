@@ -2,13 +2,12 @@
 A module for checking the quality of TS-related calculations, contains helper functions for Scheduler.
 """
 
-import logging
 import os
 
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from arc import parser
+from arc.parser import parser
 from arc.common import (ARC_PATH,
                         convert_list_index_0_to_1,
                         extremum_list,
@@ -207,14 +206,14 @@ def compute_rxn_e0(reaction: 'ARCReaction',
         considered_labels.append(species.label)
         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                             output_directory=os.path.join(project_directory, 'output'),
+                                            calcs_directory=os.path.join(project_directory, 'calcs'),
                                             output_dict=output,
+                                            species=[species],
                                             bac_type=None,
                                             sp_level=sp_level,
                                             freq_scale_factor=freq_scale_factor,
-                                            species=species,
                                             )
-        statmech_adapter.compute_thermo(kinetics_flag=True,
-                                        e0_only=True,
+        statmech_adapter.compute_thermo(e0_only=True,
                                         skip_rotors=True,
                                         )
     return rxn_copy
@@ -303,14 +302,14 @@ def check_normal_mode_displacement(reaction: 'ARCReaction',
     amplitudes = [amplitudes] if isinstance(amplitudes, float) else amplitudes
     reaction.ts_species.ts_checks['NMD'] = False
     product_dicts = get_reaction_family_products(rxn=reaction, rmg_family_set=reaction.family if reaction.family else None)
-    freqs, normal_modes_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file, raise_error=False)
+    freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file, raise_error=False)
     if not len(normal_modes_disp):
         return
     largest_neg_freq_idx = get_index_of_abs_largest_neg_freq(freqs)
     bond_lone_hs = any(len(spc.mol.atoms) == 2 and spc.mol.atoms[0].element.symbol == 'H'
                        and spc.mol.atoms[0].element.symbol == 'H' for spc in reaction.r_species + reaction.p_species)
     # bond_lone_hs = False
-    xyz = parser.parse_xyz_from_file(job.local_path_to_output_file)
+    xyz = parser.parse_geometry(job.local_path_to_output_file)
     if not xyz['coords']:
         xyz = reaction.ts_species.get_xyz()
 
@@ -411,7 +410,7 @@ def invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction: 'ARCReaction
             rotor['success'] = False
             if 'pivTS' not in rotor['invalidation_reason']:
                 rotor['invalidation_reason'] += 'Pivots participate in the TS reaction zone (code: pivTS). '
-                logging.info(f"\nNot considering rotor {key} with pivots {rotor['pivots']} in TS {reaction.ts_species.label}\n")
+                logger.info(f"\nNot considering rotor {key} with pivots {rotor['pivots']} in TS {reaction.ts_species.label}\n")
 
 
 def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
@@ -428,7 +427,7 @@ def get_rxn_zone_atom_indices(reaction: 'ARCReaction',
         List[int]: The indices of the atoms participating in the reaction.
                    The indices are 0-indexed and sorted in an increasing order.
     """
-    freqs, normal_mode_disp = parser.parse_normal_mode_displacement(path=job.local_path_to_output_file,
+    freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file,
                                                                     raise_error=False)
     normal_mode_disp_rms = get_rms_from_normal_mode_disp(normal_mode_disp, freqs, reaction=reaction)
     num_of_atoms = get_expected_num_atoms_with_largest_normal_mode_disp(normal_mode_disp_rms=normal_mode_disp_rms,

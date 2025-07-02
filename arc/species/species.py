@@ -29,9 +29,12 @@ from arc.level import Level
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_kekule_structure, generate_resonance_structures_safely
-                        parse_xyz_from_file,
-                        process_conformers_file,
-                        )
+from arc.parser.parser import (parse_1d_scan_energies,
+                               parse_dipole_moment,
+                               parse_geometry,
+                               parse_polarizability,
+                               process_conformers_file,
+                               )
 from arc.species import conformers
 from arc.species.converter import (check_isomorphism,
                                    check_xyz_dict,
@@ -1617,7 +1620,7 @@ class ARCSpecies(object):
                         energies.extend(energies_)
                     else:
                         # assume this is an ESS log file
-                        xyzs.append(remove_dummies(parse_xyz_from_file(xyz_)))  # also calls standardize_xyz_string()
+                        xyzs.append(remove_dummies(parse_geometry(xyz_)))  # also calls standardize_xyz_string()
                         energies.append(None)  # dummy (lists should be the same length)
                 elif isinstance(xyz, str):
                     # string which does not represent a (valid) path, treat as a string representation of xyz
@@ -2309,7 +2312,7 @@ def determine_rotor_symmetry(label: str,
     if energies is None:
         if not os.path.isfile(rotor_path):
             raise InputError(f'Could not find the path to the rotor file for species {label} {rotor_path}')
-        energies = parse_1d_scan_energies(path=rotor_path)[0]
+        energies = parse_1d_scan_energies(log_file_path=rotor_path)[0]
 
     symmetry = None
     max_e = max(energies)
@@ -2404,7 +2407,7 @@ def determine_rotor_type(rotor_path: str) -> str:
     Determine whether this rotor should be treated as a HinderedRotor of a FreeRotor
     according to its maximum peak.
     """
-    energies = parse_1d_scan_energies(path=rotor_path)[0]
+    energies = parse_1d_scan_energies(log_file_path=rotor_path)[0]
     max_val = max(energies)
     return 'FreeRotor' if max_val < minimum_barrier else 'HinderedRotor'
 

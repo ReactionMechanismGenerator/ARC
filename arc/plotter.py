@@ -33,7 +33,7 @@ from arc.common import (NUMBER_BY_SYMBOL,
                         )
 from arc.exceptions import InputError, SanitizationError
 from arc.level import Level
-from arc.parser import parse_trajectory
+from arc.parser.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
                                    get_xyz_radius,
                                    molecules_from_xyz,
