@@ -17,13 +17,8 @@ from rdkit.Chem import SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
-from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-import rmgpy.constants as constants
-from rmgpy.exceptions import AtomTypeError
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-from rmgpy.statmech import Conformer
+from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
+                        almost_equal_lists,
 
 from arc.common import (almost_equal_lists,
                         calc_rmsd,
@@ -32,7 +27,10 @@ from arc.common import (almost_equal_lists,
                         generate_resonance_structures,
                         is_str_float,
                         )
-from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
+import arc.constants as constants
+from arc.exceptions import AtomTypeError, ConverterError, InputError, SanitizationError, SpeciesError
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species.xyz_to_2d import MolGraph
 from arc.species.xyz_to_smiles import xyz_to_smiles
 from arc.species.zmat import (KEY_FROM_LEN,

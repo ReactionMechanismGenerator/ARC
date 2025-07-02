@@ -7,10 +7,10 @@ import ast
 import os
 import re
 
-from rmgpy.molecule import Bond, Group, Molecule
-
-from arc.common import clean_text, generate_resonance_structures, get_logger
+from arc.common import clean_text, get_logger
 from arc.imports import settings
+from arc.molecule import Bond, Group, Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
@@ -465,7 +465,7 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     """
     product_dicts = list()
     family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
-    products = family.generate_products(reactants=rxn.get_reactants_and_products(arc=True, return_copies=True)[0])
+    products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
@@ -498,7 +498,7 @@ def filter_products_by_reaction(rxn: 'ARCReaction',
         List[dict]: The filtered list of product dictionaries.
     """
     filtered_product_dicts, r_label_maps = list(), list()
-    r_species, p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)
+    r_species, p_species = rxn.get_reactants_and_products(return_copies=True)
     for product_dict in product_dicts:
         if len(product_dict['products']) != len(p_species):
             continue
@@ -849,5 +849,5 @@ def isomorphic_products(rxn: 'ARCReaction',
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)[1]
+    p_species = rxn.get_reactants_and_products(return_copies=True)[1]
     return check_product_isomorphism(products, p_species)

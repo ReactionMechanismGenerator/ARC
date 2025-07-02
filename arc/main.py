@@ -18,9 +18,6 @@ from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-
 from arc.common import (VERSION,
                         ARC_PATH,
                         check_ess_settings,
@@ -269,11 +266,11 @@ class ARC(object):
                  output_multi_spc: Optional[dict] = None,
                  project: Optional[str] = None,
                  project_directory: Optional[str] = None,
-                 reactions: Optional[List[Union[ARCReaction, Reaction]]] = None,
+                 reactions: Optional[List[ARCReaction]] = None,
                  running_jobs: Optional[dict] = None,
                  scan_level: Optional[Union[str, dict, Level]] = None,
                  sp_level: Optional[Union[str, dict, Level]] = None,
-                 species: Optional[List[Union[ARCSpecies, Species]]] = None,
+                 species: Optional[List[ARCSpecies]] = None,
                  specific_job_type: str = '',
                  T_min: Optional[Tuple[float, str]] = None,
                  T_max: Optional[Tuple[float, str]] = None,
@@ -366,15 +363,7 @@ class ARC(object):
         self.species = species or list()
         converted_species, indices_to_pop = list(), list()
         for i, spc in enumerate(self.species):
-            if isinstance(spc, Species):
-                # RMG Species
-                if not spc.label:
-                    raise InputError(f'Missing label on RMG Species object {spc}')
-                indices_to_pop.append(i)
-                is_ts = spc.label[:2] == 'TS' and all(char.isdigit() for char in spc.label[2:])
-                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc)
-                converted_species.append(arc_spc)
-            elif isinstance(spc, dict):
+            if isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
                 converted_species.append(ARCSpecies(species_dict=spc))
@@ -411,8 +400,7 @@ class ARC(object):
                 indices_to_pop.append(i)
                 converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
             elif not isinstance(rxn, ARCReaction):
-                raise ValueError(f'A reaction should either be an `ARCReaction` object or an RMG `Reaction` object. '
-                                 f'Got {type(rxn)} for {rxn}')
+                raise ValueError(f'A reaction should either be an `ARCReaction` object.\nGot {type(rxn)} for {rxn}')
         for i in reversed(range(len(self.reactions))):  # pop from the end, so other indices won't change
             if i in indices_to_pop:
                 self.reactions.pop(i)

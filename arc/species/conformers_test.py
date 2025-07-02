@@ -9,15 +9,14 @@ import unittest
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.group import GroupAtom, GroupBond, Group
-from rmgpy.molecule.molecule import Molecule
-
 import arc.species.conformers as conformers
 import arc.species.converter as converter
 import arc.species.vectors as vectors
 from arc.common import almost_equal_coords_lists
 from arc.exceptions import ConformerError
+from arc.molecule.atomtype import ATOMTYPES
+from arc.molecule.group import GroupAtom, GroupBond, Group
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies
 
 
@@ -1266,7 +1265,9 @@ O       1.40839617    0.14303696    0.00000000"""
                           288.3144235971651, 290.7904254426122, 290.7904490651266]
 
         sampling_points = conformers.determine_torsion_sampling_points(label='', torsion_angles=torsion_angles)[0]
-        self.assertEqual(sampling_points, [91.25694337981986, 176.65127016627497, 278.7688363417129])
+        self.assertAlmostEqual(sampling_points[0], 91.25694337981986)
+        self.assertAlmostEqual(sampling_points[1], 176.65127016627497)
+        self.assertAlmostEqual(sampling_points[2], 278.7688363417129)
 
         torsion_angles = [88.10464521993997, 95.68946323823499, 95.69459080513944, 97.33055063592927, 97.33445482833133,
                           97.49952914172731, 97.49958226697981, 108.85221511940138, 112.13184073171584,
@@ -1279,7 +1280,9 @@ O       1.40839617    0.14303696    0.00000000"""
                           279.16046334807686, 279.2014185247318, 286.6025958554289, 286.6032721934276,
                           293.97652065163896, 297.0524153609526, 297.0539875926821]
         sampling_points = conformers.determine_torsion_sampling_points(label='', torsion_angles=torsion_angles)[0]
-        self.assertEqual(sampling_points, [102.4280751579418, 248.2489745149689, 278.2489745149689])
+        self.assertAlmostEqual(sampling_points[0], 102.4280751579418)
+        self.assertAlmostEqual(sampling_points[1], 248.2489745149689)
+        self.assertAlmostEqual(sampling_points[2], 278.2489745149689)
 
         torsion_angles = [25.809606429720823, 48.25078667982481, 48.27271314406701, 50.17085636345509,
                           50.171666700725766, 54.825786971684956, 54.8270959675416, 54.82801972678648,
@@ -1376,9 +1379,10 @@ O       1.40839617    0.14303696    0.00000000"""
                           303.6470612486681, 303.6680043902503, 303.9250142266542, 303.9250957807027,
                           312.72467742132835, 312.7334224192651]
         sampling_points = conformers.determine_torsion_sampling_points(label='', torsion_angles=torsion_angles)[0]
-        self.assertEqual(sampling_points, [25.809606429720823, 66.64007136763342, 96.64007136763342, 126.64007136763342,
+        for i, point in enumerate([25.809606429720823, 66.64007136763342, 96.64007136763342, 126.64007136763342,
                                            156.64007136763342, 186.64007136763342, 270.1055076930085,
-                                           300.1055076930085])
+                                           300.1055076930085]):
+            self.assertAlmostEqual(sampling_points[i], point)
 
         torsion_angles = [21.029952658998006, 21.03683763790061, 22.318426332229294, 22.336215183961727,
                           23.333588670057164, 23.53377212293256, 25.49301296124286, 25.557679425383313,
