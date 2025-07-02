@@ -21,7 +21,6 @@ from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
                         calc_rmsd,
                         get_atom_radius,
                         get_logger,
-                        generate_resonance_structures,
                         is_str_float,
                         )
 import arc.constants as constants
