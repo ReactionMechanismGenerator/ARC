@@ -1983,7 +1983,7 @@ class ARCSpecies(object):
     def get_symmetry_number(self):
         """
         Get the symmetry number for the species, which is the highest symmetry number amongst
-        its resonance isomers and the resonance hybrid.
+        its resonance isomers and the resonance hybrid. This is different from the external symmetry alone.
         Populates the .symmetry_number attribute if it is not already set.
 
         Returns:
@@ -2546,7 +2546,7 @@ def determine_rotor_symmetry(label: str,
     peaks, valleys = list(), list()  # the peaks and valleys of the scan
     worst_peak_resolution, worst_valley_resolution = 0, 0
     for i, e in enumerate(energies):
-        # Identify peaks and valleys, and determine the worst resolutions in the scan.
+        # Identify peaks and valleys and determine the worst resolutions in the scan.
         ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
         im1 = cyclic_index_i_minus_1(i)  # i Minus 1
         if i == 0 and energies[im1] == e:
@@ -2592,7 +2592,7 @@ def determine_rotor_symmetry(label: str,
         symmetry = 1
         reason = '10% of the maximum peak criterion'
     else:
-        # We declare this rotor as symmetric and the symmetry number is the number of peaks (and valleys)
+        # We declare this rotor as symmetric, and the symmetry number is the number of peaks (and valleys)
         symmetry = len(peaks)
         reason = 'number of peaks and valleys, all within the determined resolution criteria'
     if log:
@@ -2879,3 +2879,86 @@ def split_mol(mol: Molecule) -> Tuple[List[Molecule], List[List[int]]]:
         molecules.append(Molecule(atoms=[mol.atoms[index] for index in frag_indices]))
         fragments.append(frag_indices)
     return molecules, fragments
+
+
+def rmg_mol_from_dict_repr(representation: dict,
+                           is_ts: bool = False,
+                           ) -> Optional[Molecule]:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
+        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
+
+    Returns:
+        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
+
+    """
+    mol = Molecule(multiplicity=representation['multiplicity'],
+                   props=representation['props'])
+    atoms = {atom_dict['id']: Atom(element=elements.get_element(value=atom_dict['element']['number'],
+                                                       isotope=atom_dict['element']['isotope']),
+                                   radical_electrons=atom_dict['radical_electrons'],
+                                   charge=atom_dict['charge'],
+                                   lone_pairs=atom_dict['lone_pairs'],
+                                   id=atom_dict['id'],
+                                   props=atom_dict['props'],
+                                   ) for atom_dict in representation['atoms']}
+    for atom_dict in representation['atoms']:
+        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
+    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
+    for i, atom_1 in enumerate(atoms.values()):
+        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
+            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
+            mol.add_bond(bond)
+    mol.update_atomtypes(raise_exception=False)
+    mol.update_multiplicity()
+    if not is_ts:
+        mol.identify_ring_membership()
+        mol.update_connectivity_values()
+    return mol
+
+
+def rmg_mol_to_dict_repr(mol: Molecule,
+                         reset_atom_ids: bool = False,
+                         testing: bool = False,
+                         ) -> dict:
+    """
+    Generate a dict representation of an RMG ``Molecule`` object instance.
+
+    Args:
+        mol (Molecule): The RMG ``Molecule`` object instance.
+        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
+                                         Useful when copying the object to avoid duplicate atom IDs between
+                                         different object instances.
+        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
+
+    Returns:
+        dict: The corresponding dict representation.
+    """
+    mol = mol.copy(deep=True)
+    if testing:
+        counter = 0
+        for atom in mol.atoms:
+            atom.id = counter
+            counter += 1
+    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
+        mol.assign_atom_ids()
+    return {'atoms': [{'element': {'number': atom.element.number,
+                                   'isotope': atom.element.isotope,
+                                   },
+                       'radical_electrons': atom.radical_electrons,
+                       'charge': atom.charge,
+                       'label': atom.label,
+                       'lone_pairs': atom.lone_pairs,
+                       'id': atom.id,
+                       'props': atom.props,
+                       'atomtype': atom.atomtype.label,
+                       'edges': {atom_2.id: bond.order
+                                 for atom_2, bond in atom.edges.items()},
+                       } for atom in mol.atoms],
+            'multiplicity': mol.multiplicity,
+            'props': mol.props,
+            'atom_order': [atom.id for atom in mol.atoms]
+            }
