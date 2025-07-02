@@ -1,0 +1,9 @@
+import arc.parser.adapters.cfour
+import arc.parser.adapters.gaussian
+import arc.parser.adapters.molpro
+import arc.parser.adapters.orca
+import arc.parser.adapters.psi_4
+import arc.parser.adapters.qchem
+import arc.parser.adapters.terachem
+import arc.parser.adapters.xtb
+import arc.parser.adapters.yaml
