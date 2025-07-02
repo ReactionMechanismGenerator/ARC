@@ -14,7 +14,6 @@ import os
 import shutil
 import time
 from distutils.spawn import find_executable
-from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -40,6 +39,8 @@ from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
+from arc.statmech.adapter import StatmechEnum
+from arc.statmech.arkane import check_arkane_bacs
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -48,16 +49,6 @@ logger = get_logger()
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
     settings['default_job_settings'], settings['global_ess_settings']
-
-
-class StatmechEnum(str, Enum):
-    """
-    The supported statmech software adapters.
-    The available adapters are a finite set.
-    """
-    arkane = 'arkane'
-    # mesmer = 'mesmer'
-    # mess = 'mess'
 
 
 class ARC(object):
