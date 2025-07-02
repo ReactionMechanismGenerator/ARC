@@ -17,6 +17,7 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         get_logger,
                         get_single_bond_length,
                         is_angle_linear,
+                        is_xyz_linear,
                         read_yaml_file,
                         timedelta_from_str,
                         sort_atoms_in_descending_label_order,
@@ -207,6 +208,7 @@ class ARCSpecies(object):
         initial_xyz (dict): The initial geometry guess.
         final_xyz (dict): The optimized species geometry.
         _radius (float): The species radius in Angstrom.
+        _is_linear (bool): Whether the species is linear. ``True`` if it is.
         opt_level (str): Level of theory for geometry optimization. Saved for archiving.
         _number_of_atoms (int): The number of atoms in the species/TS.
         mol (Molecule): An ``RMG Molecule`` object used for BAC determination.
@@ -337,6 +339,7 @@ class ARCSpecies(object):
         self._number_of_atoms = None
         self._number_of_heavy_atoms = None
         self._radius = None
+        self._is_linear = None
         self.mol = mol
         self.mol_list = None
         self.adjlist = adjlist
@@ -582,6 +585,23 @@ class ARCSpecies(object):
     def radius(self, value):
         """Allow setting the radius"""
         self._radius = value
+
+    @property
+    def is_linear(self) -> float:
+        """
+        Determine whether the species is linear
+
+        Returns:
+            bool: ``True`` if the species is linear, ``False`` otherwise.
+        """
+        if self._is_linear is None:
+            self._is_linear = is_xyz_linear(self.get_xyz())
+        return self._is_linear
+
+    @is_linear.setter
+    def is_linear(self, value):
+        """Allow setting the is_linear property"""
+        self._is_linear = value
 
     def copy(self):
         """
@@ -1156,7 +1176,7 @@ class ARCSpecies(object):
                     xyz = self.cheap_conformer
                 else:
                     self.generate_conformers(n_confs=1)
-                    if self.conformers is not None:
+                    if self.conformers is not None and len(self.conformers):
                         xyz = self.conformers[0]
         if return_format == 'str':
             xyz = xyz_to_str(xyz)
@@ -1671,7 +1691,7 @@ class ARCSpecies(object):
             shape_index = 0
             comment += '; The molecule is monoatomic'
         else:
-            if is_linear(coordinates=np.array(self.get_xyz()['coords'])):
+            if is_xyz_linear(self.get_xyz()):
                 shape_index = 1
                 comment += '; The molecule is linear'
             else:
