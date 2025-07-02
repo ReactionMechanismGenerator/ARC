@@ -1983,7 +1983,7 @@ class ARCSpecies(object):
     def get_symmetry_number(self):
         """
         Get the symmetry number for the species, which is the highest symmetry number amongst
-        its resonance isomers and the resonance hybrid.
+        its resonance isomers and the resonance hybrid. This is different from the external symmetry alone.
         Populates the .symmetry_number attribute if it is not already set.
 
         Returns:
@@ -2543,7 +2543,7 @@ def determine_rotor_symmetry(label: str,
     peaks, valleys = list(), list()  # the peaks and valleys of the scan
     worst_peak_resolution, worst_valley_resolution = 0, 0
     for i, e in enumerate(energies):
-        # Identify peaks and valleys, and determine the worst resolutions in the scan.
+        # Identify peaks and valleys and determine the worst resolutions in the scan.
         ip1 = cyclic_index_i_plus_1(i, len(energies))  # i Plus 1
         im1 = cyclic_index_i_minus_1(i)  # i Minus 1
         if i == 0 and energies[im1] == e:
@@ -2589,7 +2589,7 @@ def determine_rotor_symmetry(label: str,
         symmetry = 1
         reason = '10% of the maximum peak criterion'
     else:
-        # We declare this rotor as symmetric and the symmetry number is the number of peaks (and valleys)
+        # We declare this rotor as symmetric, and the symmetry number is the number of peaks (and valleys)
         symmetry = len(peaks)
         reason = 'number of peaks and valleys, all within the determined resolution criteria'
     if log:
