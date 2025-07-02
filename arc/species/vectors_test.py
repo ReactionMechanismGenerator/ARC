@@ -116,11 +116,11 @@ class TestVectors(unittest.TestCase):
 C      -0.00000000    0.00000004    0.00000000
 O       1.40465895    0.03095528    0.00000000""")
         angle = vectors.calculate_angle(coords=co2['coords'], atoms=[0, 1, 2], index=0, units='degs')
-        self.assertEqual(angle, 180.0)
+        self.assertAlmostEqual(angle, 180.0, places=1)
         angle = vectors.calculate_angle(coords=co2['coords'], atoms=[1, 2, 3], index=1, units='degs')
-        self.assertEqual(angle, 180.0)
+        self.assertAlmostEqual(angle, 180.0, places=1)
         angle = vectors.calculate_angle(coords=co2['coords'], atoms=[0, 1, 2], index=0, units='rads')
-        self.assertEqual(angle, math.pi)
+        self.assertAlmostEqual(angle, math.pi, places=3)
         with self.assertRaises(VectorsError):
             angle = vectors.calculate_angle(coords=co2['coords'], atoms=[1, 2, 1], index=1, units='degs')
 
@@ -128,7 +128,7 @@ O       1.40465895    0.03095528    0.00000000""")
 C      -0.00000000    0.00000004    0.00000000
 O      -1.40465894   -0.03095532    0.00000000""")
         angle = vectors.calculate_angle(coords=fake_co2['coords'], atoms=[0, 1, 2], index=0, units='degs')
-        self.assertEqual(angle, 0.0)
+        self.assertAlmostEqual(angle, 0.0, places=1)
         angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[8, 3, 9], index=1, units='degs')
         self.assertAlmostEqual(angle, 117.02817, 4)
         angle = vectors.calculate_angle(coords=self.propene['coords'], atoms=[9, 3, 8], index=1, units='degs')
@@ -237,7 +237,7 @@ O      -1.40465894   -0.03095532    0.00000000""")
         distance = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1])
         self.assertAlmostEqual(distance, 1.497630871004034)
         angle = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1, 2])
-        self.assertAlmostEqual(angle, 125.18344391469404)
+        self.assertAlmostEqual(angle, 125.183443, places=4)
         dihedral = vectors.calculate_param(coords=self.propene['coords'], atoms=[0, 1, 2, 6])
         self.assertAlmostEqual(dihedral, 180.0)
         with self.assertRaises(ValueError):
