@@ -11,6 +11,9 @@
 *.pyc
 *.so
 *.pyd
+*.c
+*.o
+*.html
 
 # PyCharm project files
 .idea/*
@@ -58,3 +61,8 @@ timer.dat
 # ignore files created from tests
 nul
 run.out
+
+# Temporary build files
+build/*
+
+*.log
