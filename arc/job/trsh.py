@@ -12,7 +12,6 @@ import re
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
-                        determine_ess,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -30,12 +29,13 @@ from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser import (parse_1d_scan_coords,
-                        parse_normal_mode_displacement,
-                        parse_scan_args,
-                        parse_scan_conformers,
-                        parse_xyz_from_file,
-                        )
+from arc.parser.parser import (parse_1d_scan_coords,
+                               parse_geometry,
+                               parse_normal_mode_displacement,
+                               parse_scan_args,
+                               parse_scan_conformers,
+                               determine_ess
+                               )
 
 
 logger = get_logger()
@@ -74,7 +74,7 @@ def determine_ess_status(output_path: str,
         return 'errored', keywords, error, line
 
     if software is None:
-        software = determine_ess(log_file=output_path)
+        software = determine_ess(log_file_path=output_path)
 
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
@@ -552,7 +552,7 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(path=log_file, raise_error=False)
+    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
     if not len(normal_modes_disp):
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
@@ -609,7 +609,7 @@ def trsh_negative_freq(label: str,
         # Convert a numpy array to a list, important for saving the neg_freqs_trshed species attribute in the restart
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
-        xyz = parse_xyz_from_file(log_file)
+        xyz = parse_geometry(log_file)
         for neg_freq_idx in neg_freqs_idx:
             xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[neg_freq_idx], amplitude=factor)
             conformers.append(xyz_1)
@@ -737,7 +737,7 @@ def trsh_scan_job(label: str,
 
         # Convert to_freeze into an input block str
         to_freeze += already_frozen
-        software = determine_ess(log_file)
+        software = determine_ess(log_file_path=log_file)
         scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
 
     else:

@@ -12,7 +12,7 @@ from unittest.mock import patch
 import arc.job.trsh as trsh
 from arc.common import ARC_PATH
 from arc.imports import settings
-from arc.parser import parse_1d_scan_energies
+from arc.parser.parser import parse_1d_scan_energies
 
 supported_ess = settings["supported_ess"]
 
