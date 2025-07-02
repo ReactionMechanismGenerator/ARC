@@ -846,7 +846,7 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
-    res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
+    res1 = generate_resonance_structures_safely(reactant.mol, save_order = True)
     for res in res1:
         if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
             return True
