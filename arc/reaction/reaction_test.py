@@ -10,8 +10,6 @@ import os
 import shutil
 import unittest
 
-from rmgpy.species import Species
-
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
@@ -242,10 +240,10 @@ class TestARCReaction(unittest.TestCase):
 3 H u0 p0 c0 {1,S}
 4 H u0 p0 c0 {1,S}""",
                                           'bond_corrections': {'H-N': 2, 'N=N': 1},
-                                          'cheap_conformer': 'N      -0.08201544    0.01567102    0.28740725\n'
-                                                             'N       1.12656450   -0.21525765   -0.48621674\n'
-                                                             'H      -0.50742562   -0.72901556    0.83982059\n'
-                                                             'H      -0.53712345    0.92860218    0.29862267',
+                                          'cheap_conformer': 'N      -0.09766126    0.01379054    0.00058556\n'
+                                                             'N       1.34147594   -0.18942713   -0.00804275\n'
+                                                             'H      -0.74382022   -0.77560691    0.00534230\n'
+                                                             'H      -0.49999445    0.95124349    0.00211489',
                                           'label': 'H2NN[S]',
                                           'long_thermo_description': rxn_dict_6['p_species'][1]['long_thermo_description'],
                                           'mol': {'atom_order': rxn_dict_6['p_species'][1]['mol']['atom_order'],
@@ -534,41 +532,28 @@ class TestARCReaction(unittest.TestCase):
     def test_get_reactants_and_products(self):
         """Test getting reactants and products"""
         self.rxn1.remove_dup_species()
-        reactants, products = self.rxn1.get_reactants_and_products(arc=True)
+        reactants, products = self.rxn1.get_reactants_and_products()
         for spc in reactants + products:
             self.assertIsInstance(spc, ARCSpecies)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
 
-        reactants, products = self.rxn1.get_reactants_and_products(arc=False)
-        for spc in reactants + products:
-            self.assertIsInstance(spc, Species)
-        self.assertEqual(len(reactants), 2)
-        self.assertEqual(len(products), 2)
-
-        reactants, products = self.rxn5.get_reactants_and_products(arc=True)
+        reactants, products = self.rxn5.get_reactants_and_products()
         for spc in reactants + products:
             self.assertIsInstance(spc, ARCSpecies)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertEqual(reactants[0].label, reactants[1].label)
 
-        reactants, products = self.rxn5.get_reactants_and_products(arc=False)
-        for spc in reactants + products:
-            self.assertIsInstance(spc, Species)
-        self.assertEqual(len(reactants), 2)
-        self.assertEqual(len(products), 2)
-        self.assertNotEqual(products[0].label, products[1].label)
-
         h2nn = ARCSpecies(label='H2NN(T)', smiles='[N]N')
         n2h2 = ARCSpecies(label='N2H4', smiles='NN')
         n2h3 = ARCSpecies(label='N2H3', smiles='[NH]N')
         rxn1 = ARCReaction(r_species=[h2nn, n2h2], p_species=[n2h3, n2h3])
-        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=False)
+        reactants, products = rxn1.get_reactants_and_products(return_copies=False)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertIs(products[0], products[1])
-        reactants, products = rxn1.get_reactants_and_products(arc=True, return_copies=True)
+        reactants, products = rxn1.get_reactants_and_products(return_copies=True)
         self.assertEqual(len(reactants), 2)
         self.assertEqual(len(products), 2)
         self.assertIsNot(products[0], products[1])

@@ -48,10 +48,7 @@ from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
-import rmgpy.molecule.group as gr
-from rmgpy.molecule.converter import to_ob_mol
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
+import arc.molecule.group as gr
 
 from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
@@ -60,6 +57,10 @@ from arc.common import (convert_list_index_0_to_1,
                         logger,
                         )
 from arc.exceptions import ConformerError, InputError
+from arc.molecule.converter import to_ob_mol
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
+from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
 

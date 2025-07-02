@@ -8,6 +8,7 @@ import matplotlib
 # Do not warn if the backend has already been set, e.g., when running from an IPython notebook.
 matplotlib.use('Agg', force=False)
 import matplotlib.pyplot as plt
+
 import numpy as np
 import os
 import shutil
@@ -19,10 +20,8 @@ import py3Dmol as p3D
 import qcelemental as qcel
 from rdkit import Chem
 
-from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.transport import TransportLibrary
-from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
-from rmgpy.quantity import ScalarQuantity
+from arc.common import (NUMBER_BY_SYMBOL,
+                        calculate_arrhenius_rate_coefficient,
 
 from arc.common import (calculate_arrhenius_rate_coefficient,
                         extremum_list,
@@ -32,7 +31,6 @@ from arc.common import (calculate_arrhenius_rate_coefficient,
                         is_notebook,
                         is_str_float,
                         read_yaml_file,
-                        rmg_mol_to_dict_repr,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
@@ -49,14 +47,12 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, rmg_mol_to_dict_repr
 
 
-R = 8.31446261815324  # J/(mol*K)
 PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
                 '(cm^3/(mol*s))': r' (cm$^3$/(mol s))',
                 '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
-
 
 logger = get_logger()
 

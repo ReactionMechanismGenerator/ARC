@@ -14,28 +14,27 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 from qcelemental.exceptions import ValidationError
 from qcelemental.models.molecule import Molecule as QCMolecule
 
-from rmgpy.molecule import Molecule
-from rmgpy.species import Species
 
-from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
 from arc.exceptions import SpeciesError
 from arc.family import ReactionFamily, get_reaction_family_products
+from arc.molecule import Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
-from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
+from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
 from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
 from numpy import unique
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Atom
+    from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
 
-def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
-                    spc_2: Union[ARCSpecies, Species, Molecule],
+def map_two_species(spc_1: Union[ARCSpecies, Molecule],
+                    spc_2: Union[ARCSpecies, Molecule],
                     map_type: str = 'list',
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
@@ -50,8 +49,8 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
 
     Args:
-        spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
-        spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
+        spc_1 (Union[ARCSpecies, Molecule]): Species 1.
+        spc_2 (Union[ARCSpecies, Molecule]): Species 2.
         map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
         allow_backend_shift (bool, optional): Whether to try QCElemental's method if ARC's method cannot identify candidates.
@@ -167,15 +166,13 @@ def get_arc_species(spc: Union[ARCSpecies, Species, Molecule]) -> ARCSpecies:
     Convert an object to an ARCSpecies object.
 
     Args:
-        spc (Union[ARCSpecies, Species, Molecule]): An input object.
+        spc (Union[ARCSpecies, Molecule]): An input object.
 
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
     """
     if isinstance(spc, ARCSpecies):
         return spc
-    if isinstance(spc, Species):
-        return ARCSpecies(label='S', mol=spc.molecule[0])
     if isinstance(spc, Molecule):
         return ARCSpecies(label='S', mol=spc)
     raise ValueError(f'Species entries may only be ARCSpecies, RMG Species, or RMG Molecule.\n'
@@ -616,7 +613,7 @@ def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
                   backbone_map: Dict[int, int],
                   ) -> Dict[int, int]:
-    """
+    r"""
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
     If more than one hydrogen atom is bonded to a given heavy atom forming a "terminal" internal rotor,
