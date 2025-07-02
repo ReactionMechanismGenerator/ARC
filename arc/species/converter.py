@@ -89,8 +89,8 @@ def str_to_xyz(xyz_str: str,
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
         xyz_str = os.path.join(project_directory, xyz_str)
     if os.path.isfile(xyz_str):
-        from arc.parser import parse_xyz_from_file
-        return parse_xyz_from_file(xyz_str)
+        from arc.parser.parser import parse_geometry
+        return parse_geometry(log_file_path=xyz_str)
     xyz_str = xyz_str.replace(',', ' ')
     if len(xyz_str.splitlines()) and len(xyz_str.splitlines()[0]) == 1:
         # this is a zmat
