@@ -501,7 +501,7 @@ H      -0.83821148   -0.26602407    0.00000000"""
     def test_get_reaction_family_r_add_mult_bond(self):
         """Test determining the reaction family using product dicts"""
         spc_1 = ARCSpecies(label='C2H3O3', smiles='[CH2]C(=O)OO')
-        spc_1.mol_list = generate_resonance_structures(object_=spc_1.mol, keep_isomorphic=True)
+        spc_1.mol_list = generate_resonance_structures_safely(spc_1.mol, keep_isomorphic=True)
         rxn_7 = ARCReaction(r_species=[spc_1],
                             p_species=[ARCSpecies(label='C2H2O', smiles='C=C=O'),
                                        ARCSpecies(label='HO2', smiles='O[O]')])

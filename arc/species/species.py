@@ -16,7 +16,6 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         dfs,
                         get_logger,
                         get_single_bond_length,
-                        generate_resonance_structures,
                         is_angle_linear,
                         read_yaml_file,
                         timedelta_from_str,
@@ -977,7 +976,7 @@ class ARCSpecies(object):
             if not self.is_ts:
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.reactive = True
-                self.mol_list = generate_resonance_structures(mol_copy)
+                self.mol_list = generate_resonance_structures_safely(mol_copy)
                 if self.mol_list is None:
                     self.mol_list = [self.mol]
             else:

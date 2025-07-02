@@ -498,7 +498,7 @@ def filter_products_by_reaction(rxn: 'ARCReaction',
         List[dict]: The filtered list of product dictionaries.
     """
     filtered_product_dicts, r_label_maps = list(), list()
-    r_species, p_species = rxn.get_reactants_and_products(return_copies=True)
+    _, p_species = rxn.get_reactants_and_products(return_copies=True)
     for product_dict in product_dicts:
         if len(product_dict['products']) != len(p_species):
             continue
@@ -524,7 +524,7 @@ def check_product_isomorphism(products: List['Molecule'],
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    prods_a = [generate_resonance_structures(mol.copy(deep=True)) or [mol.copy(deep=True)] for mol in products]
+    prods_a = [generate_resonance_structures_safely(mol) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
     if len(prods_a) == 1:
         prod_a = prods_a[0]
