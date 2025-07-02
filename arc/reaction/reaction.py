@@ -148,12 +148,9 @@ class ARCReaction(object):
         """The reactants to products atom map"""
         if self._atom_map is None \
                 and all(species.get_xyz(generate=False) is not None for species in self.r_species + self.p_species):
-            for backend in ["ARC", "QCElemental"]:
-                _atom_map = map_reaction(rxn=self, backend=backend)
-                if _atom_map is not None:
-                    self._atom_map = _atom_map
-                    break
-                logger.error(f"The requested ARC reaction {self}, and it's reverse, could not be atom mapped using {backend}.")
+            _atom_map = map_reaction(rxn=self, backend='ARC')
+            if _atom_map is not None:
+                self._atom_map = _atom_map
         if self._atom_map is None:
             logger.error(f"The requested ARC reaction {self} could not be atom mapped.")
         return self._atom_map
