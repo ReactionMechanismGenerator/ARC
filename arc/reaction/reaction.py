@@ -4,10 +4,7 @@ A module for representing a reaction.
 
 from typing import Dict, List, Optional, Tuple, Union
 
-from arkane.common import get_element_mass
-from rmgpy.species import Species
-
-from arc.common import get_logger
+from arc.common import get_element_mass, get_logger
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products
 from arc.species.converter import (check_xyz_dict,
@@ -52,8 +49,9 @@ class ARCReaction(object):
         preserve_param_in_scan (list, optional): Entries are length two iterables of atom indices (1-indexed)
                                                  between which distances and dihedrals of these pivots must be
                                                  preserved. Used for identification of rotors which break a TS.
-        kinetics (Dict[str, float], optional): The high pressure limit rate coefficient calculated by ARC.
-                                               Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
+        kinetics (Dict[str, Union[float, Tuple[float, str]]], optional): The high pressure limit rate coefficient
+                                                                         calculated by ARC. Keys are 'A' (value, unit),
+                                                                         n (value), and Ea (value, unit).
 
     Attributes:
         label (str): The reaction's label in the format `r1 + r2 <=> p1 + p2`
@@ -66,8 +64,9 @@ class ARCReaction(object):
         p_species (List[ARCSpecies]): A list of products :ref:`ARCSpecies <species>` objects.
         ts_species (ARCSpecies): The :ref:`ARCSpecies <species>` corresponding to the reaction's TS.
         dh_rxn298 (float): The heat of reaction at 298K in J/mol.
-        kinetics (Dict[str, float]): The high pressure limit rate coefficient calculated by ARC.
-                                     Keys are 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol.
+        kinetics (Dict[str, Union[float, Tuple[float, str]]]): The high pressure limit rate coefficient
+                                                               calculated by ARC. Keys are 'A' (value, unit),
+                                                               n (value), and Ea (value, unit).
         rmg_kinetics (List[Dict[str, float]]): The Arrhenius kinetics from RMG's libraries and families.
                                                Each dict has 'A' in cm-s-mol units, 'n', and 'Ea' in kJ/mol as keys,
                                                and a 'comment' key with a description of the source of the kinetics.
@@ -99,7 +98,7 @@ class ARCReaction(object):
                  reaction_dict: Optional[dict] = None,
                  species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
-                 kinetics: Dict[str, float] = None,
+                 kinetics: Dict[str, Union[float, Tuple[float, str]]] = None,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
@@ -437,7 +436,7 @@ class ARCReaction(object):
 
     def get_rxn_multiplicity(self):
         """A helper function for determining the surface multiplicity"""
-        reactants, products = self.get_reactants_and_products(arc=True)
+        reactants, products = self.get_reactants_and_products()
         multiplicity = None
         ordered_r_mult_list, ordered_p_mult_list = list(), list()
         if len(reactants):
@@ -710,38 +709,25 @@ class ARCReaction(object):
         return count
 
     def get_reactants_and_products(self,
-                                   arc: bool = True,
                                    return_copies: bool = True,
-                                   ) -> Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
+                                   ) -> Tuple[List[ARCSpecies], List[ARCSpecies]]:
         """
         Get a list of reactant and product species including duplicate species, if any.
         The species could either be ``ARCSpecies`` or ``RMGSpecies`` object instance.
 
         Args:
-            arc (bool, optional): Whether to return the species as ARCSpecies (``True``) or as RMG Species (``False``).
             return_copies (bool, optional): Whether to return unique object instances using the copy() method.
 
-        Returns:
-            Tuple[List[Union[ARCSpecies, Species]], List[Union[ARCSpecies, Species]]]:
-                The reactants and products.
+        Returns: Tuple[List[ARCSpecies], List[ARCSpecies]]
+            The reactants and products.
         """
         reactants, products = list(), list()
         for r_spc in self.r_species:
-            if arc:
-                for i in range(self.get_species_count(species=r_spc, well=0)):
-                    reactants.append(r_spc.copy() if return_copies else r_spc)
-            else:
-                for i in range(self.get_species_count(species=r_spc, well=0)):
-                    reactants.append(Species(label=r_spc.label, molecule=[r_spc.mol.copy(deep=True) if return_copies
-                                                                          else r_spc.mol]))
+            for i in range(self.get_species_count(species=r_spc, well=0)):
+                reactants.append(r_spc.copy() if return_copies else r_spc)
         for p_spc in self.p_species:
-            if arc:
-                for i in range(self.get_species_count(species=p_spc, well=1)):
-                    products.append(p_spc.copy() if return_copies else p_spc)
-            else:
-                for i in range(self.get_species_count(species=p_spc, well=1)):
-                    products.append(Species(label=p_spc.label, molecule=[p_spc.mol.copy(deep=True) if return_copies
-                                                                          else p_spc.mol]))
+            for i in range(self.get_species_count(species=p_spc, well=1)):
+                products.append(p_spc.copy() if return_copies else p_spc)
         return reactants, products
 
     def get_expected_changing_bonds(self,
@@ -931,7 +917,7 @@ class ARCReaction(object):
     Returns: string
         The reaction SMILES
         """
-        reactants, products = self.get_reactants_and_products(arc=True, return_copies=True)
+        reactants, products = self.get_reactants_and_products(return_copies=True)
         smiles_r = [reactant.mol.copy(deep=True).to_smiles() for reactant in reactants]
         smiles_p = [product.mol.copy(deep=True).to_smiles() for product in products]
         if not any(smiles_r) or not any(smiles_p):

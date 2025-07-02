@@ -19,12 +19,7 @@ import datetime
 import itertools
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-import numpy as np
-
-from rmgpy.molecule.molecule import Molecule
-from arkane.statmech import is_linear
-
-from arc.common import almost_equal_coords, get_logger, is_angle_linear, key_by_val
+from arc.common import almost_equal_coords, get_logger, is_angle_linear, is_xyz_linear, key_by_val
 from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
@@ -32,6 +27,7 @@ from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz
 from arc.mapping.engine import map_two_species
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
 from arc.species.zmat import get_parameter_from_atom_indices, remove_1st_atom, up_param
 
@@ -389,7 +385,7 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Union[dict, str],
           before returning the final cartesian coordinates
     """
     is_a2_linear = is_angle_linear(a2)
-    is_mol_1_linear = is_linear(np.array(xyz_1['coords']))
+    is_mol_1_linear = is_xyz_linear(xyz_1['coords'])
     d2 = d2 if not is_a2_linear else None
     num_atoms_mol_1, num_atoms_mol_2 = len(mol_1.atoms), len(mol_2.atoms)
 
@@ -809,7 +805,7 @@ def are_h_abs_wells_reversed(rxn: 'ARCReaction',
     """
     r_star_2 = product_dict['r_label_map']['*2']
     p_star_2 = product_dict['p_label_map']['*2']
-    r_species, p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)
+    r_species, p_species = rxn.get_reactants_and_products(return_copies=True)
     reactants_reversed = len(r_species[0].mol.atoms) < r_star_2
     products_reversed = len(product_dict['products'][0].atoms) >= p_star_2
     same_order_between_rxn_prods_and_dict_prods = p_species[0].is_isomorphic(product_dict['products'][0])
@@ -852,13 +848,12 @@ def h_abstraction(reaction: 'ARCReaction',
         # Identify R1H and R2H in the "R1H + R2 <=> R1 + R2H" or "R2 + R1H <=> R2H + R1" reaction
         # The expected RMG atom labels are: R(*1)-H(*2) + R(*3)j <=> R(*1)j + R(*3)-H(*2).
         # They appear in each product_dict under the 'r_label_map' key.
-        reactants, products = reaction.get_reactants_and_products(arc=True, return_copies=False)
+        reactants, products = reaction.get_reactants_and_products(return_copies=False)
         reactant = reactants[int(reactants_reversed)]  # Get R(*1)-H(*2).
         reactant_2 = reactants[int(not reactants_reversed)]  # Get R(*3)j.
         product = products[int(not products_reversed)]  # Get R(*3)-H(*2).
         r_mol, p_mol = reactant.mol.copy(deep=True), product.mol.copy(deep=True)
-        if any([is_linear(coordinates=np.array(reactant.get_xyz()['coords'])),
-                is_linear(coordinates=np.array(product.get_xyz()['coords']))]) and is_angle_linear(a2):
+        if any([is_xyz_linear(reactant.get_xyz()), is_xyz_linear(product.get_xyz())]) and is_angle_linear(a2):
             # Don't modify dihedrals for an attacking H (or other linear radical) at a linear angle, C ~ A -- H1 - H2 -- H.
             dihedral_increment = 360
 
