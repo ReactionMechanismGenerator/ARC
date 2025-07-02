@@ -71,7 +71,6 @@ class TestARC(unittest.TestCase):
                    job_types=self.job_types1,
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                   three_params=False,
                    ts_adapters=['heuristics', 'AutoTST', 'GCN', 'xtb_gsm'],
                    )
         arc0.freq_level.args['keyword']['general'] = 'scf=(NDamp=30)'
@@ -145,7 +144,6 @@ class TestARC(unittest.TestCase):
                                               'props': {}},
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
-                         'three_params': False,
                          'ts_adapters': ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']}
         # import pprint  # left intentionally for debugging
         # print(pprint.pprint(restart_dict))
@@ -180,7 +178,6 @@ class TestARC(unittest.TestCase):
                                      'optical_isomers': 1,
                                      'rotors_dict': {},
                                      'xyzs': []}],
-                        'three_params': False,
                         'project_directory': os.path.join(ARC_PATH, 'Projects',
                                                           'arc_project_for_testing_delete_after_usage_test_from_dict'),
                         }
@@ -197,7 +194,6 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc2.species[0].label, 'testing_spc1')
         self.assertFalse(arc2.species[0].is_ts)
         self.assertEqual(arc2.species[0].charge, 1)
-        self.assertFalse(arc2.three_params)
 
     def test_from_dict_specific_job(self):
         """Test the from_dict() method of ARC"""
@@ -472,7 +468,6 @@ class TestARC(unittest.TestCase):
                        job_types=self.job_types1,
                        species=[spc1],
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                       three_params=False,
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
 
