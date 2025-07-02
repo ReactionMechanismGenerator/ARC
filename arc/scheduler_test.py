@@ -9,7 +9,7 @@ import unittest
 import os
 import shutil
 
-import arc.parser as parser
+import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.factory import job_factory
@@ -147,15 +147,15 @@ H      -1.82570782    0.42754384   -0.56130718"""
         expecting = [-251596.4435088726, -254221.9433698632]
         self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[0], expecting[0], 5)
         self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[1], expecting[1], 5)
-        self.sched1.species_dict[label].conformers[0] = parser.parse_xyz_from_file(self.job1.local_path_to_output_file)
-        self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
+        self.sched1.species_dict[label].conformers[0] = parser.parse_geometry(log_file_path=self.job1.local_path_to_output_file)
+        self.sched1.species_dict[label].conformers[1] = parser.parse_geometry(log_file_path=self.job2.local_path_to_output_file)
 
         self.sched1.determine_most_stable_conformer(label=label)
         expecting = {'symbols': ('N', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (14, 12, 1, 1, 1, 1, 1),
-                     'coords': ((-0.75555952, -0.12937106, 0.0), (0.7085544, 0.03887206, 0.0),
-                                (1.06395135, 1.08711266, 0.0), (1.12732348, -0.45978507, 0.88433277),
-                                (1.12732348, -0.45978507, -0.88433277), (-1.16566701, 0.32023496, 0.81630508),
-                                (-1.16566701, 0.32023496, -0.81630508))}
+                     'coords': ((1.06285195, -0.05973289, -0.05572905), (0.58593742, -0.13433639, 1.31364725),
+                                (0.94565108, 0.72039562, 1.89348456), (-0.50740438, -0.13635514, 1.33321487),
+                                (0.94049061, -1.05387396, 1.787489), (0.75109199, 0.81493417, -0.47581149),
+                                (2.08152855, -0.0281555, -0.05839008))}
         self.assertTrue(almost_equal_coords_lists(self.sched1.species_dict[label].initial_xyz, expecting))
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
                                              'geometry', 'conformers', 'conformers_after_optimization.txt')
@@ -199,7 +199,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.job_adapter)
+        vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 
     def test_determine_adaptive_level(self):
