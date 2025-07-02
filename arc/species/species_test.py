@@ -14,7 +14,7 @@ from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
 from arc.molecule.molecule import Molecule
-from arc.parser import parse_e_elect
+from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,

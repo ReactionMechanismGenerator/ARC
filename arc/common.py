@@ -112,31 +112,6 @@ def initialize_job_types(job_types: Optional[dict] = None,
     return job_types
 
 
-def determine_ess(log_file: str) -> str:
-    """
-    Determine the ESS to which the log file belongs.
-
-    Args:
-        log_file (str): The ESS log file path.
-
-    Returns: str
-        The ESS log class from Arkane.
-    """
-    log = ess_factory(log_file, check_for_errors=False)
-    if isinstance(log, GaussianLog):
-        return 'gaussian'
-    if isinstance(log, MolproLog):
-        return 'molpro'
-    if isinstance(log, OrcaLog):
-        return 'orca'
-    if isinstance(log, QChemLog):
-        return 'qchem'
-    if isinstance(log, TeraChemLog):
-        return 'terachem'
-    raise InputError(f'Could not identify the log file in {log_file} as belonging to '
-                     f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
-
-
 def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
     """
     A helper function to convert servers in the ess_settings dict to lists

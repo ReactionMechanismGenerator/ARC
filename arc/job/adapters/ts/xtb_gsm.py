@@ -26,7 +26,7 @@ from arc.job.adapters.common import _initialize_adapter
 from arc.job.factory import register_job_adapter
 from arc.job.local import change_mode, execute_command
 from arc.level import Level
-from arc.parser import parse_trajectory
+from arc.parser.parser import parse_trajectory
 from arc.species import TSGuess
 from arc.species.converter import xyz_to_xyz_file_format
 
