@@ -6,6 +6,8 @@ A standalone script to run TorhANI,
 should be run under the tani environment.
 """
 
+from typing import Optional
+
 import argparse
 import os
 import yaml
@@ -77,7 +79,7 @@ def run_opt(xyz,
             model,
             constraints: dict = None,
             fmax: float = 0.001,
-            steps: int = None,
+            steps: Optional[int] = None,
             engine: str = 'SciPyFminBFGS',
             ):
     """
@@ -98,6 +100,7 @@ def run_opt(xyz,
                                 'SciPyFminCG': A non-linear (Polak-Ribiere) conjugate gradient algorithm.
                                                 An ASE interface to SciPy.
     """
+    steps = steps or 1000
     calculator = model.ase()
     atoms = Atoms(xyz['symbols'], xyz['coords'])
     atoms.set_calculator(calculator)
@@ -122,6 +125,7 @@ def run_opt(xyz,
         opt_engine = engine_dict[opt_engine_name]
         opt = opt_engine(atoms, logfile=None)
         try:
+            print(f'steps: {steps}, fmax: {fmax}, engine: {opt_engine_name}')
             opt.run(fmax=fmax, steps=steps)
         except (Converged, NotImplementedError, OptimizerConvergenceError):
             pass
@@ -142,8 +146,8 @@ def run_vibrational_analysis(xyz: dict = None,
     Compute the Hessian matrix along with vibrational frequencies (cm^-1),
     normal mode displacements, force constants (mDyne/A), and reduced masses (AMU).
     """
-    if all([i is None for i in [xyz, opt_xyz]]):
-        raise ValueError("Must recive at least one geometry to run vibrational analysis.")
+    if xyz is None and opt_xyz is None:
+        raise ValueError("Must receive at least one geometry to run vibrational analysis.")
     xyz = opt_xyz or xyz
     atoms = Atoms(xyz['symbols'], xyz['coords'])
     species = torch.tensor(atoms.get_atomic_numbers(), device=device, dtype=torch.long).unsqueeze(0)
@@ -152,13 +156,14 @@ def run_vibrational_analysis(xyz: dict = None,
     energies = model.double()((species, coordinates)).energies
     hessian = torchani.utils.hessian(coordinates, energies=energies)
     freqs, modes, force_constants, reduced_masses = torchani.utils.vibrational_analysis(masses, hessian, mode_type='MDU')
-    freqs = freqs.numpy()
-    results = {'hessian': hessian.tolist(),
-               'freqs': freqs.tolist(),
-               'modes': modes.tolist(),
-               'force_constants': force_constants.tolist(),
-               'reduced_masses': reduced_masses.tolist(),
-               }
+    freqs = freqs.cpu().numpy() if hasattr(freqs, 'cpu') else freqs.numpy()
+    results = {
+        'hessian': hessian.cpu().numpy().tolist() if hasattr(hessian, 'cpu') else hessian.tolist(),
+        'freqs': freqs.tolist(),
+        'modes': modes.cpu().numpy().tolist() if hasattr(modes, 'cpu') else modes.tolist(),
+        'force_constants': force_constants.cpu().numpy().tolist() if hasattr(force_constants, 'cpu') else force_constants.tolist(),
+        'reduced_masses': reduced_masses.cpu().numpy().tolist() if hasattr(reduced_masses, 'cpu') else reduced_masses.tolist(),
+    }
     return results
 
 
