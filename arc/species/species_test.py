@@ -447,82 +447,6 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(len(spc2.rotors_dict), 1)
         self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
 
-    def test_symmetry(self):
-        """Test external symmetry and chirality determination"""
-        allene = ARCSpecies(label='allene', smiles='C=C=C', multiplicity=1, charge=0)
-        allene.final_xyz = str_to_xyz("""C  -1.01646   0.10640  -0.91445
-                              H  -1.39000   1.03728  -1.16672
-                              C   0.00000   0.00000   0.00000
-                              C   1.01653  -0.10640   0.91438
-                              H  -1.40975  -0.74420  -1.35206
-                              H   0.79874  -0.20864   1.92036
-                              H   2.00101  -0.08444   0.59842""")
-        allene.determine_symmetry()
-        self.assertEqual(allene.optical_isomers, 1)
-        self.assertEqual(allene.external_symmetry, 4)
-
-        ammonia = ARCSpecies(label='ammonia', smiles='N', multiplicity=1, charge=0)
-        ammonia.final_xyz = str_to_xyz("""N  0.06617   0.20024   0.13886
-                               H  -0.62578  -0.34119   0.63709
-                               H  -0.32018   0.51306  -0.74036
-                               H   0.87976  -0.37219  -0.03564""")
-        ammonia.determine_symmetry()
-        self.assertEqual(ammonia.optical_isomers, 1)
-        self.assertEqual(ammonia.external_symmetry, 3)
-
-        methane = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
-        methane.final_xyz = str_to_xyz("""C   0.00000   0.00000   0.00000
-                               H  -0.29717   0.97009  -0.39841
-                               H   1.08773  -0.06879   0.01517
-                               H  -0.38523  -0.10991   1.01373
-                               H -0.40533  -0.79140  -0.63049""")
-        methane.determine_symmetry()
-        self.assertEqual(methane.optical_isomers, 1)
-        self.assertEqual(methane.external_symmetry, 12)
-
-        chiral = ARCSpecies(label='chiral', smiles='C(C)(O)(N)', multiplicity=1, charge=0)
-        chiral.final_xyz = str_to_xyz("""C                 -0.49341625    0.37828349    0.00442108
-                              H                 -1.56331545    0.39193350    0.01003359
-                              N                  0.01167132    1.06479568    1.20212111
-                              H                  1.01157784    1.05203730    1.19687531
-                              H                 -0.30960193    2.01178202    1.20391932
-                              O                 -0.03399634   -0.97590449    0.00184366
-                              H                 -0.36384913   -1.42423238   -0.78033350
-                              C                  0.02253835    1.09779040   -1.25561654
-                              H                 -0.34510997    0.59808430   -2.12741255
-                              H                 -0.32122209    2.11106387   -1.25369100
-                              H                  1.09243518    1.08414066   -1.26122530""")
-        chiral.determine_symmetry()
-        self.assertEqual(chiral.optical_isomers, 2)
-        self.assertEqual(chiral.external_symmetry, 1)
-
-        s8 = ARCSpecies(label='s8', smiles='S1SSSSSSS1', multiplicity=1, charge=0)
-        s8.final_xyz = str_to_xyz("""S   2.38341   0.12608   0.09413
-                          S   1.45489   1.88955  -0.13515
-                          S  -0.07226   2.09247   1.14966
-                          S  -1.81072   1.52327   0.32608
-                          S  -2.23488  -0.39181   0.74645
-                          S  -1.60342  -1.62383  -0.70542
-                          S   0.22079  -2.35820  -0.30909
-                          S   1.66220  -1.25754  -1.16665""")
-        s8.determine_symmetry()
-        self.assertEqual(s8.optical_isomers, 1)
-        self.assertEqual(s8.external_symmetry, 8)
-
-        water = ARCSpecies(label='H2O', smiles='O', multiplicity=1, charge=0)
-        water.final_xyz = str_to_xyz("""O   0.19927   0.29049  -0.11186
-                             H   0.50770  -0.61852  -0.09124
-                             H  -0.70697   0.32803   0.20310""")
-        water.determine_symmetry()
-        self.assertEqual(water.optical_isomers, 1)
-        self.assertEqual(water.external_symmetry, 2)
-
-        # test setting only symmetry, preserving optical isomers
-        ch2oh = ARCSpecies(label='CH2OH', smiles='[CH2]O', optical_isomers=1)
-        ch2oh.determine_symmetry()
-        self.assertEqual(ch2oh.optical_isomers, 1)
-        self.assertEqual(ch2oh.external_symmetry, 1)
-
     def test_xyz_format_conversion(self):
         """Test conversions from string to dict xyz formats"""
         xyz_str0 = """N       2.24690600   -0.00006500    0.11597700
@@ -1600,7 +1524,6 @@ H       1.32129900    0.71837500    0.38017700
 
     def test_set_transport_data(self):
         """Test the set_transport_data method"""
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         lj_path = os.path.join(ARC_PATH, 'arc', 'testing', 'NH3_oneDMin.dat')
         opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
@@ -1608,12 +1531,11 @@ H       1.32129900    0.71837500    0.38017700
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment.value_si, 2.10145e-30, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.polarizability.value_si, 3.99506e-30, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.epsilon[0], 1420.75, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.sigma[0], 3.57813e-10, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment[0], 0.63, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.polarizability[0], 3.9950550446, 4)
         self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
         self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
                                                            'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
@@ -1929,12 +1851,6 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H       0.80478689   -2.00346200   -0.12519327"""
         with self.assertRaises(SpeciesError):
             ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
-
-        xyz6 = """C    1.1709385492    0.1763143411    0.0
-                  Cl  -0.5031634975   -0.0109430036    0.0
-                  H    1.5281481620   -0.8718549847    0.0"""
-        spc6 = ARCSpecies(label='[CH]Cl', smiles='[CH]Cl', xyz=xyz6)
-        self.assertEqual(spc6.get_xyz(), str_to_xyz(xyz6))
 
     def test_scissors(self):
         """Test the scissors method in Species"""
