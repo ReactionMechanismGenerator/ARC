@@ -30,14 +30,14 @@ class TestMockAdapter(unittest.TestCase):
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_1'),
-                                species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_2 = MockAdapter(job_type='opt',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_2'),
-                                species=[ARCSpecies(label='spc2', xyz=['O 0 0 1'])],
+                                species=[ARCSpecies(label='spc2', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_3 = MockAdapter(job_type='freq',
