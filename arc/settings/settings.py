@@ -324,12 +324,13 @@ RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
 
 # Set RMG_DB_PATH with fallback methods
-rmg_db_candidates = []
+rmg_db_candidates, rmg_candidates = list(), list()
 
 # Use exported RMG_DB_PATH if available
 exported_rmg_db_path = os.getenv("RMG_DB_PATH")
 if exported_rmg_db_path:
     rmg_db_candidates.append(exported_rmg_db_path)
+    rmg_candidates.append(os.path.join(os.path.dirname(exported_rmg_db_path), 'RMG-Py'))
 
 for python_path in sys.path:
     if 'RMG-database' in python_path:
@@ -337,12 +338,20 @@ for python_path in sys.path:
     if 'RMG-Py' in python_path:
         rmg_db_candidates.append(os.path.join(os.path.dirname(python_path), 'RMG-database'))
 
+rmg_candidates.extend([
+    os.path.join(home, 'Code', 'RMG-Py'),
+    os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-Py')
+])
 rmg_db_candidates.extend([
     os.path.join(home, 'Code', 'RMG-database'),
     os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
 ])
 
-# Finalize RMG_DB_PATH
+# Finalize RMG_PATH and RMG_DB_PATH
+for path in rmg_candidates:
+    if path and os.path.isdir(path):
+        RMG_PATH = path
+        break
 for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
