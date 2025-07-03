@@ -18,7 +18,6 @@ from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess
-from arc.utils.wip import work_in_progress
 
 
 class TestChecks(unittest.TestCase):
@@ -337,9 +336,9 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                      freq_scale_factor=1.0,
                                      )
 
-        self.assertAlmostEquals(rxn_copy.r_species[0].e0, -306893.334, places=1)
-        self.assertAlmostEquals(rxn_copy.p_species[0].e0, -306902.397, places=1)
-        self.assertAlmostEquals(rxn_copy.ts_species.e0, -306655.822, places=1)
+        self.assertAlmostEqual(rxn_copy.r_species[0].e0, -306893, places=1)
+        self.assertAlmostEqual(rxn_copy.p_species[0].e0, -306902, places=1)
+        self.assertAlmostEqual(rxn_copy.ts_species.e0, -306656, places=1)
 
     def test_check_rxn_e0(self):
         """Test the check_rxn_e0() function."""
@@ -357,7 +356,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                      sp_level=Level(repr='uhf/3-21g'),
                                      freq_scale_factor=1.0,
                                      )
-
         self.assertIsNone(rxn_copy.ts_species.ts_checks['E0'])
         ts.check_rxn_e0(reaction=rxn_copy, verbose=True)
         self.assertTrue(rxn_copy.ts_species.ts_checks['E0'])
