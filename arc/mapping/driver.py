@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
-                 flip = False
+                 flip = False,
                  ) -> Optional[List[int]]:
     """
     Map a reaction.
@@ -45,6 +45,8 @@ def map_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Currently only supports ``'ARC'``.
+        flip (bool, optional): If True, the reaction will be flipped before it is mapped.
+                               Useful for reactions that are not atom-mapped correctly in the forward direction.
 
     Returns:
         Optional[List[int]]:
