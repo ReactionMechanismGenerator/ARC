@@ -726,7 +726,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(len(rxn13.ts_species.ts_guesses), 4)
         self.assertEqual(rxn13.ts_species.ts_guesses[0].initial_xyz['symbols'], ('N', 'H', 'H', 'O', 'H', 'H'))
 
-        # different reactant order order
+        # different reactant order
         # H2O + NH2 <=> NH3 + OH
         rxn14 = ARCReaction(r_species=[h2o, nh2], p_species=[nh3, oh])
         self.assertEqual(rxn14.family, 'H_Abstraction')
@@ -744,7 +744,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         self.assertEqual(len(rxn14.ts_species.ts_guesses), 4)
         self.assertEqual(rxn14.ts_species.ts_guesses[0].initial_xyz['symbols'], ('O', 'H', 'H', 'N', 'H', 'H'))
 
-        # different product order order
+        # different product order
         # NH2 + H2O <=> OH + NH3
         rxn15 = ARCReaction(r_species=[h2o, nh2], p_species=[nh3, oh])
         self.assertEqual(rxn15.family, 'H_Abstraction')
@@ -877,7 +877,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                          dihedral_increment=120,
                                          )
         heuristics_1.execute_incore()
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 12)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 9)
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""

@@ -21,14 +21,9 @@ from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 HAS_AUTOTST = True
 try:
-    # new format
     from autotst.reaction import Reaction as AutoTST_Reaction
 except (ImportError, ModuleNotFoundError):
-    try:
-        # old format
-        from autotst.reaction import AutoTST_Reaction
-    except (ImportError, ModuleNotFoundError):
-        HAS_AUTOTST = False
+    HAS_AUTOTST = False
 
 if TYPE_CHECKING:
     from arc.level import Level
