@@ -25,7 +25,7 @@ def xyz_to_OBMol(xyz: str) ->  openbabel.OBMol:
 def run_sp(mol : openbabel.OBMol, ff_method : str) -> int:
     ff = openbabel.OBForceField.FindForceField(ff_method)
     ff.Setup(mol)
-    return ff.Energy()*4.184 # kcal/mol to kj/mol
+    return ff.Energy() * 4.184 # kcal/mol to kj/mol
 
 
 def constraint_opt(mol: openbabel.OBMol,
