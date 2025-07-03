@@ -200,22 +200,21 @@ def compute_rxn_e0(reaction: 'ARCReaction',
             return None
     considered_labels = list()
     rxn_copy = reaction.copy()
-    for species in rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]:
+    species_list = rxn_copy.r_species + rxn_copy.p_species + [rxn_copy.ts_species]
+    for species in species_list:
         if species.label in considered_labels or species.e0:
             continue
         considered_labels.append(species.label)
-        statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
-                                            output_directory=os.path.join(project_directory, 'output'),
-                                            calcs_directory=os.path.join(project_directory, 'calcs'),
-                                            output_dict=output,
-                                            species=[species],
-                                            bac_type=None,
-                                            sp_level=sp_level,
-                                            freq_scale_factor=freq_scale_factor,
-                                            )
-        statmech_adapter.compute_thermo(e0_only=True,
-                                        skip_rotors=True,
+    statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
+                                        output_directory=os.path.join(project_directory, 'output'),
+                                        calcs_directory=os.path.join(project_directory, 'calcs'),
+                                        output_dict=output,
+                                        species=[spc for spc in species_list if spc.label in considered_labels],
+                                        bac_type=None,
+                                        sp_level=sp_level,
+                                        freq_scale_factor=freq_scale_factor,
                                         )
+    statmech_adapter.compute_thermo(e0_only=True, skip_rotors=True)
     return rxn_copy
 
 
