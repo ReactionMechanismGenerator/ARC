@@ -273,7 +273,7 @@ class TestARC(unittest.TestCase):
         self.assertIsNone(arc3.orbitals_level)
 
         arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
-                   sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False)
+                   sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++g(3df,3pd)')
         self.assertEqual(arc4.freq_level.simple(), 'm062x/def2-tzvpp')
         self.assertEqual(arc4.sp_level.simple(), 'ccsd(t)f12/aug-cc-pvqz')
