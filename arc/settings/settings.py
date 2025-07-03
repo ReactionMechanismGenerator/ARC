@@ -295,8 +295,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -324,12 +324,19 @@ RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
 
 # Set RMG_DB_PATH with fallback methods
-rmg_db_candidates = []
+rmg_db_candidates, rmg_candidates = list(), list()
 
-# Use exported RMG_DB_PATH if available
-exported_rmg_db_path = os.getenv("RMG_DB_PATH")
+# Use exported RMG_PATH & RMG_DB_PATH if available
+exported_rmg_path, exported_rmg_db_path = os.getenv("RMG_PATH"), os.getenv("RMG_DB_PATH")
+if exported_rmg_path:
+    rmg_candidates.append(exported_rmg_path)
 if exported_rmg_db_path:
     rmg_db_candidates.append(exported_rmg_db_path)
+
+gw = os.getenv("GITHUB_WORKSPACE")  # e.g., /home/runner/work/ARC/ARC
+if gw:
+    rmg_candidates.append(os.path.join(gw, 'RMG-Py'))
+    rmg_db_candidates.append(os.path.join(gw, 'RMG-database'))
 
 for python_path in sys.path:
     if 'RMG-database' in python_path:
@@ -337,12 +344,27 @@ for python_path in sys.path:
     if 'RMG-Py' in python_path:
         rmg_db_candidates.append(os.path.join(os.path.dirname(python_path), 'RMG-database'))
 
+for p in sys.path:
+    if 'RMG-Py' in p:
+        rmg_candidates.append(p)
+        rmg_db_candidates.append(os.path.join(os.path.dirname(p), 'RMG-database'))
+    if 'RMG-database' in p:
+        rmg_db_candidates.append(p)
+
+rmg_candidates.extend([
+    os.path.join(home, 'Code', 'RMG-Py'),
+    os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-Py')
+])
 rmg_db_candidates.extend([
     os.path.join(home, 'Code', 'RMG-database'),
     os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
 ])
 
-# Finalize RMG_DB_PATH
+# Finalize RMG_PATH and RMG_DB_PATH
+for path in rmg_candidates:
+    if path and os.path.isdir(path):
+        RMG_PATH = path
+        break
 for path in rmg_db_candidates:
     if path and os.path.isdir(path):
         RMG_DB_PATH = path
