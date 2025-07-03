@@ -1171,8 +1171,8 @@ class ARC(object):
         if self.arkane_level_of_theory is None:
             self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
                 else self.sp_level if self.sp_level is not None else None
-        if self.arkane_level_of_theory is not None:
-            self.arkane_level_of_theory.to_arkane_level_of_theory(variant='AEC', raise_error=self.compute_thermo)
+        if self.arkane_level_of_theory is not None and self.bac_type is not None:
+            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
         else:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
 
