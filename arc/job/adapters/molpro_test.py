@@ -31,7 +31,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-f12'),
                                   project='test',
                                   project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_1'),
-                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
         cls.job_2 = MolproAdapter(execution_type='queue',
@@ -39,7 +39,7 @@ class TestMolproAdapter(unittest.TestCase):
                                   level=Level(method='CCSD(T)', basis='cc-pVQZ'),
                                   project='test',
                                   project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter_2'),
-                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                   testing=True,
                                   )
 

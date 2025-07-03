@@ -32,7 +32,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
                                     )
@@ -44,8 +44,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvent='Water'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1']),
-                                             ARCSpecies(label='spc2', xyz=['O 0 0 2'])],
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3),
+                                             ARCSpecies(label='spc2', xyz=['O 0 0 2'], multiplicity=3)],
                                     testing=True,
                                     )
         cls.job_3 = GaussianAdapter(execution_type='queue',
@@ -56,7 +56,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 solvent='Water'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     )
         spc_4 = ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
@@ -108,7 +108,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                                 basis='def2-TZVP'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='IRC', xyz=['O 0 0 1'], is_ts=True)],
+                                    species=[ARCSpecies(label='IRC', xyz=['O 0 0 1'], is_ts=True, multiplicity=3)],
                                     irc_direction='reverse',
                                     testing=True,
                                     )
@@ -117,7 +117,7 @@ class TestGaussianAdapter(unittest.TestCase):
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                    species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
                                     )
@@ -145,7 +145,7 @@ class TestGaussianAdapter(unittest.TestCase):
                             level=Level(method='uff'),
                             project='test',
                             project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                             testing=True,
                             )
         cls.job_multi = GaussianAdapter(execution_type='incore',
@@ -156,8 +156,8 @@ class TestGaussianAdapter(unittest.TestCase):
                                         solvent='Water'),
                             project='test',
                             project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
-                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'],multi_species='mltspc1'),
-                                    ARCSpecies(label='spc2', xyz=['O 0 0 2'],multi_species='mltspc1'),
+                            species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multi_species='mltspc1', multiplicity=3),
+                                    ARCSpecies(label='spc2', xyz=['O 0 0 2'], multi_species='mltspc1', multiplicity=3),
                                     ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
                                                     C	0.0000000	0.5518050	0.0000000
                                                     O	-1.1894600	-0.2141940	0.0000000
@@ -695,11 +695,11 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  wb97xd/def2tzvp   IOp(2/9=2000)   
+#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  uwb97xd/def2tzvp   IOp(2/9=2000)   
 
 IRC
 
-0 1
+0 3
 O       0.00000000    0.00000000    1.00000000
 
 
