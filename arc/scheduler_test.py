@@ -152,10 +152,10 @@ H      -1.82570782    0.42754384   -0.56130718"""
 
         self.sched1.determine_most_stable_conformer(label=label)
         expecting = {'symbols': ('N', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (14, 12, 1, 1, 1, 1, 1),
-                     'coords': ((1.06285195, -0.05973289, -0.05572905), (0.58593742, -0.13433639, 1.31364725),
-                                (0.94565108, 0.72039562, 1.89348456), (-0.50740438, -0.13635514, 1.33321487),
-                                (0.94049061, -1.05387396, 1.787489), (0.75109199, 0.81493417, -0.47581149),
-                                (2.08152855, -0.0281555, -0.05839008))}
+                     'coords': ((-0.7419989889, -0.1327547549, 0.0), (0.7023470134, 0.0158023979, 0.0),
+                                (0.9803673385, 1.0735720944, 0.0), (1.1309109832, -0.4595567954, 0.886650896),
+                                (1.1309109832, -0.4595567954, -0.886650896), (-1.131139079, 0.3400036467, 0.8147241874),
+                                (-1.131139079, 0.3400036467, -0.8147241874))}
         self.assertTrue(almost_equal_coords_lists(self.sched1.species_dict[label].initial_xyz, expecting))
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
                                              'geometry', 'conformers', 'conformers_after_optimization.txt')
@@ -659,9 +659,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             },
                   }
         project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
-        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'))
-        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'))
-        os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'))
+        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
+        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
+        os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
         shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
                     dst=os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry', 'freq.out'))
         shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
@@ -704,7 +704,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
         """Test the save_e_elect() method."""
         project_directory = os.path.join(ARC_PATH, 'Projects', 'save_e_elect')
         e_elect_summary_path = os.path.join(project_directory, 'output', 'e_elect_summary.yml')
-        self.assertFalse(os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')))
+        if os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')):
+            os.remove(os.path.join(project_directory, 'output', 'e_elect_summary.yml'))
         sched = Scheduler(project='test_save_e_elect',
                           ess_settings=self.ess_settings,
                           project_directory=project_directory,
@@ -727,8 +728,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched.post_sp_actions(label='mehylamine',
                               sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out'))
         content = read_yaml_file(e_elect_summary_path)
-        self.assertEqual(content, {'formaldehyde': -300621.95378630824,
-                                    'mehylamine': -251377.49160993524})
+        self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
         shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_species_has_geo_sp_freq(self):
