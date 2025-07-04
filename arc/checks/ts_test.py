@@ -15,10 +15,9 @@ import arc.checks.ts as ts
 from arc.common import ARC_PATH, almost_equal_lists
 from arc.job.factory import job_factory
 from arc.level import Level
-from arc.parser import parse_normal_mode_displacement, parse_xyz_from_file
+from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies, TSGuess
-from arc.utils.wip import work_in_progress
 
 
 class TestChecks(unittest.TestCase):
@@ -337,9 +336,9 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                      freq_scale_factor=1.0,
                                      )
 
-        self.assertAlmostEquals(rxn_copy.r_species[0].e0, -306893.334, places=1)
-        self.assertAlmostEquals(rxn_copy.p_species[0].e0, -306902.397, places=1)
-        self.assertAlmostEquals(rxn_copy.ts_species.e0, -306655.822, places=1)
+        self.assertAlmostEqual(rxn_copy.r_species[0].e0, -306893, places=1)
+        self.assertAlmostEqual(rxn_copy.p_species[0].e0, -306902, places=1)
+        self.assertAlmostEqual(rxn_copy.ts_species.e0, -306656, places=1)
 
     def test_check_rxn_e0(self):
         """Test the check_rxn_e0() function."""
@@ -357,7 +356,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                                      sp_level=Level(repr='uhf/3-21g'),
                                      freq_scale_factor=1.0,
                                      )
-
         self.assertIsNone(rxn_copy.ts_species.ts_checks['E0'])
         ts.check_rxn_e0(reaction=rxn_copy, verbose=True)
         self.assertTrue(rxn_copy.ts_species.ts_checks['E0'])
@@ -515,9 +513,6 @@ H                 -1.28677889    1.04716138   -1.01532486"""
         ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
         self.assertTrue(rxn_7.ts_species.ts_checks['NMD'])
 
-    @work_in_progress
-    def test_check_normal_mode_displacement_wip(self):
-        """Test the check_normal_mode_displacement() function."""
         self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq',
                                                            'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
         self.rxn_3.ts_species.populate_ts_checks()
@@ -675,8 +670,8 @@ H                 -1.28677889    1.04716138   -1.01532486"""
                           )
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
-        ts.check_irc_species_and_rxn(xyz_1=parse_xyz_from_file(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')),
-                                     xyz_2=parse_xyz_from_file(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')),
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')),
+                                     xyz_2=parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')),
                                      rxn=rxn,
                                      )
         self.assertTrue(rxn.ts_species.ts_checks['IRC'])

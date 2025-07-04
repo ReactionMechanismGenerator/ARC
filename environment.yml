@@ -1,61 +1,46 @@
 name: arc_env
+
 channels:
-  - defaults
-  - rmg
   - conda-forge
-  - cantera
-  - anaconda
+
 dependencies:
-  - cairo
-  - cairocffi
-  - cantera::cantera=2.6
-  - conda-forge::cclib >=1.7.0
-  - rmg::chemprop
-  - coolprop
-  - coverage
-  - cython >=0.25.2
-  - ffmpeg
-  - rmg::gprof2dot
-  - graphviz
-  - h5py
-  - jinja2
-  - jupyter
-  - rmg::lpsolve55
-  - markupsafe
-  - matplotlib >=1.5
-  - conda-forge::mopac
-  - mpmath
-  - rmg::muq2
-  - networkx
-  - rmg::numdifftools
-  - numpy==1.20.1
-  - conda-forge::openbabel >= 3
-  - pandas
-  - psutil
-  - rmg::pydas >=1.0.2
-  - pydot
-  - rmg::pydqed >=1.0.1
-  - pymongo
-  - pyparsing
-  - rmg::pyrdl
-  - python >=3.7
-  - pyyaml
-  - rmg::quantities
-  - rmg::rdkit >=2020.03.3.0
-  - scikit-learn
-  - scipy
-  - connie::symmetry
-  - xlrd
-  - xlwt
-  - anaconda::sphinx_rtd_theme
-  - anaconda::paramiko >=2.6.0
-  - conda-forge::py3dmol >= 0.8.0
-  - conda-forge::ase==3.22.1
-  - anaconda::ipython
-  - anaconda::sphinx
-  - anaconda::sphinxcontrib-jsmath
-  - conda-forge::qcelemental
-  - mako
-  - pytables
-  - anaconda::pytest
+  # ─── core ─────────────────────────────────────
+  - conda-forge::python >=3.12.*
+  - conda-forge::numpy  >=2.1.*
+
+  # ─── core networking (for Jupyter notebooks) ──
+  - conda-forge::urllib3
+  - conda-forge::requests
+  - conda-forge::six
+
+  # ─── conda-forge packages ─────────────────────
+  - conda-forge::ase >=3.22.1
+  - conda-forge::cairo
+  - conda-forge::cairocffi
+  - conda-forge::cmake
+  - conda-forge::coverage
+  - conda-forge::cython >=3.0
+  - conda-forge::ffmpeg
+  - conda-forge::gprof2dot
+  - conda-forge::graphviz
+  - conda-forge::h5py
+  - conda-forge::ipython
+  - conda-forge::jupyter
+  - conda-forge::lpsolve55
+  - conda-forge::mako
+  - conda-forge::matplotlib
+  - conda-forge::networkx
+  - conda-forge::openbabel >=3
+  - conda-forge::pandas
+  - conda-forge::paramiko >=2.6.0
+  - conda-forge::py3dmol >=0.8.0
+  - conda-forge::pydot
+  - conda-forge::pytables
+  - conda-forge::pytest
   - conda-forge::pytest-cov
+  - conda-forge::pyyaml
+  - conda-forge::rdkit >=2025.03
+  - conda-forge::scipy
+  - conda-forge::sphinx
+  - conda-forge::sphinx_rtd_theme
+  - conda-forge::sphinxcontrib-jsmath

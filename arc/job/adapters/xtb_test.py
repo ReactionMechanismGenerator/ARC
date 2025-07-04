@@ -12,7 +12,7 @@ import unittest
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.adapters.xtb_adapter import xTBAdapter
 from arc.level import Level
-from arc.parser import parse_e_elect, parse_frequencies, parse_geometry
+from arc.parser.parser import parse_e_elect, parse_frequencies, parse_geometry
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
@@ -250,7 +250,7 @@ $end"""
         """Test running a single-point energy calculation using xTB."""
         self.job_5.execute_incore()
         self.assertTrue(os.path.isfile(self.job_5.local_path_to_output_file))
-        e_elect = parse_e_elect(self.job_5.local_path_to_output_file, software='xtb')
+        e_elect = parse_e_elect(self.job_5.local_path_to_output_file)
         self.assertAlmostEqual(e_elect, -28229.8803, places=2)
 
     def test_opt(self):

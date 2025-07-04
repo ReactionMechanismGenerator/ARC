@@ -9,16 +9,12 @@ import os
 import shutil
 import unittest
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.transport import TransportData
-
 from arc.common import ARC_PATH, almost_equal_coords_lists
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
-from arc.parser import parse_e_elect
+from arc.molecule.molecule import Molecule
+from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
                                    molecules_from_xyz,
@@ -35,6 +31,8 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 rmg_mol_from_dict_repr,
+                                 rmg_mol_to_dict_repr,
                                  split_mol,
                                  )
 from arc.species.xyz_to_2d import MolGraph
@@ -50,15 +48,14 @@ class TestARCSpecies(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
-        cls.spc1_rmg.label = 'vinoxy'
-        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
-                                                               C       0.63642204    0.05717653    0.10011041
-                                                               O       1.50082619   -0.82476680    0.32598015
-                                                               H      -1.27691852    0.84199331   -0.29048852
-                                                               H      -1.17606821   -1.00974165   -0.10030145
-                                                               H       0.99232452    1.08896899    0.06242974""")
+        mol = Molecule(smiles='C=C[O]')
+        cls.spc1 = ARCSpecies(label='vinoxy', mol=mol,
+                              xyz="""C      -0.68324480   -0.04685539   -0.10883672
+                                     C       0.63642204    0.05717653    0.10011041
+                                     O       1.50082619   -0.82476680    0.32598015
+                                     H      -1.27691852    0.84199331   -0.29048852
+                                     H      -1.17606821   -1.00974165   -0.10030145
+                                     H       0.99232452    1.08896899    0.06242974""")
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
@@ -131,16 +128,11 @@ class TestARCSpecies(unittest.TestCase):
 """
         n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
                     'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
-                    'coords': ((1.359965, -0.537228, -0.184462),
-                               (2.339584, -0.30093, -0.289911),
-                               (1.2713739999999998, -1.27116, 0.51544),
-                               (0.669838, 0.659561, 0.217548),
-                               (0.61618, 0.715758, 1.2316809999999996),
-                               (-0.669836, 0.659561, -0.217548),
-                               (-0.616179, 0.715757, -1.231682),
-                               (-1.3599669999999997, -0.537227, 0.184463),
-                               (-2.339586, -0.300928, 0.289904),
-                               (-1.2713739999999998, -1.271158, -0.51544))}
+                    'coords': ((1.359965, -0.537228, -0.184462), (2.339584, -0.30093, -0.289911),
+                               (1.2713739999999998, -1.27116, 0.51544), (0.669838, 0.659561, 0.217548),
+                               (0.61618, 0.715758, 1.2316809999999998), (-0.669836, 0.659561, -0.217548),
+                               (-0.616179, 0.715757, -1.231682), (-1.3599669999999997, -0.537227, 0.184463),
+                               (-2.339586, -0.300928, 0.289904), (-1.2713739999999998, -1.271158, -0.51544))}
 
         n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
         n4h6 = ARCSpecies(yml_path=n4h6_yml_path)
@@ -218,10 +210,8 @@ class TestARCSpecies(unittest.TestCase):
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
         rmg_mol = Molecule(smiles='C=C[O]')
-        rmg_spc = Species(smiles='[CH2]C=O')
         arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
         self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
-        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
         self.assertTrue(self.spc1.is_isomorphic(arc_spc))
         self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
@@ -314,14 +304,6 @@ class TestARCSpecies(unittest.TestCase):
         spc12.generate_conformers()
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
-
-    def test_from_rmg_species(self):
-        """Test the conversion of an RMG species into an ARCSpecies"""
-        self.spc1_rmg.label = None
-        self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label='vinoxy')
-        self.assertEqual(self.spc.label, 'vinoxy')
-        self.assertEqual(self.spc.multiplicity, 2)
-        self.assertEqual(self.spc.charge, 0)
 
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""
@@ -464,82 +446,6 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(spc2.directed_rotors, {'brute_force_sp': [[[4, 1, 2, 3], [1, 2, 3, 9]]]})
         self.assertEqual(len(spc2.rotors_dict), 1)
         self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
-
-    def test_symmetry(self):
-        """Test external symmetry and chirality determination"""
-        allene = ARCSpecies(label='allene', smiles='C=C=C', multiplicity=1, charge=0)
-        allene.final_xyz = str_to_xyz("""C  -1.01646   0.10640  -0.91445
-                              H  -1.39000   1.03728  -1.16672
-                              C   0.00000   0.00000   0.00000
-                              C   1.01653  -0.10640   0.91438
-                              H  -1.40975  -0.74420  -1.35206
-                              H   0.79874  -0.20864   1.92036
-                              H   2.00101  -0.08444   0.59842""")
-        allene.determine_symmetry()
-        self.assertEqual(allene.optical_isomers, 1)
-        self.assertEqual(allene.external_symmetry, 4)
-
-        ammonia = ARCSpecies(label='ammonia', smiles='N', multiplicity=1, charge=0)
-        ammonia.final_xyz = str_to_xyz("""N  0.06617   0.20024   0.13886
-                               H  -0.62578  -0.34119   0.63709
-                               H  -0.32018   0.51306  -0.74036
-                               H   0.87976  -0.37219  -0.03564""")
-        ammonia.determine_symmetry()
-        self.assertEqual(ammonia.optical_isomers, 1)
-        self.assertEqual(ammonia.external_symmetry, 3)
-
-        methane = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
-        methane.final_xyz = str_to_xyz("""C   0.00000   0.00000   0.00000
-                               H  -0.29717   0.97009  -0.39841
-                               H   1.08773  -0.06879   0.01517
-                               H  -0.38523  -0.10991   1.01373
-                               H -0.40533  -0.79140  -0.63049""")
-        methane.determine_symmetry()
-        self.assertEqual(methane.optical_isomers, 1)
-        self.assertEqual(methane.external_symmetry, 12)
-
-        chiral = ARCSpecies(label='chiral', smiles='C(C)(O)(N)', multiplicity=1, charge=0)
-        chiral.final_xyz = str_to_xyz("""C                 -0.49341625    0.37828349    0.00442108
-                              H                 -1.56331545    0.39193350    0.01003359
-                              N                  0.01167132    1.06479568    1.20212111
-                              H                  1.01157784    1.05203730    1.19687531
-                              H                 -0.30960193    2.01178202    1.20391932
-                              O                 -0.03399634   -0.97590449    0.00184366
-                              H                 -0.36384913   -1.42423238   -0.78033350
-                              C                  0.02253835    1.09779040   -1.25561654
-                              H                 -0.34510997    0.59808430   -2.12741255
-                              H                 -0.32122209    2.11106387   -1.25369100
-                              H                  1.09243518    1.08414066   -1.26122530""")
-        chiral.determine_symmetry()
-        self.assertEqual(chiral.optical_isomers, 2)
-        self.assertEqual(chiral.external_symmetry, 1)
-
-        s8 = ARCSpecies(label='s8', smiles='S1SSSSSSS1', multiplicity=1, charge=0)
-        s8.final_xyz = str_to_xyz("""S   2.38341   0.12608   0.09413
-                          S   1.45489   1.88955  -0.13515
-                          S  -0.07226   2.09247   1.14966
-                          S  -1.81072   1.52327   0.32608
-                          S  -2.23488  -0.39181   0.74645
-                          S  -1.60342  -1.62383  -0.70542
-                          S   0.22079  -2.35820  -0.30909
-                          S   1.66220  -1.25754  -1.16665""")
-        s8.determine_symmetry()
-        self.assertEqual(s8.optical_isomers, 1)
-        self.assertEqual(s8.external_symmetry, 8)
-
-        water = ARCSpecies(label='H2O', smiles='O', multiplicity=1, charge=0)
-        water.final_xyz = str_to_xyz("""O   0.19927   0.29049  -0.11186
-                             H   0.50770  -0.61852  -0.09124
-                             H  -0.70697   0.32803   0.20310""")
-        water.determine_symmetry()
-        self.assertEqual(water.optical_isomers, 1)
-        self.assertEqual(water.external_symmetry, 2)
-
-        # test setting only symmetry, preserving optical isomers
-        ch2oh = ARCSpecies(label='CH2OH', smiles='[CH2]O', optical_isomers=1)
-        ch2oh.determine_symmetry()
-        self.assertEqual(ch2oh.optical_isomers, 1)
-        self.assertEqual(ch2oh.external_symmetry, 1)
 
     def test_xyz_format_conversion(self):
         """Test conversions from string to dict xyz formats"""
@@ -1618,7 +1524,6 @@ H       1.32129900    0.71837500    0.38017700
 
     def test_set_transport_data(self):
         """Test the set_transport_data method"""
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         lj_path = os.path.join(ARC_PATH, 'arc', 'testing', 'NH3_oneDMin.dat')
         opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
@@ -1626,12 +1531,11 @@ H       1.32129900    0.71837500    0.38017700
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment.value_si, 2.10145e-30, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.polarizability.value_si, 3.99506e-30, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.epsilon[0], 1420.75, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.sigma[0], 3.57813e-10, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment[0], 0.63, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.polarizability[0], 3.9950550446, 4)
         self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
         self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
                                                            'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
@@ -1947,12 +1851,6 @@ H       1.11582953    0.94384729   -0.10134685"""
                   H       0.80478689   -2.00346200   -0.12519327"""
         with self.assertRaises(SpeciesError):
             ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
-
-        xyz6 = """C    1.1709385492    0.1763143411    0.0
-                  Cl  -0.5031634975   -0.0109430036    0.0
-                  H    1.5281481620   -0.8718549847    0.0"""
-        spc6 = ARCSpecies(label='[CH]Cl', smiles='[CH]Cl', xyz=xyz6)
-        self.assertEqual(spc6.get_xyz(), str_to_xyz(xyz6))
 
     def test_scissors(self):
         """Test the scissors method in Species"""
@@ -2638,6 +2536,125 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         for m in molecules:
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
+
+    def test_rmg_mol_from_dict_repr(self):
+        """Test the rmg_mol_from_dict_repr() function."""
+        representation = {'atoms':
+                          [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': -32768,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32765: 1.0, -32764: 1.0}},
+                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32767,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0, -32766: 1.0, -32763: 1.0, -32762: 1.0}},
+                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32766,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32761: 1.0, -32760: 1.0, -32759: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32765,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32764,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32763,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32762,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32761,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32760,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32759,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}}],
+                          'multiplicity': 1, 'props': {},
+                          'atom_order': [-32768, -32767, -32766, -32765, -32764, -32763, -32762, -32761, -32760, -32759],
+                          }
+        mol = rmg_mol_from_dict_repr(representation=representation, is_ts=False)
+        smiles = mol.to_smiles()
+        self.assertEqual(len(smiles), 3)
+        self.assertEqual(smiles.count('C'), 2)
+        self.assertEqual(smiles.count('N'), 1)
+
+        # Test round trip:
+        mol = Molecule(smiles='CC')
+        representation = rmg_mol_to_dict_repr(mol)
+        new_mol = rmg_mol_from_dict_repr(representation, is_ts=False)
+        self.assertEqual(new_mol.to_smiles(), 'CC')
+
+    def test_rmg_mol_to_dict_repr(self):
+        """Test the rmg_mol_to_dict_repr() function."""
+        mol = Molecule(smiles='CC')
+        for atom in mol.atoms:
+            atom.id = -1
+        representation = rmg_mol_to_dict_repr(mol, testing=True)
+        expected_repr = {'atoms': [{'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 0,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0, 5: 1.0, 6: 1.0, 7: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}}],
+                         'multiplicity': 1, 'props': {},
+                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7]}
+        self.assertEqual(representation, expected_repr)
+
+        mol = Molecule(smiles='NCC')
+        representation = rmg_mol_to_dict_repr(mol, testing=True)
+        expected_repr = {'atoms': [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': 0,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 3: 1.0, 4: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0, 2: 1.0, 5: 1.0, 6: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 7: 1.0, 8: 1.0, 9: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 8,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 9,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}}],
+                         'multiplicity': 1, 'props': {},
+                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                         }
+        self.assertEqual(representation, expected_repr)
 
     @classmethod
     def tearDownClass(cls):

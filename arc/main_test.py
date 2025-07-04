@@ -13,22 +13,10 @@ from arc.common import ARC_PATH
 from arc.exceptions import InputError
 from arc.imports import settings
 from arc.level import Level
-from arc.main import ARC, StatmechEnum, process_adaptive_levels
+from arc.main import ARC, process_adaptive_levels
 from arc.species.species import ARCSpecies
 
 servers = settings['servers']
-
-
-class TestEnumerationClasses(unittest.TestCase):
-    """
-    Contains unit tests for various enumeration classes.
-    """
-
-    def test_statmech_enum(self):
-        """Test the StatmechEnum class"""
-        self.assertEqual(StatmechEnum('arkane').value, 'arkane')
-        with self.assertRaises(ValueError):
-            StatmechEnum('wrong')
 
 
 class TestARC(unittest.TestCase):
@@ -71,7 +59,6 @@ class TestARC(unittest.TestCase):
                    job_types=self.job_types1,
                    species=[spc1],
                    level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                   three_params=False,
                    ts_adapters=['heuristics', 'AutoTST', 'GCN', 'xtb_gsm'],
                    )
         arc0.freq_level.args['keyword']['general'] = 'scf=(NDamp=30)'
@@ -145,7 +132,6 @@ class TestARC(unittest.TestCase):
                                               'props': {}},
                                       'multiplicity': 1,
                                       'number_of_rotors': 0}],
-                         'three_params': False,
                          'ts_adapters': ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm']}
         # import pprint  # left intentionally for debugging
         # print(pprint.pprint(restart_dict))
@@ -180,7 +166,6 @@ class TestARC(unittest.TestCase):
                                      'optical_isomers': 1,
                                      'rotors_dict': {},
                                      'xyzs': []}],
-                        'three_params': False,
                         'project_directory': os.path.join(ARC_PATH, 'Projects',
                                                           'arc_project_for_testing_delete_after_usage_test_from_dict'),
                         }
@@ -197,7 +182,6 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc2.species[0].label, 'testing_spc1')
         self.assertFalse(arc2.species[0].is_ts)
         self.assertEqual(arc2.species[0].charge, 1)
-        self.assertFalse(arc2.three_params)
 
     def test_from_dict_specific_job(self):
         """Test the from_dict() method of ARC"""
@@ -289,7 +273,7 @@ class TestARC(unittest.TestCase):
         self.assertIsNone(arc3.orbitals_level)
 
         arc4 = ARC(project='test', opt_level='wb97x-d3/6-311++G(3df,3pd)', freq_level='m062x/def2-tzvpp',
-                   sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False)
+                   sp_level='ccsd(t)f12/aug-cc-pvqz', calc_freq_factor=False, compute_thermo=False)
         self.assertEqual(arc4.opt_level.simple(), 'wb97x-d3/6-311++g(3df,3pd)')
         self.assertEqual(arc4.freq_level.simple(), 'm062x/def2-tzvpp')
         self.assertEqual(arc4.sp_level.simple(), 'ccsd(t)f12/aug-cc-pvqz')
@@ -472,7 +456,6 @@ class TestARC(unittest.TestCase):
                        job_types=self.job_types1,
                        species=[spc1],
                        level_of_theory='ccsd(t)-f12/cc-pvdz-f12//b3lyp/6-311+g(3df,2p)',
-                       three_params=False,
                        ts_adapters=['WRONG ADAPTER', 'AutoTST', 'GCN', 'xtb_gsm'],
                        )
 

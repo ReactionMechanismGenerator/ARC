@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from arc.family import determine_possible_reaction_products_from_family
 from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
                                 are_adj_elements_in_agreement,
-                                create_qc_mol,
                                 flip_map,
                                 fingerprint,
                                 glue_maps,
@@ -29,23 +28,25 @@ from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
 from arc.common import logger
 from arc.species.converter import check_molecule_list_order
 
-from rmgpy.exceptions import ActionError, AtomTypeError
+from arc.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Molecule
+    from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
 
 
 def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
-                 flip = False
+                 flip = False,
                  ) -> Optional[List[int]]:
     """
     Map a reaction.
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+        backend (str, optional): Currently only supports ``'ARC'``.
+        flip (bool, optional): If True, the reaction will be flipped before it is mapped.
+                               Useful for reactions that are not atom-mapped correctly in the forward direction.
 
     Returns:
         Optional[List[int]]:
@@ -55,17 +56,20 @@ def map_reaction(rxn: 'ARCReaction',
     if flip:
         logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. Trying again with the flipped reaction.")
         try:
+            print(f'Flipping reaction {rxn.label} for mapping.')
             _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
             return None
         return _map
     else:
         if rxn.family is None:
+            print(f'The reaction {rxn.label} has no family, trying to map it as a general reaction.')
             logger.warning(f'Could not determine the reaction family for {rxn.label}. '
                            f'Mapping as a general or isomerization reaction.')
             _map = map_general_rxn(rxn, backend=backend)
             return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
         try:
+            print(f'Mapping reaction {rxn.label} of fam {rxn.family} for mapping.')
             _map = map_rxn(rxn, backend=backend)
         except ValueError:
             return map_reaction(rxn, backend=backend, flip=True)
@@ -81,31 +85,16 @@ def map_general_rxn(rxn: 'ARCReaction',
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+        backend (str, optional): Currently only supports ``'ARC'``.
 
     Returns:
         Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
+    atom_map = None
     if rxn.is_isomerization():
         atom_map = map_isomerization_reaction(rxn=rxn)
-        if atom_map is not None:
-            return atom_map
-
-    # If the reaction is not a known RMG template and is not isomerization, use fragments via the QCElemental backend.
-    qcmol_1 = create_qc_mol(species=[spc.copy() for spc in rxn.r_species],
-                            charge=rxn.charge,
-                            multiplicity=rxn.multiplicity,
-                            )
-    qcmol_2 = create_qc_mol(species=[spc.copy() for spc in rxn.p_species],
-                            charge=rxn.charge,
-                            multiplicity=rxn.multiplicity,
-                            )
-    if qcmol_1 is None or qcmol_2 is None:
-        return None
-    data = qcmol_2.align(ref_mol=qcmol_1, verbose=0)[1]
-    atom_map = data['mill'].atommap.tolist()
     return atom_map
 
 
@@ -214,14 +203,14 @@ def map_rxn(rxn: 'ARCReaction',
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+        backend (str, optional): Currently only supports ``'ARC'``.
         
     Returns:
         Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=False)
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
     reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
     label_species_atoms(reactants), label_species_atoms(products)
     

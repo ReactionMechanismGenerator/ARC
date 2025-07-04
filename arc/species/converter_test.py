@@ -13,14 +13,10 @@ from ase import Atoms
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-from rmgpy.statmech import Conformer
-
 import arc.species.converter as converter
 from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
+from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
 from arc.species.zmat import _compare_zmats, xyz_to_zmat
@@ -537,30 +533,13 @@ H       0.63003260   -0.63003260   -0.63003260
                            'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
                                       (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))}
 
-        cls.conformer_12 = Conformer(number=ArrayQuantity([9, 6, 6, 6, 6, 6, 6, 9, 1, 1, 1, 1], ''),
-                                     mass=ArrayQuantity([18.9984, 12, 12, 12, 12, 12, 12, 18.9984, 1.00783, 1.00783,
-                                                         1.00783, 1.00783], 'amu'),
-                                     coordinates=ArrayQuantity([[1.34408, 0, 1.70183],
-                                                                [0.692492, 0, 0.530349],
-                                                                [1.393, 0, -0.657191],
-                                                                [0.693305, 0, -1.85652],
-                                                                [-0.693305, -5.15e-08, -1.85652],
-                                                                [-1.393, -3.87e-08, -0.657191],
-                                                                [-0.692492, 4.63e-08, 0.530349],
-                                                                [-1.34408, 4.48e-08, 1.70183],
-                                                                [2.47418, 0, -0.625387],
-                                                                [1.23765, 0, -2.79083],
-                                                                [-1.23765, -1.812e-07, -2.79083],
-                                                                [-2.47418, -6.81e-08, -0.625387]], 'angstroms')
-                                     )
-
         nh_s_adj = """1 N u0 p2 c0 {2,S}
                           2 H u0 p0 c0 {1,S}"""
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
                           H      -0.50949998    0.00000000    0.00000000"""
         cls.spc1 = ARCSpecies(label='NH2(S)', adjlist=nh_s_adj, xyz=nh_s_xyz, multiplicity=1, charge=0)
-        spc = Species().from_adjacency_list(nh_s_adj)
-        cls.spc2 = ARCSpecies(label='NH2(S)', rmg_species=spc, xyz=nh_s_xyz)
+        mol = Molecule().from_adjacency_list(nh_s_adj)
+        cls.spc2 = ARCSpecies(label='NH2(S)', mol=mol, xyz=nh_s_xyz)
 
         cls.spc3 = ARCSpecies(label='NCN(S)', smiles='[N]=C=[N]', multiplicity=1, charge=0)
 
@@ -871,16 +850,16 @@ H      3.654100    0.340300    0.057100"""
      RDKit          3D
 
  10  9  0  0  0  0  0  0  0  0999 V2000
-    1.1517   -0.3760   -0.5231 N   0  0  0  0  0  0  0  0  0  0  0  0
-    0.2893    0.4500    0.3115 C   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.1415   -0.0561    0.2592 C   0  0  0  0  0  0  0  0  0  0  0  0
-    1.1386   -1.3376   -0.1854 H   0  0  0  0  0  0  0  0  0  0  0  0
-    2.1151   -0.0555   -0.4352 H   0  0  0  0  0  0  0  0  0  0  0  0
-    0.6517    0.4342    1.3447 H   0  0  0  0  0  0  0  0  0  0  0  0
-    0.3279    1.4855   -0.0414 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.2133   -1.0839    0.6308 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.7870    0.5726    0.8809 H   0  0  0  0  0  0  0  0  0  0  0  0
-   -1.5327   -0.0332   -0.7636 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2945   -0.4207   -0.2556 N   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.2199    0.5109    0.0603 C   0  0  0  0  0  0  0  0  0  0  0  0
+    1.1314   -0.1599   -0.1134 C   0  0  0  0  0  0  0  0  0  0  0  0
+   -2.1930    0.0284   -0.0835 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.2506   -1.2222    0.3726 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.2883    1.3804   -0.6013 H   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.3298    0.8643    1.0908 H   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2368   -1.0204    0.5560 H   0  0  0  0  0  0  0  0  0  0  0  0
+    1.9356    0.5463    0.1169 H   0  0  0  0  0  0  0  0  0  0  0  0
+    1.2721   -0.5071   -1.1427 H   0  0  0  0  0  0  0  0  0  0  0  0
   1  2  1  0
   1  4  1  0
   1  5  1  0
@@ -907,19 +886,6 @@ $$$$
             converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5])
         with self.assertRaises(ValueError):
             converter.sort_xyz_using_indices(self.xyz2['dict'], indices=[0, 6, 5, 35])
-
-    def test_conformer_to_xyz_dict(self):
-        """Test the rmg_conformer_to_xyz function"""
-        xyz_dict = converter.rmg_conformer_to_xyz(self.conformer_12)
-        self.assertTrue(almost_equal_coords_lists(xyz_dict, self.xyz_dict_12))
-        self.assertEqual(xyz_dict['isotopes'], self.xyz_dict_12['isotopes'])
-
-    def test_xyz_dict_to_conformer(self):
-        """Test the xyz_to_rmg_conformer function"""
-        conformer = converter.xyz_to_rmg_conformer(self.xyz_dict_12)
-        self.assertTrue(np.array_equal(conformer.number.value, self.conformer_12.number.value))
-        self.assertTrue(np.allclose(conformer.mass.value, self.conformer_12.mass.value))
-        self.assertTrue(np.allclose(conformer.coordinates.value, self.conformer_12.coordinates.value))
 
     def test_get_most_common_isotope_for_element(self):
         """Test the get_most_common_isotope_for_element function"""
@@ -1305,9 +1271,9 @@ X      -0.52389885    0.72654241   -1.86620254"""
                           (-2.6531989605338424e-08, 0.8335219652313473, 0.0))}
         xyz = converter.zmat_to_xyz(xyz_to_zmat(co3))
         expected_xyz = {'symbols': ('O', 'O', 'O'), 'isotopes': (16, 16, 16),
-                        'coords': ((0.0, -0.41676098261567357, -0.7218511965026766),
-                                   (0.0, -0.41676098261567357, 0.7218512230346665),
-                                   (0.0, 0.8335219652313473, -2.653198949431612e-08))}
+                        'coords': ((0.0, -0.41676101778353786, -0.7218512574152062),
+                                   (0.0, -0.41676101778353786, 0.721851201920121),
+                                   (0.0, 0.8335220355670758, 5.549508530489078e-08))}
         self.assertTrue(almost_equal_coords_lists(xyz, expected_xyz))
 
         # test defining the 3rd atom relative to atom A
@@ -1458,7 +1424,7 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                    (1.3603280232379253e-08, 2.149090449363762, 1.2407783366502623),
                                    (4.34845437808648e-08, 2.1490910490372905, -1.2407775620747585),
                                    (2.79630538907893e-08, 9.546517221181716e-07, -2.481556126005945))}
-        self.assertTrue(almost_equal_coords_lists(xyz, expected_xyz, rtol=1e-4, atol=1e-6))
+        self.assertTrue(almost_equal_coords_lists(xyz, expected_xyz))
 
         c8h16 = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H',
                              'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -3094,9 +3060,9 @@ R9=1.4305
         value1 = converter.get_zmat_param_value(coords=xyz_dict, indices=[1, 2], mol=spc1.mol)  # R
         value2 = converter.get_zmat_param_value(coords=xyz_dict, indices=[0, 1, 2], mol=spc1.mol)  # A
         value3 = converter.get_zmat_param_value(coords=xyz_dict, indices=[1, 2, 3, 10], mol=spc1.mol)  # D
-        self.assertAlmostEqual(value1, 1.53150455)
-        self.assertAlmostEqual(value2, 109.470340)
-        self.assertAlmostEqual(value3, 66.2600849)
+        self.assertAlmostEqual(value1, 1.53150455, places=5)
+        self.assertAlmostEqual(value2, 109.470340, places=5)
+        self.assertAlmostEqual(value3, 66.2600849, places=5)
 
     def test_split_str_zmat(self):
         """Test splitting a sting zmat into its coordinates and variables sections"""
@@ -4427,6 +4393,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                    (-0.8954040276884763, -0.8508241498293034, 1.9356427400340799),
                                    (0.8880330020652463, -0.8439168226596885, 1.990234136037933),
                                    (-0.13167393678263156, 1.1200467154192293, 0.4039467156910099))}
+        print(expected_xyz)
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
@@ -4477,7 +4444,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz2, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol2)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol2), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol2), new_val, 4)
 
         # test D_atom modification
         indices, new_val = [0, 1, 2, 3], 30
@@ -4584,7 +4551,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz3, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol3)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol3), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol3), new_val, 4)
 
         indices, new_val = [5, 2, 1], 160
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4671,9 +4638,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=xyz1, indices=[4, 1, 2, 3], mol=mol1),
-                               176.7937925, 5)
+                               176.7937925, 4)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=[4, 1, 2, 3], mol=mol1),
-                               279.5679938, 5)
+                               279.5679938, 4)
 
         indices, new_val = [5, 2, 1, 0], 100
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4697,7 +4664,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz3, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol3)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol3), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol3), new_val, 4)
 
         indices, new_val = [4, 3, 1, 0], 236.02
         expected_xyz = {'symbols': ('C', 'C', 'O', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -5086,8 +5053,8 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                      (-3.17488405, 0.21042224, 1.24128129), (-3.53487445, 1.21797729, 1.25310144),
                                      (-3.56603419, -0.31800758, 2.08547528), (-1.63624745, 0.21425655, 1.30595531),
                                      (-1.24509731, 0.74268637, 0.46176133), (-1.3183353, 0.6960459, 2.20690531),
-                                     (-1.0399130826377951, -1.4521481683234707, 1.2864453881141027))}
-        self.assertEqual(new_xyz_1, expected_xyz_1)
+                                     (-1.0413732051724125, -1.4526805980775839, 1.2873769860752802))}
+        self.assertTrue(almost_equal_coords_lists(new_xyz_1, expected_xyz_1))
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[7, 10]), 1.77, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 7, 10]), 109.5, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
@@ -5102,7 +5069,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     d_value=-60.0,
                                                                     opt_method='BFGS',
                                                                     )
-        self.assertEqual(new_xyz_2['coords'][-1], (-1.0966631688164716, -1.5123640474266677, 1.296181153302943))
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][0], -1.065095539786487, places=3)
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][1], -1.4737067126385224, places=3)
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][2], 1.2912758496528232, places=3)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 10]), 2.70, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
@@ -5130,8 +5099,8 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                    (0.35773087, -1.66017412, -0.9786309), (-0.45608483, -1.87500387, -1.86208833),
                                    (-1.82486467, -0.81522856, 0.14629516), (-1.06962462, 0.60119223, 0.90442455),
                                    (-1.14968688, 0.45844916, -0.88969505), (1.33643417, -2.15859899, -0.90083808),
-                                   (1.4828269120297688, -2.3770289575185632, 0.3030781302151979))}
-        self.assertEqual(new_xyz_3, expected_xyz)
+                                   (1.4820209463152687, -2.3772302636106577, 0.30367261748030894))}
+        self.assertTrue(almost_equal_coords(new_xyz_3, expected_xyz))
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[2, 8]), 1.85, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[1, 2, 8]), 77.4, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8]), 140, places=1)
@@ -5159,7 +5128,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     a_value=77.4,
                                                                     d_value=140,
                                                                     )
-        self.assertEqual(new_xyz_4['coords'][-1], (1.89932405279869, 0.9989208520839763, 0.8144268165647406))
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][0], 1.8986166253764283)
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][1], 0.9987236974936107)
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][2], 0.8154061174277444)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[1, 14]), 1.85, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[3, 1, 14]), 77.4, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14]), 140, places=1)

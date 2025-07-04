@@ -48,21 +48,22 @@ from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
-import rmgpy.molecule.group as gr
-from rmgpy.molecule.converter import to_ob_mol
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
-
+import arc.molecule.group as gr
 from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_single_bond_length,
-                        generate_resonance_structures,
-                        logger,
+                        get_logger,
                         )
 from arc.exceptions import ConformerError, InputError
+from arc.molecule.converter import to_ob_mol
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
+from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
 
+
+logger = get_logger()
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -212,7 +213,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         success = False
         mol_copy = mol_list.copy(deep=True)
         mol_copy.reactive = True
-        new_mol_list = generate_resonance_structures(mol_copy)
+        new_mol_list = generate_resonance_structures_safely(mol_copy)
         try:
             success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
         except TypeError:
@@ -925,7 +926,7 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
 def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     """
     Check whether a torsion is symmetric.
-    If a torsion well is "well defined" and not smeared, it could be symmetric.
+    If a torsion well is "well-defined" and not smeared, it could be symmetric.
     Check the groups attached to the rotor pivots to determine whether it is indeed symmetric
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
     (they're all the same).
@@ -1054,7 +1055,7 @@ def determine_well_width_tolerance(mean_width):
     """
     Determine the tolerance by which well widths are determined to be nearly equal.
 
-    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs::
+    Fitted to a polynomial trendline for the following data of (mean, tolerance) pairs::
 
         (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
 

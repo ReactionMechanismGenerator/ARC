@@ -8,9 +8,6 @@ This module contains unit tests of the arc.reaction.family module
 import os
 import unittest
 
-from rmgpy.molecule import Group, Molecule
-
-from arc.common import generate_resonance_structures
 from arc.family.family import (ReactionFamily,
                                ARC_FAMILIES_PATH,
                                RMG_DB_PATH,
@@ -31,6 +28,8 @@ from arc.family.family import (ReactionFamily,
                                is_own_reverse,
                                is_reversible,
                                )
+from arc.molecule import Group, Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.reaction.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 
@@ -249,6 +248,26 @@ H      -0.83821148   -0.26602407    0.00000000"""
                               'p_label_map': {'*1': 6, '*2': 0, '*3': 1},
                               'products': [Molecule(smiles="[NH]N"), Molecule(smiles="[NH]N")],
                               'r_label_map': {'*1': 5, '*2': 9, '*3': 0}}, ]
+        self.assertEqual(products, expected_products)
+
+        # NH + N2H3 <=> NH2 + H2NN(T)
+        rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH', smiles='[NH]'), ARCSpecies(label='N2H3', smiles='N[NH]')],
+                             p_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='N2H2(T)', smiles='[NH][NH]')])
+        products = get_reaction_family_products(rxn_3)
+        expected_products = [{'family': 'H_Abstraction',
+                              'group_labels': ('Y_1centerbirad', 'Xrad_H'),
+                              'products': [Molecule(smiles="[NH-][NH+]"), Molecule(smiles="[NH2]")],
+                              'r_label_map': {'*3': 0, '*1': 2, '*2': 4},
+                              'p_label_map': {'*1': 2, '*3': 4, '*2': 6},
+                              'own_reverse': True,
+                              'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction',
+                              'group_labels': ('Y_1centerbirad', 'Xrad_H'),
+                              'products': [Molecule(smiles="[NH-][NH+]"), Molecule(smiles="[NH2]")],
+                              'r_label_map': {'*3': 0, '*1': 2, '*2': 5},
+                              'p_label_map': {'*1': 2, '*3': 4, '*2': 6},
+                              'own_reverse': True,
+                              'discovered_in_reverse': False}]
         self.assertEqual(products, expected_products)
 
     def test_get_reaction_family_products_cyclic_ether_formation(self):
@@ -502,7 +521,7 @@ H      -0.83821148   -0.26602407    0.00000000"""
     def test_get_reaction_family_r_add_mult_bond(self):
         """Test determining the reaction family using product dicts"""
         spc_1 = ARCSpecies(label='C2H3O3', smiles='[CH2]C(=O)OO')
-        spc_1.mol_list = generate_resonance_structures(object_=spc_1.mol, keep_isomorphic=True)
+        spc_1.mol_list = generate_resonance_structures_safely(spc_1.mol, keep_isomorphic=True)
         rxn_7 = ARCReaction(r_species=[spc_1],
                             p_species=[ARCSpecies(label='C2H2O', smiles='C=C=O'),
                                        ARCSpecies(label='HO2', smiles='O[O]')])

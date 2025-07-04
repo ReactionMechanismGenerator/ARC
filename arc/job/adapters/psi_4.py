@@ -9,21 +9,15 @@ import math
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-import psi4
-from mako.template import Template
-
 from arc.common import get_logger
 from arc.imports import incore_commands, settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import (check_argument_consistency,
-                                     is_restricted,
                                      set_job_args,
-                                     update_input_dict_with_args,
                                      which)
 from arc.job.factory import register_job_adapter
 from arc.job.local import execute_command
 from arc.level import Level
-from arc.species.converter import xyz_to_str
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction

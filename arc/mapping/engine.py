@@ -11,35 +11,30 @@ from collections import deque
 from itertools import product
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-from qcelemental.exceptions import ValidationError
-from qcelemental.models.molecule import Molecule as QCMolecule
-
-from rmgpy.molecule import Molecule
-from rmgpy.species import Species
-
-from arc.common import convert_list_index_0_to_1, extremum_list, generate_resonance_structures, logger, key_by_val
+from arc.common import convert_list_index_0_to_1, extremum_list, logger
 from arc.exceptions import SpeciesError
 from arc.family import ReactionFamily, get_reaction_family_products
+from arc.molecule import Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
-from arc.species.converter import compare_confs, sort_xyz_using_indices, translate_xyz, xyz_from_data, xyz_to_str
+from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
 from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
 from numpy import unique
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Atom
+    from arc.molecule.molecule import Atom
     from arc.reaction import ARCReaction
 
 
 RESERVED_FINGERPRINT_KEYS = ['self', 'chirality', 'label']
 
 
-def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
-                    spc_2: Union[ARCSpecies, Species, Molecule],
+def map_two_species(spc_1: Union[ARCSpecies, Molecule],
+                    spc_2: Union[ARCSpecies, Molecule],
                     map_type: str = 'list',
                     backend: str = 'ARC',
                     consider_chirality: bool = True,
-                    allow_backend_shift: bool = True,
                     inc_vals: Optional[int] = None,
                     verbose: bool = False,
                     ) -> Optional[Union[List[int], Dict[int, int]]]:
@@ -50,11 +45,10 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
         ordered_spc1.atoms = [spc_2.atoms[atom_map[i]] for i in range(len(spc_2.atoms))]
 
     Args:
-        spc_1 (Union[ARCSpecies, Species, Molecule]): Species 1.
-        spc_2 (Union[ARCSpecies, Species, Molecule]): Species 2.
+        spc_1 (Union[ARCSpecies, Molecule]): Species 1.
+        spc_2 (Union[ARCSpecies, Molecule]): Species 2.
         map_type (str, optional): Whether to return a 'list' or a 'dict' map type.
-        backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
-        allow_backend_shift (bool, optional): Whether to try QCElemental's method if ARC's method cannot identify candidates.
+        backend (str, optional): Currently only ``ARC``'s method is implemented as the backend.
         consider_chirality (bool, optional): Whether to consider chirality when fingerprinting.
         inc_vals (int, optional): An optional integer by which all values in the atom map list will be incremented.
         verbose (bool, optional): Whether to use logging.
@@ -66,7 +60,7 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
             If the map is of ``dict`` type, keys are atom indices of ``spc_1``, values are atom indices of ``spc_2``.
     """
     spc_1, spc_2 = get_arc_species(spc_1), get_arc_species(spc_2)
-    if not check_species_before_mapping(spc_1, spc_2, verbose=verbose) and backend != 'QCElemental':
+    if not check_species_before_mapping(spc_1, spc_2, verbose=verbose):
         if verbose:
             logger.warning(f'Could not map species {spc_1} and {spc_2}.')
         return None
@@ -96,8 +90,8 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
             atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
         return atom_map
 
-    if backend.lower() not in ['qcelemental', 'arc']:
-        raise ValueError(f'The backend method could be either "QCElemental" or "ARC", got {backend}.')
+    if backend.lower() not in ['arc']:
+        raise ValueError(f'The backend {backend} is not supported for 3DAM.')
     atom_map = None
 
     if backend.lower() == 'arc':
@@ -113,9 +107,6 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
                 logger.warning(f'Could not identify superimposable candidates {spc_1} and {spc_2}.')
                 return None
         if not len(candidates):
-            if allow_backend_shift:
-                backend = 'QCElemental'
-            else:
                 return None
         else:
             rmsds, fixed_spcs = list(), list()
@@ -141,86 +132,28 @@ def map_two_species(spc_1: Union[ARCSpecies, Species, Molecule],
                 atom_map = map_hydrogens(fixed_spc_1, fixed_spc_2, candidate)
                 if map_type == 'list':
                     atom_map = [v for k, v in sorted(atom_map.items(), key=lambda item: item[0])]
-        if atom_map is None and allow_backend_shift:
-            backend = 'QCElemental'
-
-    if backend.lower() == 'qcelemental':
-        qcmol_1 = create_qc_mol(species=spc_1.copy())
-        qcmol_2 = create_qc_mol(species=spc_2.copy())
-        if qcmol_1 is None or qcmol_2 is None:
-            return None
-        if len(qcmol_1.symbols) != len(qcmol_2.symbols):
-            raise ValueError(f'The number of atoms in spc1 ({spc_1.number_of_atoms}) must be equal '
-                             f'to the number of atoms in spc1 ({spc_2.number_of_atoms}).')
-        data = qcmol_2.align(ref_mol=qcmol_1, verbose=0, uno_cutoff=0.01)
-        atom_map = data[1]['mill'].atommap.tolist()
-        if map_type == 'dict':
-            atom_map = {key: val for key, val in enumerate(atom_map)}
 
     if inc_vals is not None:
         atom_map = [value + inc_vals for value in atom_map]
     return atom_map
 
 
-def get_arc_species(spc: Union[ARCSpecies, Species, Molecule]) -> ARCSpecies:
+def get_arc_species(spc: Union[ARCSpecies, Molecule]) -> ARCSpecies:
     """
     Convert an object to an ARCSpecies object.
 
     Args:
-        spc (Union[ARCSpecies, Species, Molecule]): An input object.
+        spc (Union[ARCSpecies, Molecule]): An input object.
 
     Returns:
         ARCSpecies: The corresponding ARCSpecies object.
     """
     if isinstance(spc, ARCSpecies):
         return spc
-    if isinstance(spc, Species):
-        return ARCSpecies(label='S', mol=spc.molecule[0])
     if isinstance(spc, Molecule):
         return ARCSpecies(label='S', mol=spc)
     raise ValueError(f'Species entries may only be ARCSpecies, RMG Species, or RMG Molecule.\n'
                      f'Got {spc} which is a {type(spc)}.')
-
-
-def create_qc_mol(species: Union[ARCSpecies, Species, Molecule, List[Union[ARCSpecies, Species, Molecule]]],
-                  charge: Optional[int] = None,
-                  multiplicity: Optional[int] = None,
-                  ) -> Optional[QCMolecule]:
-    """
-    Create a single QCMolecule object instance from ARCSpecies object instance(s).
-
-    Args:
-        species (List[Union[ARCSpecies, Species, Molecule]]): Entries are ARCSpecies / RMG Species / RMG Molecule
-                                                              object instances.
-        charge (int, optional): The overall charge of the surface.
-        multiplicity (int, optional): The overall electron multiplicity of the surface.
-
-    Returns:
-        Optional[QCMolecule]: The respective QCMolecule object instance.
-    """
-    species_list = [species] if not isinstance(species, list) else species
-    if charge is None:
-        charge = sum([spc.charge for spc in species_list])
-    if multiplicity is None:
-        # Trivial guess.
-        multiplicity = sum([spc.multiplicity - 1 for spc in species_list]) + 1
-    radius = max([spc.radius for spc in species_list]) if len(species_list) > 1 else 0
-    qcmol = None
-    data = '\n--\n'.join([xyz_to_str(translate_xyz(spc.get_xyz(), translation=(i * radius, 0, 0)))
-                          for i, spc in enumerate(species_list)]) \
-        if len(species_list) > 1 else xyz_to_str(species_list[0].get_xyz())
-    try:
-        qcmol = QCMolecule.from_data(
-            data=data,
-            molecular_charge=charge,
-            molecular_multiplicity=multiplicity,
-            fragment_charges=[spc.charge for spc in species_list],
-            fragment_multiplicities=[spc.multiplicity for spc in species_list],
-            orient=False,
-        )
-    except ValidationError as err:
-        logger.warning(f'Could not get atom map for {[spc.label for spc in species_list]}, got:\n{err}')
-    return qcmol
 
 
 def check_species_before_mapping(spc_1: ARCSpecies,
@@ -616,7 +549,7 @@ def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
                   backbone_map: Dict[int, int],
                   ) -> Dict[int, int]:
-    """
+    r"""
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
     If more than one hydrogen atom is bonded to a given heavy atom forming a "terminal" internal rotor,
@@ -913,7 +846,7 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
-    res1 = generate_resonance_structures(object_=reactant.mol.copy(deep=True), save_order = True)
+    res1 = generate_resonance_structures_safely(reactant.mol, save_order = True)
     for res in res1:
         if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
             return True

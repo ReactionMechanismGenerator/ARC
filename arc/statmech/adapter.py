@@ -3,6 +3,17 @@ A module for the abstract StatmechAdapter class
 """
 
 from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class StatmechEnum(str, Enum):
+    """
+    The supported statmech software adapters.
+    The available adapters are a finite set.
+    """
+    arkane = 'arkane'
+    # mesmer = 'mesmer'
+    # mess = 'mess'
 
 
 class StatmechAdapter(ABC):
@@ -12,7 +23,6 @@ class StatmechAdapter(ABC):
 
     @abstractmethod
     def compute_thermo(self,
-                       kinetics_flag: bool = True,
                        e0_only: bool = False,
                        skip_rotors: bool = False,
                        ) -> None:
@@ -20,8 +30,6 @@ class StatmechAdapter(ABC):
         Generate thermodynamic data for a species.
 
         Args:
-            kinetics_flag (bool, optional): Whether this call is used for generating species statmech
-                                            for a rate coefficient calculation.
             e0_only (bool, optional): Whether to only run statmech (w/o thermo) to compute E0.
             skip_rotors (bool, optional): Whether to skip internal rotor consideration. Default: ``False``.
         """

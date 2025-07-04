@@ -1,9 +1,11 @@
 import arc.job.adapters.common
+import arc.job.adapters.cfour
 import arc.job.adapters.gaussian
 import arc.job.adapters.mockter
 import arc.job.adapters.molpro
-import arc.job.adapters.orca
 import arc.job.adapters.obabel
+import arc.job.adapters.orca
+import arc.job.adapters.psi_4
 import arc.job.adapters.qchem
 import arc.job.adapters.terachem
 import arc.job.adapters.torch_ani
