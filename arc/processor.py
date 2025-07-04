@@ -17,7 +17,6 @@ logger = get_logger()
 
 THERMO_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_thermo.py')
 KINETICS_SCRIPT_PATH = os.path.join(ARC_PATH, 'arc', 'scripts', 'rmg_kinetics.py')
-R = 8.31446261815324  # J/(mol*K)
 EA_UNIT_CONVERSION = {'J/mol': 1, 'kJ/mol': 1e+3, 'cal/mol': 4.184, 'kcal/mol': 4.184e+3}
 
 
@@ -82,6 +81,7 @@ def process_arc_project(thermo_adapter: str,
     bde_report = dict()
 
     output_directory = os.path.join(project_directory, 'output')
+    calcs_directory = os.path.join(project_directory, 'calcs')
     libraries_path = os.path.join(output_directory, 'RMG libraries')
     if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
@@ -103,13 +103,14 @@ def process_arc_project(thermo_adapter: str,
                     if output_dict[species.label]['convergence']:
                         statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                             output_directory=output_directory,
+                                                            calcs_directory=calcs_directory,
                                                             output_dict=output_dict,
                                                             bac_type=None,
                                                             sp_level=sp_level,
                                                             freq_scale_factor=freq_scale_factor,
                                                             species=species,
                                                             )
-                        statmech_adapter.compute_thermo(kinetics_flag=True)
+                        statmech_adapter.compute_thermo()
                     else:
                         logger.error(f'Species {species.label} did not converge, cannot compute a rate coefficient '
                                      f'for {reaction.label}')
@@ -118,6 +119,7 @@ def process_arc_project(thermo_adapter: str,
                 if species_converged:
                     statmech_adapter = statmech_factory(statmech_adapter_label=kinetics_adapter,
                                                         output_directory=output_directory,
+                                                        calcs_directory=calcs_directory,
                                                         output_dict=output_dict,
                                                         bac_type=None,
                                                         sp_level=sp_level,
@@ -151,13 +153,14 @@ def process_arc_project(thermo_adapter: str,
             if (species.compute_thermo or species.e0_only) and output_dict[species.label]['convergence']:
                 statmech_adapter = statmech_factory(statmech_adapter_label=thermo_adapter,
                                                     output_directory=output_directory,
+                                                    calcs_directory=calcs_directory,
                                                     output_dict=output_dict,
                                                     bac_type=bac_type,
                                                     sp_level=sp_level,
                                                     freq_scale_factor=freq_scale_factor,
                                                     species=species,
                                                     )
-                statmech_adapter.compute_thermo(kinetics_flag=False, e0_only=species.e0_only)
+                statmech_adapter.compute_thermo(e0_only=species.e0_only)
                 if species.thermo is not None:
                     species_for_thermo_lib.append(species)
                 elif not species.e0_only and species not in unconverged_species:
@@ -221,6 +224,10 @@ def compare_thermo(species_for_thermo_lib: list,
         species_for_thermo_lib (list): Species for which thermochemical properties were computed.
         output_directory (str): The path to the project's output folder.
     """
+
+    # todo: add species to the adapter, run compute thermo
+
+
     species_to_compare = list()  # species for which thermo was both calculated and estimated.
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
@@ -257,6 +264,10 @@ def compare_rates(rxns_for_kinetics_lib: list,
         list: Reactions for which a rate was both calculated and estimated.
               Returning this list for testing purposes.
     """
+
+
+    # todo: add reactions and species participating in the reaction to the adapter, run compute rates
+
     reactions_to_compare = list()  # reactions for which a rate was both calculated and estimated.
     reactions_kinetics_path = os.path.join(output_directory, 'RMG_kinetics.yml')
     save_yaml_file(path=reactions_kinetics_path,

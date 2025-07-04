@@ -56,17 +56,20 @@ def map_reaction(rxn: 'ARCReaction',
     if flip:
         logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. Trying again with the flipped reaction.")
         try:
+            print(f'Flipping reaction {rxn.label} for mapping.')
             _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
             return None
         return _map
     else:
         if rxn.family is None:
+            print(f'The reaction {rxn.label} has no family, trying to map it as a general reaction.')
             logger.warning(f'Could not determine the reaction family for {rxn.label}. '
                            f'Mapping as a general or isomerization reaction.')
             _map = map_general_rxn(rxn, backend=backend)
             return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
         try:
+            print(f'Mapping reaction {rxn.label} of fam {rxn.family} for mapping.')
             _map = map_rxn(rxn, backend=backend)
         except ValueError:
             return map_reaction(rxn, backend=backend, flip=True)
