@@ -1322,7 +1322,7 @@ def rmg_mol_from_inchi(inchi: str):
 
 def elementize(atom):
     """
-    Convert the atom type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
+    Convert the atom-type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
 
     Args:
         atom (Atom): The atom to process.
@@ -1336,6 +1336,7 @@ def elementize(atom):
 def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                        multiplicity: Optional[int] = None,
                        charge: int = 0,
+                       original_mol: Optional[Molecule] = None
                        ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
     """
     Creating RMG:Molecule objects from xyz with correct atom labeling.
@@ -1346,6 +1347,8 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
         xyz (dict): The ARC dict format xyz coordinates of the species.
         multiplicity (int, optional): The species spin multiplicity.
         charge (int, optional): The species net charge.
+        original_mol (Molecule, optional): An RMG Molecule object with the same atom order as the xyz.
+                                           used for setting the electronic structure of atoms.
 
     Returns: Tuple[Optional[Molecule], Optional[Molecule]]
         - The respective Molecule object with only single bonds.
@@ -1380,10 +1383,10 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
 
     # 2. Generate a molecule with bond order information using pybel:
     mol_bo = None
-    pybel_mol = xyz_to_pybel_mol(xyz)
-    if pybel_mol is not None:
-        inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
-        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
+    # pybel_mol = xyz_to_pybel_mol(xyz)
+    # if pybel_mol is not None:
+    #     inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
+    #     mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
 
     # 3. Generate a molecule with bond order information using xyz_to_smiles.
     if mol_bo is None:
@@ -1393,6 +1396,16 @@ def molecules_from_xyz(xyz: Optional[Union[dict, str]],
                 mol_bo = Molecule(smiles=smiles_list[0])
         except:
             pass
+
+    print(f'mol_bo: {mol_bo}, original_mol: {original_mol}')
+    if mol_bo is not None and original_mol is not None:
+        print('Setting atom properties from the original molecule to the new molecules...')
+        for original_atom, new_atom in zip(original_mol.atoms, mol_bo.atoms):
+            if original_atom.is_non_hydrogen() and original_atom.element.symbol == new_atom.element.symbol:
+                    # new_atom.charge = original_atom.charge
+                    # new_atom.lone_pairs = original_atom.lone_pairs
+                    new_atom.radical_electrons = original_atom.radical_electrons
+                    # new_atom.atomtype = original_atom.atomtype
 
     if mol_bo is not None:
         if multiplicity is not None:
