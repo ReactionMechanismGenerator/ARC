@@ -8,8 +8,15 @@ import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 from ase import Atoms
-from openbabel import openbabel as ob
-from openbabel import pybel
+# These optional imports provide additional functionality if OpenBabel is
+# available.  They are not required for the basic conversions used in the unit
+# tests.
+try:  # pragma: no cover - optional dependency
+    from openbabel import openbabel as ob
+    from openbabel import pybel
+except Exception:  # pragma: no cover - ignore if OpenBabel is missing
+    ob = None
+    pybel = None
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
 from rdkit.Chem import AllChem, SDWriter

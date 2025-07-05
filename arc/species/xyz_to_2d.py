@@ -5,8 +5,14 @@ Written by Colin Grambow
 
 import numpy as np
 
-from openbabel import openbabel as ob
-from openbabel import pybel
+# OpenBabel is optional.  The simple perception routines used in testing do not
+# rely on it, so import failure is tolerated.
+try:  # pragma: no cover - optional dependency
+    from openbabel import openbabel as ob
+    from openbabel import pybel
+except Exception:  # pragma: no cover
+    ob = None
+    pybel = None
 from rdkit import Chem
 from rdkit.Chem import GetPeriodicTable
 
