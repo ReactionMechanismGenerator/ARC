@@ -17,6 +17,7 @@ import arc.species.converter as converter
 from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
 from arc.species.zmat import _compare_zmats, xyz_to_zmat
@@ -3252,90 +3253,6 @@ R1=1.0912"""
         self.assertEqual(atom1.atomtype.label, 'O')
         self.assertEqual(atom2.atomtype.label, 'C')
 
-    def test_molecules_from_xyz(self):
-        """Tests that atom orders are preserved when converting xyz's into RMG Molecules"""
-        s_mol, b_mol = converter.molecules_from_xyz(self.xyz6['dict'])
-
-        # check that the atom order is the same
-        self.assertTrue(s_mol.atoms[0].is_sulfur())
-        self.assertTrue(b_mol.atoms[0].is_sulfur())
-        self.assertTrue(s_mol.atoms[1].is_oxygen())
-        self.assertTrue(b_mol.atoms[1].is_oxygen())
-        self.assertTrue(s_mol.atoms[2].is_oxygen())
-        self.assertTrue(b_mol.atoms[2].is_oxygen())
-        self.assertTrue(s_mol.atoms[3].is_nitrogen())
-        self.assertTrue(b_mol.atoms[3].is_nitrogen())
-        self.assertTrue(s_mol.atoms[4].is_carbon())
-        self.assertTrue(b_mol.atoms[4].is_carbon())
-        self.assertTrue(s_mol.atoms[5].is_hydrogen())
-        self.assertTrue(b_mol.atoms[5].is_hydrogen())
-        self.assertTrue(s_mol.atoms[6].is_hydrogen())
-        self.assertTrue(b_mol.atoms[6].is_hydrogen())
-        self.assertTrue(s_mol.atoms[7].is_hydrogen())
-        self.assertTrue(b_mol.atoms[7].is_hydrogen())
-        self.assertTrue(s_mol.atoms[8].is_hydrogen())
-        self.assertTrue(b_mol.atoms[8].is_hydrogen())
-        self.assertTrue(s_mol.atoms[9].is_hydrogen())
-        self.assertTrue(b_mol.atoms[9].is_hydrogen())
-
-        s_mol, b_mol = converter.molecules_from_xyz(self.xyz7['dict'])
-        self.assertTrue(s_mol.atoms[0].is_oxygen())
-        self.assertTrue(b_mol.atoms[0].is_oxygen())
-        self.assertTrue(s_mol.atoms[2].is_carbon())
-        self.assertTrue(b_mol.atoms[2].is_carbon())
-
-        expected_bonded_adjlist = """multiplicity 2
-1  O u0 p2 c0 {6,S} {10,S}
-2  O u0 p2 c0 {3,S} {28,S}
-3  C u0 p0 c0 {2,S} {8,S} {14,S} {15,S}
-4  C u0 p0 c0 {7,S} {16,S} {17,S} {18,S}
-5  C u0 p0 c0 {7,S} {19,S} {20,S} {21,S}
-6  C u0 p0 c0 {1,S} {22,S} {23,S} {24,S}
-7  C u1 p0 c0 {4,S} {5,S} {9,S}
-8  C u0 p0 c0 {3,S} {10,D} {11,S}
-9  C u0 p0 c0 {7,S} {11,D} {12,S}
-10 C u0 p0 c0 {1,S} {8,D} {13,S}
-11 C u0 p0 c0 {8,S} {9,D} {25,S}
-12 C u0 p0 c0 {9,S} {13,D} {26,S}
-13 C u0 p0 c0 {10,S} {12,D} {27,S}
-14 H u0 p0 c0 {3,S}
-15 H u0 p0 c0 {3,S}
-16 H u0 p0 c0 {4,S}
-17 H u0 p0 c0 {4,S}
-18 H u0 p0 c0 {4,S}
-19 H u0 p0 c0 {5,S}
-20 H u0 p0 c0 {5,S}
-21 H u0 p0 c0 {5,S}
-22 H u0 p0 c0 {6,S}
-23 H u0 p0 c0 {6,S}
-24 H u0 p0 c0 {6,S}
-25 H u0 p0 c0 {11,S}
-26 H u0 p0 c0 {12,S}
-27 H u0 p0 c0 {13,S}
-28 H u0 p0 c0 {2,S}
-"""
-        expected_mol = Molecule().from_adjacency_list(expected_bonded_adjlist)
-        self.assertEqual(b_mol.to_adjacency_list(), expected_bonded_adjlist)
-        # the is_isomorphic test must come after the adjlist test since it changes the atom order
-        self.assertTrue(b_mol.is_isomorphic(expected_mol))
-
-        s_mol, b_mol = converter.molecules_from_xyz(self.xyz10['dict'], multiplicity=1, charge=0)
-        self.assertIsNotNone(s_mol)
-        self.assertIsNotNone(b_mol)
-        for atom1, atom2 in zip(s_mol.atoms, b_mol.atoms):
-            self.assertEqual(atom1.symbol, atom2.symbol)
-        for atom1, symbol in zip(s_mol.atoms, self.xyz10['dict']['symbols']):
-            self.assertEqual(atom1.symbol, symbol)
-
-        s_mol, b_mol = converter.molecules_from_xyz(self.xyz_dict_13, multiplicity=1, charge=0)
-        for atom1, atom2 in zip(s_mol.atoms, b_mol.atoms):
-            self.assertEqual(atom1.symbol, atom2.symbol)
-        for atom1, symbol in zip(s_mol.atoms, self.xyz_dict_13['symbols']):
-            self.assertEqual(atom1.symbol, symbol)
-        self.assertEqual(s_mol.multiplicity, 1)
-        self.assertEqual(b_mol.multiplicity, 1)
-        self.assertFalse(any(atom.radical_electrons for atom in b_mol.atoms))
-
     def test_unsorted_xyz_mol_from_xyz(self):
         """Test atom order conservation when xyz isn't sorted with heavy atoms first"""
         n3h5 = ARCSpecies(label='N3H5', xyz=self.xyz8['str'], smiles='NNN')
@@ -3350,248 +3267,6 @@ R1=1.0912"""
 """
         self.assertEqual(n3h5.mol.to_adjacency_list(), expected_adjlist)
         self.assertEqual(n3h5.conformers[0], self.xyz8['dict'])
-
-    def test_xyz_to_smiles(self):
-        """Test xyz to SMILES conversion and inferring correct bond orders"""
-        xyz1 = """S      -0.06618943   -0.12360663   -0.07631983
-O      -0.79539707    0.86755487    1.02675668
-O      -0.68919931    0.25421823   -1.34830853
-N       0.01546439   -1.54297548    0.44580391
-C       1.59721519    0.47861334    0.00711000
-H       1.94428095    0.40772394    1.03719428
-H       2.20318015   -0.14715186   -0.64755729
-H       1.59252246    1.51178950   -0.33908352
-H      -0.87856890   -2.02453514    0.38494433
-H      -1.34135876    1.49608206    0.53295071"""
-
-        xyz2 = """O       2.64631000   -0.59546000    0.29327900
-O       2.64275300    2.05718500   -0.72942300
-C       1.71639100    1.97990400    0.33793200
-C      -3.48200000    1.50082200    0.03091100
-C      -3.85550400   -1.05695100   -0.03598300
-C       3.23017500   -1.88003900    0.34527100
-C      -2.91846400    0.11144600    0.02829400
-C       0.76935400    0.80820200    0.23396500
-C      -1.51123800   -0.09830700    0.09199100
-C       1.28495500   -0.50051800    0.22531700
-C      -0.59550400    0.98573400    0.16444900
-C      -0.94480400   -1.39242500    0.08331900
-C       0.42608700   -1.59172200    0.14650400
-H       2.24536500    1.93452800    1.29979800
-H       1.14735500    2.91082400    0.31665700
-H      -3.24115200    2.03800800    0.95768700
-H      -3.08546100    2.10616100   -0.79369800
-H      -4.56858900    1.48636200   -0.06630800
-H      -4.89652000   -0.73067200   -0.04282300
-H      -3.69325500   -1.65970000   -0.93924100
-H      -3.72742500   -1.73294900    0.81894100
-H       3.02442400   -2.44854700   -0.56812500
-H       4.30341500   -1.72127600    0.43646000
-H       2.87318600   -2.44236600    1.21464900
-H      -0.97434200    2.00182800    0.16800300
-H      -1.58581300   -2.26344700    0.02264400
-H       0.81122400   -2.60336100    0.13267800
-H       3.16280800    1.25020800   -0.70346900"""
-
-        xyz3 = """N       2.24690600   -0.00006500    0.11597700
-C      -1.05654800    1.29155000   -0.02642500
-C      -1.05661400   -1.29150400   -0.02650600
-C      -0.30514100    0.00000200    0.00533200
-C       1.08358900   -0.00003400    0.06558000
-H      -0.39168300    2.15448600   -0.00132500
-H      -1.67242600    1.35091400   -0.93175000
-H      -1.74185400    1.35367700    0.82742800
-H      -0.39187100   -2.15447800    0.00045500
-H      -1.74341400   -1.35278100    0.82619100
-H      -1.67091600   -1.35164600   -0.93286400"""
-
-        xyz4 = """C      -0.86594600    0.19886100    2.37159000
-C       0.48486900   -0.16232000    1.75422500
-C       1.58322700    0.83707500    2.14923200
-C       0.88213600   -1.51753600    2.17861400
-N       1.17852900   -2.57013900    2.53313600
-N       0.51051200   -0.21074800    0.26080100
-N      -0.51042000    0.21074000   -0.26079600
-C      -0.48479200    0.16232300   -1.75422300
-C       0.86590400   -0.19926100   -2.37161200
-C      -1.58344900   -0.83674100   -2.14921800
-C      -0.88166600    1.51765700   -2.17859800
-N      -1.17777100    2.57034900   -2.53309500
-H      -1.16019200    1.20098300    2.05838400
-H      -1.64220300   -0.50052400    2.05954500
-H      -0.78054100    0.17214100    3.45935000
-H       1.70120000    0.85267300    3.23368300
-H       2.53492600    0.56708700    1.69019900
-H       1.29214500    1.83331400    1.80886700
-H       1.15987300   -1.20145600   -2.05838100
-H       0.78046800   -0.17257000   -3.45937100
-H       1.64236100    0.49992400   -2.05962300
-H      -2.53504500   -0.56650600   -1.69011500
-H      -1.70149200   -0.85224500   -3.23366300
-H      -1.29263300   -1.83308300   -1.80892900"""
-
-        xyz5 = """O       0.90973400   -0.03064000   -0.09605500
-O       0.31656600   -0.00477100   -1.21127600
-O       2.17315400   -0.03069900   -0.09349100"""
-
-        xyz6 = """S       0.38431300    0.05370100    0.00000000
-N      -1.13260000    0.07859900    0.00000000
-H       0.85151800   -1.28998600    0.00000000"""
-
-        xyz7 = """N       0.00000000    0.00000000    0.44654700
-N       0.00000000    0.00000000   -0.77510900
-H       0.86709400    0.00000000    1.02859700
-H      -0.86709400    0.00000000    1.02859700"""
-
-        xyz8 = """N       0.00000000    0.00000000    0.65631400
-C       0.00000000    0.00000000   -0.50136500
-H       0.00000000    0.00000000   -1.57173600"""
-
-        xyz9 = """S      -0.00866000   -0.60254900    0.00000000
-N      -0.96878800    0.63275900    0.00000000
-N       1.01229100    0.58298500    0.00000000"""
-
-        xyz10 = """O      -0.79494500   -0.93969200    0.00000000
-O      -0.32753500    1.24003800    0.00000000
-O       1.28811400   -0.24729000    0.00000000
-N       0.14143500    0.11571500    0.00000000
-H      -1.65602000   -0.48026800    0.00000000"""
-
-        xyz11 = """O       1.64973000   -0.57433600    0.02610800
-O       0.49836300    1.28744800   -0.18806200
-N      -0.57621600   -0.65116600    0.24595200
-N      -1.78357200   -0.10211200   -0.14953800
-N       0.61460400    0.08152700   -0.00952700
-H      -0.42001200   -1.61494900   -0.03311600
-H      -1.72480300    0.33507600   -1.06884500
-H      -2.07362100    0.59363400    0.53038600"""
-
-        xyz12 = """O       1.10621000    0.00000000   -0.13455300
-O      -1.10621000    0.00000000   -0.13455300
-N       0.00000000    0.00000000    0.33490500"""
-
-        xyz13 = """O      -0.37723000   -1.27051900    0.00000000
-N      -0.12115000   -0.04252600    0.00000000
-N      -0.95339100    0.91468300    0.00000000
-C       1.31648000    0.33217600    0.00000000
-H       1.76422500   -0.11051900   -0.89038300
-H       1.76422500   -0.11051900    0.89038300
-H       1.40045900    1.41618100    0.00000000
-H      -1.88127600    0.47189500    0.00000000"""
-
-        xyz14 = """S      -0.12942800    0.11104800    0.22427200
-O       0.98591500   -1.00752300   -0.31179100
-O      -1.43956200   -0.44459900   -0.15048900
-O       0.32982400    1.44755400   -0.21682700
-H       1.85512700   -0.56879900   -0.36563700"""
-
-        xyz15 = """N       1.11543700    0.11100500    0.00000000
-N      -0.11982300   -0.03150800    0.00000000
-N      -1.25716400    0.01530300    0.00000000
-H       1.57747800   -0.80026300    0.00000000"""
-
-        xyz16 = """O       1.21678000   -0.01490600    0.00000000
-N       0.04560300    0.35628400    0.00000000
-C      -1.08941100   -0.23907800    0.00000000
-H      -1.97763400    0.37807800    0.00000000
-H      -1.14592100   -1.32640500    0.00000000"""
-
-        xyz17 = """S       0.00000000    0.00000000    0.18275300
-O      -0.94981300   -0.83167500   -0.84628900
-O       0.94981300    0.83167500   -0.84628900
-O       0.80426500   -0.99804200    0.85548500
-O      -0.80426500    0.99804200    0.85548500
-H      -1.67833300   -0.25442300   -1.13658700
-H       1.67833300    0.25442300   -1.13658700"""
-
-        xyz18 = """S       0.00000000    0.00000000    0.12264300
-O       1.45413200    0.00000000    0.12264300
-O      -0.72706600    1.25931500    0.12264300
-O      -0.72706600   -1.25931500    0.12264300"""
-
-        xyz19 = """N       1.16672400    0.35870400   -0.00000400
-N      -1.16670800    0.35879500   -0.00000400
-C      -0.73775600   -0.89086600   -0.00000100
-C       0.73767000   -0.89093000   -0.00000100
-C       0.00005200    1.08477000   -0.00000500
-H      -1.40657400   -1.74401100    0.00000000
-H       1.40645000   -1.74411900    0.00000000
-H       0.00009400    2.16788100   -0.00000700"""
-
-        xyz20 = """C       3.09980400   -0.16068000    0.00000600
-C       1.73521600    0.45534600   -0.00002200
-C       0.55924400   -0.24765400   -0.00000300
-C      -0.73300200    0.32890400   -0.00001600
-C      -1.93406200   -0.42115800    0.00001300
-C      -3.19432700    0.11090700    0.00000900
-H       3.67991400    0.15199400   -0.87914100
-H       3.67984100    0.15191400    0.87923000
-H       3.04908000   -1.25419800   -0.00004300
-H       1.68713300    1.54476700   -0.00005100
-H      -0.81003200    1.41627100   -0.00004600
-H      -1.83479400   -1.50747300    0.00004100
-H       0.61489300   -1.33808300    0.00002500
-H      -3.35410300    1.18597200   -0.00001700
-H      -4.07566100   -0.52115800    0.00003300"""
-
-        mol1 = converter.molecules_from_xyz(converter.str_to_xyz(xyz1))[1]
-        mol2 = converter.molecules_from_xyz(converter.str_to_xyz(xyz2))[1]
-        mol3 = converter.molecules_from_xyz(converter.str_to_xyz(xyz3))[1]
-        mol4 = converter.molecules_from_xyz(converter.str_to_xyz(xyz4))[1]
-        mol5 = converter.molecules_from_xyz(converter.str_to_xyz(xyz5))[1]
-        mol6 = converter.molecules_from_xyz(converter.str_to_xyz(xyz6), multiplicity=1)[1]
-        mol7 = converter.molecules_from_xyz(converter.str_to_xyz(xyz7), multiplicity=1)[1]
-        mol8 = converter.molecules_from_xyz(converter.str_to_xyz(xyz8))[1]
-        mol9 = converter.molecules_from_xyz(converter.str_to_xyz(xyz9), multiplicity=1)[1]
-        # mol10 = converter.molecules_from_xyz(converter.str_to_xyz(xyz10))[1]
-        # mol11 = converter.molecules_from_xyz(converter.str_to_xyz(xyz11))[1]
-        mol12 = converter.molecules_from_xyz(converter.str_to_xyz(xyz12))[1]
-        # mol13 = converter.molecules_from_xyz(converter.str_to_xyz(xyz13))[1]
-        mol14 = converter.molecules_from_xyz(converter.str_to_xyz(xyz14))[1]
-        mol15 = converter.molecules_from_xyz(converter.str_to_xyz(xyz15))[1]
-        mol16 = converter.molecules_from_xyz(converter.str_to_xyz(xyz16))[1]
-        mol17 = converter.molecules_from_xyz(converter.str_to_xyz(xyz17))[1]
-        mol18 = converter.molecules_from_xyz(converter.str_to_xyz(xyz18))[1]
-        mol19 = converter.molecules_from_xyz(converter.str_to_xyz(xyz19))[1]
-        mol20 = converter.molecules_from_xyz(converter.str_to_xyz(xyz20))[1]
-        mol21 = converter.molecules_from_xyz("""O    0.0000000    0.0000000    0.6076340
-                                                O    0.0000000    0.0000000   -0.6076340""")[1]
-        mol22 = converter.molecules_from_xyz("""S    0.0000000    0.0000000    0.9547220
-                                                S    0.0000000    0.0000000   -0.9547220""")[1]
-
-        self.assertEqual(mol1.to_smiles(), '[NH-][S+](=O)(O)C')
-        self.assertIn(mol2.to_smiles(), ['COC1=C(CO)C=C([C](C)C)C=C1', 'COC1C=CC(=CC=1CO)[C](C)C'])
-        self.assertEqual(mol3.to_smiles(), '[N]=C=C(C)C')
-        self.assertEqual(mol4.to_smiles(), 'N#CC(N=NC(C#N)(C)C)(C)C')
-        self.assertEqual(mol5.to_smiles(), '[O-][O+]=O')
-        self.assertEqual(mol6.to_smiles(), 'N#S')
-        self.assertEqual(mol7.to_smiles(), '[N-]=[NH2+]')
-        self.assertEqual(mol8.to_smiles(), 'C#N')
-        self.assertEqual(mol9.to_smiles(), '[N-]=[S+]#N')  # gives [N]S#N, multiplicity 3
-        # self.assertEqual(mol10.to_smiles(), '[N+](=O)(O)[O-]')  # gives None
-        # self.assertEqual(mol11.to_smiles(), 'N(N)[N+](=O)[O-]')  # gives None
-        self.assertEqual(mol12.to_smiles(), '[O]N=O')
-        # self.assertEqual(mol13.to_smiles(), 'C[N+]([NH-])=O')  # gives None
-        self.assertEqual(mol14.to_smiles(), '[O]S(=O)O')
-        self.assertEqual(mol15.to_smiles(), '[N-]=[N+]=N')
-        self.assertEqual(mol16.to_smiles(), '[O]N=C')
-        self.assertEqual(mol17.to_smiles(), '[O-][S+](=O)(O)O')
-        self.assertEqual(mol18.to_smiles(), 'O=S(=O)=O')
-        self.assertEqual(mol19.to_adjacency_list(), """multiplicity 2
-1 N u1 p1 c0 {4,S} {5,S}
-2 N u0 p1 c0 {3,S} {5,D}
-3 C u0 p0 c0 {2,S} {4,D} {6,S}
-4 C u0 p0 c0 {1,S} {3,D} {7,S}
-5 C u0 p0 c0 {1,S} {2,D} {8,S}
-6 H u0 p0 c0 {3,S}
-7 H u0 p0 c0 {4,S}
-8 H u0 p0 c0 {5,S}
-""")  # cannot read SMILES 'c1ncc[n]1' (but can generate them)
-        self.assertEqual(mol20.to_smiles(), 'C=C[CH]C=CC')
-        self.assertEqual(mol21.to_smiles(), '[O][O]')
-        self.assertEqual(mol21.multiplicity, 3)
-        self.assertEqual(mol22.to_smiles(), '[S][S]')
-        self.assertEqual(mol22.multiplicity, 3)
 
     def test_to_rdkit_mol(self):
         """Test converting an RMG Molecule object to an RDKit Molecule object"""
@@ -3795,8 +3470,8 @@ H      -4.07566100   -0.52115800    0.00003300"""
 
     def test_rdkit_conf_from_mol(self):
         """Test the rdkit_conf_from_mol() function."""
-        b_mol = converter.molecules_from_xyz(self.xyz5['dict'])[1]
-        conf, rd_mol = converter.rdkit_conf_from_mol(mol=b_mol, xyz=self.xyz5['dict'])
+        mol = perceive_molecule_from_xyz(self.xyz5['dict'])
+        conf, rd_mol = converter.rdkit_conf_from_mol(mol=mol, xyz=self.xyz5['dict'])
         self.assertTrue(conf.Is3D())
         self.assertEqual(rd_mol.GetNumAtoms(), 5)
 
@@ -4357,12 +4032,12 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                            (-3.315019, 1.53868, -2.760245), (-3.713498, 1.338038, -4.025244),
                            (-4.754452, 0.99077, -4.021055), (-3.584519, 2.351475, -4.444827),
                            (-2.87635, 0.381401, -4.513467), (-1.966974, 0.665311, -4.338804))}
-        mol1 = converter.molecules_from_xyz(xyz1)[1]
-        mol2 = converter.molecules_from_xyz(xyz2)[1]
-        mol3 = converter.molecules_from_xyz(xyz3)[1]
-        mol4 = converter.molecules_from_xyz(xyz4)[1]
-        mol5 = converter.molecules_from_xyz(xyz5)[1]  # a TS
-        mol6 = converter.molecules_from_xyz(xyz6)[1]  # a TS
+        mol1 = perceive_molecule_from_xyz(xyz1)
+        mol2 = perceive_molecule_from_xyz(xyz2)
+        mol3 = perceive_molecule_from_xyz(xyz3)
+        mol4 = perceive_molecule_from_xyz(xyz4)
+        mol5 = perceive_molecule_from_xyz(xyz5)  # a TS
+        mol6 = perceive_molecule_from_xyz(xyz6)  # a TS
 
         # test atom modification types
         modification_type = 'atom'

@@ -41,7 +41,6 @@ from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    get_xyz_radius,
                                    modify_coords,
-                                   molecules_from_xyz,
                                    order_atoms_in_mol_list,
                                    remove_dummies,
                                    rmg_mol_from_inchi,
@@ -50,6 +49,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str,
                                    )
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
@@ -1370,8 +1370,7 @@ class ARCSpecies(object):
             return None
         mol = self.mol
         if mol is None:
-            mols = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
-            mol = mols[1] or mols[0]
+            mol = perceive_molecule_from_xyz(xyz, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals)
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
                 if rotor['pivots'] == pivots:
@@ -1554,10 +1553,12 @@ class ARCSpecies(object):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
             # self.mol should have come from another source, e.g., SMILES or yml.
-            mol_s, mol_b = molecules_from_xyz(xyz=xyz,
-                                              multiplicity=self.multiplicity,
-                                              charge=self.charge)
-            perceived_mol = mol_b or mol_s
+            self.set_mol_list()
+            perceived_mol = perceive_molecule_from_xyz(xyz,
+                                                       charge=self.charge,
+                                                       multiplicity=self.multiplicity,
+                                                       n_radicals=self.number_of_radicals,
+                                                       )
             if perceived_mol is not None:
                 allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
                                          or self.mol.has_charge() or perceived_mol.has_charge() \
@@ -1576,11 +1577,13 @@ class ARCSpecies(object):
                 if not self.keep_mol:
                     self.mol = perceived_mol
         else:
-            mol_s, mol_b = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
-            if mol_b is not None and len(mol_b.atoms) == self.number_of_atoms:
-                self.mol = mol_b
-            elif mol_s is not None and len(mol_s.atoms) == self.number_of_atoms:
-                self.mol = mol_s
+            perceived_mol = perceive_molecule_from_xyz(xyz,
+                                                       charge=self.charge,
+                                                       multiplicity=self.multiplicity,
+                                                       n_radicals=self.number_of_radicals,
+                                                       )
+            if perceived_mol is not None:
+                self.mol = perceived_mol
             else:
                 logger.error(f'Could not infer a 2D graph for species {self.label}')
 
@@ -1745,31 +1748,19 @@ class ARCSpecies(object):
 
         if mol is not None:
 
-            s_mol, b_mol = None, None
-
             # 1. Perceive
-            try:
-                s_mol, b_mol = molecules_from_xyz(xyz, multiplicity=self.multiplicity, charge=self.charge)
-            except Exception as e:
-                if verbose:
-                    logger.error(f'Could not perceive the Cartesian coordinates of species {self.label}. This '
-                                 f'might result in inconsistent atom order between the Cartesian and the 2D graph '
-                                 f'representations. Got:\n{e}')
+            perceived_mol = perceive_molecule_from_xyz(xyz,
+                                                       charge=self.charge,
+                                                       multiplicity=self.multiplicity,
+                                                       n_radicals=self.number_of_radicals,
+                                                       )
 
             # 2. A. Check isomorphism with bond orders using b_mol
-            if b_mol is not None:
-                isomorphic = check_isomorphism(mol, b_mol)
+            if perceived_mol is not None:
+                isomorphic = check_isomorphism(mol, perceived_mol)
                 if not isomorphic and verbose:
                     logger.error(f'The Cartesian coordinates of species {self.label} are not isomorphic with the 2D '
                                  f'structure {mol.copy(deep=True).to_smiles()} when considering bond orders.')
-
-            # 2. B. Check isomorphism without bond orders using s_mol (only for charged or high spin multiplicity)
-            if not isomorphic and s_mol is not None:
-                isomorphic = check_isomorphism(mol, s_mol, convert_to_single_bonds=True)
-                if not isomorphic and verbose:
-                    logger.error(f'The Cartesian coordinates of species {self.label} with charge {self.charge} '
-                                 f'and multiplicity {self.multiplicity} are not isomorphic with the 2D '
-                                 f'structure {mol.copy(deep=True).to_smiles()} even without considering bond orders.')
 
             # 2. C. Check isomorphism without bond orders NOT using s_mol
             if not isomorphic:

@@ -61,6 +61,7 @@ from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT,
 from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
+from arc.species.perceive import perceive_molecule_from_xyz
 
 
 logger = get_logger()
@@ -692,14 +693,14 @@ def generate_force_field_conformers(label,
     # User guesses
     if xyzs is not None and xyzs:
         if not isinstance(xyzs, list):
-            raise ConformerError('The xyzs argument must be a list, got {0}'.format(type(xyzs)))
+            raise ConformerError(f'The xyzs argument must be a list, got {xyzs}')
         for xyz in xyzs:
             if not isinstance(xyz, dict):
-                raise ConformerError('Each entry in xyzs must be a dictionary, got {0}'.format(type(xyz)))
-            s_mol, b_mol = converter.molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)
+                raise ConformerError(f'Each entry in xyzs must be a dictionary, got {xyz}')
+            mol = perceive_molecule_from_xyz(xyz, charge=charge, multiplicity=multiplicity, n_radicals=None)
             conformers.append({'xyz': xyz,
                                'index': len(conformers),
-                               'FF energy': get_force_field_energies(label, mol=b_mol or s_mol, xyz=xyz,
+                               'FF energy': get_force_field_energies(label, mol=mol, xyz=xyz,
                                                                      optimize=True, force_field=force_field)[1][0],
                                'source': 'User Guess'})
     return conformers
@@ -852,7 +853,11 @@ def determine_number_of_conformers_to_generate(label: str,
     # increase the number of conformers if there are more than two chiral centers
     num_chiral_centers = 0
     if mol is None and xyz is not None:
-        mol = converter.molecules_from_xyz(xyz)[1]
+        mol = perceive_molecule_from_xyz(xyz,
+                                         charge=mol.get_net_charge() if mol is not None else 0,
+                                         multiplicity=mol.multiplicity if mol is not None else None,
+                                         n_radicals=None,
+                                         )
     if mol is not None and xyz is None:
         xyzs = get_force_field_energies(label, mol, num_confs=1, suppress_warning=True)[0]
         xyz = xyzs[0] if len(xyzs) else None
@@ -1658,7 +1663,7 @@ def check_special_non_rotor_cases(mol, top1, top2):
         bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        if mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
                 and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
