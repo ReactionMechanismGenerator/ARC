@@ -17,6 +17,7 @@ from arc.exceptions import ConformerError
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.group import GroupAtom, GroupBond, Group
 from arc.molecule.molecule import Molecule
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -440,7 +441,7 @@ H      -1.22610851    0.40421362    1.35170355"""
         xyzs, energies = conformers.get_force_field_energies(label='', mol=self.mol0, num_confs=10)
         self.assertEqual(len(xyzs), 10)
         self.assertEqual(len(energies), 10)
-        mol0 = converter.molecules_from_xyz(xyzs[0])[1]
+        mol0 = perceive_molecule_from_xyz(xyzs[0])
         self.assertTrue(self.mol0.is_isomorphic(mol0), 'Could not complete a round trip from Molecule to xyz and back '
                                                        'via RDKit')
 

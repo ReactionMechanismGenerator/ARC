@@ -27,8 +27,7 @@ import arc.constants as constants
 from arc.exceptions import AtomTypeError, ConverterError, InputError, SanitizationError, SpeciesError
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
-from arc.species.xyz_to_2d import MolGraph
-from arc.species.xyz_to_smiles import xyz_to_smiles
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.zmat import (KEY_FROM_LEN,
                               _compare_zmats,
                               get_all_neighbors,
@@ -803,7 +802,11 @@ def zmat_from_xyz(xyz: Union[dict, str],
         raise InputError(f'xyz must be a dictionary, got {type(xyz)}')
     xyz = remove_dummies(xyz)
     if mol is None and not is_ts:
-        mol = molecules_from_xyz(xyz=xyz)[1]
+        mol = perceive_molecule_from_xyz(xyz=xyz,
+                                         charge=mol.get_net_charge() if mol is not None else 0,
+                                         multiplicity=mol.multiplicity if mol is not None else None,
+                                         n_radicals=None,
+                                         )
     return xyz_to_zmat(xyz,
                        mol=mol,
                        constraints=constraints,
@@ -1322,7 +1325,7 @@ def rmg_mol_from_inchi(inchi: str):
 
 def elementize(atom):
     """
-    Convert the atom type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
+    Convert the atom-type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
 
     Args:
         atom (Atom): The atom to process.
@@ -1331,94 +1334,6 @@ def elementize(atom):
     atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and 'Val' not in at.label]
     if atom_type:
         atom.atomtype = atom_type[0]
-
-
-def molecules_from_xyz(xyz: Optional[Union[dict, str]],
-                       multiplicity: Optional[int] = None,
-                       charge: int = 0,
-                       ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
-    """
-    Creating RMG:Molecule objects from xyz with correct atom labeling.
-    Based on the MolGraph.perceive_smiles method.
-    If `multiplicity` is given, the returned species multiplicity will be set to it.
-
-    Args:
-        xyz (dict): The ARC dict format xyz coordinates of the species.
-        multiplicity (int, optional): The species spin multiplicity.
-        charge (int, optional): The species net charge.
-
-    Returns: Tuple[Optional[Molecule], Optional[Molecule]]
-        - The respective Molecule object with only single bonds.
-        - The respective Molecule object with perceived bond orders.
-    """
-    if xyz is None:
-        return None, None
-    xyz = check_xyz_dict(xyz)
-
-    if len(xyz['symbols']) == 2:
-        for element, bond_length in zip(['O', 'S'], [1.4, 2.1]):
-            if xyz['symbols'] == (element, element) and multiplicity != 1:
-                coords = np.asarray(xyz['coords'], dtype=np.float32)
-                vector = coords[0] - coords[1]
-                if float(np.dot(vector, vector) ** 0.5) < bond_length:
-                    # Special case for O2 and S2 triplet
-                    return Molecule(smiles=f'[{element}][{element}]'), Molecule(smiles=f'[{element}][{element}]')
-
-    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz.
-    mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
-    inferred_connections = mol_graph.infer_connections()
-    if inferred_connections:
-        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz.
-    else:
-        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz.
-    if mol_s1 is None:
-        logger.error(f'Could not create a 2D graph representation from xyz:\n{xyz_to_str(xyz)}')
-        return None, None
-    if multiplicity is not None:
-        mol_s1.multiplicity = multiplicity
-    mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
-
-    # 2. Generate a molecule with bond order information using pybel:
-    mol_bo = None
-    pybel_mol = xyz_to_pybel_mol(xyz)
-    if pybel_mol is not None:
-        inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
-        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
-
-    # 3. Generate a molecule with bond order information using xyz_to_smiles.
-    if mol_bo is None:
-        try:
-            smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
-            if smiles_list is not None:
-                mol_bo = Molecule(smiles=smiles_list[0])
-        except:
-            pass
-
-    if mol_bo is not None:
-        if multiplicity is not None:
-            try:
-                set_multiplicity(mol_bo, multiplicity, charge)
-            except SpeciesError as e:
-                logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                               f'following error:\n{e}')
-                return mol_s1_updated, None
-        mol_s1_updated.multiplicity = mol_bo.multiplicity
-        try:
-            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-        except SanitizationError:
-            logger.warning(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
-        try:
-            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
-        except (ConverterError, SpeciesError) as e:
-            logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                           f'following error:\n{e}')
-
-    for mol in [mol_s1_updated, mol_bo]:
-        if mol is not None and mol.multiplicity == 1:
-            for atom in mol.atoms:
-                atom.radical_electrons = 0
-
-    return mol_s1_updated, mol_bo
 
 
 def set_multiplicity(mol, multiplicity, charge, radical_map=None):
