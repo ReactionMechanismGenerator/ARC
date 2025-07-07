@@ -3,6 +3,7 @@ Perceive 3D Cartesian coordinates and generate a representative resonance struct
 """
 
 import heapq
+from itertools import combinations
 from typing import Any, Iterable
 
 import numpy as np
@@ -148,9 +149,19 @@ def adjust_atoms_for_octet(
     mol: Molecule,
     multiplicity: int,
 ) -> bool:
+    """
+    Try to assign lone_pairs and radical_electrons to match:
+      - hydrogen’s duet (2),
+      - each heavy atom’s octet (8), or S’s 10/12,
+      - if a site is radical center, allow a 7-electron core,
+      - exactly multiplicity-1 unpaired electrons,
+    by minimizing the overall octet deviation.
+    Returns True if a valid assignment was applied to `mol`, False otherwise.
+    """
     atoms = mol.atoms
     target_rad = multiplicity - 1
 
+    # trivial H• case
     if len(atoms) == 1 and atoms[0].is_hydrogen():
         a = atoms[0]
         a.lone_pairs = 0
@@ -159,17 +170,19 @@ def adjust_atoms_for_octet(
 
     bond_sums = [sum(e.order for e in a.edges.values()) for a in atoms]
 
-    def test_site(site: int) -> Molecule | None:
+    def test_sites(sites: tuple[int, ...]) -> Molecule | None:
         cand = mol.copy(deep=True)
         for at in cand.atoms:
             at.lone_pairs = 0
             at.radical_electrons = 0
+        # place radicals
+        for i in sites:
+            cand.atoms[i].radical_electrons = 1
 
-        rad_count = 0
+        # now assign lone pairs
         for i, at in enumerate(cand.atoms):
-            rad = 1 if i == site and target_rad == 1 else 0
+            rad = at.radical_electrons
             B = bond_sums[i]
-
             if at.is_hydrogen():
                 allowed = {2}
             else:
@@ -177,57 +190,57 @@ def adjust_atoms_for_octet(
                 allowed = {8}
                 if sym == 'S':
                     allowed |= {10, 12}
-                if rad == 1:
+                if rad:
                     allowed.add(7)
-
             placed = False
-            for v in allowed:
+            for v in sorted(allowed):
                 rem = v - rad - 2 * B
                 if rem >= 0 and rem % 2 == 0:
                     lp = rem // 2
                     if lp <= 3:
                         at.lone_pairs = lp
-                        at.radical_electrons = rad
-                        rad_count += rad
                         placed = True
                         break
             if not placed:
                 return None
 
-        if rad_count != target_rad:
+        if sum(at.radical_electrons for at in cand.atoms) != target_rad:
             return None
         return cand
 
-    candidates: list[tuple[float, Molecule]] = []
+    # build pools
     heavy_idxs = [i for i, a in enumerate(atoms) if not a.is_hydrogen()]
+    carbon     = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C']
+    hetero     = [i for i in heavy_idxs if i not in carbon]
     H_idxs     = [i for i, a in enumerate(atoms) if a.is_hydrogen()]
 
+    candidates: list[tuple[float, Molecule]] = []
+
+    # try all‐closed shell
     if target_rad == 0:
-        cand = test_site(-1)
-        if cand is not None:
-            candidates.append((get_octet_deviation(cand), cand))
+        c = test_sites(())
+        if c is not None:
+            candidates.append((get_octet_deviation(c), c))
     else:
-        # ❤️ Carbon first, then hetero, then H
-        carbon = [i for i in heavy_idxs
-                  if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C']
-        hetero = [i for i in heavy_idxs
-                  if getattr(atoms[i].element, 'symbol', atoms[i].element) not in ('C', 'H')]
+        # search carbon‐only, then hetero, then H pools
         for pool in (carbon, hetero, H_idxs):
-            for site in pool:
-                cand = test_site(site)
-                if cand is not None:
-                    candidates.append((get_octet_deviation(cand), cand))
+            if len(pool) < target_rad:
+                continue
+            for combo in combinations(pool, target_rad):
+                c = test_sites(combo)
+                if c is not None:
+                    candidates.append((get_octet_deviation(c), c))
             if candidates:
                 break
 
     if not candidates:
         return False
 
+    # pick minimal‐deviation
     _, best = min(candidates, key=lambda x: x[0])
     for orig, new in zip(mol.atoms, best.atoms):
-        orig.lone_pairs = new.lone_pairs
+        orig.lone_pairs        = new.lone_pairs
         orig.radical_electrons = new.radical_electrons
-
     return True
 
 
