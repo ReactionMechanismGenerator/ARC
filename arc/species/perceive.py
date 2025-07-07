@@ -4,8 +4,8 @@ Perceive 3D Cartesian coordinates and generate a representative resonance struct
 
 import heapq
 from typing import Any, Iterable
-from itertools import combinations
 import numpy as np
+from itertools import combinations
 
 from arc.common import get_logger, get_bonds_from_dmat, NUMBER_BY_SYMBOL
 from arc.exceptions import ConverterError, InputError
@@ -62,10 +62,9 @@ def perceive_molecule_from_xyz(
 
     # pick canonical resonance
     rep = get_representative_resonance_structure(rep)
-    # now dial down any over‐charged form (esp. fixes SN2)
+    # only reduce charge‐separation for closed‐shell neutrals
     if multiplicity == 1 and rep.get_net_charge() == 0:
         rep = _reduce_charge_separation(rep)
-    # re‐assign formal charges & finalize
     assign_formal_charges(rep)
     rep.multiplicity = multiplicity
     return rep
@@ -119,7 +118,6 @@ def generate_lewis_structure(
 
     while queue:
         f, increments, _, orders = heapq.heappop(queue)
-
         partial = [0] * len(base_mol.atoms)
         for (i, j), o in zip(bond_pairs, orders):
             partial[i] += o
@@ -155,15 +153,6 @@ def adjust_atoms_for_octet(
     mol: Molecule,
     multiplicity: int,
 ) -> bool:
-    """
-    Try to assign lone_pairs and radical_electrons to match:
-      - hydrogen’s duet (2),
-      - each heavy atom’s octet (8), or S’s 10/12,
-      - if a site is radical center, allow a 7-electron core,
-      - exactly multiplicity-1 unpaired electrons,
-    by minimizing the overall octet deviation.
-    Returns True if a valid assignment was applied to `mol`, False otherwise.
-    """
     atoms = mol.atoms
     target_rad = multiplicity - 1
 
@@ -174,21 +163,17 @@ def adjust_atoms_for_octet(
         a.radical_electrons = target_rad
         return target_rad in (0, 1)
 
-    # precompute bond‐order sum for each atom
     bond_sums = [sum(e.order for e in a.edges.values()) for a in atoms]
 
     def test_sites(sites: tuple[int, ...]) -> Molecule | None:
         cand = mol.copy(deep=True)
         cand.multiplicity = mol.multiplicity
-        # reset
         for at in cand.atoms:
             at.lone_pairs = 0
             at.radical_electrons = 0
-        # place radicals
         for idx in sites:
             cand.atoms[idx].radical_electrons = 1
 
-        # assign lone pairs
         for i, at in enumerate(cand.atoms):
             rad = at.radical_electrons
             B = bond_sums[i]
@@ -213,26 +198,28 @@ def adjust_atoms_for_octet(
             if not placed:
                 return None
 
-        # must match exactly
         if sum(at.radical_electrons for at in cand.atoms) != target_rad:
             return None
         return cand
 
-    # collect candidate structures
     candidates: list[tuple[float, Molecule]] = []
     heavy_idxs = [i for i, a in enumerate(atoms) if not a.is_hydrogen()]
-    H_idxs     = [i for i, a in enumerate(atoms) if     a.is_hydrogen()]
+    H_idxs     = [i for i, a in enumerate(atoms) if a.is_hydrogen()]
 
     if target_rad == 0:
-        # closed shell
         c = test_sites(())
         if c is not None:
             candidates.append((get_octet_deviation(c), c))
     elif target_rad == 1:
-        # single‐radical: hetero first, then carbon, then H
-        hetero = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) not in ('C', 'H')]
-        carbon = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C']
-        for pool in (hetero, carbon, H_idxs):
+        carbon = [
+            i for i in heavy_idxs
+            if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C'
+        ]
+        hetero = [
+            i for i in heavy_idxs
+            if getattr(atoms[i].element, 'symbol', atoms[i].element) not in ('C', 'H')
+        ]
+        for pool in (carbon, hetero, H_idxs):
             for site in pool:
                 c = test_sites((site,))
                 if c is not None:
@@ -240,7 +227,6 @@ def adjust_atoms_for_octet(
             if candidates:
                 break
     else:
-        # multi‐radical: place on heavy atoms combinations
         if len(heavy_idxs) >= target_rad:
             for combo in combinations(heavy_idxs, target_rad):
                 c = test_sites(combo)
@@ -250,10 +236,9 @@ def adjust_atoms_for_octet(
     if not candidates:
         return False
 
-    # pick the minimal‐deviation candidate
     _, best = min(candidates, key=lambda x: x[0])
     for orig, new in zip(mol.atoms, best.atoms):
-        orig.lone_pairs        = new.lone_pairs
+        orig.lone_pairs = new.lone_pairs
         orig.radical_electrons = new.radical_electrons
     return True
 
@@ -281,10 +266,6 @@ def get_representative_resonance_structure(mol: Molecule) -> Molecule:
 
 
 def _reduce_charge_separation(mol: Molecule) -> Molecule:
-    """
-    Iteratively bump bond orders to reduce total |formal_charge|
-    without worsening octet deviation.
-    """
     best = mol.copy(deep=True)
     best.multiplicity = mol.multiplicity
     assign_formal_charges(best)
