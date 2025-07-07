@@ -59,7 +59,7 @@ def perceive_molecule_from_xyz(
         adjust_atoms_for_octet(rep, multiplicity)
         assign_formal_charges(rep)
 
-    rep = get_representative_resonance(rep)
+    rep = get_representative_resonance_structure(rep)
     assign_formal_charges(rep)
     rep.multiplicity = multiplicity
     return rep
@@ -232,6 +232,13 @@ def adjust_atoms_for_octet(
 
 
 def assign_formal_charges(mol: Molecule) -> None:
+    """
+    Assign formal charges to atoms in the molecule based on their valence electrons,
+    lone pairs, and bonding electrons.
+    This function modifies the `charge` attribute of each atom in the molecule.
+    It assumes that the molecule has already been processed to determine bond orders
+    and lone pairs.
+    """
     for atom in mol.atoms:
         if atom.radical_electrons:
             atom.charge = 0
@@ -243,43 +250,14 @@ def assign_formal_charges(mol: Molecule) -> None:
         atom.charge = ge - (nonbond + bonding)
 
 
-def get_representative_resonance(mol: Molecule) -> Molecule:
+def get_representative_resonance_structure(mol: Molecule) -> Molecule:
+    """
+    Generate all safe resonance variants and pick the canonical one.
+    """
     variants = generate_resonance_structures_safely(mol)
     if not variants:
         return mol
-
-    orig_orders = {
-        (mol.vertices.index(a), mol.vertices.index(b)): e.order
-        for a in mol.atoms for b, e in a.edges.items()
-        if mol.vertices.index(a) < mol.vertices.index(b)
-    }
-
-    scored = []
     for v in variants:
-        vc = v.copy(deep=True)
-        assign_formal_charges(vc)
-        dev = get_octet_deviation(vc)
-        sep = sum(abs(a.charge) for a in vc.atoms)
-        delta = sum(
-            1
-            for (i, j), o in orig_orders.items()
-            if vc.get_edge(vc.atoms[i], vc.atoms[j]).order != o
-        )
-        scored.append((dev, sep, delta, v))
-
-    scored.sort(key=lambda x: (x[0], x[1], x[2]))
-    _, _, _, chosen = scored[0]
-
-    iso = mol.find_isomorphism(chosen, strict=True) or {}
-    for a in mol.atoms:
-        for b in a.edges:
-            if mol.vertices.index(a) < mol.vertices.index(b):
-                ae = mol.get_edge(a, b)
-                ce = chosen.get_edge(iso.get(a, a), iso.get(b, b))
-                ae.order = ce.order
-    for a in mol.atoms:
-        ca = iso.get(a, a)
-        a.lone_pairs = ca.lone_pairs
-        a.radical_electrons = ca.radical_electrons
-
-    return mol
+        if mol.copy().is_isomorphic(v.copy()):
+            return v
+    return variants[0]
