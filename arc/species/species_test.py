@@ -113,6 +113,13 @@ class TestARCSpecies(unittest.TestCase):
                                     'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
                                                (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))})
 
+        cls.n2h2_t_xyz = {'coords': ((0.5974274138372041, -0.41113104979405946, 0.08609839663782763),
+                                     (-0.5974274348582206, 0.41113108883884353, -0.08609846602622732),
+                                     (1.421955422639823, 0.19737093442024492, 0.02508578507394823),
+                                     (-1.4219554016188147, -0.19737097346502322, -0.02508571568554942)),
+                          'isotopes': (14, 1, 14, 1),
+                          'symbols': ('N', 'N', 'H', 'H')}
+
     def test_from_yml_file(self):
         """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
         n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
@@ -171,6 +178,21 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(str_representation, expected_representation)
 
     def test_set_mol_list(self):
+        """Test the set_mol_list() method."""
+        spc_1 = ARCSpecies(label='C=C', smiles='C=C')
+        self.assertEqual(len(spc_1.mol_list), 1)
+        spc_2 = ARCSpecies(label='C=C[O]', smiles='C=C[O]')
+        self.assertEqual(len(spc_2.mol_list), 2)
+
+        spc_3 = ARCSpecies(label='N2H2(T)', smiles='[N][N]', multiplicity=3)
+        self.assertEqual(len(spc_3.mol_list), 1)
+        spc_4 = ARCSpecies(label='N2H2(T)', smiles='[N][N]')
+        self.assertEqual(len(spc_4.mol_list), 1)
+
+        spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
+        self.assertEqual(len(spc_5.mol_list), 1)
+
+    def test_preserving_atom_order_in_mol_list(self):
         """Test preserving atom order in the .mol_list attribute"""
         bond_dict = dict()
         for index1, atom1 in enumerate(self.spc12.mol.atoms):
