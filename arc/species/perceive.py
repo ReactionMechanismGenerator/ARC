@@ -3,9 +3,8 @@ Perceive 3D Cartesian coordinates and generate a representative resonance struct
 """
 
 import heapq
-from itertools import combinations
 from typing import Any, Iterable
-
+from itertools import combinations
 import numpy as np
 
 from arc.common import get_logger, get_bonds_from_dmat, NUMBER_BY_SYMBOL
@@ -17,7 +16,7 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 
 logger = get_logger()
 
-# valence electrons for main-group elements
+# valence electrons for main‐group elements
 _VALENCE_ELECTRONS = {
     'H': 1, 'B': 3, 'C': 4, 'N': 5, 'O': 6, 'F': 7,
     'P': 5, 'S': 6, 'Cl': 7, 'Br': 7, 'I': 7,
@@ -57,10 +56,16 @@ def perceive_molecule_from_xyz(
             "Could not assign bond orders/electrons for XYZ perception, falling back to all single bonds"
         )
         rep = mol0.copy(deep=True)
+        rep.multiplicity = multiplicity
         adjust_atoms_for_octet(rep, multiplicity)
         assign_formal_charges(rep)
 
+    # pick canonical resonance
     rep = get_representative_resonance_structure(rep)
+    # now dial down any over‐charged form (esp. fixes SN2)
+    if multiplicity == 1 and rep.get_net_charge() == 0:
+        rep = _reduce_charge_separation(rep)
+    # re‐assign formal charges & finalize
     assign_formal_charges(rep)
     rep.multiplicity = multiplicity
     return rep
@@ -125,6 +130,7 @@ def generate_lewis_structure(
         mol = base_mol.copy(deep=True)
         for (i, j), order in zip(bond_pairs, orders):
             mol.get_edge(mol.atoms[i], mol.atoms[j]).order = order
+        mol.multiplicity = multiplicity
 
         if adjust_atoms_for_octet(mol, multiplicity):
             assign_formal_charges(mol)
@@ -168,18 +174,21 @@ def adjust_atoms_for_octet(
         a.radical_electrons = target_rad
         return target_rad in (0, 1)
 
+    # precompute bond‐order sum for each atom
     bond_sums = [sum(e.order for e in a.edges.values()) for a in atoms]
 
     def test_sites(sites: tuple[int, ...]) -> Molecule | None:
         cand = mol.copy(deep=True)
+        cand.multiplicity = mol.multiplicity
+        # reset
         for at in cand.atoms:
             at.lone_pairs = 0
             at.radical_electrons = 0
         # place radicals
-        for i in sites:
-            cand.atoms[i].radical_electrons = 1
+        for idx in sites:
+            cand.atoms[idx].radical_electrons = 1
 
-        # now assign lone pairs
+        # assign lone pairs
         for i, at in enumerate(cand.atoms):
             rad = at.radical_electrons
             B = bond_sums[i]
@@ -204,39 +213,44 @@ def adjust_atoms_for_octet(
             if not placed:
                 return None
 
+        # must match exactly
         if sum(at.radical_electrons for at in cand.atoms) != target_rad:
             return None
         return cand
 
-    # build pools
-    heavy_idxs = [i for i, a in enumerate(atoms) if not a.is_hydrogen()]
-    carbon     = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C']
-    hetero     = [i for i in heavy_idxs if i not in carbon]
-    H_idxs     = [i for i, a in enumerate(atoms) if a.is_hydrogen()]
-
+    # collect candidate structures
     candidates: list[tuple[float, Molecule]] = []
+    heavy_idxs = [i for i, a in enumerate(atoms) if not a.is_hydrogen()]
+    H_idxs     = [i for i, a in enumerate(atoms) if     a.is_hydrogen()]
 
-    # try all‐closed shell
     if target_rad == 0:
+        # closed shell
         c = test_sites(())
         if c is not None:
             candidates.append((get_octet_deviation(c), c))
-    else:
-        # search carbon‐only, then hetero, then H pools
-        for pool in (carbon, hetero, H_idxs):
-            if len(pool) < target_rad:
-                continue
-            for combo in combinations(pool, target_rad):
-                c = test_sites(combo)
+    elif target_rad == 1:
+        # single‐radical: hetero first, then carbon, then H
+        hetero = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) not in ('C', 'H')]
+        carbon = [i for i in heavy_idxs if getattr(atoms[i].element, 'symbol', atoms[i].element) == 'C']
+        for pool in (hetero, carbon, H_idxs):
+            for site in pool:
+                c = test_sites((site,))
                 if c is not None:
                     candidates.append((get_octet_deviation(c), c))
             if candidates:
                 break
+    else:
+        # multi‐radical: place on heavy atoms combinations
+        if len(heavy_idxs) >= target_rad:
+            for combo in combinations(heavy_idxs, target_rad):
+                c = test_sites(combo)
+                if c is not None:
+                    candidates.append((get_octet_deviation(c), c))
 
     if not candidates:
         return False
 
-    # pick minimal‐deviation
+    # pick the minimal‐deviation candidate
     _, best = min(candidates, key=lambda x: x[0])
     for orig, new in zip(mol.atoms, best.atoms):
         orig.lone_pairs        = new.lone_pairs
@@ -245,13 +259,6 @@ def adjust_atoms_for_octet(
 
 
 def assign_formal_charges(mol: Molecule) -> None:
-    """
-    Assign formal charges to atoms in the molecule based on their valence electrons,
-    lone pairs, and bonding electrons.
-    This function modifies the `charge` attribute of each atom in the molecule.
-    It assumes that the molecule has already been processed to determine bond orders
-    and lone pairs.
-    """
     for atom in mol.atoms:
         if atom.radical_electrons:
             atom.charge = 0
@@ -264,9 +271,6 @@ def assign_formal_charges(mol: Molecule) -> None:
 
 
 def get_representative_resonance_structure(mol: Molecule) -> Molecule:
-    """
-    Generate all safe resonance variants and pick the canonical one.
-    """
     variants = generate_resonance_structures_safely(mol)
     if not variants:
         return mol
@@ -274,3 +278,50 @@ def get_representative_resonance_structure(mol: Molecule) -> Molecule:
         if mol.copy().is_isomorphic(v.copy()):
             return v
     return variants[0]
+
+
+def _reduce_charge_separation(mol: Molecule) -> Molecule:
+    """
+    Iteratively bump bond orders to reduce total |formal_charge|
+    without worsening octet deviation.
+    """
+    best = mol.copy(deep=True)
+    best.multiplicity = mol.multiplicity
+    assign_formal_charges(best)
+    base_dev = get_octet_deviation(best)
+    base_sep = sum(abs(a.charge) for a in best.atoms)
+
+    if base_sep <= 1:
+        return best
+
+    bond_pairs = [
+        (best.vertices.index(e.vertex1), best.vertices.index(e.vertex2))
+        for e in best.get_all_edges()
+    ]
+
+    improved = True
+    while improved:
+        improved = False
+        curr = best
+        curr_dev = get_octet_deviation(curr)
+        curr_sep = sum(abs(a.charge) for a in curr.atoms)
+
+        for i, j in bond_pairs:
+            edge = curr.get_edge(curr.atoms[i], curr.atoms[j])
+            if edge.order >= 3:
+                continue
+            cand = curr.copy(deep=True)
+            cand.multiplicity = curr.multiplicity
+            ce = cand.get_edge(cand.atoms[i], cand.atoms[j])
+            ce.order += 1
+            if not adjust_atoms_for_octet(cand, cand.multiplicity):
+                continue
+            assign_formal_charges(cand)
+            dev = get_octet_deviation(cand)
+            sep = sum(abs(a.charge) for a in cand.atoms)
+            if dev == curr_dev and sep < curr_sep:
+                best = cand
+                improved = True
+                break
+
+    return best
