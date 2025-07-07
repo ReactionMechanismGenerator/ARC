@@ -22,7 +22,8 @@ from arc.common import (SYMBOL_BY_NUMBER,
                         timedelta_from_str,
                         sort_atoms_in_descending_label_order,
                         )
-from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError
+from arc.exceptions import AtomTypeError, InputError, InvalidAdjacencyListError, RotorError, SpeciesError, TSError, \
+    SanitizationError
 from arc.imports import settings
 from arc.level import Level
 from arc.molecule.atomtype import ATOMTYPES
@@ -41,6 +42,7 @@ from arc.species.converter import (check_isomorphism,
                                    compare_confs,
                                    get_xyz_radius,
                                    modify_coords,
+                                   order_atoms,
                                    order_atoms_in_mol_list,
                                    remove_dummies,
                                    rmg_mol_from_inchi,
@@ -49,7 +51,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str,
                                    )
-from arc.species.perceive import perceive_molecule_from_xyz
+from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
@@ -180,8 +182,8 @@ class ARCSpecies(object):
                                    result in one direction.
         project_directory (str, optional): The path to the project directory.
         multi_species: (str, optional): The multi-species set this species belongs to. Used for running a set of species
-                                       simultaneously in a single ESS input file. A species marked as multi_species
-                                       will only have one conformer considered (n_confs set to 1).
+                                        simultaneously in a single ESS input file. A species marked as multi_species
+                                        will only have one conformer considered (n_confs set to 1).
 
     Attributes:
         label (str): The species' label.
@@ -283,7 +285,7 @@ class ARCSpecies(object):
                          labels of the two corresponding "IRC species", separated by a blank space.
         project_directory (str): The path to the project directory.
         multi_species: (str): The multi-species set this species belongs to. Used for running a set of species
-                             simultaneously in a single ESS input file.
+                              simultaneously in a single ESS input file.
         symmetry_number (int): The external symmetry number of the species, calculated from mol_list.
     """
 
@@ -421,10 +423,13 @@ class ARCSpecies(object):
                                                                   raise_atomtype_exception=False,
                                                                   raise_charge_exception=False,
                                                                   )
+                        self.multiplicity = self.mol.multiplicity
                     elif inchi:
                         self.mol = rmg_mol_from_inchi(inchi)
+                        self.multiplicity = self.mol.multiplicity
                     elif smiles:
                         self.mol = Molecule(smiles=smiles)
+                        self.multiplicity = self.mol.multiplicity
                 self.set_mol_list()
 
             self.process_xyz(xyz)
@@ -515,8 +520,7 @@ class ARCSpecies(object):
                     raise SpeciesError(f'Something is wrong with the .bdes attribute of {label}. '
                                        f'Expected tuples of two 1-indexed atoms, got:\n{self.bdes}')
 
-        if self.mol is not None and self.mol_list is None:
-            self.set_mol_list()
+        self.set_mol_list()
         if self.is_ts and not any(value is not None for key, value in self.ts_checks.items() if key != 'warnings'):
             self.populate_ts_checks()
 
@@ -719,6 +723,8 @@ class ARCSpecies(object):
             species_dict['bond_corrections'] = self.bond_corrections
         if self.mol is not None:
             species_dict['mol'] = rmg_mol_to_dict_repr(self.mol, reset_atom_ids=reset_atom_ids)
+        if self.mol_list is not None and len(self.mol_list) > 1:
+            species_dict['mol_list'] = [m.copy(deep=True).to_smiles() for m in self.mol_list]
         if self.initial_xyz is not None:
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
@@ -985,25 +991,28 @@ class ARCSpecies(object):
                 self.e0 *= 4.184
         return regen_mol
 
-    def set_mol_list(self):
+    def set_mol_list(self, regenerate: bool = False):
         """
         Set the .mol_list attribute from self.mol by generating resonance structures, preserving atom order.
         The mol_list attribute is used for identifying rotors and generating conformers.
+
+        Args:
+            regenerate (bool, optional): Whether to regenerate the .mol_list attribute even if it already exists.
         """
-        if self.mol is not None:
+        if self.mol is not None and (self.mol_list is None or regenerate):
             if all([atom.id == -1 for atom in self.mol.atoms]):
                 self.mol.assign_atom_ids()
             if not self.is_ts:
                 mol_copy = self.mol.copy(deep=True)
                 mol_copy.reactive = True
-                self.mol_list = generate_resonance_structures_safely(mol_copy)
+                self.mol_list = generate_resonance_structures_safely(mol_copy, save_order=True)
                 if self.mol_list is None:
                     self.mol_list = [self.mol]
             else:
                 self.mol_list = [self.mol]
             success = order_atoms_in_mol_list(ref_mol=self.mol.copy(deep=True), mol_list=self.mol_list)
             if not success:
-                self.mol_list = None
+                self.mol_list = [self.mol]
 
     def is_monoatomic(self) -> Optional[bool]:
         """
@@ -1079,18 +1088,13 @@ class ARCSpecies(object):
         """
         if self.is_ts:
             return
-        if self.mol_list is None:
-            self.set_mol_list()
-        if self.mol_list is not None and not self.charge:
-            mol_list = self.mol_list
-        else:
-            mol_list = [self.mol]
+        self.set_mol_list()
         if self.consider_all_diastereomers:
             diastereomers = None
         else:
             xyz = self.get_xyz(generate=False)
             diastereomers = [xyz] if xyz is not None else None
-        lowest_confs = conformers.generate_conformers(mol_list=mol_list,
+        lowest_confs = conformers.generate_conformers(mol_list=self.mol_list,
                                                       label=self.label,
                                                       charge=self.charge,
                                                       multiplicity=self.multiplicity,
@@ -1200,7 +1204,7 @@ class ARCSpecies(object):
             for mol in mol_list:
                 if mol is None:
                     continue
-                rotors = conformers.find_internal_rotors(mol.copy())
+                rotors = conformers.find_internal_rotors(mol.copy(deep=True))
                 for new_rotor in rotors:
                     for existing_rotor in self.rotors_dict.values():
                         if existing_rotor['pivots'] == new_rotor['pivots']:
@@ -1370,7 +1374,12 @@ class ARCSpecies(object):
             return None
         mol = self.mol
         if mol is None:
-            mol = perceive_molecule_from_xyz(xyz, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals)
+            mol = perceive_molecule_from_xyz(xyz=xyz,
+                                             charge=self.charge,
+                                             multiplicity=self.multiplicity,
+                                             n_radicals=self.number_of_radicals,
+                                             n_fragments=self.get_n_fragments(),
+                                             )
         if chk_rotor_list:
             for rotor in self.rotors_dict.values():
                 if rotor['pivots'] == pivots:
@@ -1552,12 +1561,11 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
-            # self.mol should have come from another source, e.g., SMILES or yml.
-            self.set_mol_list()
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
+                                                       n_fragments=self.get_n_fragments(),
                                                        )
             if perceived_mol is not None:
                 allow_nonisomorphic_2d = (self.charge is not None and self.charge) \
@@ -1575,13 +1583,27 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
                 if not self.keep_mol:
-                    self.mol = perceived_mol
+                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
+                        self.mol = perceived_mol
+                    else:
+                        try:
+                            order_atoms(ref_mol=perceived_mol, mol=self.mol)
+                        except SanitizationError:
+                            self.mol = perceived_mol
         else:
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
+                                                       n_fragments=self.get_n_fragments(),
                                                        )
+            if perceived_mol is None and self.is_ts:
+                perceived_mol = perceive_molecule_from_xyz(xyz,
+                                                           charge=self.charge,
+                                                           multiplicity=self.multiplicity,
+                                                           n_radicals=self.number_of_radicals,
+                                                           n_fragments=2,
+                                                           )
             if perceived_mol is not None:
                 self.mol = perceived_mol
             else:
@@ -1753,6 +1775,7 @@ class ARCSpecies(object):
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
                                                        n_radicals=self.number_of_radicals,
+                                                       n_fragments=self.get_n_fragments(),
                                                        )
 
             # 2. A. Check isomorphism with bond orders using b_mol
@@ -2050,6 +2073,16 @@ class ARCSpecies(object):
                                                               new_atoms[index1].radical_electrons)
         new_mol.update_atomtypes(log_species=False, raise_exception=False)
         return new_mol
+
+    def get_n_fragments(self) -> int:
+        """
+        Return the total number of fragments represented by this species.
+        If self.fragments is None, assume a single fragment.
+        """
+        if self.is_ts:
+            return 2 if self.fragments is None else len(self.fragments)
+        else:
+            return 1 if self.fragments is None else len(self.fragments)
 
 
 class TSGuess(object):
@@ -2702,25 +2735,25 @@ def are_coords_compliant_with_graph(xyz: dict,
 
 def colliding_atoms(xyz: dict,
                     mol: Optional[Molecule] = None,
-                    threshold: float = 0.55,
+                    threshold: float = 0.60,
                     ) -> bool:
     """
-        Check whether atoms are too close to each other.
-        A default threshold of 55% the covalent radii of two atoms is used.
-        For example:
-        - C-O collide at 55% * 1.42 A = 0.781 A
-        - N-N collide at 55% * 1.42 A = 0.781 A
-        - C-N collide at 55% * 1.47 A = 0.808 A
-        - C-H collide at 55% * 1.07 A = 0.588 A
-        - H-H collide at 55% * 0.74 A = 0.588 A
+    Check whether atoms are too close to each other.
+    A default threshold of 60% the single-bond length of two atoms is used.
+    For example:
+    - C-O collide at 60% * 1.43 A = 0.858 A
+    - N-N collide at 60% * 1.45 A = 0.870 A
+    - C-N collide at 60% * 1.47 A = 0.882 A
+    - C-H collide at 60% * 1.09 A = 0.654 A
+    - H-H collide at 60% * 0.60 A = 0.36 A
 
-        Args:
-            xyz (dict): The Cartesian coordinates.
-            mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
-            threshold (float, optional): The collision threshold to use.
+    Args:
+        xyz (dict): The Cartesian coordinates.
+        mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
+        threshold (float, optional): The collision threshold to use.
 
-        Returns:
-            bool: ``True`` if they are colliding, ``False`` otherwise.
+    Returns:
+        bool: ``True`` if they are colliding, ``False`` otherwise.
     """
     if len(xyz['symbols']) == 1:
         # monoatomic
@@ -2897,7 +2930,8 @@ def rmg_mol_from_dict_repr(representation: dict,
                                    props=atom_dict['props'],
                                    ) for atom_dict in representation['atoms']}
     for atom_dict in representation['atoms']:
-        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
+        if atom_dict['atomtype']:
+            atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
     mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
     for i, atom_1 in enumerate(atoms.values()):
         for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
@@ -2936,6 +2970,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
             counter += 1
     elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
         mol.assign_atom_ids()
+    mol.update(raise_atomtype_exception=False, sort_atoms=False)
     return {'atoms': [{'element': {'number': atom.element.number,
                                    'isotope': atom.element.isotope,
                                    },
@@ -2945,7 +2980,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
                        'lone_pairs': atom.lone_pairs,
                        'id': atom.id,
                        'props': atom.props,
-                       'atomtype': atom.atomtype.label,
+                       'atomtype': atom.atomtype.label if atom.atomtype else None,
                        'edges': {atom_2.id: bond.order
                                  for atom_2, bond in atom.edges.items()},
                        } for atom in mol.atoms],
