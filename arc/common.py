@@ -1230,6 +1230,28 @@ def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
     return False
 
 
+def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Compute the Euclidean distance matrix between rows of two arrays.
+
+    This function is equivalent to `scipy.spatial.distance.cdist(a, b, 'Euclidean')`
+    but implemented using pure NumPy for zero dependencies.
+
+    Args:
+        a (np.ndarray): First array of shape (m, d)
+        b (np.ndarray): Second array of shape (n, d)
+
+    Returns:
+        np.ndarray: Distance matrix of shape (m, n) where element (i, j) is the
+                    Euclidean distance between a[i] and b[j]
+    """
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
+    sq_diff = diff ** 2
+    return np.sqrt(np.sum(sq_diff, axis=-1))
+
+
 def get_ordered_intersection_of_two_lists(l1: list,
                                           l2: list,
                                           order_by_first_list: Optional[bool] = True,
