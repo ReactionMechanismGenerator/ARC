@@ -36,7 +36,6 @@ from arc.level import Level
 from arc.parser.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
                                    get_xyz_radius,
-                                   molecules_from_xyz,
                                    remove_dummies,
                                    rdkit_conf_from_mol,
                                    str_to_xyz,
@@ -44,6 +43,7 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies, rmg_mol_to_dict_repr
 
 
@@ -101,8 +101,11 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_indice
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
     if species is None:
-        s_mol, b_mol = molecules_from_xyz(xyz)
-        mol = b_mol if b_mol is not None else s_mol
+        mol = perceive_molecule_from_xyz(xyz,
+                                         charge=species.charge if species is not None else 0,
+                                         multiplicity=species.multiplicity if species is not None else None,
+                                         n_radicals=species.number_of_radicals if species is not None else 0,
+                                         )
     else:
         mol = species.mol.copy(deep=True)
     try:
@@ -969,11 +972,8 @@ def save_conformers_file(project_directory: str,
             if xyz is not None:
                 content += xyz_to_str(xyz) + '\n'
                 if not is_ts:
-                    try:
-                        b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
-                    except SanitizationError:
-                        b_mol = None
-                    smiles = b_mol.copy(deep=True).to_smiles() if b_mol is not None else 'Could not perceive molecule'
+                    mol = perceive_molecule_from_xyz(xyz, charge=charge, multiplicity=multiplicity, n_radicals=None)
+                    smiles = mol.to_smiles() if mol is not None else 'Could not perceive molecule'
                     content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
                     content += f'TS guess method: {ts_methods[i]}\n'
