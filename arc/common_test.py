@@ -605,7 +605,7 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('C', 'C'), 1.54)
         self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
         self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
-        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
+        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.2)
         self.assertEqual(common.get_single_bond_length('N', 'N'), 1.45)
         self.assertEqual(common.get_single_bond_length('N', 'N', 1, 1), 1.81)
         self.assertEqual(common.get_single_bond_length('N', 'O', 1, -1), 1.2)
@@ -690,7 +690,7 @@ class TestCommon(unittest.TestCase):
                                     (0.050017, 0.609187, -0.289804), (-1.230175, -0.49518, -0.005872),
                                     (-1.816882, -0.464956, 0.807105), (-1.846181, -0.503768, -0.816157),
                                     (1.943069, -0.169246, -0.067924), (1.737758, -0.876687, 0.671382))}
-        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_1_xyz), elements=ts_n3h5_1_xyz['symbols'])
+        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_1_xyz), elements=ts_n3h5_1_xyz['symbols'], n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(bonds, [(0, 1), (0, 2), (0, 3), (3, 4), (3, 5), (6, 7)]))
 
         # TS N2H3 + NH2 perturbation 2
@@ -699,7 +699,7 @@ class TestCommon(unittest.TestCase):
                                     (1.402417, 0.109387, -0.172204), (-1.230175, -0.43638, -0.005872),
                                     (-1.816882, -0.538456, 0.821805), (-1.713881, -0.636068, -0.874957),
                                     (1.869569, -0.139846, -0.082624), (1.737758, -0.832587, 0.656682))}
-        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_2_xyz), elements=ts_n3h5_2_xyz['symbols'])
+        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_2_xyz), elements=ts_n3h5_2_xyz['symbols'], n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(bonds, [(0, 1), (0, 3), (3, 4), (3, 5), (2, 6), (6, 7)]))
 
         # TS C3 intra H migration 1
@@ -800,9 +800,9 @@ class TestCommon(unittest.TestCase):
              2.076081769677702, 2.9860874132892476, 1.7877716361611289, 1.7487964829584288, 0.0, 3.7110656385670673],
             [3.598392289463991, 2.552810584578915, 3.548417909916891, 4.317904523789208, 3.974590190698698,
              2.0384600329293936, 3.080568847606993, 4.560922031971599, 3.4532709952115606, 3.7110656385670673, 0.0]]
-        bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_1, np.float64), elements=elements)
+        bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_1, np.float64), elements=elements, n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(
-            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 5), (1, 6), (2, 7), (2, 8), (2, 9)]))  # No (5, 10) bond.
+            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 5), (1, 6), (2, 7), (2, 8), (2, 9)]))
 
         dmat_2 = [
             [0.0, 1.4123925549714023, 2.5389708109479114, 1.2581822445168058, 0.9941687157160606, 2.5543277703490532,
@@ -829,7 +829,7 @@ class TestCommon(unittest.TestCase):
              0.7523699800467102, 2.5958884959836257, 3.673784860949396, 2.7650434189370765, 2.7359815651907393, 0.0]]
         bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_2, np.float64), elements=elements)
         self.assertTrue(common.check_that_all_entries_are_in_list(
-            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))  # No (1, 5) bond.
+            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (1, 5), (5, 10)]))
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
@@ -1233,7 +1233,8 @@ class TestCommon(unittest.TestCase):
                                  H                 -2.57835980    2.65394766    0.00000000
                                  O                  2.23814237   -1.56126480    0.00000000
                                  H                  3.19814237   -1.56126480    0.00000000
-                                 H                  1.91768778   -0.65632897    0.00000000""")
+                                 H                  1.91768778   -0.65632897    0.00000000""",
+                         fragments=[[0, 1, 2], [3, 4, 5]])
         visited = common.dfs(mol=spc.mol, start=0)
         self.assertEqual(visited, [0, 1, 2])
         visited = common.dfs(mol=spc.mol, start=4)
@@ -1257,7 +1258,7 @@ class TestCommon(unittest.TestCase):
                            (-2.0093636431, 0.0331190314, 0.8327683174)),
                 'isotopes': (14, 1, 1, 14, 14, 1, 1, 1),
                 'symbols': ('N', 'H', 'H', 'N', 'N', 'H', 'H', 'H')}
-        mol1 = converter.perceive_molecule_from_xyz(xyz1)
+        mol1 = converter.perceive_molecule_from_xyz(xyz1, n_fragments=2)
         self.assertTrue(common.is_xyz_mol_match(mol1, xyz1))
         mol2 = Molecule(smiles="CCCC")
         self.assertFalse(common.is_xyz_mol_match(mol2, xyz1))
