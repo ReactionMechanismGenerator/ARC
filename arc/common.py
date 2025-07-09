@@ -611,24 +611,25 @@ def get_element_mass(input_element: Union[int, str],
     return mass, number
 
 
-
 # A bond length dictionary of single bonds in Angstrom.
 # https://sites.google.com/site/chempendix/bond-lengths
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from NH2OH, 'N+_N+' and 'N+_O-' are taken from N2O4.
 # 'H_H' was artificially modified from 0.74 to 1.0 since it collides quickly at 0.55.
-SINGLE_BOND_LENGTH = {'Br_Br': 2.29, 'Br_Cr': 1.94, 'Br_H': 1.41,
-                      'C_C': 1.54, 'C_Cl': 1.77, 'C_F': 1.35, 'C_H': 1.09, 'C_I': 2.13,
-                      'C_N': 1.47, 'C_O': 1.43, 'C_P': 1.87, 'C_S': 1.81, 'C_Si': 1.86,
-                      'Cl_Cl': 1.99, 'Cl_H': 1.27, 'Cl_N': 1.75, 'Cl_Si': 2.03, 'Cl_P': 2.03, 'Cl_S': 2.07,
-                      'F_F': 1.42, 'F_H': 0.92, 'F_P': 1.57, 'F_S': 1.56, 'F_Si': 1.56, 'F_Xe': 1.90,
-                      'H_H': 1.0, 'H_I': 1.61, 'H_N': 1.04, 'H_O': 0.96, 'H_P': 1.42, 'H_S': 1.34, 'H_Si': 1.48,
+
+SINGLE_BOND_LENGTH = {'C_C': 1.54, 'C_N': 1.47, 'C_P': 1.87, 'C_O': 1.43, 'C_S': 1.81, 'C_Si': 1.94,
+                      'C_H': 1.09, 'C_F': 1.35, 'C_Cl': 1.77, 'C_Br': 1.91, 'C_I': 2.13,
+                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_P': 1.75, 'N_O': 1.44, 'N+1_O-1': 1.2, 'N_S': 1.7, 'N_Si': 1.87,
+                      'N_H': 1.04, 'N_F': 1.28, 'N_Cl': 1.75, 'N_Br': 1.84, 'N_I': 2.03,
+                      'P_P': 2.21, 'P_O': 1.63, 'P_S': 2.06, 'P_Si': 2.22, 'P_H': 1.42, 'P_F': 1.57, 'P_Cl': 2.03, 'P_Br': 2.19, 'P_I': 2.38,
+                      'O_O': 1.48, 'O_S': 1.67, 'O_Si': 1.66, 'O_H': 0.96, 'O_F': 1.24, 'O_Cl': 1.65, 'O_Br': 1.80, 'O_I': 2.00,
+                      'S_S': 2.05, 'S_Si': 2.18, 'S_H': 1.34, 'S_F': 1.55, 'S_Cl': 2.07, 'S_Br': 2.15, 'S_I': 2.34,
+                      'Si_Si': 2.35, 'Si_H': 1.48, 'Si_F': 1.75, 'Si_Cl': 2.03, 'Si_Br': 2.31, 'Si_I': 2.50,
+                      'H_H': 0.60, 'H_F': 0.92, 'H_Cl': 1.27, 'H_Br': 1.41, 'H_I': 1.63,
+                      'F_F': 1.42, 'F_Cl': 1.57, 'F_Br': 1.72, 'F_I': 1.91,
+                      'Cl_Cl': 1.99, 'Cl_Br': 2.13, 'Cl_I': 2.32,
+                      'Br_Br': 2.29, 'Br_I': 2.47,
                       'I_I': 2.66,
-                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_O': 1.44, 'N+1_O-1': 1.2,
-                      'O_O': 1.48, 'O_P': 1.63, 'O_S': 1.58, 'O_Si': 1.66,
-                      'P_P': 2.21,
-                      'S_S': 2.05,
-                      'Si_Si': 2.35,
                       }
 
 
@@ -657,61 +658,174 @@ def get_single_bond_length(symbol_1: str,
         return SINGLE_BOND_LENGTH[bond1]
     if bond2 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond2]
-    return 2.5
+    return 1.75
 
 
-def get_bonds_from_dmat(dmat: np.ndarray,
-                        elements: Union[Tuple[str, ...], List[str]],
-                        charges: Optional[List[int]] = None,
-                        tolerance: float = 1.2,
-                        bond_lone_hydrogens: bool = True,
-                        ) -> List[Tuple[int, int]]:
+def get_bonds_from_dmat(
+    dmat: np.ndarray,
+    elements: Union[Tuple[str, ...], List[str]],
+    charges: Optional[List[int]] = None,
+    tolerance: float = 1.2,
+    bond_lone_hydrogens: bool = True,
+    n_fragments: int = 1,
+) -> List[Tuple[int, int]]:
     """
-    Guess the connectivity of a molecule from its distance matrix representation.
+    Guess the connectivity of a molecule from its distance matrix.
 
     Args:
         dmat (np.ndarray): An NxN matrix of atom distances in Angstrom.
         elements (List[str]): The corresponding element list in the same atomic order.
         charges (List[int], optional): A corresponding list of formal atomic charges.
-        tolerance (float, optional): A factor by which the single bond length threshold is multiplied for the check.
-        bond_lone_hydrogens (bool, optional): Whether to assign a bond to hydrogen atoms which were not identified
-                                              as bonded. If so, the closest atom will be considered.
+        tolerance (float, optional): Factor by which the single‐bond length threshold is multiplied.
+        bond_lone_hydrogens (bool, optional): Whether to bond unassigned H atoms.
+        n_fragments (int, optional): Desired number of disconnected fragments. Defaults to 1.
 
     Returns:
-        List[Tuple[int, int]]:
-            A list of tuple entries, each represents a bond and contains sorted atom indices.
+        List[Tuple[int, int]]: Sorted list of bonded atom index pairs.
     """
-    if len(elements) != dmat.shape[0] or len(elements) != dmat.shape[1] or len(dmat.shape) != 2:
-        raise ValueError(f'The dimensions of the DMat {dmat.shape} must be equal to the number of elements {len(elements)}')
-    bonds, bonded_hydrogens = list(), list()
-    charges = charges or [0] * len(elements)
-    # Heavy atoms
-    for i, e_1 in enumerate(elements):
-        for j, e_2 in enumerate(elements):
-            if i > j and e_1 != 'H' and e_2 != 'H' and dmat[i, j] < tolerance * \
-                    get_single_bond_length(symbol_1=e_1,
-                                           symbol_2=e_2,
-                                           charge_1=charges[i],
-                                           charge_2=charges[j]):
-                bonds.append(tuple(sorted([i, j])))
-    # Hydrogen atoms except for H--H bonds, make sure each H has only one bond (the closest heavy atom).
-    for i, e_1 in enumerate(elements):
-        if e_1 == 'H':
-            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
-            if i != j and (elements[j] != 'H'):
-                bonds.append(tuple(sorted([i, j])))
-                bonded_hydrogens.append(i)
-    # Lone hydrogens, also important for the H2 molecule.
+    n = dmat.shape[0]
+    if len(elements) != n or dmat.shape != (n, n):
+        raise ValueError(f"DMat shape {dmat.shape} must match number of elements {len(elements)}")
+    charges = charges or [0] * n
+
+    bonds = set()
+    heavy_idx = [i for i, e in enumerate(elements) if e != 'H']
+
+    # 1) heavy–heavy bonds by threshold
+    for i in range(n):
+        for j in range(i + 1, n):
+            if elements[i] == 'H' or elements[j] == 'H':
+                continue
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if dmat[i, j] <= tolerance * bl:
+                bonds.add((i, j))
+
+    # helper to recompute fragments
+    def _fragments():
+        seen, frags, adj = set(), [], {k: set() for k in range(n)}
+        for a, b in bonds:
+            adj[a].add(b); adj[b].add(a)
+        for atom in range(n):
+            if atom in seen:
+                continue
+            stack, comp = [atom], set()
+            while stack:
+                x = stack.pop()
+                if x in comp:
+                    continue
+                comp.add(x); seen.add(x)
+                for nb in adj[x]:
+                    if nb not in comp:
+                        stack.append(nb)
+            frags.append(comp)
+        return frags
+
+    # 2) if targeting a single heavy fragment, bridge heavy sub‐graphs
+    if n_fragments == 1:
+        frags = _fragments()
+        heavy_frags = [f for f in frags if any(elements[i] != 'H' for i in f)]
+        while len(heavy_frags) > 1:
+            best_pair, best_dist = None, float('inf')
+            for A in heavy_frags:
+                for B in heavy_frags:
+                    if A is B:
+                        continue
+                    for i in A:
+                        if elements[i] == 'H':
+                            continue
+                        for j in B:
+                            if elements[j] == 'H':
+                                continue
+                            if dmat[i, j] < best_dist:
+                                best_dist = dmat[i, j]
+                                best_pair = (min(i, j), max(i, j))
+            if best_pair is None:
+                break
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+                heavy_frags = [f for f in frags if any(elements[k] != 'H' for k in f)]
+            else:
+                break
+
+    # 3) hydrogen bonds
     if bond_lone_hydrogens:
-        for i, e_1 in enumerate(elements):
-            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
-            bond = tuple(sorted([i, j]))
-            if i != j and e_1 == 'H' and i not in bonded_hydrogens and j not in bonded_hydrogens and bond not in bonds:
-                bonds.append(bond)
-    return bonds
+        if n_fragments == 1:
+            # every H → its absolute nearest neighbor (heavy or H)
+            for i, sym in enumerate(elements):
+                if sym != 'H':
+                    continue
+                if n < 2:
+                    continue
+                # gather distances to all other atoms
+                dists = [(dmat[i, j], j) for j in range(n) if j != i]
+                if not dists:
+                    continue
+                _, j_min = min(dists, key=lambda x: x[0])
+                bonds.add((min(i, j_min), max(i, j_min)))
+        else:
+            # multi‐fragment: only H→heavy within threshold
+            bonded_h = set()
+            for i, sym in enumerate(elements):
+                if sym != 'H':
+                    continue
+                cands = []
+                for j in heavy_idx:
+                    bl = get_single_bond_length('H', elements[j], charges[i], charges[j])
+                    if dmat[i, j] <= tolerance * bl:
+                        cands.append((dmat[i, j], j))
+                if cands:
+                    _, j_min = min(cands, key=lambda x: x[0])
+                    bonds.add((min(i, j_min), max(i, j_min)))
+                    bonded_h.add(i)
+            # H–H for any leftover unbonded H
+            hh_bl = get_single_bond_length('H', 'H', 0, 0)
+            hh_thresh = tolerance * hh_bl
+            unbonded_h = [i for i, e in enumerate(elements) if e == 'H' and i not in bonded_h]
+            used = set()
+            for i in unbonded_h:
+                if i in used:
+                    continue
+                others = [j for j in unbonded_h if j != i and j not in used]
+                if not others:
+                    continue
+                j_min = min(others, key=lambda j: dmat[i, j])
+                if dmat[i, j_min] <= hh_thresh:
+                    bonds.add((min(i, j_min), max(i, j_min)))
+                    used.update({i, j_min})
+
+        # 4) final bridging if still too many fragments, but only within single‐bond limits
+        frags = _fragments()
+        while len(frags) > n_fragments:
+            best_pair, best_dist = None, float('inf')
+            for A in frags:
+                for B in frags:
+                    if A is B:
+                        continue
+                    for i in A:
+                        for j in B:
+                            # skip H–heavy links when n_fragments>1
+                            if n_fragments > 1 and (elements[i] == 'H' or elements[j] == 'H'):
+                                continue
+                            d = dmat[i, j]
+                            if d < best_dist:
+                                best_dist, best_pair = d, (min(i, j), max(i, j))
+            if best_pair is None:
+                break
+
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+            else:
+                break
+    return sorted(bonds)
 
 
-def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: bool = 1) -> Tuple[list, bool]:
+def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -721,7 +835,7 @@ def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', i
         mol (Molecule): The Molecule object to explore.
         atom1 (Atom): The pivotal atom in mol.
         atom2 (Atom): The beginning of the top relative to atom1 in mol.
-        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
+        index (int, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
 
     Returns: Tuple[list, bool]
         - The indices of the atoms in the top (either 0-index or 1-index, as requested).
