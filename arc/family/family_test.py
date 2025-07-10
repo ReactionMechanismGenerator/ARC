@@ -250,6 +250,26 @@ H      -0.83821148   -0.26602407    0.00000000"""
                               'r_label_map': {'*1': 5, '*2': 9, '*3': 0}}, ]
         self.assertEqual(products, expected_products)
 
+        # NH + N2H3 <=> NH2 + H2NN(T)
+        rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH', smiles='[NH]'), ARCSpecies(label='N2H3', smiles='N[NH]')],
+                             p_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='N2H2(T)', smiles='[NH][NH]')])
+        products = get_reaction_family_products(rxn_3)
+        expected_products = [{'family': 'H_Abstraction',
+                              'group_labels': ('Y_1centerbirad', 'Xrad_H'),
+                              'products': [Molecule(smiles="[NH-][NH+]"), Molecule(smiles="[NH2]")],
+                              'r_label_map': {'*3': 0, '*1': 2, '*2': 4},
+                              'p_label_map': {'*1': 2, '*3': 4, '*2': 6},
+                              'own_reverse': True,
+                              'discovered_in_reverse': False},
+                             {'family': 'H_Abstraction',
+                              'group_labels': ('Y_1centerbirad', 'Xrad_H'),
+                              'products': [Molecule(smiles="[NH-][NH+]"), Molecule(smiles="[NH2]")],
+                              'r_label_map': {'*3': 0, '*1': 2, '*2': 5},
+                              'p_label_map': {'*1': 2, '*3': 4, '*2': 6},
+                              'own_reverse': True,
+                              'discovered_in_reverse': False}]
+        self.assertEqual(products, expected_products)
+
     def test_get_reaction_family_products_cyclic_ether_formation(self):
         """Test determining the reaction family using product dicts"""
         rxn_2f = ARCReaction(r_species=[ARCSpecies(label='C2H3O3', smiles='[CH2]C(=O)OO')],
@@ -975,7 +995,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertEqual(len(isomorphic_subgraphs_1), 1)
         self.assertEqual(len(isomorphic_subgraphs_2), 7)
         for key, val in isomorphic_subgraphs_1[0].items():  # [{<Atom 'O.'>: <GroupAtom [*3 'R']>}]
-            self.assertEqual(key.atomtype.label, 'O2s')
+            self.assertEqual(key.atomtype.label, 'O2sc')
             self.assertEqual(val.label, '*3')
         for isomorphic_subgraph in isomorphic_subgraphs_2:
             # [{<Atom 'C'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'C'>: <GroupAtom [*1 'R']>,
