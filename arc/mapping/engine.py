@@ -478,8 +478,8 @@ def get_backbone_dihedral_angles(spc_1: ARCSpecies,
     Determine the dihedral angles of the backbone torsions of two backbone mapped species.
     The output has the following format::
 
-        torsions = [{'torsion 1': [0, 1, 2, 3],  # The first torsion in terms of species 1 indices.
-                     'torsion 2': [5, 7, 2, 4],  # The first torsion in terms of species 2 indices.
+        torsions = [{'torsion 1': [0, 1, 2, 3],  # The first torsion in terms of species 1's indices.
+                     'torsion 2': [5, 7, 2, 4],  # The first torsion in terms of species 2's indices.
                      'angle 1': 60.0,  # The corresponding dihedral angle to 'torsion 1'.
                      'angle 2': 125.1,  # The corresponding dihedral angle to 'torsion 2'.
                     },
