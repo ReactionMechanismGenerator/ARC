@@ -1046,7 +1046,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
                          indices: List[int],
                          mol: Molecule,
                          index: int = 0,
-                         ) -> float:
+                         ) -> float | None:
     """
     Generates a zmat similarly to modify_coords(),
     but instead of modifying it, only reports on the value of a requested parameter.
@@ -1079,6 +1079,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
         return zmat["vars"][param]
     elif isinstance(param, list):
         return sum(zmat["vars"][par] for par in param)
+    return None
 
 
 def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
@@ -1160,7 +1161,7 @@ def modify_coords(coords: Dict[str, tuple],
     if modification_type == 'groups' and modification_type[0] != 'D':
         raise InputError(f'The "groups" modification type is only supported for dihedrals (D), '
                          f'not for an {modification_type[0]} parameter.')
-    if index < 0 or index > 1:
+    if index not in [0, 1]:
         raise ValueError(f'The index argument must be either 0 or 1, got {index}.')
     if 'map' in list(coords.keys()):
         # a zmat was given, we actually need xyz to recreate a specific zmat for the parameter modification.
