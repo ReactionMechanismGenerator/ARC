@@ -5,13 +5,17 @@ Perceive 3D Cartesian coordinates and generate a representative resonance struct
 import heapq
 import numpy as np
 from itertools import combinations, product
+from math import dist
 from typing import Any, Iterable
 
+from openbabel import pybel
+
 from arc.common import NUMBER_BY_SYMBOL, distance_matrix, get_bonds_from_dmat, get_logger, get_single_bond_length
-from arc.exceptions import AtomTypeError
+from arc.exceptions import AtomTypeError, InputError, SanitizationError
 from arc.molecule.filtration import get_octet_deviation
 from arc.molecule.molecule import Atom, Bond, Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
+from arc.species.xyz_to_smiles import xyz_to_smiles
 
 logger = get_logger()
 
@@ -29,6 +33,7 @@ def perceive_molecule_from_xyz(
     n_radicals: int | None = None,
     n_fragments: int | None = None,
     single_bond_tolerance: float = 1.20,
+    is_fragment: bool = False,
 ) -> Molecule | None:
     """
     Infer a valid localized Lewis‐structure ARC Molecule from Cartesian coordinates.
@@ -40,6 +45,7 @@ def perceive_molecule_from_xyz(
         n_radicals (int, optional): Number of radical centers. If None, defaults to multiplicity-1.
         n_fragments (int, optional): Expected number of fragments. Defaults to 1.
         single_bond_tolerance (float): Tolerance for single bond length perception, default is 1.20.
+        is_fragment (bool): If True, treat the input as a fragment rather than a full molecule.
 
     Returns:
         Molecule | None: The perceived Molecule, or None if perception failed.
@@ -98,7 +104,6 @@ def perceive_molecule_from_xyz(
     if len(fragments) != 1:
         if len(fragments) == n_fragments:
             return _combine_fragments(symbols, coords, fragments, charge)
-        logger.warning(f"Expected {n_fragments} fragments, found {len(fragments)}")
         return None
 
     # otherwise fall back on the existing single‐molecule code
@@ -106,9 +111,8 @@ def perceive_molecule_from_xyz(
     multiplicity = multiplicity or infer_multiplicity(symbols, charge)
     n_radicals = n_radicals or (multiplicity - 1)
 
-    rep = generate_lewis_structure(mol0, charge, multiplicity, n_radicals)
+    rep = generate_lewis_structure(mol0, charge, multiplicity, n_radicals, is_fragment=is_fragment)
     if rep is None:
-        logger.warning("Falling back to all‐single‐bond Lewis structure")
         rep = mol0.copy(deep=True)
         rep.multiplicity = multiplicity
         adjust_atoms_for_octet(rep, n_radicals)
@@ -119,8 +123,8 @@ def perceive_molecule_from_xyz(
     assign_formal_charges(rep)
     enforce_target_charge(rep, charge)
     rep.multiplicity = multiplicity
-    if not validate_atom_types(rep, charge, multiplicity, n_radicals):
-        rep = _resurrect_molecule(mol=rep, total_charge=charge, multiplicity=multiplicity, n_radicals=n_radicals)
+    if not is_mol_valid(rep, charge, multiplicity, n_radicals, is_fragment=is_fragment):
+        rep = alternative_perception(mol=rep, total_charge=charge, multiplicity=multiplicity, n_radicals=n_radicals, xyz=xyz, is_fragment=is_fragment)
     return rep
 
 
@@ -133,53 +137,71 @@ def _combine_fragments(
     """
     Build each fragment separately (with its own Lewis/resonance pipeline)
     and then stitch their atoms & bonds into one disconnected Molecule,
-    choosing the distribution of fragment charges that minimizes
-    the sum of absolute charges while keeping each fragment valid.
+    automatically distributing total_charge across fragments to minimize
+    the sum of absolute fragment charges. Any atom index not listed in
+    fragments will be added to the nearest fragment by centroid distance.
     """
-    # helper to perceive one fragment given a desired fragment charge
-    def _perceive_frag(frag_idx: int, frag_charge: int) -> Molecule | None:
-        idxs = fragments[frag_idx]
+    nfr = len(fragments)
+
+    # 1) ensure every atom is covered by some fragment
+    all_idxs = set(range(len(symbols)))
+    covered = set().union(*fragments)
+    missing = all_idxs - covered
+    if missing:
+        centroids = list()
+        for idxs in fragments:
+            pts = [coords[i] for i in idxs]
+            centroids.append(tuple(sum(c)/len(c) for c in zip(*pts)))
+        # assign missing atoms to nearest fragment
+        for i in missing:
+            x,y,z = coords[i]
+            distances = [(x-cx)**2 + (y-cy)**2 + (z-cz)**2 for cx,cy,cz in centroids]
+            j = int(min(range(nfr), key=lambda k: distances[k]))
+            fragments[j].append(i)
+        for idxs in fragments:
+            idxs.sort()
+
+    # helper to perceive one fragment given a charge
+    def _perceive_frag(idxs: list[int], charge: int) -> Molecule | None:
         sub_symbols = tuple(symbols[i] for i in idxs)
         sub_coords  = tuple(coords[i]   for i in idxs)
-        frag_mult   = infer_multiplicity(sub_symbols, frag_charge)
-        frag_rad    = frag_mult - 1
+        mult = infer_multiplicity(sub_symbols, charge)
+        rad  = mult - 1
         sub_xyz = {"symbols": sub_symbols, "coords": sub_coords}
-        return perceive_molecule_from_xyz(
-            sub_xyz,
-            charge=frag_charge,
-            multiplicity=frag_mult,
-            n_radicals=frag_rad,
-            n_fragments=1
-        )
+        return perceive_molecule_from_xyz(sub_xyz,
+                                          charge=charge,
+                                          multiplicity=mult,
+                                          n_radicals=rad,
+                                          n_fragments=1,
+                                          is_fragment=True,
+                                          )
 
-    nfr = len(fragments)
-    # generate all small integer partitions of total_charge into nfr fragments
-    # here we only try splits in [-2..2] per frag; adjust range if you expect bigger
+    # 2) search over all splits of total_charge into nfr integers (small range)
     charge_range = range(-2, 3)
     best_mol = None
     best_sep = float('inf')
 
-    for charges_tuple in product(charge_range, repeat=nfr):
-        if sum(charges_tuple) != total_charge:
+    for charges in product(charge_range, repeat=nfr):
+        if sum(charges) != total_charge:
             continue
-        sep = sum(abs(c) for c in charges_tuple)
+        sep = sum(abs(c) for c in charges)
         if sep >= best_sep:
             continue
 
-        # perceive each fragment under its assigned charge
-        submols = []
+        # perceive each fragment
+        submols = list()
         ok = True
-        for idx_frag, fch in enumerate(charges_tuple):
-            submol = _perceive_frag(idx_frag, fch)
-            if submol is None or submol.get_net_charge() != fch:
+        for idx_frag, frag_charge in enumerate(charges):
+            sm = _perceive_frag(fragments[idx_frag], frag_charge)
+            if sm is None or sm.get_net_charge() != frag_charge:
                 ok = False
                 break
-            submols.append(submol)
+            submols.append(sm)
         if not ok:
             continue
 
-        # glue them
-        all_atoms, all_bonds = [], []
+        # stitch atoms & bonds
+        all_atoms, all_bonds = list(), list()
         offset = 0
         for sm in submols:
             for a in sm.atoms:
@@ -197,27 +219,77 @@ def _combine_fragments(
             offset += len(sm.atoms)
 
         cand = Molecule(atoms=all_atoms)
-        for i, j, o in all_bonds:
-            cand.add_bond(Bond(cand.atoms[i], cand.atoms[j], order=o))
-        # final bookkeeping
+        for i, j, order in all_bonds:
+            cand.add_bond(Bond(cand.atoms[i], cand.atoms[j], order=order))
         try:
             cand.update(sort_atoms=False)
         except AtomTypeError:
             continue
 
-        # keep the best (lowest separation) one
         best_mol, best_sep = cand, sep
         if sep == 0:
             break
 
     if best_mol is None:
-        raise ValueError(f"Failed to find any valid charge‐split for fragments {fragments}")
+        raise ValueError(f"Could not find a valid charge split for {fragments}")
 
-    # set overall multiplicity & (re)assign formal charges to be safe
     best_mol.multiplicity = max(sm.multiplicity for sm in submols)
     assign_formal_charges(best_mol)
     enforce_target_charge(best_mol, total_charge)
+    _add_interfragment_bonds(best_mol, fragments, coords)
+
+    # restore original atom order
+    idx_map: dict[int, int] = dict()
+    offset = 0
+    for frag in fragments:
+        for local_idx, orig_idx in enumerate(frag):
+            idx_map[orig_idx] = offset + local_idx
+        offset += len(frag)
+    n = len(symbols)
+    reordered = [None] * n
+    for orig_idx, mol_idx in idx_map.items():
+        reordered[orig_idx] = best_mol.atoms[mol_idx]
+    best_mol.atoms = reordered
+
+    if best_mol.get_net_charge() != total_charge:
+        raise RuntimeError(f"Post-combine net charge {best_mol.get_net_charge()} != target {total_charge}")
     return best_mol
+
+
+def _add_interfragment_bonds(
+    mol: Molecule,
+    fragments: list[list[int]],
+    coords: tuple[tuple[float, float, float], ...],
+) -> None:
+    """
+    If there are multiple fragments, connect each fragment pair by a single bond
+    between their closest atom pair—but only if at least one of those atoms is a radical.
+    Modifies `mol` in place and then updates its topology.
+    """
+    if len(fragments) < 2:
+        return
+
+    # map original‐atom index → index in mol.atoms
+    idx_map: dict[int,int] = dict()
+    offset = 0
+    for frag in fragments:
+        for local_idx, orig_idx in enumerate(frag):
+            idx_map[orig_idx] = offset + local_idx
+        offset += len(frag)
+
+    for frag_i in range(len(fragments)):
+        if frag_i == len(fragments) - 1:
+            break
+        frag_1, frag_2 = fragments[frag_i], fragments[frag_i + 1]
+        i0, j0 = min(((i, j) for i in frag_1 for j in frag_2), key=lambda pair: dist(coords[pair[0]], coords[pair[1]]))
+        a1 = mol.atoms[idx_map[i0]]
+        a2 = mol.atoms[idx_map[j0]]
+
+        if a1.radical_electrons > 0 or a2.radical_electrons > 0:
+            bond_order = 1.0 if n_missing_electrons(a1) or n_missing_electrons(a2) else 0.05
+        else:
+            bond_order = 0.0
+        mol.add_bond(Bond(a1, a2, order=bond_order))
 
 
 def validate_xyz(xyz: dict[str, Any] | str) -> dict[str, Any] | None:
@@ -284,6 +356,7 @@ def generate_lewis_structure(
     total_charge: int,
     multiplicity: int,
     n_radicals: int,
+    is_fragment: bool = False,
 ) -> Molecule | None:
     """
     A* search over bond‐order assignments (1→2→3) to satisfy octet, charge & spin;
@@ -328,7 +401,7 @@ def generate_lewis_structure(
 
         if adjust_atoms_for_octet(mol, n_radicals):
             assign_formal_charges(mol)
-            if mol.get_net_charge() == total_charge and validate_atom_types(mol, total_charge, multiplicity, n_radicals):
+            if mol.get_net_charge() == total_charge and is_mol_valid(mol, total_charge, multiplicity, n_radicals, is_fragment):
                 return mol
 
         for idx in range(len(orders)):
@@ -432,7 +505,7 @@ def adjust_atoms_for_octet(
         unbonded_h = [i for i in hydros if bond_sums[i] == 0]
         if unbonded_h:
             # score all atoms by fraction of octet missing → pick highest
-            fracs: list[tuple[float, int]] = []
+            fracs: list[tuple[float, int]] = list()
             for i, a in enumerate(atoms):
                 cores = allowed_cores(a, False)
                 if not cores:
@@ -492,7 +565,7 @@ def adjust_atoms_for_octet(
     # pick the minimal‐deviation solution
     _, best = min(candidates, key=lambda x: x[0])
     for orig, new in zip(mol.atoms, best.atoms):
-        orig.lone_pairs        = new.lone_pairs
+        orig.lone_pairs = new.lone_pairs
         orig.radical_electrons = new.radical_electrons
     return True
 
@@ -517,19 +590,15 @@ def get_representative_resonance_structure(mol: Molecule) -> Molecule:
     variants = generate_resonance_structures_safely(mol)
     if not variants:
         return mol
-
     charge_seps = [sum(abs(atom.charge) for atom in variant.atoms)
                    for variant in variants]
-
     for variant, sep in zip(variants, charge_seps):
         if sep == 0:
             return variant
-
     min_sep = min(charge_seps)
     for variant, sep in zip(variants, charge_seps):
         if sep == min_sep:
             return variant
-
     return variants[0]
 
 
@@ -541,8 +610,6 @@ def enforce_target_charge(mol: Molecule, target_charge: int) -> None:
     delta = target_charge - current
     if delta == 0:
         return
-
-    # 1) use the biggest radical center
     radicals = sorted([a for a in mol.atoms if a.radical_electrons > 0], key=lambda a: -a.radical_electrons)
     if radicals:
         recipient = radicals[0]
@@ -552,19 +619,33 @@ def enforce_target_charge(mol: Molecule, target_charge: int) -> None:
     recipient.charge += delta
 
 
-def validate_atom_types(mol: Molecule, charge: int, multiplicity: int, n_radicals: int | None) -> bool:
+def is_mol_valid(
+        mol: Molecule | None,
+        charge: int,
+        multiplicity: int | None,
+        n_radicals: int | None,
+        is_fragment: bool = True,
+) -> bool:
     """
     Return True if `mol` has a valid atom‐type assignment, False if
     an AtomTypeError is raised (i.e. any atom violates its valence rules).
     """
-    n_radicals = n_radicals or (multiplicity - 1)
+    if not mol:
+        return False
+    n_radicals = n_radicals or (multiplicity - 1) if multiplicity is not None else None
     try:
         mol.copy(deep=True).update()
     except AtomTypeError:
         return False
     if mol.get_net_charge() != charge or mol.multiplicity != multiplicity:
         return False
-    if get_octet_deviation(mol) > n_radicals:
+    if n_radicals is not None and get_octet_deviation(mol) > n_radicals:
+        return False
+    actual_radicals = mol.get_radical_count()
+    if mol.multiplicity > actual_radicals + 1:
+        return False
+    # check if an even number of radicals results in an odd multiplicity, or vice versa
+    if divmod(mol.multiplicity, 2)[1] == divmod(actual_radicals, 2)[1] and not charge:
         return False
     return True
 
@@ -582,34 +663,211 @@ def update_mol(mol: Molecule, multiplicity: int, charge: int) -> Molecule:
     return mol
 
 
-def _resurrect_molecule(
+def alternative_perception(
     mol: Molecule,
     total_charge: int,
     multiplicity: int,
     n_radicals: int,
-) -> Molecule:
+    xyz: dict,
+    is_fragment: bool = True,
+) -> Molecule | None:
     """
-    Attempt to fix an invalid Molecule by resetting to all single bonds,
-    re‐assigning lone pairs/radicals, and re‐distributing formal charges.
+    Attempt to perceive invalid Molecule using alternative methods.
     """
-    cand = mol.copy(deep=True)
-    # remove all partial charges
-    for a in cand.atoms:
+    # (1.) remove all partial charges
+    mol_1 = mol.copy(deep=True)
+    for a in mol_1.atoms:
         a.charge = 0
-    if validate_atom_types(cand, total_charge, multiplicity, n_radicals):
-        return cand
-    if mol.fingerprint == 'C00H02N02O00S00' and multiplicity == 3 and any(sum(e.order for e in a.edges.values()) == 3 for a in mol.atoms):
+    mol_1 = _resurrect_molecule(mol_1, n_radicals)
+    if is_mol_valid(mol_1, total_charge, multiplicity, n_radicals):
+        return mol_1
+
+    # (2.) hard-coding edge-cases
+    mol_2 = mol.copy(deep=True)
+    if mol_2.fingerprint == 'C00H02N02O00S00' and multiplicity == 3 and any(sum(e.order for e in a.edges.values()) == 3 for a in mol.atoms):
         # hard-code for N2H3(T)
-        for atom in mol.atoms:
+        for atom in mol_2.atoms:
             if atom.is_nitrogen():
                 if sum(e.order for e in atom.edges.values()) == 3:
                     atom.lone_pairs, atom.radical_electrons = 1, 0
                 elif sum(e.order for e in atom.edges.values()) == 1:
                     atom.lone_pairs, atom.radical_electrons = 1, 2
+        mol_2.multiplicity = multiplicity
+        if is_mol_valid(mol_2, total_charge, multiplicity, n_radicals):
+            return mol_2
 
-    logger.error(f"Failed to resurrect the perception of {mol.to_smiles()} with fingerprint {mol.fingerprint}, "
-                 f"multiplicity {multiplicity}, and charge {total_charge}.")
+    # (3.) use xyz => open babel (pybel) => InChI => RMG Molecule with bond orders
+    mol_3 = mol.copy(deep=True)
+    try:
+        xyz_file_format = str(len(xyz['symbols'])) + '\n\n' + xyz_to_str(xyz) + '\n'
+        pybel_mol = pybel.readstring('xyz', xyz_file_format)
+    except (IOError, InputError):
+        pybel_mol = None
+    if pybel_mol is not None:
+        if bool(len([atom.is_hydrogen() for atom in mol_3.atoms])):
+            inchi = pybel_mol.write('inchi', opt={'F': None}).strip()  # Add a fixed H layer
+        else:
+            inchi = pybel_mol.write('inchi').strip()
+        try:
+            mol_3 = Molecule().from_inchi(inchi)
+        except (AtomTypeError, ValueError, KeyError, TypeError):
+            mol_3 = None
+        if mol_3 is not None:
+            try:
+                order_atoms(ref_mol=mol_2, mol=mol_3)
+            except SanitizationError:
+                pass
+            mol_3.multiplicity = multiplicity
+            mol_3 = _resurrect_molecule(mol_3, n_radicals)
+            if is_mol_valid(mol_3, total_charge, multiplicity, n_radicals):
+                return mol_3
+
+    # (4.) use xyz_to_smiles
+    smiles_list = xyz_to_smiles(xyz=xyz, charge=total_charge)
+    mol_4 = Molecule(smiles=smiles_list[0]) if smiles_list else None
+    mol_4 = _resurrect_molecule(mol_4, n_radicals)
+    if is_mol_valid(mol_4, total_charge, multiplicity, n_radicals):
+        return mol_4
+
     return mol
+
+
+def n_missing_electrons(atom: Atom) -> int:
+    """
+    Check if an atom is missing electrons to complete its octet.
+    """
+    if atom.is_hydrogen():
+        return 2 - atom.radical_electrons - atom.radical_electrons
+    occ_orbitals = atom.lone_pairs + atom.radical_electrons + atom.get_total_bond_order()
+    return 4 - occ_orbitals
+
+
+def _resurrect_molecule(
+    mol: Molecule | None,
+    n_radicals: int,
+) -> Molecule | None:
+    """
+    Attempt to resurrect/sanitize a Molecule by fixing its perceived electronic structure.
+    """
+    if mol is None:
+        return None
+    mol = mol.copy(deep=True)
+    for atom in mol.atoms:
+        if atom.is_non_hydrogen():
+            if (missing := n_missing_electrons(atom)) > 0:
+                atom.radical_electrons += missing
+
+    n_radicals = n_radicals or mol.get_radical_count()
+    if mol.multiplicity < n_radicals + 1:
+        carbenes, nitrenes = 0, 0
+        for atom in mol.atoms:
+            if atom.is_carbon() and atom.radical_electrons >= 2:
+                carbenes += 1
+            elif atom.is_nitrogen() and atom.radical_electrons >= 2:
+                nitrenes += 1
+        if 2 * (carbenes + nitrenes) + mol.multiplicity == n_radicals + 1:
+            if carbenes:
+                for atom in mol.atoms:
+                    if atom.is_carbon() and atom.radical_electrons >= 2:
+                        atom.lone_pairs += 1
+                        atom.radical_electrons -= 2
+            if nitrenes:
+                for atom in mol.atoms:
+                    if atom.is_nitrogen() and atom.radical_electrons >= 2:
+                        for atom2, bond12 in atom.edges.items():
+                            if atom2.is_sulfur() and atom2.lone_pairs >= 2 and bond12.is_single():
+                                bond12.set_order_num(3)
+                                atom2.lone_pairs -= 1
+                                break
+                            elif atom2.is_sulfur() and atom2.lone_pairs == 1 and bond12.is_single():
+                                bond12.set_order_num(2)
+                                atom2.lone_pairs -= 1
+                                atom2.charge += 1
+                                atom.charge -= 1
+                                break
+                            elif atom2.is_nitrogen() and atom2.lone_pairs == 1 and bond12.is_single():
+                                bond12.set_order_num(2)
+                                atom2.lone_pairs -= 1
+                                atom.lone_pairs += 1
+                                atom2.charge += 1
+                                atom.charge -= 1
+                                break
+                        else:
+                            atom.lone_pairs += 1
+                        atom.radical_electrons -= 2
+    if len(mol.atoms) == 1 and mol.multiplicity == 1 and mol.atoms[0].radical_electrons == 4:
+        # This is a singlet atomic C or Si, convert all radicals to lone pairs
+        mol.atoms[0].radical_electrons = 0
+        mol.atoms[0].lone_pairs = 2
+    actual_radicals = sum(atom.radical_electrons for atom in mol.atoms)
+    neg_atoms = [atom for atom in mol.atoms if atom.charge < 0]
+    if neg_atoms and actual_radicals < mol.multiplicity - 1:
+        for atom in mol.atoms:
+            atom.charge = 0
+        center = neg_atoms[0]
+        center.radical_electrons += 2
+        mol.update(raise_atomtype_exception=False)
+    return mol
+
+
+def xyz_to_str(xyz_dict: dict) -> str | None:
+    """
+    Convert xyz dictionary to a simple XYZ-format string
+    """
+    lines = list()
+    for sym, (x, y, z) in zip(xyz_dict['symbols'], xyz_dict['coords']):
+        lines.append(f"{sym:4}{x:14.8f}{y:14.8f}{z:14.8f}")
+    return "\n".join(lines)
+
+
+def order_atoms(ref_mol, mol):
+    """
+    Order the atoms in `mol` to match the atom order in `ref_mol`.
+    """
+    ref_mol_is_iso_copy, mol_is_iso_copy = ref_mol.copy(deep=True), mol.copy(deep=True)
+    ref_mol_find_iso_copy, mol_find_iso_copy = ref_mol.copy(deep=True), mol.copy(deep=True)
+
+    ref_mol_is_iso_copy = create_a_single_bond_mol_copy(ref_mol_is_iso_copy)
+    mol_is_iso_copy = create_a_single_bond_mol_copy(mol_is_iso_copy)
+    ref_mol_find_iso_copy = create_a_single_bond_mol_copy(ref_mol_find_iso_copy)
+    mol_find_iso_copy = create_a_single_bond_mol_copy(mol_find_iso_copy)
+
+    if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
+        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
+        if len(mapping):
+            if isinstance(mapping, list):
+                mapping = mapping[0]
+            index_map = {ref_mol_find_iso_copy.atoms.index(val): mol_find_iso_copy.atoms.index(key)
+                         for key, val in mapping.items()}
+            mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
+        else:
+            raise SanitizationError('Could not map molecules')
+    else:
+        raise SanitizationError('Could not map non isomorphic molecules')
+
+
+def create_a_single_bond_mol_copy(mol):
+    """
+    Create a copy of the molecule with all bonds set to single bonds.
+    """
+    if not hasattr(mol, 'atoms'):
+        return None
+    new_mol = Molecule()
+    atom_map = {old: new_mol.add_atom(Atom(old.element)) for old in mol.atoms}
+    seen = set()
+    for old in mol.atoms:
+        for nbr, bond in old.bonds.items():
+            key = frozenset({old, nbr})
+            if key in seen:
+                continue
+            seen.add(key)
+            new_mol.add_bond(Bond(atom_map[old], atom_map[nbr], 1.0))
+    try:
+        new_mol.update_atomtypes(raise_exception=False)
+    except KeyError:
+        pass
+    new_mol.multiplicity = getattr(mol, 'multiplicity', new_mol.multiplicity)
+    return new_mol
 
 
 def reduce_charge_separation(mol: Molecule, target_rad: int) -> Molecule:
