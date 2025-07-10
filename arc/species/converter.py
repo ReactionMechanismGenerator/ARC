@@ -751,8 +751,7 @@ def check_zmat_dict(zmat: Union[dict, str]) -> dict:
         # add a trivial map
         zmat_dict['map'] = {i: i for i in range(len(zmat_dict['symbols']))}
     if len(zmat_dict['symbols']) != len(zmat_dict['map']):
-        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["isotopes"])} '
-                             f'isotopes:\n{zmat_dict}')
+        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["map"])} Zmat::\n{zmat_dict}')
     for i, coord in enumerate(zmat_dict['coords']):
         for j, param in enumerate(coord):
             if param is not None:
@@ -1091,7 +1090,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
                          indices: List[int],
                          mol: Molecule,
                          index: int = 0,
-                         ) -> float:
+                         ) -> float | None:
     """
     Generates a zmat similarly to modify_coords(),
     but instead of modifying it, only reports on the value of a requested parameter.
@@ -1124,6 +1123,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
         return zmat["vars"][param]
     elif isinstance(param, list):
         return sum(zmat["vars"][par] for par in param)
+    return None
 
 
 def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
@@ -1205,7 +1205,7 @@ def modify_coords(coords: Dict[str, tuple],
     if modification_type == 'groups' and modification_type[0] != 'D':
         raise InputError(f'The "groups" modification type is only supported for dihedrals (D), '
                          f'not for an {modification_type[0]} parameter.')
-    if index < 0 or index > 1:
+    if index not in [0, 1]:
         raise ValueError(f'The index argument must be either 0 or 1, got {index}.')
     if 'map' in list(coords.keys()):
         # a zmat was given, we actually need xyz to recreate a specific zmat for the parameter modification.
@@ -1588,13 +1588,13 @@ def set_radicals_by_map(mol, radical_map):
         atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
 
-def order_atoms_in_mol_list(ref_mol, mol_list) -> bool:
+def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: List[Molecule] | None) -> bool:
     """
     Order the atoms in all molecules of ``mol_list`` by the atom order in ``ref_mol``.
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
-        mol_list (list): Entries are Molecule objects whose atoms will be reordered according to the reference.
+        mol_list (List[Molecule] | None): Entries are Molecule objects whose atoms will be reordered according to the reference.
 
     Raises:
         TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
@@ -1607,8 +1607,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list) -> bool:
     if mol_list is not None:
         for mol in mol_list:
             if not isinstance(mol, Molecule):
-                raise TypeError(f'expected enrties of mol_list to be Molecule instances, got {mol} '
-                                f'which is a {type(mol)}.')
+                raise TypeError(f'expected entries of mol_list to be Molecule instances, got {mol} which is a {type(mol)}.')
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
@@ -1634,40 +1633,40 @@ def order_atoms(ref_mol, mol):
         SanitizationError: If atoms could not be re-ordered.
         TypeError: If ``mol`` has a wrong type.
     """
-    if not isinstance(mol, Molecule):
-        raise TypeError(f'expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
-    if ref_mol is not None and mol is not None:
-        ref_mol_is_iso_copy = ref_mol.copy(deep=True)
-        mol_is_iso_copy = mol.copy(deep=True)
-        ref_mol_find_iso_copy = ref_mol.copy(deep=True)
-        mol_find_iso_copy = mol.copy(deep=True)
+    if not isinstance(mol, Molecule) or not isinstance(ref_mol, Molecule):
+        raise TypeError(f'Expected ref_mol & mol to be Molecule instances, got {ref_mol} and {mol} '
+                        f'with types {type(ref_mol)} and {type(mol)}.')
+    ref_mol_is_iso_copy = ref_mol.copy(deep=True)
+    mol_is_iso_copy = mol.copy(deep=True)
+    ref_mol_find_iso_copy = ref_mol.copy(deep=True)
+    mol_find_iso_copy = mol.copy(deep=True)
 
-        ref_mol_is_iso_copy = update_molecule(ref_mol_is_iso_copy, to_single_bonds=True)
-        mol_is_iso_copy = update_molecule(mol_is_iso_copy, to_single_bonds=True)
-        ref_mol_find_iso_copy = update_molecule(ref_mol_find_iso_copy, to_single_bonds=True)
-        mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
+    ref_mol_is_iso_copy = update_molecule(ref_mol_is_iso_copy, to_single_bonds=True)
+    mol_is_iso_copy = update_molecule(mol_is_iso_copy, to_single_bonds=True)
+    ref_mol_find_iso_copy = update_molecule(ref_mol_find_iso_copy, to_single_bonds=True)
+    mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
 
-        if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
-            mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
-            if len(mapping):
-                if isinstance(mapping, list):
-                    mapping = mapping[0]
-                index_map = {ref_mol_find_iso_copy.atoms.index(val): mol_find_iso_copy.atoms.index(key)
-                             for key, val in mapping.items()}
-                mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
-            else:
-                # logger.debug('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
-                #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
-                #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
-                raise SanitizationError('Could not map molecules')
+    if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
+        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
+        if len(mapping):
+            if isinstance(mapping, list):
+                mapping = mapping[0]
+            index_map = {ref_mol_find_iso_copy.atoms.index(val): mol_find_iso_copy.atoms.index(key)
+                         for key, val in mapping.items()}
+            mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
         else:
-            # logger.debug('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+            # logger.debug('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
             #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
             #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
-            raise SanitizationError('Could not map non isomorphic molecules')
+            raise SanitizationError('Could not map molecules')
+    else:
+        # logger.debug('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+        #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
+        #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
+        raise SanitizationError('Could not map non isomorphic molecules')
 
 
-def update_molecule(mol, to_single_bonds=False):
+def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
     """
     Updates the molecule, useful for isomorphism comparison.
 
@@ -1683,14 +1682,14 @@ def update_molecule(mol, to_single_bonds=False):
         atoms = mol.atoms
     except AttributeError:
         return None
-    atom_mapping = dict()
+    new_atoms_dict = dict()
     for atom in atoms:
-        new_atom = new_mol.add_atom(Atom(atom.element))
-        atom_mapping[atom] = new_atom
-    for atom1 in atoms:
-        for atom2 in atom1.bonds.keys():
-            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].get_order_num()
-            bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
+        new_atom = new_mol.add_atom(Atom(element=atom.element))
+        new_atoms_dict[atom] = new_atom
+    for atom_1 in atoms:
+        for atom_2 in atom_1.bonds.keys():
+            bond_order = 1.0 if to_single_bonds else atom_1.bonds[atom_2].get_order_num()
+            bond = Bond(new_atoms_dict[atom_1], new_atoms_dict[atom_2], bond_order)
             new_mol.add_bond(bond)
     try:
         new_mol.update_atomtypes(raise_exception=False)
@@ -2330,19 +2329,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
             float: The sum of the squared differences between the constraints and their desired values.
         """
         x, y, z = coord
-        distance_constraint_ = sphere_eq(x, y, z)
-        angle_constraint_ = angle_eq(x, y, z)
-        dihedral_constraint_ = dihedral_eq(x, y, z)
-
-        sphere_error = sphere_eq(*coord)
-        angle_error = angle_eq(*coord)
-        dihedral_error = dihedral_eq(*coord)
-
-        total_error = ((distance_constraint_ / r_value) ** 2 +
-                       (angle_constraint_ / math.radians(a_value)) ** 2 +
-                       (dihedral_constraint_ / math.radians(d_value)) ** 2)
-
-        return total_error
+        d_err = sphere_eq(x, y, z) / r_value
+        a_err = angle_eq(x, y, z) / math.radians(a_value)
+        t_err = dihedral_eq(x, y, z) / math.radians(d_value)
+        return d_err ** 2 + a_err ** 2 + t_err ** 2
 
     result = minimize(objective_func, initial_guess, method=opt_method,
                       options={'maxiter': 1e+4, 'ftol': 1e-10, 'xtol': 1e-10})
