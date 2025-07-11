@@ -396,42 +396,37 @@ class TestZMat(unittest.TestCase):
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_atom': [(3, 2)]})
-        self.assertEqual(atom_order, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        self.assertEqual(atom_order, [0, 1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 2, 3])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
-        self.assertEqual(symbols, ['C', 'C', 'Cl', 'C', 'C', 'C', 'C', 'O', 'H',
-                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual(symbols, ['C', 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'Cl', 'C'])
 
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_atom': [(3, 4)]})
-        self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        self.assertEqual(atom_order, [0, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 4, 3])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
-        self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
-                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual(symbols, ['C', 'C', 'Cl', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'C', 'C'])
 
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'R_group': [(3, 4)]})
-        self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        self.assertEqual(atom_order, [6, 5, 7, 14, 15, 16, 17, 18, 4, 3, 0, 1, 2, 8, 9, 10, 11, 12, 13])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
-        self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
-                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual(symbols, ['C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'Cl', 'H', 'H', 'H', 'H', 'H', 'H'])
 
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'A_group': [(3, 4, 5)]})
-        self.assertEqual(atom_order, [6, 5, 4, 7, 3, 1, 0, 2, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+        self.assertEqual(atom_order, [6, 7, 14, 15, 16, 17, 18, 5, 4, 3, 0, 1, 2, 8, 9, 10, 11, 12, 13])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
-        self.assertEqual(symbols, ['C', 'C', 'C', 'O', 'C', 'C', 'C', 'Cl', 'H',
-                                   'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual(symbols, ['C', 'O', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'Cl', 'H', 'H', 'H', 'H', 'H', 'H'])
 
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
             constraints_dict={'D_group': [(3, 4, 5, 7)]})
-        self.assertEqual(atom_order, [7, 5, 4, 6, 14, 15, 16, 17, 18, 3, 12, 13, 1, 11, 0, 8, 9, 10, 2])
+        self.assertEqual(atom_order, [6, 14, 15, 16, 17, 18, 7, 5, 4, 3, 0, 1, 2, 8, 9, 10, 11, 12, 13])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
-        self.assertEqual(symbols, ['O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H',
-                                   'C', 'H', 'H', 'C', 'H', 'C', 'H', 'H', 'H', 'Cl'])
+        self.assertEqual(symbols, ['C', 'H', 'H', 'H', 'H', 'H', 'O', 'C', 'C', 'C', 'C', 'C', 'Cl', 'H', 'H', 'H', 'H', 'H', 'H'])
 
     def test_order_fragments_by_constraints(self):
         """Test order_fragments_by_constraints()"""
