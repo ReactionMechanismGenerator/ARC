@@ -30,10 +30,10 @@ import math
 import numpy as np
 import operator
 import re
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from arc.common import get_logger, is_angle_linear, key_by_val, determine_top_group_indices
-from arc.exceptions import ZMatError
+from arc.exceptions import ZMatError, VectorsError
 from arc.molecule.molecule import Molecule
 from arc.species.vectors import calculate_param, get_vector_length
 
@@ -131,7 +131,6 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
             fragments=fragments,
         )
         skipped_atoms.extend(skipped)
-
     while len(skipped_atoms):
         num_of_skipped_atoms = len(skipped_atoms)
         indices_to_pop = list()
@@ -368,14 +367,16 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
             if atom in list(zmat['map'].values()):
                 zmat_index = key_by_val(zmat['map'], atom)
                 if atom != atom_index and zmat_index not in a_atoms and not is_dummy(zmat, zmat_index):
-                    # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
-                    # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-                    #
-                    #                     D (atom_index, r_atoms[0])
-                    #                    /
-                    #    E -- A -- B -- C  (r_atoms[1])
-                    #   /
-                    #  F          (B is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                    r"""
+                    Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
+                    dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+                    
+                                        D (atom_index, r_atoms[0])
+                                       /
+                       E -- A -- B -- C  (r_atoms[1])
+                      /
+                     F          (B is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                    """
                     i = 0
                     atom_b, atom_c = atom, zmat['map'][r_atoms[1]]
                     while i < len(list(connectivity.keys())):
@@ -410,14 +411,16 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
     if trivial_assignment and isinstance(a_atoms, list) and len(a_atoms) != 3:
         a_atoms = [atom for atom in r_atoms]
         for i in reversed(range(n)):
-            # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
-            # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-            #
-            #                     D (atom_index, r_atoms[0])
-            #                    /
-            #    E -- A -- B -- C  (r_atoms[1])
-            #   /
-            #  F          (B is the atom considered here)
+            r"""
+            Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
+            dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+            
+                                D (atom_index, r_atoms[0])
+                               /
+               E -- A -- B -- C  (r_atoms[1])
+              /
+             F          (B is the atom considered here)
+            """
             zmat_index = i
             if i not in a_atoms and i in list(zmat['map'].keys()) and not is_dummy(zmat, i):
                 zmat_index, j = i, n - 1
@@ -444,6 +447,12 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
     if a_atoms is not None and any([a_atom not in list(zmat['map'].keys()) for a_atom in a_atoms[1:]]):
         raise ZMatError(f'The reference A atom in {a_atoms} for the index atom {atom_index} has not been '
                         f'added to the zmat yet. Added atoms are (zmat index: xyz index): {zmat["map"]}.')
+    if a_atoms is not None and len(set(a_atoms)) != 3:
+        # fallback to adding an atom that is not in a_atoms and not in the zmat already
+        for i in reversed(range(len(coords))):
+            if i not in a_atoms and i in list(zmat['map'].keys()) and not is_dummy(zmat, i):
+                a_atoms.append(i)
+                break
     if a_atoms is not None and len(set(a_atoms)) != 3:
         raise ZMatError(f'Could not come up with three unique a_atoms (a_atoms = {a_atoms}).')
     return a_atoms
@@ -558,7 +567,10 @@ def determine_d_atoms_without_connectivity(zmat: dict,
     d_atoms = [atom for atom in a_atoms]
     for i in reversed(range(n)):
         if i not in d_atoms and i in list(zmat['map'].keys()) and (i >= len(zmat['symbols']) or not is_dummy(zmat, i)):
-            angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+            try:
+                angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+            except VectorsError:
+                continue
             if not is_angle_linear(angle, tolerance=TOL_180):
                 d_atoms.append(i)
                 break
@@ -566,7 +578,10 @@ def determine_d_atoms_without_connectivity(zmat: dict,
         # Try again and consider dummies.
         for i in reversed(range(n)):
             if i not in d_atoms and i in list(zmat['map'].keys()):
-                angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                try:
+                    angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                except VectorsError:
+                    continue
                 if not is_angle_linear(angle, tolerance=TOL_180):
                     d_atoms.append(i)
                     break
@@ -602,21 +617,31 @@ def determine_d_atoms_from_connectivity(zmat: dict,
         list: The d_atoms.
     """
     d_atoms = [atom for atom in a_atoms]
-    for atom in connectivity[zmat['map'][d_atoms[-1]]] + connectivity[zmat['map'][d_atoms[-2]]] \
-            + connectivity[atom_index]:
+    # We need two *integer* z-matrix indices to drive the neighbor search.
+    # If for some reason one of them is a dummy key ("X..."), skip the connectivity‐based logic.
+    int_refs = [i for i in d_atoms if isinstance(i, int)]
+    if len(int_refs) < 2:
+        return d_atoms
+    # pick the last two integer refs
+    ref_last, ref_penult = int_refs[-1], int_refs[-2]
+    for atom in (connectivity[zmat['map'][ref_last]] +
+                 connectivity[zmat['map'][ref_penult]] +
+                 connectivity[atom_index]):
         if atom != atom_index and atom in list(zmat['map'].values()) \
                 and (not is_dummy(zmat, key_by_val(zmat['map'], atom)) or (not dummy and allow_a_to_be_dummy)):
             # Atom A is allowed to be a dummy atom only if the atom represented by n is not.
             zmat_index = None
             if atom not in list([zmat['map'][d_atom] for d_atom in d_atoms[1:]]):
-                # Check whether this atom (A) is part of a linear chain. If it is, try to correctly determine
-                # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-                #
-                #             X       D (atom_index)
-                #              \     /
-                #    E -- A -- B -- C  (r_atoms[1])
-                #   /
-                #  F     (A is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                r"""
+                Check whether this atom (A) is part of a linear chain. If it is, try to correctly determine
+                dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+                
+                            X       D (atom_index)
+                             \     /
+                   E -- A -- B -- C  (r_atoms[1])
+                  /
+                 F     (A is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                """
                 i = 0
                 atom_a, atom_b, atom_c = atom, zmat['map'][d_atoms[2]], zmat['map'][d_atoms[1]]
                 while i < len(list(connectivity.keys())):
@@ -841,6 +866,8 @@ def update_zmat_with_new_atom(zmat: dict,
         dict: The updated zmat.
     """
     zmat['symbols'].append(xyz['symbols'][atom_index])
+    if atom_index in zmat['map'].values():
+        raise ZMatError(f'Cannot assign atom {atom_index} to key {n}, it is already in the zmat map: {zmat["map"]}')
     zmat['map'][n] = atom_index
     if r_atoms is None:
         r_str = None
@@ -1373,11 +1400,32 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
 
     atom_order = list()
     if mol is not None:
-        for fragment in fragments:
-            atom_order.extend(get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict))
+        atom_order = _accumulated_atom_order(fragments,
+                                             lambda frag: get_atom_order_from_mol(
+                                                 mol=mol,
+                                                 fragment=frag,
+                                                 constraints_dict=constraints_dict))
     elif xyz is not None:
-        for fragment in fragments:
-            atom_order.extend(get_atom_order_from_xyz(xyz, fragment=fragment))
+        atom_order = _accumulated_atom_order(fragments,
+                                             lambda frag: get_atom_order_from_xyz(xyz, fragment=frag))
+    return atom_order
+
+
+def _accumulated_atom_order(fragments: List[List[int]],
+                            order_fn: Callable[[List[int]], List[int]]
+                            ) -> List[int]:
+    """
+    Apply a cumulative offset to each fragment’s local atom‐order.
+
+    fragments: list of fragments (each is a list of atom‐indices)
+    order_fn:  callable that takes one fragment and returns its local ordering
+    """
+    atom_order: List[int] = list()
+    offset = 0
+    for frag in fragments:
+        local = order_fn(frag)
+        atom_order.extend(i + offset for i in local)
+        offset += len(frag)
     return atom_order
 
 
