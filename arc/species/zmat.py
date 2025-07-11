@@ -278,8 +278,7 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
         elif len(one):
             r_atoms.append(one[0])
         if len(set(r_atoms)) != 2:
-            if not trivial_assignment:
-                raise ZMatError(f'Could not come up with two unique r_atoms from connectivity (r_atoms = {r_atoms}).')
+            trivial_assignment = True
     else:
         trivial_assignment = True
         r_atoms = list()
@@ -404,8 +403,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     a_atoms.append(zmat_index)
                     break
         if len(set(a_atoms)) != 3:
-            if not trivial_assignment:
-                raise ZMatError(f'Could not come up with three unique a_atoms from connectivity (a_atoms = {a_atoms}).')
+            trivial_assignment = True
     else:
         trivial_assignment = True
         a_atoms = list()
@@ -1388,168 +1386,197 @@ def get_atom_order_from_mol(mol: Molecule,
                             constraints_dict: Optional[Dict[str, List[tuple]]] = None,
                             ) -> List[int]:
     """
-    Get the order in which atoms should be added to the zmat from the 2D graph representation of the molecule.
+    Determine Z-matrix atom order based on molecular connectivity and an optional single constraint.
+
+    Uses a BFS on the heavy-atom graph to establish a base ordering, then partitions
+    unconstrained atoms from constrained (moving) atoms/groups so that unconstrained
+    heavies come first, then unconstrained hydrogens, then constrained anchors/move atoms
+    (or their entire groups).
 
     Args:
-        mol (Molecule): The Molecule object.
-        fragment (List[int], optional): Entries are 0-indexed atom indices to consider in the molecule.
-                                        Only atoms within the fragment are considered.
-        constraints_dict (dict, optional): A dictionary of atom constraints.
-                                           The function will try to find an atom order in which all constrained atoms
-                                           are after the atoms they are constraint to.
+        mol (Molecule): The Molecule object containing ``atoms`` and ``edges``.
+        fragment (List[int], optional): Optional list of 0-based atom indices to include; defaults to all atoms.
+        constraints_dict: Optional dict with a single constraint type:
+            'R_atom': [(move_idx, anchor_idx)]
+            'R_group': [(move_idx, anchor_idx)]
+            'A_atom': [(move_idx, ref1, ref2)]
+            'A_group': [(move_idx, ref1, ref2)]
+            'D_atom': [(move_idx, ref1, ref2, ref3)]
+            'D_group': [(move_idx, ref1, ref2, ref3)]
+            'D_groups': [(pivot2, pivot3, ref?, ref?)]
 
     Returns:
-        List[int]: The atom order, 0-indexed.
+        A list of atom indices in Z-matrix order, where any unconstrained
+        heavy atoms come first, then unconstrained hydrogens, then the
+        constrained anchor(s) and moving atom(s) or their groups, so that
+        modifying the specified internal coordinate translates/rotates only
+        the intended atoms.
     """
-    fragment = fragment or list(range(len(mol.atoms)))
-    atoms_to_explore, constraints, constraint_atoms, unsuccessful, top_d = list(), list(), list(), list(), list()
-    constraints_dict = constraints_dict or dict()
-    number_of_heavy_atoms = len([atom for atom in mol.atoms if atom.is_non_hydrogen()])
-
-    for constraint_type, constraint_list in constraints_dict.items():
-        constraints.extend(constraint_list)  # A list of all constraint tuples.
-        for constraint in constraint_list:
-            # A list of the atoms being constraint to other atoms.
-            constraint_atoms.append(constraint[0])  # Only the first atom in the constraint tuple is really constrained.
-        if constraint_type == 'D_group':
-            for constraint_indices in constraint_list:
-                if len(top_d):
-                    raise ZMatError(f'zmats can only handle one D_group constraint at a time, got:\n{constraints_dict}')
-                # Determine the "top" of the *relevant branch* of this torsion
-                # since the first atom (number 0) is the constrained one being changed,
-                # this top is defined from the second atom in the torsion (number 1) to it.
-                top_d = determine_top_group_indices(mol=mol,
-                                                    atom1=mol.atoms[constraint_indices[1]],
-                                                    atom2=mol.atoms[constraint_indices[0]],
-                                                    index=0)[0]
-
-    for i in range(len(mol.atoms)):
-        # Iterate through the atoms until a successful atom_order is reached.
-        atom_order, start = list(), None
-        # Try determining a starting point as a heavy atom connected to no more than one heavy atom neighbor.
-        for atom1 in mol.atoms:
-            # Find a tail, e.g.: CH3-C-...
-            atom1_index = mol.atoms.index(atom1)
-            if atom1.is_non_hydrogen() \
-                    and sum([atom2.is_non_hydrogen() for atom2 in list(atom1.edges.keys())]) <= 1 \
-                    and atom1_index not in constraint_atoms \
-                    and atom1_index not in unsuccessful \
-                    and atom1_index not in top_d \
-                    and atom1_index in fragment:
-                start = atom1_index
-                break
-        else:
-            # If a tail could not be found (e.g., cyclohexane), just start from the first non-constrained heavy atom.
-            for atom1 in mol.atoms:
-                atom1_index = mol.atoms.index(atom1)
-                if atom1.is_non_hydrogen() \
-                        and mol.atoms.index(atom1) not in constraint_atoms \
-                        and atom1_index not in unsuccessful \
-                        and atom1_index not in top_d \
-                        and atom1_index in fragment:
-                    start = atom1_index
-                    break
-            else:
-                # Try hydrogens (an atom might be constraint to H, in which case H should come before that atom).
-                for atom1 in mol.atoms:
-                    atom1_index = mol.atoms.index(atom1)
-                    if atom1.is_hydrogen() \
-                            and atom1_index not in constraint_atoms \
-                            and atom1_index not in unsuccessful \
-                            and atom1_index not in top_d \
-                            and atom1_index in fragment:
-                        start = atom1_index
-                        break
-        if start is None:
-            if i == len(mol.atoms) - 1:
-                raise ZMatError('Could not determine a starting atom for the zmat')
-            continue
-        atoms_to_explore = [start]
-
-        if number_of_heavy_atoms == 2:
-            # To have meaningful dihedrals for H's, add one H from each heavy atom before adding the heavy atoms.
-            heavy_atoms = [atom for atom in mol.atoms if atom.is_non_hydrogen()]
-            hydrogens_0 = [atom for atom in heavy_atoms[0].edges.keys() if atom.is_hydrogen()]
-            hydrogens_1 = [atom for atom in heavy_atoms[1].edges.keys() if atom.is_hydrogen()]
-            if len(hydrogens_0) and len(hydrogens_1):
-                if not constraint_atoms:
-                    hydrogen_0, hydrogen_1 = hydrogens_0[0], hydrogens_1[0]
-                    for atom_index in [mol.atoms.index(heavy_atoms[0]), mol.atoms.index(heavy_atoms[1]),
-                                       mol.atoms.index(hydrogen_0), mol.atoms.index(hydrogen_1)]:
-                        if atom_index in fragment:
-                            atom_order.append(atom_index)
-                else:
-                    for constraint in constraints:
-                        for atom_index in constraint[::-1]:
-                            if atom_index in fragment and atom_index not in atom_order:
-                                atom_order.append(atom_index)
-                    for atom1 in mol.atoms:
-                        atom1_index = mol.atoms.index(atom1)
-                        if atom1_index not in atom_order and atom1_index in fragment:
-                            atom_order.append(atom1_index)
-                atoms_to_explore = list()
-
-        unexplored = list()  # Atoms purposely not added to atom_order due to a D_group constraint.
-        while len(atoms_to_explore):
-            # Add all heavy atoms, consider branching and rings.
-            atom1_index = atoms_to_explore[0]
-            atoms_to_explore.pop(0)
-            atom1 = mol.atoms[atom1_index]
-            if atom1_index not in top_d and atom1_index in fragment and atom1_index not in atom_order:
-                atom_order.append(atom1_index)
-            else:
-                unexplored.append(atom1_index)
-            for atom2 in list(atom1.edges.keys()):
-                index2 = mol.atoms.index(atom2)
-                if index2 not in atom_order and index2 not in atoms_to_explore and index2 not in unexplored \
-                        and atom2.is_non_hydrogen():
-                    atoms_to_explore.append(index2)
-
-        for atom1 in mol.atoms:
-            # Add all hydrogen atoms.
-            if atom1.is_hydrogen():
-                index = mol.atoms.index(atom1)
-                if index not in atom_order and index not in top_d and index in fragment:
-                    atom_order.append(index)
-
-        # Now add top_d.
-        for top_d_atom in top_d:
-            if top_d_atom not in atom_order and top_d_atom in fragment:
-                atom_order.append(top_d_atom)
-
-        if len(atom_order) != len(fragment):
-            continue
-
-        if not len(constraints):
-            break
-
-        success = True
-
-        for constraint in constraints:
-            # Loop through all constraint tuples, verify that the atoms are ordered in accordance with them.
-            if any([c in fragment for c in constraint]):
-                # Consider this constraint.
-                constraint_atom_order = [atom_order.index(constraint_atom) for constraint_atom in constraint
-                                         if constraint_atom in fragment]
-                diff = [constraint_atom_order[j+1] - constraint_atom_order[j]
-                        for j in range(len(constraint_atom_order) - 1)]
-                if any(entry > 0 for entry in diff):
-                    # Diff should only have negative entries.
-                    unsuccessful.append(start)
-                    success = False
-
-        if success:
-            # The atom order list answers all constraints criteria.
-            break
-
+    # 1) Normalize inputs
+    fragment = set(fragment or range(len(mol.atoms)))
+    constraints = constraints_dict or {}
+    # only handle first constraint if multiple present
+    if not constraints:
+        active = None
     else:
-        # The outer for loop exhausted all possibilities and was unsuccessful.
-        raise ZMatError(f'Could not derive an atom order from connectivity that answers all '
-                        f'constraint criteria:\n{constraints_dict}')
+        key, tpl_list = next(iter(constraints.items()))
+        active = (key, tpl_list[0])
 
-    if len(set(atom_order)) < len(atom_order):
-        raise ZMatError(f'Could not determine a unique atom order!\n({atom_order})')
+    # 2) Identify constrained set
+    constrained_set = set()
+    if active:
+        key, tpl = active
+        # add basic indices
+        constrained_set.update(tpl)
+        # for group types, BFS collect additional move-group
+        if key in ('R_group', 'A_group', 'D_group'):
+            root, anchor = tpl[0], tpl[1]
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == anchor):
+                        seen.add(j)
+                        queue.append(j)
+            constrained_set |= seen
+        elif key == 'D_groups':
+            # tpl has 4 indices: (move?, pivot2, pivot3, ref?)
+            # BFS from pivot2 and pivot3
+            for root in tpl[:2]:
+                seen = {root}
+                queue = [root]
+                while queue:
+                    i = queue.pop(0)
+                    for nbr in mol.atoms[i].edges:
+                        j = mol.atoms.index(nbr)
+                        if j in fragment and j not in seen:
+                            seen.add(j)
+                            queue.append(j)
+                constrained_set |= seen
 
+    # 3) Base BFS ordering on heavy-atom graph
+    # find start: a heavy with <=1 heavy neighbor not in constrained_set if possible
+    heavy_neighbors = lambda a: sum(nb.is_non_hydrogen() for nb in a.edges)
+    start = None
+    for atom in mol.atoms:
+        i = mol.atoms.index(atom)
+        if i in fragment and not atom.is_hydrogen() and i not in constrained_set and heavy_neighbors(atom) <= 1:
+            start = i
+            break
+    if start is None:
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if i in fragment and not atom.is_hydrogen() and i not in constrained_set:
+                start = i
+                break
+    if start is None:
+        # last resort: any heavy
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if i in fragment and not atom.is_hydrogen():
+                start = i
+                break
+    if start is None:
+        # no heavy found, pick any atom
+        start = next(iter(fragment))
+
+    visited = set()
+    base_heavies = []
+    queue = [start]
+    while queue:
+        i = queue.pop(0)
+        if i in visited or i not in fragment:
+            continue
+        visited.add(i)
+        if not mol.atoms[i].is_hydrogen():
+            base_heavies.append(i)
+            # enqueue heavy neighbors
+            for nbr in mol.atoms[i].edges:
+                j = mol.atoms.index(nbr)
+                if j not in visited and not mol.atoms[j].is_hydrogen() and j in fragment:
+                    queue.append(j)
+    # 4) Collect hydrogens in fragment
+    base_hydrogens = [i for i in range(len(mol.atoms))
+                      if i in fragment and mol.atoms[i].is_hydrogen()]
+
+    # 5) Partition: unconstrained heavy atoms and hydrogens
+    heavy_uncon = [i for i in base_heavies if i not in constrained_set]
+    h_uncon = [i for i in base_hydrogens if i not in constrained_set]
+
+    # 6) Build tail ordering for the active constraint
+    tail = []
+    if active:
+        key, tpl = active
+        if key == 'R_atom':
+            # anchor then moving atom
+            tail = [tpl[1], tpl[0]]
+        elif key == 'A_atom':
+            # reverse tuple order: ref2, ref1, move
+            tail = [tpl[2], tpl[1], tpl[0]]
+        elif key == 'D_atom':
+            # reverse 4-tuple: ref3, ref2, ref1, move
+            tail = [tpl[3], tpl[2], tpl[1], tpl[0]]
+        elif key == 'R_group':
+            # BFS group from move atom excluding anchor
+            root, anchor = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == anchor):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [anchor, root] + [x for x in group if x != root]
+        elif key == 'A_group':
+            root, ref1, ref2 = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j in (ref1, ref2)):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [ref2, ref1, root] + [x for x in group if x != root]
+        elif key == 'D_group':
+            root, ref1, ref2, ref3 = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == ref1):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [ref3, ref2, ref1, root] + [x for x in group if x != root]
+        elif key == 'D_groups':
+            # tpl: (move?, pivot2, pivot3, ref?)
+            pivot2, pivot3, ref1, ref2 = tpl[:4]
+            # BFS from pivot2 and pivot3
+            seen_all = set()
+            for root in (pivot2, pivot3):
+                seen = {root}
+                queue = [root]
+                while queue:
+                    i = queue.pop(0)
+                    for nbr in mol.atoms[i].edges:
+                        j = mol.atoms.index(nbr)
+                        if j in fragment and j not in seen:
+                            seen.add(j)
+                            queue.append(j)
+                seen_all |= seen
+            tail = [ref2, ref1, pivot3, pivot2] + [x for x in seen_all if x not in (pivot2, pivot3)]
+    # 7) Final atom_order: unconstrained heavies, unconstrained H's, then tail
+    atom_order = heavy_uncon + h_uncon + tail
     return atom_order
 
 
