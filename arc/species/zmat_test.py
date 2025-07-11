@@ -9,6 +9,7 @@ import unittest
 
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -420,6 +421,17 @@ class TestZMat(unittest.TestCase):
         self.assertEqual(atom_order, [6, 7, 14, 15, 16, 17, 18, 5, 4, 3, 0, 1, 2, 8, 9, 10, 11, 12, 13])
         symbols = [self.chiral_chlorine['symbols'][atom_index] for atom_index in atom_order]
         self.assertEqual(symbols, ['C', 'O', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'Cl', 'H', 'H', 'H', 'H', 'H', 'H'])
+
+        xyz1 = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'),
+                'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
+                'coords': ((1.53830201, 0.86423425, 0.07482439), (0.94923576, -0.20847619, -0.03881977),
+                           (-0.56154542, -0.31516675, -0.05011465), (-1.18981166, 0.93489731, 0.17603211),
+                           (1.49712659, -1.15833718, -0.15458647), (-0.87737433, -0.70077243, -1.02287491),
+                           (-0.87053611, -1.01071746, 0.73427128), (-0.48610273, 1.61361259, 0.11915705))}
+        atom_order = zmat.get_atom_order_from_mol(
+            ARCSpecies(label='FA', smiles='O=CCO', xyz=xyz1).mol,
+            constraints_dict={'A_group': [(2, 1, 0)]})
+        self.assertEqual(atom_order, [4, 0, 1, 2, 3, 5, 6, 7])
 
         atom_order = zmat.get_atom_order_from_mol(
             ARCSpecies(label='chiral_chlorine', smiles='CC(Cl)CC=C(O)C', xyz=self.chiral_chlorine).mol,
