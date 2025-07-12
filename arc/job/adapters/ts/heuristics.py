@@ -485,13 +485,13 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
     zmat1 = zmat_from_xyz(xyz=xyz_1,
                           mol=mol_1,
                           is_ts=True,
-                          constraints={'A_group': [(h1, a, c)]} if c is not None else {'R_atom': [(h1, a)]},
+                          constraints={'A_group': [(h1, a, c)], 'R_atom': [(h1, a)]} if c is not None else {'R_atom': [(h1, a)]},
                           consolidate=False,
                           )
     zmat2 = zmat_from_xyz(xyz=xyz_2,
                           mol=mol_2,
                           is_ts=True,
-                          constraints={'A_group': [(d, b, h2)]} if d is not None else {'R_group': [(b, h2)]},
+                          constraints={'A_group': [(d, b, h2)], 'R_group': [(b, h2)]} if d is not None else {'R_group': [(b, h2)]},
                           consolidate=False,
                           )
     return zmat1, zmat2
