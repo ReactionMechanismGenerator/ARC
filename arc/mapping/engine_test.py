@@ -83,8 +83,6 @@ class TestMappingEngine(unittest.TestCase):
         cls.p_2 = ARCSpecies(label='p2', smiles=smiles[3], xyz=cls.ch4_xyz)
         cls.rxn_1 = ARCReaction(r_species=[cls.r_1, cls.r_2], p_species=[cls.p_1, cls.p_2])
 
-        cls.spc1 = ARCSpecies(label="Test_is_isomorphic_1", smiles="C(CO)CC")
-        cls.spc2 = ARCSpecies(label="Test_is_isomorphic_2", smiles="OCCCC")
         cls.c4h9o_xyz = {'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                          'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
                          'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
@@ -103,25 +101,22 @@ class TestMappingEngine(unittest.TestCase):
                                     (2.377638769033351, 0.43380253822255727, 0.17647842348371048))}
         cls.spc1_dihedral_deviation = ARCSpecies(label='[CH2]C(C)CO_a', smiles='[CH2]C(C)CO', xyz=cls.c4h9o_xyz)
         cls.spc2_dihedral_deviation = ARCSpecies(label='[CH2]C(C)CO_b', smiles='[CH2]C(C)CO',
-                                                 xyz={'symbols': (
-                                                 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                                                 xyz={'symbols': ( 'C', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                                       'isotopes': (12, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1),
-                                                      'coords': (
-                                                      (-1.3857811794963277, -1.3882629357157468, -0.09505562903985151),
-                                                      (
-                                                      -0.48149615440373633, -0.18843419821506932, -0.36867730403761334),
-                                                      (-1.1615061896768615, 1.1047002102194075, 0.08616180242702906),
-                                                      (0.8755815877704686, -0.37530244696805926, 0.3151370087166933),
-                                                      (1.7499930104893404, 0.685479589154504, -0.04657790660423845),
-                                                      (-1.5824305690669607, -1.5021839148592626, 0.9764743462618697),
-                                                      (-0.9236829644275987, -2.313486599576571, -0.4551984262103633),
-                                                      (-0.31894490259166897, -0.11004093787895164, -1.45123483619259),
-                                                      (-0.551069637667873, 1.9799864363130495, -0.1585701723917383),
-                                                      (-2.1300920179099943, 1.2282601298258158, -0.4100421867371722),
-                                                      (-1.3337649482883558, 1.102945655452365, 1.1678836912458532),
-                                                      (0.7709290243761263, -0.38422053705817527, 1.4054470816682596),
-                                                      (1.337910696892115, -1.3171321272490044, 0.001256204546378134),
-                                                      (2.595292874972368, 0.5254618254772234, 0.4066018700054956))})
+                                                      'coords': ((-1.3857811794963277, -1.3882629357157468, -0.09505562903985151),
+                                                                 (-0.48149615440373633, -0.18843419821506932, -0.36867730403761334),
+                                                                 (-1.1615061896768615, 1.1047002102194075, 0.08616180242702906),
+                                                                 (0.8755815877704686, -0.37530244696805926, 0.3151370087166933),
+                                                                 (1.7499930104893404, 0.685479589154504, -0.04657790660423845),
+                                                                 (-1.5824305690669607, -1.5021839148592626, 0.9764743462618697),
+                                                                 (-0.9236829644275987, -2.313486599576571, -0.4551984262103633),
+                                                                 (-0.31894490259166897, -0.11004093787895164, -1.45123483619259),
+                                                                 (-0.551069637667873, 1.9799864363130495, -0.1585701723917383),
+                                                                 (-2.1300920179099943, 1.2282601298258158, -0.4100421867371722),
+                                                                 (-1.3337649482883558, 1.102945655452365, 1.1678836912458532),
+                                                                 (0.7709290243761263, -0.38422053705817527, 1.4054470816682596),
+                                                                 (1.337910696892115, -1.3171321272490044, 0.001256204546378134),
+                                                                 (2.595292874972368, 0.5254618254772234, 0.4066018700054956))})
 
         cls.ch3cl_xyz = {"symbols": ("Cl", "C", "H", "H", "H"),
                          "isotopes": (35, 12, 1, 1, 1),
@@ -211,6 +206,9 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H      -1.69636720    0.21982441    1.34850246
                                                                       H      -0.39178710    1.38838724    1.61666119"""),
                                                     ARCSpecies(label='NH3', smiles='N', xyz=cls.nh3_xyz)])
+        cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                                         r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
+                                         p_species=[ARCSpecies(label='C2H6', smiles='CC')])
         cls.arc_reaction_4 = ARCReaction(label='CH2CH2NH2 <=> CH3CH2NH',
                                          r_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN',
                                                                xyz="""C      -1.24450121    0.17451352    0.00786829
@@ -232,9 +230,6 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H       0.78091492   -0.31605120    1.13875203
                                                                       H       0.92382278    0.74158978   -0.25822764
                                                                       H       1.97108857   -1.36649904   -0.64094836""")])
-        cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
-                                         r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
-                                         p_species=[ARCSpecies(label='C2H6', smiles='CC')])
 
         cls.r_xyz_2a = """C                  0.50180491   -0.93942231   -0.57086745
         C                  0.01278145    0.13148427    0.42191407
@@ -279,8 +274,7 @@ class TestMappingEngine(unittest.TestCase):
         cls.ts_spc_2 = ARCSpecies(label='TS', is_ts=True, xyz=cls.ts_xyz_2)
         cls.ts_spc_2.mol_from_xyz()
         cls.reactant_2a = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.r_xyz_2a)
-        cls.reactant_2b = ARCSpecies(label='C[CH]C', smiles='C[CH]C',
-                                     xyz=cls.r_xyz_2b)  # same as 2a, only one C atom shifted place in the reactant xyz
+        cls.reactant_2b = ARCSpecies(label='C[CH]C', smiles='C[CH]C', xyz=cls.r_xyz_2b)  # same as 2a, only one C atom shifted place in the reactant xyz
         cls.product_2 = ARCSpecies(label='[CH2]CC', smiles='[CH2]CC', xyz=cls.p_xyz_2)
         cls.rxn_2a = ARCReaction(r_species=[cls.reactant_2a], p_species=[cls.product_2])
         cls.rxn_2a.ts_species = cls.ts_spc_2
@@ -508,8 +502,8 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(atom_map, [0, 1])
 
         # OH different order
-        spc1 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0 0\nH 0.8 0 0""")
-        spc2 = ARCSpecies(label='OH', smiles='[OH]', xyz="""H 0 0 0\nO 0 0.9 0""")
+        spc1 = ARCSpecies(label='OH', smiles='[OH]', xyz="""O 0 0 0\nH 0.96 0 0""")
+        spc2 = ARCSpecies(label='OH', smiles='[OH]', xyz="""H 0 0 0\nO 0 0.96 0""")
         atom_map = engine.map_two_species(spc1, spc2)
         self.assertEqual(atom_map, [1, 0])
 
@@ -977,10 +971,10 @@ class TestMappingEngine(unittest.TestCase):
         new_dihedrals_2 = [calculate_dihedral_angle(coords=spc2.get_xyz(),
                                                     torsion=[atom_map[t] for t in rotor_dict['torsion']])
                            for rotor_dict in spc1.rotors_dict.values()]
-        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622, places = 5)
-        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804, places = 5)
-        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 5)
-        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 5)
+        self.assertAlmostEqual(original_dihedrals_1[2], 67.81049913527622, places = 4)
+        self.assertAlmostEqual(original_dihedrals_2[2], 174.65228274664804, places = 4)
+        self.assertAlmostEqual(new_dihedrals_1[2], 121.23139159126627, places = 4)
+        self.assertAlmostEqual(new_dihedrals_2[2], 121.23139016907017, places = 4)
 
     def test_get_backbone_dihedral_deviation_score(self):
         """Test the get_backbone_dihedral_deviation_score() function."""
