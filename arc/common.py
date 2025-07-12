@@ -662,7 +662,7 @@ def get_single_bond_length(symbol_1: str,
         return SINGLE_BOND_LENGTH[bond1]
     if bond2 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond2]
-    return 2.2
+    return 1.75
 
 
 def get_bonds_from_dmat(
