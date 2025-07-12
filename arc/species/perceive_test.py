@@ -1320,6 +1320,7 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertIn(mol.to_smiles(), ['[C]1=CC=C[CH]C1', '[C]1=C[CH]C=CC1', '[C]1C=CC=CC1'])
         self.assertEqual(mol.multiplicity, 1)
         self.assertEqual(mol.get_net_charge(), 0)
+        self.assertTrue(all(atom.radical_electrons == 0 for atom in mol.atoms))
 
 
 if __name__ == '__main__':
