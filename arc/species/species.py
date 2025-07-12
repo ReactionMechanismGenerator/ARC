@@ -51,7 +51,7 @@ from arc.species.converter import (check_isomorphism,
                                    xyz_from_data,
                                    xyz_to_str,
                                    )
-from arc.species.perceive import perceive_molecule_from_xyz, validate_atom_types
+from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
 
 logger = get_logger()
@@ -1583,7 +1583,7 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
                 if not self.keep_mol:
-                    if validate_atom_types(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
+                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
                         self.mol = perceived_mol
                     else:
                         try:
