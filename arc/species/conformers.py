@@ -1058,11 +1058,7 @@ def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
 
 def determine_well_width_tolerance(mean_width):
     """
-    Determine the tolerance by which well widths are determined to be nearly equal.
-
-    Fitted to a polynomial trendline for the following data of (mean, tolerance) pairs::
-
-        (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
+    Determine the tolerance by which well widths are determined to be nearly equal using a simple hyperbolic form.
 
     Args:
         mean_width (float): The mean well width in degrees.
@@ -1070,11 +1066,11 @@ def determine_well_width_tolerance(mean_width):
     Returns:
         float: The tolerance.
     """
-    if mean_width > 100:
-        return 0.1
-    tol = -1.695e-10 * mean_width ** 5 + 6.209e-8 * mean_width ** 4 - 8.855e-6 * mean_width ** 3 \
-        + 6.446e-4 * mean_width ** 2 - 2.610e-2 * mean_width + 0.6155
-    return tol
+    if mean_width <= 0:
+        raise ValueError("mean_width must be positive")
+    baseline = 1.0
+    scale = 2.0
+    return baseline + scale / mean_width
 
 
 def get_lowest_confs(label: str,
@@ -1663,7 +1659,7 @@ def check_special_non_rotor_cases(mol, top1, top2):
         bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N5tc'] \
                 and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
@@ -1685,7 +1681,7 @@ def find_internal_rotors(mol):
         if atom1.is_non_hydrogen():
             for atom2, bond in atom1.edges.items():
                 if atom2.is_non_hydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.is_single() or bond.is_hydrogen_bond()) and not mol.is_bond_in_cycle(bond):
+                        and bond.is_rotatable() and not mol.is_bond_in_cycle(bond):
                     if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # None of the pivotal atoms are terminal.
                         rotor = dict()
                         # pivots:
