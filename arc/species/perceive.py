@@ -456,6 +456,8 @@ def adjust_atoms_for_octet(
                 cores |= {10, 12}
             if sym == 'P':
                 cores |= {10}
+            if sym == 'C' and sum(e.order for e in a.edges.values()) == 2 and not has_rad:
+                cores.add(6)
         if has_rad:
             cores |= {c - 1 for c in cores if c > 1}
         return cores
