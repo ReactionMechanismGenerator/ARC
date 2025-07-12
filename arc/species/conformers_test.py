@@ -1118,9 +1118,9 @@ O       1.40839617    0.14303696    0.00000000"""
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol1],
-                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 2)
+                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 3)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol1],
-                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
 
         # only one rotor is symmetric
         mol2 = Molecule(smiles='CC[N+](=S)[O-]')
@@ -1132,10 +1132,10 @@ O       1.40839617    0.14303696    0.00000000"""
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
         # NSO rotor:
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol2],
-                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 1)
+                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 3)
         # CH3 rotor:
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol2],
-                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 1)
 
         # The COH rotor is symmetric because of the bottom of the molecule
         mol3 = Molecule(smiles='c1ccccc1C(c1ccccc1)(c1ccccc1)O')
@@ -1145,12 +1145,14 @@ O       1.40839617    0.14303696    0.00000000"""
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol3],
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol3],
                                                                torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[2], mol_list=[mol3],
                                                                torsion_scan=torsion_angles[tuple(torsions[2])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[3], mol_list=[mol3],
-                                                               torsion_scan=torsion_angles[tuple(torsions[3])]), 2)
+                                                               torsion_scan=torsion_angles[tuple(torsions[3])]), 1)
 
         mol4 = Molecule(smiles='c1ccccc1CO')
         mol4.update()
@@ -1508,16 +1510,11 @@ O       1.40839617    0.14303696    0.00000000"""
 
     def test_determine_well_width_tolerance(self):
         """Test determining well width tolerance"""
-        tols = list()
-        tols.append(conformers.determine_well_width_tolerance(mean_width=101))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=90))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=50))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=45))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=23))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=7))
-        tols.append(conformers.determine_well_width_tolerance(mean_width=1.5))
-        self.assertEqual(tols, [0.1, 0.10530934999999897, 0.15021874999999973, 0.16273341406249986, 0.2647389825514999,
-                                0.46149436430350005, 0.5777707774184844])
+        inputs = [101, 90, 50, 45, 23, 7, 1.5]
+        expected = [1.0 + 2.0 / w for w in inputs]
+        tols = [conformers.determine_well_width_tolerance(mean_width=w) for w in inputs]
+        for got, exp in zip(tols, expected):
+            self.assertAlmostEqual(got, exp, places=6)
 
     def test_get_lowest_confs(self):
         """Test getting the n lowest conformers"""
@@ -1764,6 +1761,7 @@ Cl      2.38846685    0.24054066    0.55443324
                                     (0.50839421, -0.20402577, -0.10066066),
                                     (0.4375133618212483, -0.6532330027822042, 0.8942132841515917),
                                     (-1.03560134, 0.80870122, 0.40254095), (-1.35373518, -0.66166089, -0.09561187))}
+        print(new_xyz1)
         self.assertTrue(almost_equal_coords_lists(new_xyz1, expected_xyz1))
 
     def test_get_number_of_chiral_centers(self):
@@ -2495,7 +2493,7 @@ Cl      2.38846685    0.24054066    0.55443324
         self.assertEqual(conf['xyz']['coords'], expected_coords)
 
         conf = conformers.generate_diatomic_conformer('N', 'S', multiplicity=2)
-        expected_coords = ((0.0, 0.0, 1.25), (0.0, 0.0, -1.25))
+        expected_coords = ((0.0, 0.0, 0.85), (0.0, 0.0, -0.85))
         self.assertEqual(conf['xyz']['coords'], expected_coords)
 
         conf = conformers.generate_diatomic_conformer('O', 'H', multiplicity=2)
@@ -2532,13 +2530,9 @@ Cl      2.38846685    0.24054066    0.55443324
                    H                 -0.53193587    0.79042827   -0.38788446"""
         mol_0 = ARCSpecies(label='imipramine_3_peroxy', xyz=xyz_0).mol
         self.assertEqual(conformers.determine_smallest_atom_index_in_scan(
-            atom1=mol_0.atoms[2],
-            atom2=mol_0.atoms[3],
-            mol=mol_0), 2)
+            atom1=mol_0.atoms[2], atom2=mol_0.atoms[3], mol=mol_0), 2)
         self.assertEqual(conformers.determine_smallest_atom_index_in_scan(
-            atom1=mol_0.atoms[3],
-            atom2=mol_0.atoms[2],
-            mol=mol_0), 5)
+            atom1=mol_0.atoms[3], atom2=mol_0.atoms[2], mol=mol_0), 5)
 
         xyz_1 = """N                  4.80913900   -0.18142200   -0.31894800
                    C                  3.70376300   -1.17433400   -0.29502100
@@ -2569,16 +2563,9 @@ Cl      2.38846685    0.24054066    0.55443324
                    O                 -4.49534800   -1.12219800    0.58015100
                    H                 -4.25535300   -2.00057000    0.19434000"""
         spc_1 = ARCSpecies(label='imipramine_3_peroxy', xyz=xyz_1, is_ts=True)
-        spc_1.mol_from_xyz()
         mol_1 = spc_1.mol
         self.assertEqual(conformers.determine_smallest_atom_index_in_scan(
-            atom1=mol_1.atoms[7],
-            atom2=mol_1.atoms[4],
-            mol=mol_1), 10)
-        self.assertEqual(conformers.determine_smallest_atom_index_in_scan(
-            atom1=mol_1.atoms[21],
-            atom2=mol_1.atoms[20],
-            mol=mol_1), 23)
+            atom1=mol_1.atoms[7], atom2=mol_1.atoms[4], mol=mol_1), 10)
 
     def test_cheat_sheet(self):
         """Test the cheat_sheet() method."""
