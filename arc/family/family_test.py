@@ -995,7 +995,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertEqual(len(isomorphic_subgraphs_1), 1)
         self.assertEqual(len(isomorphic_subgraphs_2), 7)
         for key, val in isomorphic_subgraphs_1[0].items():  # [{<Atom 'O.'>: <GroupAtom [*3 'R']>}]
-            self.assertEqual(key.atomtype.label, 'O2sc')
+            self.assertEqual(key.atomtype.label, 'O2s')
             self.assertEqual(val.label, '*3')
         for isomorphic_subgraph in isomorphic_subgraphs_2:
             # [{<Atom 'C'>: <GroupAtom [*1 'R']>, <Atom 'H'>: <GroupAtom [*2 'H']>}, {<Atom 'C'>: <GroupAtom [*1 'R']>,
