@@ -838,7 +838,7 @@ class TestARCReaction(unittest.TestCase):
         for index in [4, 5]:
             self.assertIn(rxn.atom_map[index], [0, 1])
         self.assertTrue(check_atom_map(rxn))
-
+    def test_3(self):  # fails
         # Intra_Disproportionation: C10H10_a <=> C10H10_b
         c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
                                    (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
