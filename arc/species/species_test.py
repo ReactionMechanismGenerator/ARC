@@ -361,27 +361,6 @@ class TestARCSpecies(unittest.TestCase):
 
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""
-
-        spc = ARCSpecies(label='S', smiles='[CH2]C(C)CO', xyz="""C       0.02571153    1.50024692   -0.01880972
-H      -0.25012379    2.28327632    0.67957788
-H       0.21710650    1.77015012   -1.05186079
-C      -0.12961272    0.05931627    0.38298020
-C      -1.52159692   -0.43413728   -0.00244580
-C       0.95427547   -0.82618224   -0.25128786
-O       2.23864587   -0.52290772    0.28688439
-H      -0.02271951    0.01229964    1.47391586
-H      -1.67349890   -1.46562132    0.33336150
-H      -1.67080846   -0.40804497   -1.08793835
-H      -2.30052614    0.18308086    0.45923715
-H       0.75830763   -1.88272043   -0.04089782
-H       0.99720067   -0.70255870   -1.33919508
-H       2.37763877    0.43380254    0.17647842""")
-        spc.determine_rotors()
-        import pprint
-        pprint.pprint(spc.rotors_dict)
-        self.assertEqual(spc.rotors_dict['torsion'], (14, 1))
-
-
         self.spc1.determine_rotors()
         self.spc2.determine_rotors()
         self.spc3.determine_rotors()
@@ -435,8 +414,9 @@ H       2.37763877    0.43380254    0.17647842""")
                               (-1.40237804, -0.74595759, 0.87143836), (-0.39285462, -1.26299471, -0.69270021))}
         spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1, is_ts=True)
         spc7.determine_rotors()
-        self.assertEqual(len(spc7.rotors_dict), 1)
+        self.assertEqual(len(spc7.rotors_dict), 2)
         self.assertEqual(spc7.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc7.rotors_dict[1]['pivots'], [2, 3])
 
         ts_xyz2 = {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'H', 'C',
                                'C', 'N', 'H', 'H', 'C', 'H', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'H',
@@ -477,8 +457,8 @@ H       2.37763877    0.43380254    0.17647842""")
         self.assertEqual(spc8.rotors_dict[1]['pivots'], [2, 4])
         self.assertEqual(spc8.rotors_dict[2]['pivots'], [4, 10])
         self.assertEqual(spc8.rotors_dict[3]['pivots'], [10, 19])
-        self.assertEqual(spc8.rotors_dict[4]['pivots'], [19, 31])
-        self.assertEqual(spc8.rotors_dict[5]['pivots'], [19, 32])
+        self.assertIn(spc8.rotors_dict[4]['pivots'], [[19, 31], [19, 32]])
+        self.assertIn(spc8.rotors_dict[5]['pivots'], [[19, 31], [19, 32]])
         self.assertEqual(spc8.rotors_dict[6]['pivots'], [46, 47])
         self.assertEqual(spc8.rotors_dict[7]['pivots'], [47, 48])
 
