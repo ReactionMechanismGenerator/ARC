@@ -745,9 +745,14 @@ def get_bonds_from_dmat(
                                 best_pair = (min(i, j), max(i, j))
             if best_pair is None:
                 break
-            bonds.add(best_pair)
-            frags = _fragments()
-            heavy_frags = [f for f in frags if any(elements[i] != 'H' for i in f)]
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+                heavy_frags = [f for f in frags if any(elements[k] != 'H' for k in f)]
+            else:
+                break
 
     # 3) hydrogen bonds
     if bond_lone_hydrogens:
@@ -795,26 +800,32 @@ def get_bonds_from_dmat(
                     bonds.add((min(i, j_min), max(i, j_min)))
                     used.update({i, j_min})
 
-    # 4) final bridging if still too many fragments
-    frags = _fragments()
-    while len(frags) > n_fragments:
-        best_pair, best_dist = None, float('inf')
-        for A in frags:
-            for B in frags:
-                if A is B:
-                    continue
-                for i in A:
-                    for j in B:
-                        # for multi‐fragments, avoid creating H‐heavy cross‐links
-                        if n_fragments > 1 and (elements[i] == 'H' or elements[j] == 'H'):
-                            continue
-                        if dmat[i, j] < best_dist:
-                            best_dist = dmat[i, j]
-                            best_pair = (min(i, j), max(i, j))
-        if best_pair is None:
-            break
-        bonds.add(best_pair)
+        # 4) final bridging if still too many fragments, but only within single‐bond limits
         frags = _fragments()
+        while len(frags) > n_fragments:
+            best_pair, best_dist = None, float('inf')
+            for A in frags:
+                for B in frags:
+                    if A is B:
+                        continue
+                    for i in A:
+                        for j in B:
+                            # skip H–heavy links when n_fragments>1
+                            if n_fragments > 1 and (elements[i] == 'H' or elements[j] == 'H'):
+                                continue
+                            d = dmat[i, j]
+                            if d < best_dist:
+                                best_dist, best_pair = d, (min(i, j), max(i, j))
+            if best_pair is None:
+                break
+
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+            else:
+                break
     return sorted(bonds)
 
 
