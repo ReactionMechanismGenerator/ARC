@@ -617,18 +617,23 @@ def get_element_mass(input_element: Union[int, str],
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from NH2OH, 'N+_N+' and 'N+_O-' are taken from N2O4.
 # 'H_H' was artificially modified from 0.74 to 1.0 since it collides quickly at 0.55.
-SINGLE_BOND_LENGTH = {'Br_Br': 2.29, 'Br_Cr': 1.94, 'Br_H': 1.41,
-                      'C_C': 1.54, 'C_Cl': 1.77, 'C_F': 1.35, 'C_H': 1.09, 'C_I': 2.13,
-                      'C_N': 1.47, 'C_O': 1.43, 'C_P': 1.87, 'C_S': 1.81, 'C_Si': 1.86,
-                      'Cl_Cl': 1.99, 'Cl_H': 1.27, 'Cl_N': 1.75, 'Cl_Si': 2.03, 'Cl_P': 2.03, 'Cl_S': 2.07, 'Cl_F': 1.57,
-                      'F_F': 1.42, 'F_H': 0.92, 'F_P': 1.57, 'F_S': 1.56, 'F_Si': 1.56, 'F_Xe': 1.90,
-                      'H_H': 1.0, 'H_I': 1.61, 'H_N': 1.04, 'H_O': 0.96, 'H_P': 1.42, 'H_S': 1.34, 'H_Si': 1.48,
+
+# C N P O S Si H F Cl Br I
+
+
+SINGLE_BOND_LENGTH = {'C_C': 1.54, 'C_N': 1.47, 'C_P': 1.87, 'C_O': 1.43, 'C_S': 1.81, 'C_Si': 1.94,
+                      'C_H': 1.09, 'C_F': 1.35, 'C_Cl': 1.77, 'C_Br': 1.91, 'C_I': 2.13,
+                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_P': 1.75, 'N_O': 1.44, 'N+1_O-1': 1.2, 'N_S': 1.7, 'N_Si': 1.87,
+                      'N_H': 1.04, 'N_F': 1.28, 'N_Cl': 1.75, 'N_Br': 1.84, 'N_I': 2.03,
+                      'P_P': 2.21, 'P_O': 1.63, 'P_S': 2.06, 'P_Si': 2.22, 'P_H': 1.42, 'P_F': 1.57, 'P_Cl': 2.03, 'P_Br': 2.19, 'P_I': 2.38,
+                      'O_O': 1.48, 'O_S': 1.67, 'O_Si': 1.66, 'O_H': 0.96, 'O_F': 1.24, 'O_Cl': 1.65, 'O_Br': 1.80, 'O_I': 2.00,
+                      'S_S': 2.05, 'S_Si': 2.18, 'S_H': 1.34, 'S_F': 1.55, 'S_Cl': 2.07, 'S_Br': 2.15, 'S_I': 2.34,
+                      'Si_Si': 2.35, 'Si_H': 1.48, 'Si_F': 1.75, 'Si_Cl': 2.03, 'Si_Br': 2.31, 'Si_I': 2.50,
+                      'H_H': 0.60, 'H_F': 0.92, 'H_Cl': 1.27, 'H_Br': 1.41, 'H_I': 1.63,
+                      'F_F': 1.42, 'F_Cl': 1.57, 'F_Br': 1.72, 'F_I': 1.91,
+                      'Cl_Cl': 1.99, 'Cl_Br': 2.13, 'Cl_I': 2.32,
+                      'Br_Br': 2.29, 'Br_I': 2.47,
                       'I_I': 2.66,
-                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_O': 1.44, 'N+1_O-1': 1.2, 'N_S': 1.7,
-                      'O_O': 1.48, 'O_P': 1.63, 'O_S': 1.58, 'O_Si': 1.66,
-                      'P_P': 2.21,
-                      'S_S': 2.05,
-                      'Si_Si': 2.35,
                       }
 
 
@@ -813,7 +818,7 @@ def get_bonds_from_dmat(
     return sorted(bonds)
 
 
-def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: bool = 1) -> Tuple[list, bool]:
+def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -823,7 +828,7 @@ def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', i
         mol (Molecule): The Molecule object to explore.
         atom1 (Atom): The pivotal atom in mol.
         atom2 (Atom): The beginning of the top relative to atom1 in mol.
-        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
+        index (int, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
 
     Returns: Tuple[list, bool]
         - The indices of the atoms in the top (either 0-index or 1-index, as requested).
