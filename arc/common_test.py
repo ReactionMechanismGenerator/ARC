@@ -615,6 +615,17 @@ class TestCommon(unittest.TestCase):
 
     def test_get_bonds_from_dmat(self):
         """test getting bonds from a distance matrix"""
+        dmat_1 = np.array([[0, 5, 2],
+                           [5, 0, 5],
+                           [2, 5, 0]])
+        dmat_bonds_1 = common.get_bonds_from_dmat(dmat=dmat_1, elements=['C', 'C', 'H'])
+        self.assertEqual(dmat_bonds_1, [(0, 2)])
+        dmat_2 = np.array([[0, 1, 2],
+                           [1, 0, 5],
+                           [2, 5, 0]])
+        dmat_bonds_2 = common.get_bonds_from_dmat(dmat=dmat_2, elements=['C', 'C', 'H'])
+        self.assertEqual(dmat_bonds_2, [(0, 1), (0, 2)])
+
         h2_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1), 'coords': ((0.0, 0.0, 0.371517), (0.0, 0.0, -0.371517))}
         bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(h2_xyz), elements=h2_xyz['symbols'])
         self.assertEqual(bonds, [(0, 1)])
@@ -832,7 +843,28 @@ class TestCommon(unittest.TestCase):
              0.7523699800467102, 2.5958884959836257, 3.673784860949396, 2.7650434189370765, 2.7359815651907393, 0.0]]
         bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_2, np.float64), elements=elements)
         self.assertTrue(common.check_that_all_entries_are_in_list(
-            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (1, 5), (5, 10)]))
+            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))
+
+        irc_1_xyz = converter.str_to_xyz(""" O                 -0.41278100    1.32451200    1.69341300
+                                             C                 -0.36012400    0.71815900    0.68711000
+                                             C                  0.07168300   -0.73373200    0.45498600
+                                             O                 -0.09882100   -1.07908500   -0.89888400
+                                             O                  0.69058000   -0.12998800   -1.65496000
+                                             H                  0.05586000    0.59945600   -1.74796200
+                                             H                  1.11467600   -0.83984800    0.77895200
+                                             H                 -0.57663000   -1.40626900    1.02593400""")
+        irc_2_xyz = converter.str_to_xyz(""" O                 -0.43783600    1.29437500    1.69860500
+                                             C                 -0.27875600    0.77603900    0.63081800
+                                             C                  0.05866100   -0.70395300    0.45930700
+                                             O                 -0.05939300   -1.06149500   -0.93456800
+                                             O                  0.65685500   -0.22958000   -1.67443200
+                                             H                 -0.35607400    1.32805100   -0.32564200
+                                             H                  1.08243900   -0.89713600    0.79060300
+                                             H                 -0.63911300   -1.34159000    1.00373600""")
+        bonds_1 = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(irc_1_xyz), elements=irc_1_xyz['symbols'])
+        self.assertEqual(bonds_1, [(0, 1), (1, 2), (2, 3), (2, 6), (2, 7), (3, 4), (4, 5)])
+        bonds_2 = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(irc_2_xyz), elements=irc_2_xyz['symbols'])
+        self.assertEqual(bonds_2, [(0, 1), (1, 2), (1, 5), (2, 3), (2, 6), (2, 7), (3, 4)])
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
@@ -1239,9 +1271,7 @@ class TestCommon(unittest.TestCase):
                                  H                  1.91768778   -0.65632897    0.00000000""",
                          fragments=[[0, 1, 2], [3, 4, 5]])
         visited = common.dfs(mol=spc.mol, start=0)
-        self.assertEqual(visited, [0, 1, 2])
-        visited = common.dfs(mol=spc.mol, start=4)
-        self.assertEqual(visited, [3, 4, 5])
+        self.assertEqual(visited, [0, 1, 2, 3, 4, 5])
 
         mol = Molecule(smiles='CC(CC)C.C')
         visited = common.dfs(mol=mol, start=0)
