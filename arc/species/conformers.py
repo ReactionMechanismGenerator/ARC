@@ -1058,11 +1058,7 @@ def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
 
 def determine_well_width_tolerance(mean_width):
     """
-    Determine the tolerance by which well widths are determined to be nearly equal.
-
-    Fitted to a polynomial trendline for the following data of (mean, tolerance) pairs::
-
-        (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
+    Determine the tolerance by which well widths are determined to be nearly equal using a simple hyperbolic form.
 
     Args:
         mean_width (float): The mean well width in degrees.
@@ -1070,11 +1066,11 @@ def determine_well_width_tolerance(mean_width):
     Returns:
         float: The tolerance.
     """
-    if mean_width > 100:
-        return 0.1
-    tol = -1.695e-10 * mean_width ** 5 + 6.209e-8 * mean_width ** 4 - 8.855e-6 * mean_width ** 3 \
-        + 6.446e-4 * mean_width ** 2 - 2.610e-2 * mean_width + 0.6155
-    return tol
+    if mean_width <= 0:
+        raise ValueError("mean_width must be positive")
+    baseline = 1.0
+    scale = 2.0
+    return baseline + scale / mean_width
 
 
 def get_lowest_confs(label: str,
