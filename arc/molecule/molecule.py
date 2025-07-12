@@ -811,8 +811,7 @@ class Bond(Edge):
 
     def is_van_der_waals(self):
         """
-        Return ``True`` if the bond represents a van der Waals bond or 
-        ``False`` if not.
+        Return ``True`` if the bond represents a van der Waals bond or  ``False`` if not.
         """
         return self.is_order(0)
 
@@ -828,64 +827,61 @@ class Bond(Edge):
 
     def is_single(self):
         """
-        Return ``True`` if the bond represents a single bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a single bond or ``False`` if not.
         """
         return self.is_order(1)
 
+    def is_rotatable(self):
+        """
+        Return ``True`` if the bond is rotatable or ``False`` if not.
+        """
+        return self.is_order(1) or self.is_order(0) or self.is_order(0.1) or self.is_order(0.05)
+
     def is_double(self):
         """
-        Return ``True`` if the bond represents a double bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a double bond or ``False`` if not.
         """
         return self.is_order(2)
 
     def is_triple(self):
         """
-        Return ``True`` if the bond represents a triple bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a triple bond or ``False`` if not.
         """
         return self.is_order(3)
 
     def is_quadruple(self):
         """
-        Return ``True`` if the bond represents a quadruple bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a quadruple bond or ``False`` if not.
         """
         return self.is_order(4)
 
     def is_double_or_triple(self):
         """
-        Return ``True`` if the bond represents a double or triple bond or ``False``
-        if not.
+        Return ``True`` if the bond represents a double or triple bond or ``False`` if not.
         """
         return self.is_order(2) or self.is_order(3)
 
     def is_benzene(self):
         """
-        Return ``True`` if the bond represents a benzene bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a benzene bond or ``False`` if not.
         """
         return self.is_order(1.5)
 
     def is_hydrogen_bond(self):
         """
-        Return ``True`` if the bond represents a hydrogen bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a hydrogen bond or ``False`` if not.
         """
         return self.is_order(0.1)
 
     def is_reaction_bond(self):
         """
-        Return ``True`` if the bond represents a reaction bond or ``False`` if
-        not.
+        Return ``True`` if the bond represents a reaction bond or ``False`` if not.
         """
         return self.is_order(0.05)
     
     def increment_order(self):
         """
-        Update the bond as a result of applying a CHANGE_BOND action to
-        increase the order by one.
+        Update the bond as a result of applying a CHANGE_BOND action to increase the order by one.
         """
         if self.order <= 3.0001:
             self.order += 1
@@ -895,8 +891,7 @@ class Bond(Edge):
 
     def decrement_order(self):
         """
-        Update the bond as a result of applying a CHANGE_BOND action to
-        decrease the order by one.
+        Update the bond as a result of applying a CHANGE_BOND action to decrease the order by one.
         """
         if self.order >= 0.9999:
             self.order -= 1
@@ -1230,13 +1225,31 @@ class Molecule(Graph):
             if bond.is_van_der_waals():
                 self.remove_bond(bond)
 
+    def remove_rotatable_bonds(self):
+        """
+        Remove all rotatable bonds.
+        """
+        cython.declare(bond=Bond)
+        for bond in self.get_all_edges():
+            if bond.is_rotatable():
+                self.remove_bond(bond)
+
+    def remove_rotatable_non_single_bonds(self):
+        """
+        Remove all rotatable bonds.
+        """
+        cython.declare(bond=Bond)
+        for bond in self.get_all_edges():
+            if bond.is_order(0) or bond.is_order(0.1) or bond.is_order(0.05):
+                self.remove_bond(bond)
+
     def sort_atoms(self):
         """
         Sort the atoms in the graph. This can make certain operations, e.g.
         the isomorphism functions, much more efficient.
 
         This function orders atoms using several attributes in atom.getDescriptor().
-        Currently it sorts by placing heaviest atoms first and hydrogen atoms last.
+        Currently, it sorts by placing heaviest atoms first and hydrogen atoms last.
         Placing hydrogens last during sorting ensures that functions with hydrogen
         removal work properly.
         """
@@ -1250,7 +1263,6 @@ class Molecule(Graph):
             vertex.sorting_label = index
 
     def update_charge(self):
-
         for atom in self.atoms:
             atom.update_charge()
 
@@ -1261,7 +1273,6 @@ class Molecule(Graph):
         Does not necessarily update the connectivity values (which are used in isomorphism checks)
         If you need that, call update_connectivity_values()
         """
-
         self.update_lone_pairs()
         self.update_charge()
         self.update_atomtypes(log_species=log_species, raise_exception=raise_atomtype_exception)
@@ -2003,7 +2014,9 @@ class Molecule(Graph):
         While converting to an RDMolecule it will perceive aromaticity
         and removes Hydrogen atoms.
         """
-        return translator.to_smiles(self.copy(deep=True))
+        mol_copy = self.copy(deep=True)
+        mol_copy.remove_rotatable_non_single_bonds()
+        return translator.to_smiles(mol_copy)
 
     def to_rdkit_mol(self, *args, **kwargs):
         """

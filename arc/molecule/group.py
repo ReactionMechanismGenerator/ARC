@@ -907,11 +907,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 1) <= 1e-9:
+                if abs(order - 1) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 1) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 1) <= 1e-6 and len(self.order) == 1
 
     def is_double(self, wildcards=False):
         """
@@ -922,11 +922,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 2) <= 1e-9:
+                if abs(order - 2) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 2) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 2) <= 1e-6 and len(self.order) == 1
 
     def is_triple(self, wildcards=False):
         """
@@ -937,11 +937,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 3) <= 1e-9:
+                if abs(order - 3) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 3) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 3) <= 1e-6 and len(self.order) == 1
 
     def is_quadruple(self, wildcards=False):
         """
@@ -952,11 +952,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 4) <= 1e-9:
+                if abs(order - 4) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 4) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 4) <= 1e-6 and len(self.order) == 1
 
     def is_van_der_waals(self, wildcards=False):
         """
@@ -967,11 +967,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order[0]) <= 1e-9:
+                if abs(order[0]) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0]) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0]) <= 1e-6 and len(self.order) == 1
 
 
     def is_reaction_bond(self, wildcards=False):
@@ -983,11 +983,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order[0] - 0.05) <= 1e-9:
+                if abs(order[0] - 0.05) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0]-0.05) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0]-0.05) <= 1e-6 and len(self.order) == 1
 
     def is_benzene(self, wildcards=False):
         """
@@ -998,11 +998,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 1.5) <= 1e-9:
+                if abs(order - 1.5) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 1.5) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 1.5) <= 1e-6 and len(self.order) == 1
 
     def is_hydrogen_bond(self, wildcards=False):
         """
@@ -1013,11 +1013,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 0.1) <= 1e-9:
+                if abs(order - 0.1) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 0.1) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 0.1) <= 1e-6 and len(self.order) == 1
 
     def is_reaction_bond(self, wildcards=False):
         """
@@ -1028,11 +1028,11 @@ class GroupBond(Edge):
         """
         if wildcards:
             for order in self.order:
-                if abs(order - 0.05) <= 1e-9:
+                if abs(order - 0.05) <= 1e-6:
                     return True
-                return False
+            return False
         else:
-            return abs(self.order[0] - 0.05) <= 1e-9 and len(self.order) == 1
+            return abs(self.order[0] - 0.05) <= 1e-6 and len(self.order) == 1
 
     def _change_bond(self, order):
         """

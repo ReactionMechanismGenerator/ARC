@@ -281,7 +281,7 @@ cdef class Graph(object):
         del edge.vertex1.edges[edge.vertex2]
         del edge.vertex2.edges[edge.vertex1]
 
-    cpdef Graph copy(self, bint deep=True):
+    cpdef Graph copy(self, bint deep=False):
         """
         Create a copy of the current graph. If `deep` is ``True``, a deep copy
         is made: copies of the vertices and edges are used in the new graph.

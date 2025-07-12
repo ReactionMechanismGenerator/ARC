@@ -108,6 +108,8 @@ cdef class Bond(Edge):
 
     cpdef bint is_single(self) except -2
 
+    cpdef bint is_rotatable(self) except -2
+
     cpdef bint is_double(self) except -2
 
     cpdef bint is_triple(self) except -2
@@ -160,6 +162,10 @@ cdef class Molecule(Graph):
     cpdef remove_bond(self, Bond bond)
 
     cpdef remove_van_der_waals_bonds(self)
+
+    cpdef remove_rotatable_bonds(self)
+
+    cpdef remove_rotatable_non_single_bonds(self)
 
     cpdef sort_atoms(self)
     
