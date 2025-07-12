@@ -14,10 +14,11 @@ from arc.parser.parser import parse_geometry
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz
 from arc.species.perceive import (
-    validate_xyz,
+    get_representative_resonance_structure,
     infer_multiplicity,
     perceive_molecule_from_xyz,
-    get_representative_resonance_structure,
+    validate_xyz,
+    xyz_to_str,
 )
 from arc.molecule.molecule import Molecule
 
@@ -233,6 +234,15 @@ class TestPerceive(unittest.TestCase):
                                     (0.97386, -0.704577, -0.082293),
                                     (0.712813, 0.732272, 0.947293),
                                     )}
+        cls.xyz_change_chirality = {'coords': ((1.38346248, 1.33352376, 0.05890374),
+                                               (0.4240511, -0.73855006, 1.08316776),
+                                               (-0.85054134, 0.17787474, -0.37480771),
+                                               (0.50839421, -0.20402577, -0.10066066),
+                                               (0.92397006, -0.715863, -0.97353222),
+                                               (-1.03560134, 0.80870122, 0.40254095),
+                                               (-1.35373518, -0.66166089, -0.09561187)),
+                                    'isotopes': (35, 16, 14, 12, 1, 1, 1),
+                                    'symbols': ('Cl', 'O', 'N', 'C', 'H', 'H', 'H')}
 
     def test_validate_xyz(self):
         """
@@ -255,6 +265,17 @@ class TestPerceive(unittest.TestCase):
         self.assertEqual(infer_multiplicity(['O', 'H'], total_charge=0), 2)
         # OH– has 8 + 1 – 1 = 8 electrons → singlet
         self.assertEqual(infer_multiplicity(['O', 'H'], total_charge=-1), 1)
+
+    def test_xyz_to_str(self):
+        """Test that the XYZ dictionary can be converted to a string format."""
+        xyz_str = xyz_to_str(self.xyz_methane)
+        expected_str = """C       0.49999999    0.25000000    0.00000000
+H       0.85665442   -0.75881001    0.00000000
+H       0.85667283    0.75439819    0.87365150
+H       0.85667283    0.75439819   -0.87365150
+H      -0.57000001    0.25001318    0.00000000"""
+        self.assertEqual(xyz_str, expected_str)
+
 
     def test_perceive_methane(self):
         """
@@ -398,36 +419,8 @@ class TestPerceive(unittest.TestCase):
         for atom, symbol in zip(spc_1c.mol.atoms, str_to_xyz(xyz_1)['symbols']):
             self.assertEqual(atom.element.symbol, symbol)
 
-        xyz_2 = """C                 -2.51318049    1.66437682   -0.12429046
-                   H                 -2.17735851    2.12340912   -1.03060881
-                   C                 -2.24401241   -0.40895543    1.26395978
-                   H                 -1.83264093    0.10974195    2.10457059
-                   C                 -3.74528856   -0.61942329    1.53501921
-                   H                 -3.86901513   -1.20056483    2.42488788
-                   H                 -4.18823411   -1.13438041    0.70826750
-                   C                 -0.49310400    0.28833039    0.10762916
-                   H                  0.06876716    0.65157308   -0.72738913
-                   C                 -1.51111192   -1.69408386    0.97039679
-                   H                 -1.43362236   -2.41601335    1.75634411
-                   C                 -0.15109129   -1.18416211    0.46265774
-                   H                  0.13465720   -1.82773446   -0.34298638
-                   O                 -4.38200252    0.65002180    1.70236470
-                   H                 -5.31786297    0.51882105    1.87133681
-                   O                 -2.08793659    2.44868306    0.99326551
-                   H                 -2.45951746    3.33119970    0.92476709
-                   S                 -0.67937159    2.74456569    0.94010289
-                   H                 -0.42608596    3.49914455    1.98056295
-                   F                  0.85940541   -1.13650921    1.35659601
-                   Cl                -2.38968049   -2.41989730   -0.37083851
-                   Br                -4.41991262    1.55325325   -0.13543283
-                   N                 -0.20888272    1.13507155    1.27516831
-                   H                  0.77051465    1.10890756    1.47540875
-                   N                 -1.94419730    0.31302321   -0.01940226"""
-        spc_2 = ARCSpecies(label='S', smiles='BrC(O)N1C(CO)C(Cl)C(F)C1NS', xyz=xyz_2)
-        for atom, symbol in zip(spc_2.mol.atoms, str_to_xyz(xyz_2)['symbols']):
-            self.assertEqual(atom.element.symbol, symbol)
-        mol_2 = perceive_molecule_from_xyz(xyz_2)
-        for atom, symbol in zip(mol_2.atoms, str_to_xyz(xyz_2)['symbols']):
+        spc_2 = ARCSpecies(label='chiral1', smiles='[O]C(N)Cl', xyz=self.xyz_change_chirality)
+        for atom, symbol in zip(spc_2.mol.atoms, self.xyz_change_chirality['symbols']):
             self.assertEqual(atom.element.symbol, symbol)
 
         xyz_3 = """N                 -3.40822517   -1.32794120   -0.00037479
@@ -445,6 +438,49 @@ class TestPerceive(unittest.TestCase):
         mol_3 = perceive_molecule_from_xyz(xyz_3)
         for atom, symbol in zip(mol_3.atoms, str_to_xyz(xyz_3)['symbols']):
             self.assertEqual(atom.element.symbol, symbol)
+
+        xyz_4 = """N                  4.80913900   -0.18142200   -0.31894800
+                   C                  3.70376300   -1.17433400   -0.29502100
+                   C                  2.45778600   -0.74850100    0.50058600
+                   H                  4.10978900   -2.11991000    0.13095600
+                   C                  1.62116900    0.29476100   -0.25698800
+                   H                  1.84074900   -1.64060500    0.72043500
+                   H                  2.74746400   -0.34556500    1.49184900
+                   N                  0.56572800    0.83928800    0.66053500
+                   H                  2.27298300    1.13086100   -0.58875700
+                   C                 -0.58051700   -0.06632200    0.80490800
+                   C                  0.13746100    2.21077400    0.25626800
+                   H                 -1.35936800    0.37327500    1.45247800
+                   H                 -0.25811600   -1.06042800    1.17657000
+                   H                 -0.49831100    2.63509900    1.05018600
+                   H                 -0.43367100    2.23564600   -0.68857500
+                   H                  1.01817400    2.86272700    0.15917800
+                   H                  5.11146200    0.04022000    0.62542100
+                   H                  4.49938400    0.69076900   -0.73712200
+                   H                  3.43073500   -1.40966400   -1.34806700
+                   H                  1.18593500   -0.15003100   -1.17952600
+                   O                 -1.18790200   -0.45549200   -0.48823800
+                   O                 -2.01122000    0.48874300   -0.93507100
+                   H                 -3.16340600    0.19846300   -0.51358000
+                   C                 -4.45612600   -0.13163000   -0.38252500
+                   H                 -4.89014100    0.77163700    0.03528500
+                   H                 -4.72782500   -0.41388400   -1.39028500
+                   O                 -4.49534800   -1.12219800    0.58015100
+                   H                 -4.25535300   -2.00057000    0.19434000"""
+        spc_4 = ARCSpecies(label='imipramine_3_peroxy', is_ts=True, xyz=xyz_4)
+        for atom, symbol in zip(spc_4.mol.atoms, str_to_xyz(xyz_4)['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+
+        xyz_5 = {'symbols': ('O', 'C', 'N', 'C', 'H', 'H', 'H', 'H'),
+                   'isotopes': (16, 12, 14, 12, 1, 1, 1, 1),
+                   'coords': ((-1.46891188, 0.4782021, -0.74907357), (-0.77981513, -0.5067346, 0.0024359),
+                              (0.86369081, 0.1484285, 0.8912832), (1.78225246, 0.27014716, 0.17691),
+                              (2.61878546, 0.38607062, -0.47459418), (-1.62732717, 1.19177937, -0.10791543),
+                              (-1.40237804, -0.74595759, 0.87143836), (-0.39285462, -1.26299471, -0.69270021))}
+        spc_5 = ARCSpecies(label='TS', is_ts=True, xyz=xyz_5)
+        for atom, symbol in zip(spc_5.mol.atoms, xyz_5['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+
 
     def test_crazy_oxy_s_with_n(self):
         """
@@ -766,11 +802,23 @@ class TestPerceive(unittest.TestCase):
         Test that perceiving resonating radicals works.
         """
         # allyl radical
-        mol = perceive_molecule_from_xyz(ARCSpecies(label='allyl', smiles='C=C[C]C').get_xyz(), multiplicity=2, charge=0)
+        mol = perceive_molecule_from_xyz(ARCSpecies(label='allyl', smiles='C=C[CH]C').get_xyz(), multiplicity=2, charge=0)
         self.assertIsInstance(mol, Molecule)
         self.assertEqual(mol.multiplicity, 2)
         self.assertEqual(mol.get_net_charge(), 0)
-        self.assertIn(mol.to_smiles(), ['C=C[C]C', 'C=C[CH]C'])
+        self.assertIn(mol.to_smiles(), ['C=C[CH]C', '[CH2]C=CC'])
+
+        mol = perceive_molecule_from_xyz(ARCSpecies(label='allyl', smiles='C=C[C]C').get_xyz(), multiplicity=3, charge=0)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(mol.multiplicity, 3)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertIn(mol.to_smiles(), ['C=C[C]C', '[CH2]C=[C]C'])
+
+        mol = perceive_molecule_from_xyz(ARCSpecies(label='allyl', smiles='C=C[O]').get_xyz(), multiplicity=2, charge=0)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(mol.multiplicity, 2)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertIn(mol.to_smiles(), ['C=C[O]', '[CH2]C=O'])
 
     def test_birad_singlet(self):
         """
@@ -1224,14 +1272,17 @@ class TestPerceive(unittest.TestCase):
                        Cl      1.53982436   -0.20497454   -0.07627978
                        H      -0.44636405    0.99591988   -0.13447493"""
         mol = perceive_molecule_from_xyz(xyz_nhfcl, charge=0, multiplicity=1, n_fragments=1)
-        self.assertIn(mol.to_smiles(), 'FNCl')
+        self.assertIn(mol.to_smiles(), ['FNCl'])
 
 
         xyz_nfcl = """N      -0.17697493    0.58788903    0.00000000
                       F      -1.17300047   -0.36581404    0.00000000
                       Cl      1.34997541   -0.22207499    0.00000000"""
         mol = perceive_molecule_from_xyz(xyz_nfcl, charge=0, multiplicity=2, n_fragments=1)
-        self.assertIn(mol.to_smiles(), 'F[N]Cl')
+        self.assertIn(mol.to_smiles(), ['F[N]Cl'])
+
+        mol = perceive_molecule_from_xyz(self.xyz_change_chirality, charge=0, multiplicity=2, n_fragments=1)
+        self.assertIn(mol.to_smiles(), ['[O]C(N)Cl', 'NC(Cl)[O]'])
 
 
 if __name__ == '__main__':
