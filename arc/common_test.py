@@ -605,10 +605,13 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('C', 'C'), 1.54)
         self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
         self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
-        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.2)
+        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.22)
         self.assertEqual(common.get_single_bond_length('N', 'N'), 1.45)
         self.assertEqual(common.get_single_bond_length('N', 'N', 1, 1), 1.81)
         self.assertEqual(common.get_single_bond_length('N', 'O', 1, -1), 1.2)
+        self.assertEqual(common.get_single_bond_length('N', 'N', 1, 0), 1.45)
+        self.assertEqual(common.get_single_bond_length('N', 'N', 0, -1), 1.45)
+        self.assertEqual(common.get_single_bond_length('Xx', 'Yy'), 1.75)  # default value for unknown elements
 
     def test_get_bonds_from_dmat(self):
         """test getting bonds from a distance matrix"""
