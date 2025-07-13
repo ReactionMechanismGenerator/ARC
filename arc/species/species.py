@@ -958,9 +958,9 @@ class ARCSpecies(object):
                 try:
                     self.mol = Molecule().from_adjacency_list(adjlist=yml_content['adjacency_list'],
                                                               raise_atomtype_exception=False)
-                except ValueError:
+                except ValueError as e:
                     print(f"Could not read adjlist:\n{yml_content['adjacency_list']}")  # should *not* be logging
-                    raise
+                    raise e
             elif yml_content.get('inchi', None):
                 self.mol = Molecule().from_inchi(inchistr=yml_content['inchi'], raise_atomtype_exception=False)
             elif yml_content.get('smiles', None):
@@ -1741,7 +1741,7 @@ class ARCSpecies(object):
             dipoleMoment=(dipole_moment, 'De'),
             polarizability=polar,
             rotrelaxcollnum=2,  # rotational relaxation collision number at 298 K
-            comment=comment
+            comment=comment,
         )
 
     def check_xyz_isomorphism(self,
@@ -2080,6 +2080,18 @@ class ARCSpecies(object):
         If self.fragments is None, assume a single fragment.
         """
         return 1 if self.fragments is None else len(self.fragments)
+
+    def get_bonds(self) -> List[tuple]:
+        """
+        Generate a list of length-2 tuples indicating the bonding atoms in the molecule.
+        Returns:
+            list: A list of length-2 tuples indicating the bonding atoms.
+        """
+        bonds = list()
+        for atom1 in self.mol.atoms:
+            for atom2, bond12 in atom1.edges.items():
+                bonds.append(tuple(sorted((self.mol.atoms.index(atom1), self.mol.atoms.index(atom2)))))
+        return list(set(bonds))
 
 
 class TSGuess(object):
