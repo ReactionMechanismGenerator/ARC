@@ -584,6 +584,28 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertEqual(mol.get_net_charge(), 0)
         self.assertEqual(mol.to_smiles(), '[O]N=C')
 
+    def test_ono_xyz(self):
+        """Test perceiving CC[N+](=O)[O-]"""
+        c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
+                         N                  0.43574593    0.41740669    0.07732982
+                         O                  1.34135576   -0.35713755    0.18815532
+                         C                 -0.87783860    0.10001361    0.65582554
+                         C                 -1.73002357   -0.64880063   -0.38564362
+                         H                 -1.37248469    1.00642547    0.93625873
+                         H                 -0.74723653   -0.51714586    1.52009245
+                         H                 -1.23537748   -1.55521250   -0.66607681
+                         H                 -2.68617014   -0.87982825    0.03543830
+                         H                 -1.86062564   -0.03164117   -1.24991054"""
+        mol = perceive_molecule_from_xyz(str_to_xyz(c2h5no2_xyz),
+                                                    multiplicity=1,
+                                                    charge=0)
+        self.assertEqual(mol.get_net_charge(), 0)
+        smiles = mol.to_smiles()
+        self.assertIn('[N+]', smiles)
+        self.assertIn('[O-]', smiles)
+        self.assertIn('=O', smiles)
+        self.assertEqual([atom.element.symbol for atom in mol.atoms], ['O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'])
+
     def test_h2so4(self):
         """
         Test that perceiving H2SO4 works.
