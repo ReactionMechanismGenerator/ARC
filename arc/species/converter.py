@@ -1550,14 +1550,14 @@ def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
         atoms = mol.atoms
     except AttributeError:
         return None
-    atom_mapping = dict()
+    new_atoms_dict = dict()
     for atom in atoms:
-        new_atom = new_mol.add_atom(Atom(atom.element))
-        atom_mapping[atom] = new_atom
-    for atom1 in atoms:
-        for atom2 in atom1.bonds.keys():
-            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].get_order_num()
-            bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
+        new_atom = new_mol.add_atom(Atom(element=atom.element))
+        new_atoms_dict[atom] = new_atom
+    for atom_1 in atoms:
+        for atom_2 in atom_1.bonds.keys():
+            bond_order = 1.0 if to_single_bonds else atom_1.bonds[atom_2].get_order_num()
+            bond = Bond(new_atoms_dict[atom_1], new_atoms_dict[atom_2], bond_order)
             new_mol.add_bond(bond)
     try:
         new_mol.update_atomtypes(raise_exception=False)
