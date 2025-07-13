@@ -533,7 +533,7 @@ class TestTSChecks(unittest.TestCase):
 
     def test_invalidate_rotors_with_both_pivots_in_a_reactive_zone(self):
         """Test the invalidate_rotors_with_both_pivots_in_a_reactive_zone() function."""
-        ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1)
+        ts_spc_1 = ARCSpecies(label='TS', is_ts=True, xyz=self.ts_xyz_1, multiplicity=2)
         ts_spc_1.mol_from_xyz()
         ts_spc_1.determine_rotors()
         # Manually add the rotor that breaks the TS, it is not identified automatically:
@@ -677,8 +677,7 @@ class TestTSChecks(unittest.TestCase):
                     H                  1.08243900   -0.89713600    0.79060300
                     H                 -0.63911300   -1.34159000    1.00373600"""
         rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='O=[C]COO', xyz=xyz_1)],
-                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)],
-                          )
+                          p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
         ts.check_irc_species_and_rxn(xyz_1=parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')),
