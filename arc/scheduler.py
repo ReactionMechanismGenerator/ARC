@@ -2491,7 +2491,7 @@ class Scheduler(object):
                     if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
-                                 checks=['freq'],
+                                 checks=['NMD'],
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
@@ -2592,9 +2592,7 @@ class Scheduler(object):
                     before_optimization=False,
                 )
                 if not self.testing:
-                    # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                # Set the ts_checks attribute of the TS species:
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
