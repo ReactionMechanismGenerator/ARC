@@ -510,13 +510,9 @@ def check_irc_species_and_rxn(xyz_1: dict,
     dmat_1, dmat_2 = xyz_to_dmat(xyz_1), xyz_to_dmat(xyz_2)
     dmat_bonds_1 = get_bonds_from_dmat(dmat=dmat_1,
                                        elements=xyz_1['symbols'],
-                                       tolerance=1.5,
-                                       bond_lone_hydrogens=False,
                                        )
     dmat_bonds_2 = get_bonds_from_dmat(dmat=dmat_2,
                                        elements=xyz_2['symbols'],
-                                       tolerance=1.5,
-                                       bond_lone_hydrogens=False,
                                        )
     r_bonds, p_bonds = rxn.get_bonds()
     if _check_equal_bonds_list(dmat_bonds_1, r_bonds) and _check_equal_bonds_list(dmat_bonds_2, p_bonds) \
