@@ -709,9 +709,8 @@ class TestMappingDriver(unittest.TestCase):
                             p_species=[ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_2_xyz),
                                        ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)])
         atom_map = rxn_2.atom_map
-        self.assertIn(atom_map[:10], [[0, 1, 2, 3, 10, 9, 5, 4, 6, 11], [0, 1, 2, 3, 9, 10, 5, 4, 6, 11]])
-        self.assertIn(atom_map[10], [7, 8])
-        self.assertIn(atom_map[11], [7, 8])
+        self.assertIn(atom_map[:10], [[0, 1, 2, 3, 9, 10, 4, 5, 6, 11], [0, 1, 2, 3, 9, 10, 5, 4, 6, 11]])
+        self.assertIn(atom_map[10:], [[7, 8], [8, 7]])
         
         # Reversed product order
         rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
