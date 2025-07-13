@@ -2079,7 +2079,10 @@ class ARCSpecies(object):
         Return the total number of fragments represented by this species.
         If self.fragments is None, assume a single fragment.
         """
-        return 1 if self.fragments is None else len(self.fragments)
+        if self.is_ts:
+            return 2 if self.fragments is None else len(self.fragments)
+        else:
+            return 1 if self.fragments is None else len(self.fragments)
 
     def get_bonds(self) -> List[tuple]:
         """
@@ -2741,25 +2744,25 @@ def are_coords_compliant_with_graph(xyz: dict,
 
 def colliding_atoms(xyz: dict,
                     mol: Optional[Molecule] = None,
-                    threshold: float = 0.55,
+                    threshold: float = 0.60,
                     ) -> bool:
     """
-        Check whether atoms are too close to each other.
-        A default threshold of 55% the covalent radii of two atoms is used.
-        For example:
-        - C-O collide at 55% * 1.42 A = 0.781 A
-        - N-N collide at 55% * 1.42 A = 0.781 A
-        - C-N collide at 55% * 1.47 A = 0.808 A
-        - C-H collide at 55% * 1.07 A = 0.588 A
-        - H-H collide at 55% * 0.74 A = 0.588 A
+    Check whether atoms are too close to each other.
+    A default threshold of 60% the single-bond length of two atoms is used.
+    For example:
+    - C-O collide at 60% * 1.43 A = 0.858 A
+    - N-N collide at 60% * 1.45 A = 0.870 A
+    - C-N collide at 60% * 1.47 A = 0.882 A
+    - C-H collide at 60% * 1.09 A = 0.654 A
+    - H-H collide at 60% * 0.60 A = 0.36 A
 
-        Args:
-            xyz (dict): The Cartesian coordinates.
-            mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
-            threshold (float, optional): The collision threshold to use.
+    Args:
+        xyz (dict): The Cartesian coordinates.
+        mol (Molecule, optional): The corresponding Molecule object instance with formal charge information.
+        threshold (float, optional): The collision threshold to use.
 
-        Returns:
-            bool: ``True`` if they are colliding, ``False`` otherwise.
+    Returns:
+        bool: ``True`` if they are colliding, ``False`` otherwise.
     """
     if len(xyz['symbols']) == 1:
         # monoatomic
@@ -2767,9 +2770,9 @@ def colliding_atoms(xyz: dict,
     for i in range(len(xyz['symbols']) - 1):
         for j in range(i + 1, len(xyz['symbols'])):
             actual_r = calculate_distance(coords=xyz['coords'], atoms=[i, j], index=0)
-            charge_1 = mol.atoms[i].charge if mol is not None else 0
-            charge_2 = mol.atoms[j].charge if mol is not None else 0
-            single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], charge_1, charge_2)
+            c1 = mol.atoms[i].charge if mol is not None else 0
+            c2 = mol.atoms[j].charge if mol is not None else 0
+            single_bond_r = get_single_bond_length(xyz['symbols'][i], xyz['symbols'][j], c1, c2)
             if actual_r < single_bond_r * threshold:
                 return True
     return False
