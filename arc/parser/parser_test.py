@@ -455,6 +455,14 @@ H      -1.69381305    0.40788834    0.90078104"""
                           'coords': ((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0))}
         self.assertTrue(almost_equal_coords(xyz_4, expected_xyz_4))
 
+        path_5 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH3+H=NH2+H2.out')
+        xyz_5 = parser.parse_geometry(path=path_5)
+        expected_xyz_5 = {'symbols': ('N', 'H', 'H', 'H', 'H'), 'isotopes': (14, 1, 1, 1, 1),
+                          'coords': ((-0.0, 0.317177, 0.0), (-0.624513, 0.203027, 0.807493),
+                                     (-0.624513, 0.203027, -0.807493), (0.59, -0.871703, -0.0),
+                                     (0.659027, -1.754591, -0.0))}
+        self.assertTrue(almost_equal_coords(xyz_5, expected_xyz_5))
+
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
