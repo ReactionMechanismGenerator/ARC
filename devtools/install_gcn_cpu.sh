@@ -61,7 +61,7 @@ fi
 if $COMMAND_PKG env list | grep -q '^ts_gcn\s'; then
     echo ">>> Updating existing environment 'ts_gcn'..."
     if [ "$COMMAND_PKG" = "micromamba" ] || [ "$COMMAND_PKG" = "mamba" ]; then
-        $COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" --prune -y
+        $COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" --prune
     else
         $COMMAND_PKG env update -n ts_gcn -f "$ENV_FILE" --prune
     fi

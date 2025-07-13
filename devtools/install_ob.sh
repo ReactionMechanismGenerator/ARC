@@ -35,7 +35,7 @@ ENV_EXISTS=$($COMMAND_PKG env list | grep -q '^ob_env\s' && echo "true" || echo 
 
 if [ "$ENV_EXISTS" = "true" ]; then
     echo ">>> Updating existing environment ob_env..."
-    $COMMAND_PKG env update -n ob_env -f "$ENV_FILE" --prune -y
+    $COMMAND_PKG env update -n ob_env -f "$ENV_FILE" --prune
 else
     echo ">>> Creating new environment ob_env..."
     $COMMAND_PKG env create -n ob_env -f "$ENV_FILE" -y

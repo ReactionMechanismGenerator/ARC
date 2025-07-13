@@ -133,9 +133,9 @@ fi
 if $COMMAND_PKG env list | awk '{print $1}' | sed 's/^\*//' | grep -Fxq 'tst_env'; then
     echo ">>> Updating existing environment tst_env..."
     if [ "$COMMAND_PKG" != "conda" ]; then
-        $COMMAND_PKG env update -n tst_env -f environment.yml -y
+        $COMMAND_PKG env update -n tst_env -f environment.yml
     else
-        $COMMAND_PKG env update -n tst_env -f environment.yml -y
+        $COMMAND_PKG env update -n tst_env -f environment.yml
     fi
 else
     echo ">>> Creating new environment tst_env..."

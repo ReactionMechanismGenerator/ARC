@@ -32,7 +32,7 @@ fi
 
 if $COMMAND_PKG env list | grep -q '^xtb_env\s'; then
     echo ">>> Updating existing xtb_env..."
-    $COMMAND_PKG env update -n xtb_env -f "$ENV_FILE" --prune -y
+    $COMMAND_PKG env update -n xtb_env -f "$ENV_FILE" --prune
 else
     echo ">>> Creating new xtb_env..."
     $COMMAND_PKG env create -n xtb_env -f "$ENV_FILE" -y

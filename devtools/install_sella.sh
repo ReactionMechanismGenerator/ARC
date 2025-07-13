@@ -32,7 +32,7 @@ fi
 if $COMMAND_PKG env list | grep -q '^sella_env\s'; then
     echo ">>> Updating existing sella_env..."
     if [ "$COMMAND_PKG" != "conda" ]; then
-        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune -y
+        $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune
     else
         $COMMAND_PKG env update -n sella_env -f devtools/sella_environment.yml --prune
     fi

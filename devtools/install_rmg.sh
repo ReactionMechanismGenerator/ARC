@@ -104,7 +104,7 @@ fi
 
 if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     echo ">>> Updating existing environment: $ENV_NAME"
-    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune -y
+    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune
 else
     echo ">>> Creating new environment: $ENV_NAME"
     $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y
@@ -206,7 +206,7 @@ if [[ "$MODE" == "conda" ]]; then
     echo "📦 Adding RMG hooks ARC to $ARC_ENV"
     add_rmg_hooks "$ARC_ENV"
 else
-    echo "ℹ️ Skipping ARC hooks as ARC is not cloned or not in conda mode."
+    echo "ℹ️  Skipping ARC hooks as ARC is not cloned or not in conda mode."
 fi
 
 
@@ -217,7 +217,7 @@ if [ "$INSTALL_RMS" = true ]; then
     echo "📦 Installing RMS (Reaction Mechanism Simulator) in $ENV_NAME"
     # Check if juliaup is installed - juliaup &> /dev/null
     if ! command -v juliaup &> /dev/null; then
-        echo "❌ juliaup not found. Installing it now."
+        echo "    juliaup not found. Installing it now."
         curl -fsSL https://install.julialang.org | bash
         export PATH="$HOME/.juliaup/bin:$PATH"
         # Add it to bashrc/zshrc
