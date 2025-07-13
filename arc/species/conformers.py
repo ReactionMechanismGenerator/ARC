@@ -1659,7 +1659,7 @@ def check_special_non_rotor_cases(mol, top1, top2):
         bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N5tc'] \
                 and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
@@ -1681,7 +1681,7 @@ def find_internal_rotors(mol):
         if atom1.is_non_hydrogen():
             for atom2, bond in atom1.edges.items():
                 if atom2.is_non_hydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.is_single() or bond.is_hydrogen_bond()) and not mol.is_bond_in_cycle(bond):
+                        and bond.is_rotatable() and not mol.is_bond_in_cycle(bond):
                     if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # None of the pivotal atoms are terminal.
                         rotor = dict()
                         # pivots:
