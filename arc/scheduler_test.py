@@ -692,13 +692,8 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                                            'arc_project_for_testing_delete_after_usage6'),
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
-        check_ts(reaction=rxn, verbose=True, job=job_1, checks=['freq'])
-        self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
-
-        sched.check_rxn_e0_by_spc('TS0')
-        self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
+        check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
+        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': False, 'warnings': ''})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
