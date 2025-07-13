@@ -481,6 +481,22 @@ H      -0.57000001    0.25001318    0.00000000"""
         for atom, symbol in zip(spc_5.mol.atoms, xyz_5['symbols']):
             self.assertEqual(atom.element.symbol, symbol)
 
+        xyz_6_hnfcl = """N      -0.14626256    0.12816405    0.30745256
+                         F      -0.94719775   -0.91910939   -0.09669786
+                         Cl      1.53982436   -0.20497454   -0.07627978
+                         H      -0.44636405    0.99591988   -0.13447493"""
+        xyz_7_nfcl = """N      -0.17697493    0.58788903    0.00000000
+                        F      -1.17300047   -0.36581404    0.00000000
+                        Cl      1.34997541   -0.22207499    0.00000000"""
+        spc_6 = ARCSpecies(label='NHFCl', smiles='N(F)Cl', xyz=xyz_6_hnfcl)
+        spc_7 = ARCSpecies(label='NFCl', smiles='[N](F)Cl', xyz=xyz_7_nfcl)
+        for atom, symbol in zip(spc_6.mol.atoms, str_to_xyz(xyz_6_hnfcl)['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+        self.assertIn(spc_6.mol.to_smiles(), ['N(F)Cl', 'FNCl'])
+        for atom, symbol in zip(spc_7.mol.atoms, str_to_xyz(xyz_7_nfcl)['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+        self.assertIn(spc_7.mol.to_smiles(), ['[N](F)Cl', 'F[N]Cl'])
+
 
     def test_crazy_oxy_s_with_n(self):
         """
