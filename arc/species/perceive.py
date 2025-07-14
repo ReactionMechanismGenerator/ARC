@@ -636,7 +636,7 @@ def is_mol_valid(
         return False
     n_radicals = n_radicals or (multiplicity - 1) if multiplicity is not None else None
     try:
-        mol.copy(deep=True).update()
+        mol.copy(deep=True).update(sort_atoms=False)
     except AtomTypeError:
         return False
     if mol.get_net_charge() != charge or mol.multiplicity != multiplicity:
@@ -658,7 +658,7 @@ def update_mol(mol: Molecule, multiplicity: int, charge: int) -> Molecule:
     This is a fallback for when the initial atom type assignment fails.
     """
     mol_copy = mol.copy(deep=True)
-    mol_copy.update(sort_atoms=False, raise_atomtype_exception=False)
+    mol_copy.update(raise_atomtype_exception=False, sort_atoms=False)
     if mol_copy.get_net_charge() == charge and mol_copy.multiplicity == multiplicity:
         return mol_copy
     mol.update_charge()
@@ -808,7 +808,7 @@ def _resurrect_molecule(
             atom.charge = 0
         center = neg_atoms[0]
         center.radical_electrons += 2
-        mol.update(raise_atomtype_exception=False)
+        mol.update(raise_atomtype_exception=False, sort_atoms=False)
     return mol
 
 
