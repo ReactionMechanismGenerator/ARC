@@ -497,6 +497,15 @@ H      -0.57000001    0.25001318    0.00000000"""
             self.assertEqual(atom.element.symbol, symbol)
         self.assertIn(spc_7.mol.to_smiles(), ['[N](F)Cl', 'F[N]Cl'])
 
+        xyz_8_ho2 = {'coords': ((0.0558910, -0.6204870, 0.0000000),
+                                (0.0558910, 0.7272050, 0.0000000),
+                                (-0.8942590, -0.8537420, 0.0000000)),
+                     'isotopes': (16, 16, 1), 'symbols': ('O', 'O', 'H')}
+        spc_8 = ARCSpecies(label='HO2', smiles='[O]O', xyz=xyz_8_ho2)
+        for atom, symbol in zip(spc_8.mol.atoms, xyz_8_ho2['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+        self.assertEqual(spc_8.mol.atoms[1].radical_electrons, 1)
+
 
     def test_crazy_oxy_s_with_n(self):
         """
