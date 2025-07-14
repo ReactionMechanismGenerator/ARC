@@ -469,17 +469,28 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     if products:
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
-                if isomorphic_products(rxn=rxn, products=product_list[0]):
-                    product_dicts.append({'family': family_label,
-                                          'group_labels': group_labels,
-                                          'products': product_list[0],
-                                          'r_label_map': {val: key for key, val in product_list[1].items() if val},
-                                          'p_label_map': {atom.label: j + sum(len(p.atoms) for p in product_list[0][:i])
-                                                          for i, product in enumerate(product_list[0])
-                                                          for j, atom in enumerate(product.atoms) if atom.label},
-                                          'own_reverse': family.own_reverse,
-                                          'discovered_in_reverse': reverse,
-                                          })
+                template_mols, r_label_dict = product_list[0], product_list[1]
+                if not isomorphic_products(rxn=rxn, products=template_mols):
+                    continue
+                r_label_map = {val: key for key, val in r_label_dict.items() if val}
+                offsets = [0]
+                for mol in template_mols:
+                    offsets.append(offsets[-1] + len(mol.atoms))
+                p_label_map: Dict[str, int] = dict()
+                for i, mol in enumerate(template_mols):
+                    base = offsets[i]
+                    for j, atom in enumerate(mol.atoms):
+                        if atom.label:
+                            p_label_map[atom.label] = base + j
+                product_dicts.append({
+                    'family': family_label,
+                    'group_labels': group_labels,
+                    'products': template_mols,
+                    'r_label_map': r_label_map,
+                    'p_label_map': p_label_map,
+                    'own_reverse': family.own_reverse,
+                    'discovered_in_reverse': reverse,
+                })
     return product_dicts
 
 
