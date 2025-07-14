@@ -1130,6 +1130,54 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
     return False
 
 
+def is_equal_family_product_dicts(dicts1: List[dict],
+                                  dicts2: List[dict],
+                                  ) -> bool:
+    """
+    Compare two lists of family‐product dictionaries for equality.
+    Returns True if they have the same length and, for each corresponding entry:
+      - 'family', 'group_labels', 'own_reverse', 'discovered_in_reverse' are equal
+      - 'products' lists contain Molecules with the same SMILES in the same order
+      - 'r_label_map' and 'p_label_map' dicts are equal
+
+    Args:
+        dicts1: First list of product‐dicts from determine_possible_reaction_products_from_family.
+        dicts2: Second list of product‐dicts to compare against.
+
+    Returns:
+        bool: True if all entries match, False otherwise.
+    """
+    if len(dicts1) != len(dicts2):
+        return False
+
+    for d1, d2 in zip(dicts1, dicts2):
+        # compare scalar fields
+        if d1.get('family') != d2.get('family'):
+            return False
+        if d1.get('group_labels') != d2.get('group_labels'):
+            return False
+        if d1.get('own_reverse') != d2.get('own_reverse'):
+            return False
+        if d1.get('discovered_in_reverse') != d2.get('discovered_in_reverse'):
+            return False
+
+        # compare products by SMILES
+        prods1 = d1.get('products', [])
+        prods2 = d2.get('products', [])
+        smiles1 = [m.smiles for m in prods1]
+        smiles2 = [m.smiles for m in prods2]
+        if smiles1 != smiles2:
+            return False
+
+        # compare label maps
+        if d1.get('r_label_map', {}) != d2.get('r_label_map', {}):
+            return False
+        if d1.get('p_label_map', {}) != d2.get('p_label_map', {}):
+            return False
+
+    return True
+
+
 def is_notebook() -> bool:
     """
     Check whether ARC was called from an IPython notebook.
