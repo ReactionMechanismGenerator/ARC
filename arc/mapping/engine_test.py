@@ -11,7 +11,8 @@ import os
 import itertools
 
 import arc.mapping.engine as engine
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, is_equal_family_product_dicts
+from arc.family import determine_possible_reaction_products_from_family
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle
@@ -1198,7 +1199,20 @@ class TestMappingEngine(unittest.TestCase):
         p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = engine.pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = engine.map_pairs(pairs_of_reactant_and_products)
-        atom_map = engine.glue_maps(maps, pairs_of_reactant_and_products)
+        product_dicts = determine_possible_reaction_products_from_family(rxn_1_test, family_label=rxn_1_test.family)
+        r_species, p_species = rxn_1_test.get_reactants_and_products()
+        template_order = engine.get_template_product_order(rxn_1_test, product_dicts[0]['products'])
+        updated_p_label_map = engine.reorder_p_label_map(p_label_map=product_dicts[0]['p_label_map'],
+                                                         template_order=template_order,
+                                                         template_products=product_dicts[0]['products'],
+                                                         actual_products= p_species,
+                                                         )
+        atom_map = engine.glue_maps(maps=maps,
+                                    pairs_of_reactant_and_products=pairs_of_reactant_and_products,
+                                    r_label_map=product_dicts[0]['r_label_map'],
+                                    p_label_map=updated_p_label_map,
+                                    total_atoms=sum(len(sp.mol.atoms) for sp in r_species)
+                                    )
         self.assertEqual(len(atom_map), self.r_1.mol.get_num_atoms() + self.r_2.mol.get_num_atoms())
         atoms_r = [atom for atom in self.r_1.mol.copy(deep=True).atoms] + [atom for atom in self.r_2.mol.copy(deep=True).atoms]
         atoms_p = [atom for atom in self.p_1.mol.copy(deep=True).atoms] + [atom for atom in self.p_2.mol.copy(deep=True).atoms]
@@ -1435,6 +1449,125 @@ class TestMappingEngine(unittest.TestCase):
         p_bdes = engine.find_all_breaking_bonds(rxn=rxn, r_direction=False)
         self.assertEqual(r_bdes, [])
         self.assertEqual(p_bdes, [(7, 9), (2, 3)])
+
+    def test_reorder_p_label_map(self):
+        """tests the reorder_p_label_map() function"""
+        # H + CH3NH2 <=> H2 + CH2NH2 should swap the two template products
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r1 = ARCSpecies(label='H', smiles='[H]')
+        r2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_1a = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        rxn_1b = ARCReaction(r_species=[r1, r2], p_species=[p2, p1])
+        product_dicts_1a = determine_possible_reaction_products_from_family(rxn_1a, family_label=rxn_1a.family)
+        product_dicts_1b = determine_possible_reaction_products_from_family(rxn_1b, family_label=rxn_1a.family)
+        expected_products_dict = [{'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 3},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False},
+                                  {'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 4},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False},
+                                  {'family': 'H_Abstraction',
+                                   'group_labels': ('Y_rad', 'X_H'),
+                                   'products': [Molecule(smiles="[CH2]N"), Molecule(smiles="[H][H]")],
+                                   'r_label_map': {'*3': 0, '*1': 1, '*2': 5},
+                                   'p_label_map': {'*1': 2, '*3': 6, '*2': 7},
+                                   'own_reverse': True, 'discovered_in_reverse': False}]
+        self.assertTrue(is_equal_family_product_dicts(product_dicts_1a, expected_products_dict))
+        self.assertTrue(is_equal_family_product_dicts(product_dicts_1b, expected_products_dict))
+        template_products_1a = product_dicts_1a[0]['products']
+        p_label_map_tpl_1a = product_dicts_1a[0]['p_label_map']
+        template_order_1a = engine.get_template_product_order(rxn_1a, template_products_1a)
+        template_products_1b = product_dicts_1b[0]['products']
+        p_label_map_tpl_1b = product_dicts_1b[0]['p_label_map']
+        template_order_1b = engine.get_template_product_order(rxn_1b, template_products_1b)
+        self.assertEqual(template_order_1a, [1, 0])
+        self.assertEqual(template_order_1b, [0, 1])
+        new_map_1a = engine.reorder_p_label_map(p_label_map_tpl_1a, template_order_1a, template_products_1a, rxn_1a.get_reactants_and_products()[1])
+        self.assertIn(new_map_1a, [{'*1': 2, '*2': 1, '*3': 0}, {'*1': 2, '*2': 0, '*3': 1}])
+        new_map_1b = engine.reorder_p_label_map(p_label_map_tpl_1b, template_order_1b, template_products_1b, rxn_1b.get_reactants_and_products()[1])
+        self.assertEqual(new_map_1b, {'*1': 0, '*2': 7, '*3': 6})
+        lengths_1a = [len(m.atoms) for m in template_products_1a]                # [6, 2]
+        orig_offsets_1a = list(itertools.accumulate([0] + lengths_1a))      # [0, 6, 8]
+        new_lengths_1a  = [lengths_1a[i] for i in template_order_1a]             # [2, 6]
+        new_offsets_1a  = list(itertools.accumulate([0] + new_lengths_1a))  # [0, 2, 8]
+        for tag, old_glob in p_label_map_tpl_1a.items():
+            new_glob = new_map_1a[tag]
+            # if it was <6, now must be >=2; if >=6, now must be <2
+            if old_glob < orig_offsets_1a[1]:
+                self.assertTrue(new_glob >= new_offsets_1a[1], f"Tag {tag} did not move into second block")
+            else:
+                self.assertTrue(new_glob < new_offsets_1a[1], f"Tag {tag} did not move into first block")
+
+        # NC(C=C)O[O] → [O]O + NC=C=C reversed in rxn_2, so labels must swap
+        r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
+                   C      -0.60348000    0.16392000    0.30629000
+                   C       0.85739000    0.41515000    0.58956000
+                   C       1.91892000   -0.27446000    0.14220000
+                   O      -1.16415000    1.38916000   -0.20784000
+                   O      -2.39497344    1.57487672    0.46214548
+                   H      -0.50088000   -0.69919000   -1.51181000
+                   H      -1.83926000   -1.03148000   -0.69340000
+                   H      -1.09049000   -0.04790000    1.26633000
+                   H       1.04975000    1.25531000    1.25575000
+                   H       2.92700000    0.00462000    0.43370000
+                   H       1.81273000   -1.13911000   -0.50660000"""  # NC(C=C)O[O]
+        p_xyz = """N      -1.60333711   -0.23049987   -0.35673484
+                   C      -0.63074775    0.59837442    0.08043329
+                   C       0.59441219    0.18489797    0.16411656
+                   C       1.81978128   -0.23541908    0.24564488
+                   H      -2.56057110    0.09083582   -0.42266843
+                   H      -1.37296018   -1.18147301   -0.62077856
+                   H      -0.92437032    1.60768040    0.35200716
+                   H       2.49347824   -0.13648710   -0.59717108
+                   H       2.18431385   -0.69791121    1.15515621"""  # NC=C=C
+        rxn2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
+                           p_species=[ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz),
+                                      ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_xyz)])
+        product_dicts = determine_possible_reaction_products_from_family(rxn2, family_label=rxn2.family)
+        expected_product_dicts = [{'discovered_in_reverse': False,
+                                   'family': 'HO2_Elimination_from_PeroxyRadical',
+                                   'group_labels': 'R2OO',
+                                   'own_reverse': False,
+                                   'p_label_map': {'*1': 2, '*2': 4, '*3': 9, '*4': 10, '*5': 11},
+                                   'products': [Molecule(smiles="NC=C=C"), Molecule(smiles="[O]O")],
+                                   'r_label_map': {'*1': 2, '*2': 1, '*3': 4, '*4': 5, '*5': 9}}]
+        self.assertTrue(is_equal_family_product_dicts(product_dicts, expected_product_dicts))
+        template_products = product_dicts[0]['products']
+        p_label_map_tpl = product_dicts[0]['p_label_map']
+
+        template_order = engine.get_template_product_order(rxn2, template_products)
+        # original template was ['NC=C=C', '[O]O'], so template_order should be [1,0]
+        self.assertEqual(template_order, [1, 0])
+
+        # now test reorder_p_label_map gives exactly the expected new globals:
+        expected = {'*1': 5, '*2': 4, '*3': 1, '*4': 0, '*5': 2}
+        new_map = engine.reorder_p_label_map(p_label_map_tpl, template_order, template_products, rxn2.get_reactants_and_products()[1])
+        print(new_map)
+        self.assertEqual(new_map, expected)
 
 
     @classmethod

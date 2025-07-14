@@ -709,17 +709,39 @@ class TestMappingDriver(unittest.TestCase):
                             p_species=[ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_2_xyz),
                                        ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz)])
         atom_map = rxn_2.atom_map
-        self.assertIn(atom_map[:10], [[0, 1, 2, 3, 9, 10, 4, 5, 6, 11], [0, 1, 2, 3, 9, 10, 5, 4, 6, 11]])
+        self.assertIn(atom_map[:10], [[0, 1, 2, 3, 10, 9, 4, 5, 6, 11], [0, 1, 2, 3, 10, 9, 5, 4, 6, 11]])
         self.assertIn(atom_map[10:], [[7, 8], [8, 7]])
-        
+
+        r_xyz = """N      -0.82151000   -0.98211000   -0.58727000
+                   C      -0.60348000    0.16392000    0.30629000
+                   C       0.85739000    0.41515000    0.58956000
+                   C       1.91892000   -0.27446000    0.14220000
+                   O      -1.16415000    1.38916000   -0.20784000
+                   O      -2.39497344    1.57487672    0.46214548
+                   H      -0.50088000   -0.69919000   -1.51181000
+                   H      -1.83926000   -1.03148000   -0.69340000
+                   H      -1.09049000   -0.04790000    1.26633000
+                   H       1.04975000    1.25531000    1.25575000
+                   H       2.92700000    0.00462000    0.43370000
+                   H       1.81273000   -1.13911000   -0.50660000"""  # NC(C=C)O[O]
+        p_2_xyz = """N      -1.60333711   -0.23049987   -0.35673484
+                     C      -0.63074775    0.59837442    0.08043329
+                     C       0.59441219    0.18489797    0.16411656
+                     C       1.81978128   -0.23541908    0.24564488
+                     H      -2.56057110    0.09083582   -0.42266843
+                     H      -1.37296018   -1.18147301   -0.62077856
+                     H      -0.92437032    1.60768040    0.35200716
+                     H       2.49347824   -0.13648710   -0.59717108
+                     H       2.18431385   -0.69791121    1.15515621"""  # NC=C=C
         # Reversed product order
         rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R', smiles='NC(C=C)O[O]', xyz=r_xyz)],
                             p_species=[ARCSpecies(label='HO2', smiles='O[O]', xyz=self.ho2_xyz),
                                        ARCSpecies(label='P2', smiles='NC=C=C', xyz=p_2_xyz)])
         atom_map = rxn_2.atom_map
-        self.assertIn(atom_map[:10], [[3, 4, 5, 6, 1, 0, 8, 7, 9, 2], [3, 4, 5, 6, 0, 1, 8, 7, 9, 2]])
-        self.assertIn(atom_map[10], [10, 11])
-        self.assertIn(atom_map[11], [10, 11])
+        self.assertEqual(atom_map[:6], [3, 4, 5, 6, 1, 0])  # 0, 1
+        self.assertIn(atom_map[6:8], [[7, 8], [8, 7]])
+        self.assertEqual(atom_map[8:10], [9, 2])
+        self.assertIn(atom_map[10:12], [[10, 11], [11, 10]])
         
         c2h5o3_xyz = {'coords': ((-1.3476727508427788, -0.49923624257482285, -0.3366372557370102),
                                  (-0.11626816111736853, 0.3110915299407186, 0.018860985632263887),
@@ -827,7 +849,7 @@ class TestMappingDriver(unittest.TestCase):
         product = ARCSpecies(label='product', smiles='[N-]=[N+]=C(N=O)C', xyz=product_xyz)
         rxn_1 = ARCReaction(label='reactant <=> product', ts_label='TS0', r_species=[reactant], p_species=[product])
         atom_map = map_isomerization_reaction(rxn_1)
-        self.assertEqual(atom_map[:6], [0, 1, 2, 3, 4, 5])
+        self.assertEqual(atom_map[:6], [0, 1, 2, 3, 4, 5])  # sometimes None
         self.assertIn(atom_map[6], [6, 8])
         self.assertIn(atom_map[7], [6, 7])
         self.assertIn(atom_map[8], [7, 8])
