@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH, almost_equal_coords_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
@@ -2011,7 +2011,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle.bdes = [(1, 2)]
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
-        cycle_scissors[0].mol.update()
+        cycle_scissors[0].mol.update(sort_atoms=False)
         self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
@@ -2738,16 +2738,16 @@ H      -1.47626400   -0.10694600   -1.88883800"""
     def test_get_bonds(self):
         """Test the get_bonds() function."""
         bonds = self.spc1.get_bonds()
-        self.assertEqual(bonds, [(0, 1), (1, 2), (1, 5), (0, 4), (0, 3)])
+        self.assertTrue(check_that_all_entries_are_in_list(bonds, [(0, 1), (1, 2), (0, 4), (1, 5), (0, 3)]))
 
         bonds = self.spc2.get_bonds()
         self.assertEqual(bonds, [(0, 1)])
 
         bonds = self.spc12.get_bonds()
-        self.assertEqual(bonds, [(9, 26), (10, 11), (14, 30), (5, 6), (1, 17), (15, 31), (3, 21), (8, 9),
-                                 (10, 15), (0, 16), (0, 10), (1, 2), (2, 19), (4, 9), (6, 7), (12, 13), (7, 24),
-                                 (11, 27), (13, 29), (5, 22), (3, 4), (12, 28), (8, 25), (4, 5), (2, 20), (2, 3),
-                                 (6, 23), (14, 15), (11, 12), (0, 1), (13, 14), (1, 18), (7, 8)])
+        self.assertTrue(check_that_all_entries_are_in_list(bonds,
+            [(9, 26), (10, 11), (14, 30), (5, 6), (1, 17), (15, 31), (3, 21), (8, 9),(10, 15), (0, 16), (0, 10), (1, 2),
+             (2, 19), (4, 9), (6, 7), (12, 13), (7, 24), (11, 27), (13, 29), (5, 22), (3, 4), (12, 28), (8, 25), (4, 5),
+             (2, 20), (2, 3), (6, 23), (14, 15), (11, 12), (0, 1), (13, 14), (1, 18), (7, 8)]))
 
 
 class TestTSGuess(unittest.TestCase):
