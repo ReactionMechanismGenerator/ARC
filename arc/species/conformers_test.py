@@ -1118,9 +1118,9 @@ O       1.40839617    0.14303696    0.00000000"""
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol1],
-                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 3)
+                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol1],
-                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
 
         # only one rotor is symmetric
         mol2 = Molecule(smiles='CC[N+](=S)[O-]')
@@ -1130,12 +1130,12 @@ O       1.40839617    0.14303696    0.00000000"""
                                                            torsion_num=len(torsions), charge=0, multiplicity=1)
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
-        # NSO rotor:
-        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol2],
-                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 3)
         # CH3 rotor:
+        self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol2],
+                                                               torsion_scan=torsion_angles[tuple(torsions[0])]), 1)
+        # NSO rotor:
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol2],
-                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 1)
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
 
         # The COH rotor is symmetric because of the bottom of the molecule
         mol3 = Molecule(smiles='c1ccccc1C(c1ccccc1)(c1ccccc1)O')
@@ -1146,13 +1146,13 @@ O       1.40839617    0.14303696    0.00000000"""
         confs = conformers.determine_dihedrals(conformers=confs, torsions=torsions)
         torsion_angles = conformers.get_torsion_angles(label='', conformers=confs, torsions=torsions)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[0], mol_list=[mol3],
-                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
+                                                               torsion_scan=torsion_angles[tuple(torsions[1])]), 3)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[1], mol_list=[mol3],
                                                                torsion_scan=torsion_angles[tuple(torsions[1])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[2], mol_list=[mol3],
                                                                torsion_scan=torsion_angles[tuple(torsions[2])]), 2)
         self.assertEqual(conformers.determine_torsion_symmetry(label='', top1=tops[3], mol_list=[mol3],
-                                                               torsion_scan=torsion_angles[tuple(torsions[3])]), 1)
+                                                               torsion_scan=torsion_angles[tuple(torsions[3])]), 2)
 
         mol4 = Molecule(smiles='c1ccccc1CO')
         mol4.update()
