@@ -12,17 +12,19 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from arc.family import determine_possible_reaction_products_from_family
 from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
                                 are_adj_elements_in_agreement,
-                                flip_map,
+                                copy_species_list_for_mapping,
+                                cut_species_based_on_atom_indices,
+                                find_all_breaking_bonds,
                                 fingerprint,
+                                flip_map,
+                                get_template_product_order,
                                 glue_maps,
+                                iterative_dfs, map_two_species,
                                 label_species_atoms,
                                 make_bond_changes,
                                 map_pairs,
-                                iterative_dfs, map_two_species,
                                 pairing_reactants_and_products_for_mapping,
-                                copy_species_list_for_mapping,
-                                find_all_breaking_bonds,
-                                cut_species_based_on_atom_indices,
+                                reorder_p_label_map,
                                 update_xyz,
                                 )
 from arc.common import logger
@@ -54,7 +56,6 @@ def map_reaction(rxn: 'ARCReaction',
             corresponding entry values are running atom indices of the products.
     """
     if flip:
-        logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. Trying again with the flipped reaction.")
         try:
             _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
@@ -201,7 +202,7 @@ def map_rxn(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
         backend (str, optional): Currently only supports ``'ARC'``.
-        
+
     Returns:
         Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
@@ -210,28 +211,44 @@ def map_rxn(rxn: 'ARCReaction',
     reactants, products = rxn.get_reactants_and_products(return_copies=False)
     reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
     label_species_atoms(reactants), label_species_atoms(products)
-    
-    r_bdes, p_bdes = find_all_breaking_bonds(rxn, True), find_all_breaking_bonds(rxn, False)
 
-    r_cuts = cut_species_based_on_atom_indices(reactants, r_bdes)
-    p_cuts = cut_species_based_on_atom_indices(products, p_bdes)
+    r_bdes, p_bdes = find_all_breaking_bonds(rxn, r_direction=True), find_all_breaking_bonds(rxn, r_direction=False)
+    r_cuts, p_cuts = cut_species_based_on_atom_indices(reactants, r_bdes), cut_species_based_on_atom_indices(products, p_bdes)
 
     product_dicts = determine_possible_reaction_products_from_family(rxn, family_label=rxn.family)
     try:
-        r_label_dict = product_dicts[0]['r_label_map']
-        make_bond_changes(rxn, r_cuts, r_label_dict)
+        r_label_map = product_dicts[0]['r_label_map']
+        p_label_map = product_dicts[0]['p_label_map']
+        template_products    = product_dicts[0]['products']
+    except (IndexError, KeyError) as e:
+        logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
+        return None
+
+    template_order = get_template_product_order(rxn, template_products)
+    p_label_map = reorder_p_label_map(p_label_map=p_label_map,
+                                      template_order=template_order,
+                                      template_products=template_products,
+                                      actual_products=rxn.get_reactants_and_products()[1],
+                                      )
+
+    try:
+        make_bond_changes(rxn, r_cuts, r_label_map)
     except (ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
 
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
-
-    pairs_of_reactant_and_products = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
-    if len(p_cuts):
+    pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
+    if p_cuts:
         logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
         return None
-    maps = map_pairs(pairs_of_reactant_and_products)
 
-    return glue_maps(maps, pairs_of_reactant_and_products)
+    fragment_maps = map_pairs(pairs)
+    total_atoms = sum(len(sp.mol.atoms) for sp in reactants)
+    return glue_maps(fragment_maps,
+                     pairs,
+                     r_label_map,
+                     p_label_map,
+                     total_atoms)
 
 
 def convert_label_dict(label_dict: Dict[str, int],
@@ -255,7 +272,6 @@ def convert_label_dict(label_dict: Dict[str, int],
     if len(reference_mol_list) == 1:
         atom_map = map_two_species(reference_mol_list[0], mol_list[0])
         if atom_map is None:
-            print(f'Could not map {reference_mol_list[0].copy(deep=True).to_smiles()} to {mol_list[0].copy(deep=True).to_smiles()}')
             return None
         return {label: atom_map[index] for label, index in label_dict.items()}
     elif len(reference_mol_list) == 2:
@@ -263,8 +279,6 @@ def convert_label_dict(label_dict: Dict[str, int],
         atom_map_1 = map_two_species(reference_mol_list[0], mol_list[0]) if ordered else map_two_species(reference_mol_list[1], mol_list[0])
         atom_map_2 = map_two_species(reference_mol_list[1], mol_list[1]) if ordered else map_two_species(reference_mol_list[0], mol_list[1])
         if atom_map_1 is None or atom_map_2 is None:
-            print(f'Could not map {reference_mol_list[0].copy(deep=True).to_smiles()} to {mol_list[0].copy(deep=True).to_smiles()} '
-                  f'or {reference_mol_list[1].copy(deep=True).to_smiles()} to {mol_list[1].copy(deep=True).to_smiles()}')
             return None
         atom_map = atom_map_1 + [index + len(atom_map_1) for index in atom_map_2] if ordered else \
             atom_map_2 + [index + len(atom_map_2) for index in atom_map_1]

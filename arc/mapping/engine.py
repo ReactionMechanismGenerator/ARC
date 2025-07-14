@@ -804,7 +804,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                         atom1.decrement_radical()
                         atom2.decrement_radical()
                     r_cut.mol.get_bond(atom1, atom2).order += action[2]
-                    r_cut.mol.update()
+                    r_cut.mol.update(sort_atoms=False)
 
 
 def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -908,6 +908,9 @@ def label_species_atoms(species: List['ARCSpecies']) -> None:
 
 def glue_maps(maps: List[List[int]],
               pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]],
+              r_label_map: Dict[str, int],
+              p_label_map: Dict[str, int],
+              total_atoms: int,
               ) -> List[int]:
     """
     Join the maps from the parts of a bimolecular reaction.
@@ -915,17 +918,22 @@ def glue_maps(maps: List[List[int]],
     Args:
         maps (List[List[int]]): The list of all maps of the isomorphic cuts.
         pairs_of_reactant_and_products (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
+        r_label_map (Dict[str, int]): A dictionary mapping the reactant labels to their indices.
+        p_label_map (Dict[str, int]): A dictionary mapping the product labels to their indices.
+        total_atoms (int): The total number of atoms across all reactants.
 
     Returns:
         List[int]: An Atom Map of the complete reaction.
     """
-    am_dict = dict()
-    for _map, pair in zip(maps, pairs_of_reactant_and_products):
-        r_atoms = pair[0].mol.atoms
-        p_atoms = pair[1].mol.atoms
-        for map_index, r_atom in zip(_map, r_atoms):
-            am_dict[int(r_atom.label)] = int(p_atoms[map_index].label)
-    return [val for _, val in sorted(am_dict.items(), key=lambda item: item[0])]
+    am_dict: Dict[int,int] = dict()
+    for map_list, (r_cut, p_cut) in zip(maps, pairs_of_reactant_and_products):
+        for local_r_idx, r_atom in enumerate(r_cut.mol.atoms):
+            r_glob = int(r_atom.label)
+            p_glob = int(p_cut.mol.atoms[map_list[local_r_idx] ].label)
+            am_dict[r_glob] = p_glob
+    for tag, r_glob in r_label_map.items():
+        am_dict[r_glob] = p_label_map[tag]
+    return [am_dict[i] for i in range(total_atoms)]
 
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
@@ -1138,3 +1146,64 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
             ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(product_dicts[0]['products'])],
             bdes=breaking_bonds)
     return breaking_bonds
+
+
+def get_template_product_order(rxn: 'ARCReaction',
+                               template_products: List[Molecule]
+                               ) -> List[int]:
+    """
+    Determine the order of the template products based on the reaction products.
+
+    Args:
+        rxn (ARCReaction): the reaction whose .p_species defines the desired order.
+        template_products (List[Molecule]): the RMG‐template Molecule list (typically comes from product_dicts[0]['products']).
+
+    Returns:
+        List[int]: A list of indices such that for each template molecule index.
+                   The corresponding position in the order list yields the index on the reaction product.
+    """
+    order: List[int] = list()
+    used = set()
+    for template_mol in template_products:
+        for i, prod in enumerate(rxn.p_species):
+            if i not in used and prod.is_isomorphic(template_mol):
+                order.append(i)
+                used.add(i)
+                break
+        else:
+            raise ValueError(f"No template‐product match for ARCSpecies '{prod.label}'. "
+                             f"Got the following templates: {[template_mol.to_smiles() for template_mol in template_products]}.")
+    return order
+
+
+def reorder_p_label_map(p_label_map: Dict[str, int],
+                        template_order: List[int],
+                        template_products: List['Molecule'],
+                        actual_products: List[ARCSpecies],
+                        ) -> Dict[str, int]:
+    """
+    Re‐compute the global indices in p_label_map_tpl to account for a new ordering (template_order) of the template products.
+
+    Args:
+        p_label_map (Dict[str,int]): Original template‐product‐label → global‐atom‐index map (in the order of template_products).
+        template_order (List[int]): A permutation of range(len(template_products)) mapping new positions → old indices.
+        template_products (List[Molecule]): List of template Molecule/ARCSpecies in RMG-generated order.
+        actual_products (List[ARCSpecies]): List of ARCSpecies in the reaction’s true product order.
+
+    Returns:
+        Dict[str,int]: A new product‐label → global‐atom‐index map consistent with the reordered product list.
+    """
+    arc_lengths = [len(spc.mol.atoms) for spc in actual_products]
+    template_lengths = [len(mol.atoms) for mol in template_products]
+    template_to_arc_maps = dict()
+    for templet_i, template_product in enumerate(template_products):
+        arc_mol_num = template_order[templet_i]
+        atom_map_1 = map_two_species(template_product, actual_products[arc_mol_num])  # index is template, value is rxn
+        arc_offset = sum(arc_lengths[:arc_mol_num])
+        template_offset = sum(template_lengths[:templet_i])
+        atom_map_1 = {i + template_offset: v + arc_offset for i, v in enumerate(atom_map_1)}
+        template_to_arc_maps.update(atom_map_1)
+    updated_p_label_map = dict()
+    for label, template_index in p_label_map.items():
+        updated_p_label_map[label] = template_to_arc_maps[template_index]
+    return updated_p_label_map
