@@ -2979,7 +2979,7 @@ def rmg_mol_to_dict_repr(mol: Molecule,
             counter += 1
     elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
         mol.assign_atom_ids()
-    mol.update(raise_atomtype_exception=False)
+    mol.update(raise_atomtype_exception=False, sort_atoms=False)
     return {'atoms': [{'element': {'number': atom.element.number,
                                    'isotope': atom.element.isotope,
                                    },
