@@ -1266,7 +1266,7 @@ class Molecule(Graph):
         for atom in self.atoms:
             atom.update_charge()
 
-    def update(self, log_species=True, raise_atomtype_exception=True, sort_atoms=False):
+    def update(self, log_species=True, raise_atomtype_exception=True, sort_atoms=True):
         """
         Update the lone_pairs, charge, and atom types of atoms.
         Update multiplicity, and sort atoms (if ``sort_atoms`` is ``True``)

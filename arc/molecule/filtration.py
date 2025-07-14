@@ -184,7 +184,7 @@ def charge_filtration(filtered_list, charge_span_list):
     also be considered. For example:
 
         - Both of NO2's resonance structures will be kept: [O]N=O <=> O=[N+.][O-]
-        - NCO will only have two resonance structures [N.]=C=O <=> N#C[O.], and will loose the third structure which has
+        - NCO will only have two resonance structures [N.]=C=O <=> N#C[O.], and will lose the third structure which has
           the same octet deviation, has a charge separation, but the radical site has already been considered: [N+.]#C[O-]
         - CH2NO keeps all three structures, since a new radical site is introduced: [CH2.]N=O <=> C=N[O.] <=> C=[N+.][O-]
         - NH2CHO has two structures, one of which is charged since it introduces a multiple bond: NC=O <=> [NH2+]=C[O-]
@@ -193,9 +193,9 @@ def charge_filtration(filtered_list, charge_span_list):
     minimal charge span. For example:
 
         - NSH will only keep the N#S form and not [N-]=[SH+]
-        - The following species will loose two thirds of its resonance structures, which are charged: CS(=O)SC <=>
+        - The following species will lose two thirds of its resonance structures, which are charged: CS(=O)SC <=>
           CS(=O)#SC <=> C[S+]([O-]SC <=> CS([O-])=[S+]C <=> C[S+]([O-])#SC <=> C[S+](=O)=[S-]C
-        - Azide is know to have three resonance structures: [NH-][N+]#N <=> N=[N+]=[N-] <=> [NH+]#[N+][N-2];
+        - Azide is known to have three resonance structures: [NH-][N+]#N <=> N=[N+]=[N-] <=> [NH+]#[N+][N-2];
           here we filter the third one out due to the higher charge span, which does not contribute to reactivity in RMG
     """
     min_charge_span = min(charge_span_list)
@@ -206,8 +206,8 @@ def charge_filtration(filtered_list, charge_span_list):
         filtered_list = [filtered_mol for index, filtered_mol in enumerate(filtered_list) if
                          charge_span_list[index] == min_charge_span]  # the minimal charge span layer
         # Find the radical and multiple bond sites in all filtered_list structures:
-        rad_sorting_list = []  # sortingLabels for radical sites
-        mul_bond_sorting_list = []  # sortingLabels for multiple bind sites in the form of (atom1,atom2) tuples
+        rad_sorting_list = []  # sorting_label for radical sites
+        mul_bond_sorting_list = []  # sorting_label for multiple bond sites in the form of (atom1, atom2) tuples
         for mol in filtered_list:
             for atom in mol.vertices:
                 if atom.radical_electrons and int(atom.sorting_label) not in rad_sorting_list:
