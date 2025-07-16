@@ -57,7 +57,7 @@ def check_ts(reaction: 'ARCReaction',
     Args:
         reaction (ARCReaction): The reaction for which the TS is checked.
         job (JobAdapter, optional): The frequency job object instance.
-        checks (List[str], optional): Specific checks to run. Optional values: 'energy', 'freq', 'IRC', 'rotors'.
+        checks (List[str], optional): Specific checks to run. Optional values: 'energy', 'NMD', 'IRC', 'rotors'.
         rxn_zone_atom_indices (List[int], optional): The 0-indices of atoms identified by the normal mode displacement
                                                      as the reaction zone. Automatically determined if not given.
         species_dict (dict, optional): The Scheduler species dictionary.
