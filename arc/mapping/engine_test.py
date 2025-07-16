@@ -1208,7 +1208,7 @@ class TestMappingEngine(unittest.TestCase):
                                                          actual_products= p_species,
                                                          )
         atom_map = engine.glue_maps(maps=maps,
-                                    pairs_of_reactant_and_products=pairs_of_reactant_and_products,
+                                    pairs=pairs_of_reactant_and_products,
                                     r_label_map=product_dicts[0]['r_label_map'],
                                     p_label_map=updated_p_label_map,
                                     total_atoms=sum(len(sp.mol.atoms) for sp in r_species)
