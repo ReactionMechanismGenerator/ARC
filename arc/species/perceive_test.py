@@ -506,6 +506,35 @@ H      -0.57000001    0.25001318    0.00000000"""
             self.assertEqual(atom.element.symbol, symbol)
         self.assertEqual(spc_8.mol.atoms[1].radical_electrons, 1)
 
+        xyz_9 = """N      -1.60333711   -0.23049987   -0.35673484
+                   C      -0.63074775    0.59837442    0.08043329
+                   C       0.59441219    0.18489797    0.16411656
+                   C       1.81978128   -0.23541908    0.24564488
+                   H      -2.56057110    0.09083582   -0.42266843
+                   H      -1.37296018   -1.18147301   -0.62077856
+                   H      -0.92437032    1.60768040    0.35200716
+                   H       2.49347824   -0.13648710   -0.59717108
+                   H       2.18431385   -0.69791121    1.15515621"""
+        spc_9 = ARCSpecies(label='C3H5N', smiles='NC=C=C', xyz=xyz_9)
+        for atom, symbol in zip(spc_9.mol.atoms, str_to_xyz(xyz_9)['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
+        self.assertEqual(spc_9.mol.atoms[2].get_total_bond_order(), 4.0)
+
+        xyz_10_c2h5ono = {'coords': ((-1.3334725178745668, 0.2849178019354427, 0.4149005134933577),
+                                     (-0.08765353373275289, 0.24941420749682627, -0.4497882845360618),
+                                     (1.0488580188184402, 0.3986394744609146, 0.39515448276833964),
+                                     (2.2292240798482883, 0.36629637181188207, -0.4124684043339001),
+                                     (3.2413605054484185, 0.4928521621538312, 0.283008378837631),
+                                     (-1.3088339518827734, -0.5173661350567303, 1.1597967522753032),
+                                     (-2.23462275856269, 0.17332354052924734, -0.19455307765792382),
+                                     (-1.393828440234405, 1.2294860794610234, 0.9656140588162426),
+                                     (-0.12370667081323389, 1.0672740524773998, -1.1795070012935482),
+                                     (-0.037324731014725374, -0.7080479312151163, -0.9821574183694773)),
+                          'isotopes': (12, 12, 16, 14, 16, 1, 1, 1, 1, 1),
+                          'symbols': ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H')}
+        spc_10 = ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=xyz_10_c2h5ono)
+        for atom, symbol in zip(spc_10.mol.atoms, xyz_10_c2h5ono['symbols']):
+            self.assertEqual(atom.element.symbol, symbol)
 
     def test_crazy_oxy_s_with_n(self):
         """
@@ -621,9 +650,7 @@ H      -0.57000001    0.25001318    0.00000000"""
                          H                 -1.23537748   -1.55521250   -0.66607681
                          H                 -2.68617014   -0.87982825    0.03543830
                          H                 -1.86062564   -0.03164117   -1.24991054"""
-        mol = perceive_molecule_from_xyz(str_to_xyz(c2h5no2_xyz),
-                                                    multiplicity=1,
-                                                    charge=0)
+        mol = perceive_molecule_from_xyz(str_to_xyz(c2h5no2_xyz), multiplicity=1, charge=0)
         self.assertEqual(mol.get_net_charge(), 0)
         smiles = mol.to_smiles()
         self.assertIn('[N+]', smiles)
