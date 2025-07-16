@@ -181,16 +181,18 @@ class ARCReaction(object):
         """The electron spin multiplicity of the reaction PES"""
         if self._multiplicity is None:
             self._multiplicity = self.get_rxn_multiplicity()
+            if self._multiplicity is not None:
+                logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
+            else:
+                logger.Error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
     @multiplicity.setter
     def multiplicity(self, value):
         """Allow setting the reaction multiplicity"""
         self._multiplicity = value
-        if value is not None:
-            if not isinstance(value, int):
+        if value is not None and not isinstance(value, int):
                 raise InputError(f'Reaction multiplicity must be an integer, got {value} which is a {type(value)}.')
-            logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
 
     @property
     def family(self):
