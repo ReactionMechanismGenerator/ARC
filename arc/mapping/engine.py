@@ -907,7 +907,7 @@ def label_species_atoms(species: List['ARCSpecies']) -> None:
 
 
 def glue_maps(maps: List[List[int]],
-              pairs_of_reactant_and_products: List[Tuple[ARCSpecies, ARCSpecies]],
+              pairs: List[Tuple[ARCSpecies, ARCSpecies]],
               r_label_map: Dict[str, int],
               p_label_map: Dict[str, int],
               total_atoms: int,
@@ -917,23 +917,60 @@ def glue_maps(maps: List[List[int]],
 
     Args:
         maps (List[List[int]]): The list of all maps of the isomorphic cuts.
-        pairs_of_reactant_and_products (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
+        pairs (List[Tuple[ARCSpecies, ARCSpecies]]): The pairs of the reactants and products.
         r_label_map (Dict[str, int]): A dictionary mapping the reactant labels to their indices.
         p_label_map (Dict[str, int]): A dictionary mapping the product labels to their indices.
         total_atoms (int): The total number of atoms across all reactants.
+        changed_labels (Optional[set]): The atom *# labels that change bonding during the reaciton.
 
     Returns:
         List[int]: An Atom Map of the complete reaction.
     """
-    am_dict: Dict[int,int] = dict()
-    for map_list, (r_cut, p_cut) in zip(maps, pairs_of_reactant_and_products):
-        for local_r_idx, r_atom in enumerate(r_cut.mol.atoms):
+    # 1) Build initial global map from each partial cut
+    am_dict: Dict[int, int] = {}
+    for cut_idx, (map_list, (r_cut, p_cut)) in enumerate(zip(maps, pairs)):
+        for local_idx, r_atom in enumerate(r_cut.mol.atoms):
             r_glob = int(r_atom.label)
-            p_glob = int(p_cut.mol.atoms[map_list[local_r_idx] ].label)
+            try:
+                p_glob = int(p_cut.mol.atoms[ map_list[local_idx] ].label)
+            except Exception as e:
+                logger.error(f"Error processing cut {cut_idx} (r_cut: {r_cut.label}, p_cut: {p_cut.label}). Got:\n{e}")
+                raise
             am_dict[r_glob] = p_glob
+
+    # 2) Decide which labelled‐atom overrides to apply.
+    # Precompute which r_glob actually *need* overriding (orig != target)
+    need_override = {r_glob
+                     for tag, r_glob in r_label_map.items()
+                     if tag in p_label_map and am_dict.get(r_glob) != p_label_map[tag]}
     for tag, r_glob in r_label_map.items():
-        am_dict[r_glob] = p_label_map[tag]
-    return [am_dict[i] for i in range(total_atoms)]
+        if tag not in p_label_map:
+            continue
+        p_glob = p_label_map[tag]
+        orig = am_dict.get(r_glob)
+        if orig == p_glob:
+            continue
+
+        # Find any other reactant indices mapping *now* to p_glob
+        other_rs = [ridx for ridx, pg in am_dict.items() if pg == p_glob and ridx != r_glob]
+
+        if not other_rs:
+            # free to assign
+            am_dict[r_glob] = p_glob
+            continue
+
+        # If all those others are themselves going to be overridden, we're safe
+        if all(r in need_override for r in other_rs):
+            am_dict[r_glob] = p_glob
+
+    # 3) Build the final list, error if anything missing
+    final_map: List[int] = list()
+    for i in range(total_atoms):
+        if i not in am_dict:
+            raise ValueError(f"Invalid glue_maps: missing index {i}")
+        final_map.append(am_dict[i])
+
+    return final_map
 
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:

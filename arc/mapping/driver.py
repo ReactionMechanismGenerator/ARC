@@ -9,7 +9,7 @@ Strategy:
 
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from arc.family import determine_possible_reaction_products_from_family
+from arc.family import ReactionFamily, determine_possible_reaction_products_from_family
 from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
                                 are_adj_elements_in_agreement,
                                 copy_species_list_for_mapping,
@@ -55,23 +55,56 @@ def map_reaction(rxn: 'ARCReaction',
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    if flip:
+    def try_mapping(r: 'ARCReaction') -> Optional[List[int]]:
         try:
-            _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
+            return map_rxn(r, backend=backend)
         except ValueError:
             return None
-        return _map
-    else:
-        if rxn.family is None:
-            logger.warning(f'Could not determine the reaction family for {rxn.label}. '
-                           f'Mapping as a general or isomerization reaction.')
-            _map = map_general_rxn(rxn, backend=backend)
-            return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
-        try:
-            _map = map_rxn(rxn, backend=backend)
-        except ValueError:
-            return map_reaction(rxn, backend=backend, flip=True)
-        return _map if _map is not None else map_reaction(rxn, backend=backend, flip=True)
+    if flip:
+        raw_map = try_mapping(rxn.flip_reaction())
+        if raw_map is None:
+            return None
+        return check_atom_map_and_return(flip_map(raw_map))
+    if rxn.family is None:
+        logger.warning(f'No family determined for {rxn.label}.\nMapping as a general or isomerization reaction.')
+        general_map = map_general_rxn(rxn, backend=backend)
+        if general_map is not None:
+            return check_atom_map_and_return(general_map)
+        return map_reaction(rxn, backend=backend, flip=True)
+    raw_map = try_mapping(rxn)
+    if raw_map is None:
+        return map_reaction(rxn, backend=backend, flip=True)
+    return check_atom_map_and_return(raw_map)
+
+
+def check_atom_map_and_return(atom_map: Optional[List[int]]) -> Optional[List[int]]:
+    """
+    Check if the atom map is valid and return it.
+
+    Args:
+        atom_map (Optional[List[int]]): The atom map to check.
+
+    Returns:
+        Optional[List[int]]: The atom map if it is valid, None otherwise.
+    """
+    if atom_map is None:
+        return None
+    if not isinstance(atom_map, list):
+        logger.debug(f'Expected a list, got {type(atom_map)}.')
+        return None
+    if not all(isinstance(i, int) for i in atom_map):
+        logger.debug('All elements in the atom map should be integers.')
+        return None
+    if any(i < 0 for i in atom_map):
+        logger.debug(f'Atom map indices must be non‐negative. Got: {atom_map}')
+        return None
+    if not len(set(atom_map)) == len(atom_map):
+        logger.debug(f'The atom map should not contain duplicate indices. Got: {atom_map}')
+        return None
+    if set(atom_map) != set(range(len(atom_map))):
+        logger.debug(f'Atom map must be a permutation of 0..{len(atom_map) - 1}, got {atom_map}')
+        return None
+    return atom_map
 
 
 def map_general_rxn(rxn: 'ARCReaction',
@@ -223,14 +256,13 @@ def map_rxn(rxn: 'ARCReaction',
     except (IndexError, KeyError) as e:
         logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
         return None
-
+    family = ReactionFamily(label=rxn.family)
     template_order = get_template_product_order(rxn, template_products)
-    p_label_map = reorder_p_label_map(p_label_map=p_label_map,
-                                      template_order=template_order,
-                                      template_products=template_products,
-                                      actual_products=rxn.get_reactants_and_products()[1],
-                                      )
-
+    updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
+                                              template_order=template_order,
+                                              template_products=template_products,
+                                              actual_products=rxn.get_reactants_and_products()[1],
+                                              )
     try:
         make_bond_changes(rxn, r_cuts, r_label_map)
     except (ValueError, IndexError, ActionError, AtomTypeError) as e:
@@ -244,11 +276,13 @@ def map_rxn(rxn: 'ARCReaction',
 
     fragment_maps = map_pairs(pairs)
     total_atoms = sum(len(sp.mol.atoms) for sp in reactants)
-    return glue_maps(fragment_maps,
-                     pairs,
-                     r_label_map,
-                     p_label_map,
-                     total_atoms)
+    atom_map = glue_maps(maps=fragment_maps,
+                         pairs=pairs,
+                         r_label_map=r_label_map,
+                         p_label_map=updated_p_label_map,
+                         total_atoms=total_atoms,
+                         )
+    return atom_map
 
 
 def convert_label_dict(label_dict: Dict[str, int],
