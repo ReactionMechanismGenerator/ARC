@@ -129,8 +129,7 @@ def map_general_rxn(rxn: 'ARCReaction',
     return atom_map
 
 
-def map_isomerization_reaction(rxn: 'ARCReaction',
-                               ) -> Optional[List[int]]:
+def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
     """
     Map isomerization reaction that has no corresponding RMG family.
 
@@ -142,83 +141,106 @@ def map_isomerization_reaction(rxn: 'ARCReaction',
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    # 1. Check if this is a ring opening reaction (only one bond scission occurs).
-    if abs(len(rxn.r_species[0].mol.get_all_edges()) - len(rxn.p_species[0].mol.get_all_edges())) == 1:
-        # Identify the bond that was removed, and map a modified version of the species (without this bond).
+    reactant,product = rxn.r_species[0], rxn.p_species[0]
+
+    # Build edge‐sets for reactant & product
+    r_atoms, p_atoms = reactant.mol.atoms, product.mol.atoms
+    r_index, p_index = {atom: i for i, atom in enumerate(r_atoms)}, {atom: i for i, atom in enumerate(p_atoms)}
+    def edge_set(atoms, index_map):
+        """Create a set of edges for the given atoms based on their bonds."""
+        edges = set()
+        for atom in atoms:
+            i_1 = index_map[atom]
+            for nbr in atom.bonds:
+                i_2 = index_map[nbr]
+                edges.add(tuple(sorted((i_1, i_2))))
+        return edges
+
+    r_edges, p_edges = edge_set(r_atoms, r_index), edge_set(p_atoms, p_index)
+    edge_diff = len(r_edges) - len(p_edges)
+
+    # Only consider the “special” ring‐opening case if exactly one bond changed
+    if abs(edge_diff) == 1:
+        # 1) Use the fingerprint+DFS “unique‐atom” logic
         pairs, success = None, True
-        r_fingerprint, p_fingerprint = fingerprint(spc=rxn.r_species[0]), fingerprint(spc=rxn.p_species[0])
+        r_fp, p_fp = fingerprint(spc=reactant), fingerprint(spc=product)
         unique_r_keys, unique_p_keys = list(), list()
-        for r_key, r_val in r_fingerprint.items():
-            for p_val in p_fingerprint.values():
-                if are_adj_elements_in_agreement(r_val, p_val):
-                    break
-            else:
+        for r_key, r_val in r_fp.items():
+            if not any(are_adj_elements_in_agreement(r_val, p_val) for p_val in p_fp.values()):
                 unique_r_keys.append(r_key)
-        for p_key, p_val in p_fingerprint.items():
-            for r_key, r_val in r_fingerprint.items():
-                if are_adj_elements_in_agreement(r_val, p_val):
-                    break
-            else:
+        for p_key, p_val in p_fp.items():
+            if not any(are_adj_elements_in_agreement(r_val, p_val) for r_val in r_fp.values()):
                 unique_p_keys.append(p_key)
-        sorted_symbols_r = sorted([r_fingerprint[key]['self'] for key in unique_r_keys])
-        sorted_symbols_p = sorted([p_fingerprint[key]['self'] for key in unique_p_keys])
-        if len(unique_r_keys) == len(unique_p_keys) == 2 and sorted_symbols_r == sorted_symbols_p:
-            if len(set(sorted_symbols_p)) == 2:
-                # Only two unique elements, easy to match.
-                if r_fingerprint[unique_r_keys[0]]['self'] == p_fingerprint[unique_p_keys[0]]['self']:
-                    pairs = [(unique_r_keys[0], unique_p_keys[0]), (unique_r_keys[1], unique_p_keys[1])]
+
+        sorted_r, sorted_p = sorted(r_fp[k]['self'] for k in unique_r_keys), sorted(p_fp[k]['self'] for k in unique_p_keys)
+
+        if len(unique_r_keys) == 2 == len(unique_p_keys) and sorted_r == sorted_p:
+            # (a) two distinct elements: trivial match
+            if len(set(sorted_p)) == 2:
+                if r_fp[unique_r_keys[0]]['self'] == p_fp[unique_p_keys[0]]['self']:
+                    pairs = [(unique_r_keys[0], unique_p_keys[0]),
+                             (unique_r_keys[1], unique_p_keys[1])]
                 else:
-                    pairs = [(unique_r_keys[0], unique_p_keys[1]), (unique_r_keys[1], unique_p_keys[0])]
+                    pairs = [(unique_r_keys[0], unique_p_keys[1]),
+                             (unique_r_keys[1], unique_p_keys[0])]
+            # (b) same element twice: try both DFS seeds
             else:
-                # Two elements of the same type. Use DFS graph traversal to pair them.
-                candidate_0 = iterative_dfs(r_fingerprint,
-                                            p_fingerprint,
-                                            unique_r_keys[0],
-                                            unique_p_keys[0],
-                                            allow_first_key_pair_to_disagree=True,
-                                            )
-                candidate_1 = iterative_dfs(r_fingerprint,
-                                            p_fingerprint,
-                                            unique_r_keys[0],
-                                            unique_p_keys[1],
-                                            allow_first_key_pair_to_disagree=True,
-                                            )
-                if bool(candidate_0 is None) != bool(candidate_1 is None):
-                    if candidate_1 is None:
+                c0 = iterative_dfs(r_fp, p_fp, unique_r_keys[0], unique_p_keys[0], allow_first_key_pair_to_disagree=True)
+                c1 = iterative_dfs(r_fp, p_fp, unique_r_keys[0], unique_p_keys[1], allow_first_key_pair_to_disagree=True)
+                if (c0 is None) ^ (c1 is None):
+                    if c1 is None:
                         pairs = [(unique_r_keys[0], unique_p_keys[0]), (unique_r_keys[1], unique_p_keys[1])]
                     else:
                         pairs = [(unique_r_keys[0], unique_p_keys[1]), (unique_r_keys[1], unique_p_keys[0])]
+
+        # 2) If fingerprint+DFS succeeded, do exactly the old removal & update
         if pairs is not None:
-            r_copy = rxn.r_species[0].copy()
-            p_copy = rxn.p_species[0].copy()
-            extra_bond_in_reactant = False
-            if sum([len(v) for k, v in r_fingerprint[pairs[0][0]].items() if k not in RESERVED_FINGERPRINT_KEYS]) > \
-                    sum([len(v) for k, v in p_fingerprint[pairs[0][1]].items() if k not in RESERVED_FINGERPRINT_KEYS]):
-                extra_bond_in_reactant = True
-            if extra_bond_in_reactant:
-                try:
-                    bond = r_copy.mol.get_bond(r_copy.mol.atoms[unique_r_keys[0]], r_copy.mol.atoms[unique_r_keys[1]])
-                except ValueError:
-                    success = False
-                else:
-                    r_copy.mol.remove_bond(bond)
+            # decide which side had the extra bond
+            extra_in_reactant = edge_diff == 1
+            r_copy, p_copy = reactant.copy(), product.copy()
+            try:
+                if extra_in_reactant:
+                    b = r_copy.mol.get_bond(r_copy.mol.atoms[pairs[0][0]], r_copy.mol.atoms[pairs[1][0]])
+                    r_copy.mol.remove_bond(b)
                     r_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            else:
-                try:
-                    bond = p_copy.mol.get_bond(p_copy.mol.atoms[unique_p_keys[0]], p_copy.mol.atoms[unique_p_keys[1]])
-                except ValueError:
-                    success = False
                 else:
-                    p_copy.mol.remove_bond(bond)
+                    b = p_copy.mol.get_bond(p_copy.mol.atoms[pairs[0][1]], p_copy.mol.atoms[pairs[1][1]])
+                    p_copy.mol.remove_bond(b)
                     p_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
-            for atom in r_copy.mol.atoms + p_copy.mol.atoms:
-                for bond in atom.bonds.values():
-                    bond.order = 1
+            except ValueError:
+                success = False
+
             if success:
+                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
+                    for bd in atom.bonds.values():
+                        bd.order = 1
                 return map_two_species(r_copy, p_copy, map_type='list')
 
-    # Fallback to the general mapping algorithm.
-    return map_two_species(rxn.r_species[0], rxn.p_species[0], map_type='list')
+        # 3) If fingerprint branch *didn’t* yield pairs, still do a deterministic edge‐removal mapping for *any* ring opening
+        removed = (r_edges - p_edges) if edge_diff == 1 else (p_edges - r_edges)
+        if len(removed) == 1:
+            i, j = removed.pop()
+            r_copy, p_copy = reactant.copy(), product.copy()
+            try:
+                if edge_diff == 1:
+                    bond = r_copy.mol.get_bond(r_copy.mol.atoms[i], r_copy.mol.atoms[j])
+                    r_copy.mol.remove_bond(bond)
+                    r_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+                else:
+                    bond = p_copy.mol.get_bond(p_copy.mol.atoms[i], p_copy.mol.atoms[j])
+                    p_copy.mol.remove_bond(bond)
+                    p_copy.mol.update(log_species=False, raise_atomtype_exception=False, sort_atoms=False)
+            except ValueError:
+                pass
+            else:
+                for atom in r_copy.mol.atoms + p_copy.mol.atoms:
+                    for bd in atom.bonds.values():
+                        bd.order = 1
+                return map_two_species(r_copy, p_copy, map_type='list')
+
+    # 4) Fallback to the general mapping
+    return map_two_species(reactant, product, map_type='list')
+
 
 
 def map_rxn(rxn: 'ARCReaction',
