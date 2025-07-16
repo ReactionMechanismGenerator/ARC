@@ -44,32 +44,38 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     """
     if job is None:
         return None
-
     ts_xyz = reaction.ts_species.get_xyz()
+    n_ts = len(ts_xyz['symbols'])
+    n_expected = sum(spc.number_of_atoms for spc in reaction.r_species)
+    if n_ts != n_expected:
+        return False
     try:
         freqs, normal_mode_disp = parser.parse_normal_mode_displacement(log_file_path=job.local_path_to_output_file)
     except NotImplementedError:
-        logger.warning(f'Could not parse frequencies (and cannot compute NMD) for TS {reaction.ts_species.label}.')
+        logger.warning(f'Could not parse frequencies for TS {reaction.ts_species.label}.')
         return None
 
-    amplitude = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
-    weights = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
+    amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
+    weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)
     r_eq_atoms, _ = find_equivalent_atoms(reaction=reaction, reactant_only=True)
     formed_bonds, broken_bonds = reaction.get_formed_and_broken_bonds()
     changed_bonds = reaction.get_changed_bonds()
-    for amp in amplitude:
+
+    for amp in amplitude_list:
         if not amp:
             continue
-        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights)
-        if is_nmd_correct_for_any_mapping(reaction=reaction,
-                                          xyzs=xyzs,
-                                          formed_bonds=formed_bonds,
-                                          broken_bonds=broken_bonds,
-                                          changed_bonds=changed_bonds,
-                                          r_eq_atoms=r_eq_atoms,
-                                          weights=weights,
-                                          amplitude=amp,
-                                          ):
+        xyzs = get_displaced_xyzs(xyz=ts_xyz, amplitude=amp, normal_mode_disp=normal_mode_disp[0], weights=weights_array)
+
+        nmd_correct = is_nmd_correct_for_any_mapping(
+            reaction=reaction,
+            xyzs=xyzs,
+            formed_bonds=formed_bonds,
+            broken_bonds=broken_bonds,
+            changed_bonds=changed_bonds,
+            r_eq_atoms=r_eq_atoms,
+            weights=weights_array,
+            amplitude=amp)
+        if nmd_correct:
             return True
     return False
 
@@ -110,7 +116,7 @@ def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
                                                        weights=weights,
                                                        amplitude=amplitude,
                                                        return_none_if_change_is_insignificant=True,
-                                                       considered_reacttive=True,
+                                                       considered_reactive=True,
                                                        )
         if reactive_bonds_diffs is None:
             continue
@@ -308,7 +314,7 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
                             weights: Optional[np.array] = None,
                             amplitude: Optional[float] = None,
                             return_none_if_change_is_insignificant: bool = False,
-                            considered_reacttive: bool = False,
+                            considered_reactive: bool = False,
                             ) -> Optional[np.array]:
     """
     Get the bond length changes of specific bonds.
@@ -322,6 +328,7 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
                                                                  and return None if motion is insignificant.
                                                                  Relevant for bonds that change during a reaction,
                                                                  not for the background.
+        considered_reactive (bool): Whether the bonds are considered reactive in the reaction.
 
     Returns:
         Optional[np.array]: The bond length changes of the specified bonds.
@@ -341,7 +348,7 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
                 and abs(diff * amplitude / r_bond_length) < 0.05 and abs(diff * amplitude / p_bond_length) < 0.05:
             return None, None
         diffs.append(diff)
-        if considered_reacttive:
+        if considered_reactive:
             report = f'{float(r_bond_length):.2f} {float(p_bond_length):.2f} {float(diff):.2f} {amplitude}'
     diffs = np.array(diffs)
     return diffs, report
