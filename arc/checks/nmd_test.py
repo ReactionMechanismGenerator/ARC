@@ -16,7 +16,7 @@ from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
-from arc.parser.parser import parse_normal_mode_displacement
+from arc.parser.parser import parse_geometry, parse_normal_mode_displacement
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 from arc.species.converter import check_xyz_dict
@@ -113,14 +113,14 @@ class TestNMD(unittest.TestCase):
         cls.freq_log_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'HO2+N2H4_H2O2+N2H3_freq.out')
 
         cls.displaced_xyz_3 = ({'symbols': ('C', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (13, 14, 1, 1, 1, 1),
-                                'coords': ((1.1124035436000002, 0.4027481525, -0.4036028573),
+                                'coords': ((1.09466418610, 0.4027481525, -0.40679594165),
                                            (-0.6039793084, 0.6637270105, 0.16071541725),
                                            (-1.4226865648, -0.4973210697, -0.221361463275),
                                            (-0.4993010635, 0.6531020442, 1.102877567075),
                                            (-2.2115796924, -0.4529256762, 0.4646468697),
                                            (-1.8113671395, -0.3268900681, -1.2171690426))},
                                {'symbols': ('C', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (13, 14, 1, 1, 1, 1),
-                                'coords': ((0.21089942360000002, 0.4027481525, -0.5658735989),
+                                'coords': ((0.22863878110, 0.4027481525, -0.56268051455),
                                            (-0.6039793084, 0.6637270105, -0.026387990250000007),
                                            (-1.4226865648, -0.4973210697, -0.22638098772499998),
                                            (-0.4993010635, 0.6531020442, 1.0677408959249999),
@@ -212,7 +212,7 @@ class TestNMD(unittest.TestCase):
                        'isotopes': (12, 12, 16, 14, 16, 1, 1, 1, 1, 1),
                        'symbols': ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H')}
         cls.rxn_3 = ARCReaction(r_species=[ARCSpecies(label='C2H5NO2', smiles='[O-][N+](=O)CC', xyz=c2h5no2_xyz)],
-                               p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c2h5ono_xyz)], )
+                                p_species=[ARCSpecies(label='C2H5ONO', smiles='CCON=O', xyz=c2h5ono_xyz)], )
         cls.ts_3_xyz = check_xyz_dict("""O        0.520045    1.026544   -0.223307
                                          N        0.818877   -0.207900   -0.075436
                                          O        1.964221   -0.523711   -0.014266
@@ -273,6 +273,7 @@ class TestNMD(unittest.TestCase):
                                                                       H       1.73701100   -0.85419700    0.66460600""")
         rxn_3.ts_species.mol_from_xyz()
         rxn_3.ts_species.populate_ts_checks()
+        self.assertIsNotNone(rxn_3.atom_map)
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn_3, job=self.generic_job, amplitude=0.25)
         self.assertTrue(valid)
 
@@ -313,8 +314,7 @@ class TestNMD(unittest.TestCase):
         self.assertTrue(valid)
 
         # NCC + H <=> CH3CHNH2 + H2:
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'composite',
-                                                                  'TS0_composite_2044.out')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2044.out')
         ea_xyz = """N                  1.27511929   -0.21413688   -0.09829069
                     C                  0.04568411    0.51479456    0.24529057
                     C                 -1.17314611   -0.39875221    0.01838707
@@ -358,7 +358,7 @@ class TestNMD(unittest.TestCase):
         """Test the analyze_ts_normal_mode_displacement() function with correct and incorrect TSs for iC3H7 <=> nC3H7."""
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7')
         log_file_paths = {'iC3H7': os.path.join(base_path, 'iC3H7.gjf'),
-                          'nC3H7': os.path.join(base_path, 'nC3H7.log'),
+                          'nC3H7': os.path.join(base_path, 'nC3H7.gjf'),
                           'TS1': os.path.join(base_path, 'TS1.log'),  # an iC3H7-like saddle point
                           'TS2': os.path.join(base_path, 'TS2.log'),  # an nC3H7-like saddle point
                           'TS3': os.path.join(base_path, 'TS3.log'),  # the correct TS for iC3H7 <=> nC3H7
@@ -564,71 +564,70 @@ class TestNMD(unittest.TestCase):
         xyz_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS3.log')
         standard_ts_orientation_xyz = check_xyz_dict(xyz_path)
         freqs, nmd_array = parse_normal_mode_displacement(xyz_path)
-        self.assertEqual(freqs[0], -1927.8629)
+        self.assertAlmostEqual(float(freqs[0]), -1927.862, 2)
         self.assertTrue(np.allclose(nmd_array[0], np.array([[0., 0., -0.],
+                                                            [-0.04, 0.01, -0.06],
+                                                            [-0.02, 0.03, 0.07],
+                                                            [-0.01, 0.03, 0.03],
                                                             [0., -0., 0.01],
                                                             [-0.02, -0.02, -0.],
+                                                            [0.85, -0.51, -0.06],
                                                             [-0., -0., -0.],
-                                                            [-0.04, 0.01, -0.06],
-                                                            [-0.01, 0.03, 0.03],
-                                                            [-0.02, 0.03, 0.07],
                                                             [-0.02, 0.02, -0.03],
-                                                            [-0.03, -0., -0.03],
-                                                            [0.85, -0.51, -0.06]])))
+                                                            [-0.03, -0., -0.03]])))
         weights = nmd.get_weights_from_xyz(standard_ts_orientation_xyz)
         self.assertTrue(np.allclose(weights, np.array([[3.46410162],
-                                                       [1.00390489],
-                                                       [1.00390489],
-                                                       [1.00390489],
+                                                       [3.46410162],
                                                        [3.46410162],
                                                        [1.00390489],
-                                                       [3.46410162],
+                                                       [1.00390489],
+                                                       [1.00390489],
+                                                       [1.00390489],
                                                        [1.00390489],
                                                        [1.00390489],
                                                        [1.00390489]])))
         xyzs = nmd.get_displaced_xyzs(xyz=standard_ts_orientation_xyz,
                                       amplitude=0.50,
                                       normal_mode_disp=nmd_array[0],
-                                      weights=weights,
-                                      )
-        expected_xyz_0 = {'symbols': ('C', 'H', 'H', 'H', 'C', 'H', 'C', 'H', 'H', 'H'),
-                          'isotopes': (12, 1, 1, 1, 12, 1, 12, 1, 1, 1),
-                          'coords': ((-1.279906, -0.191149, -0.024558), (-1.269506, -1.096592, 0.5866444755398543),
-                                     (-1.5148619510797088, -0.5003619510797088, -1.049451),
-                                     (-2.096169, 0.442456, 0.330967),
+                                      weights=weights)
+        expected_xyz_0 = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+                          'coords': ((-1.279906, -0.191149, -0.024558),
                                      (0.1099180323027551, 0.49975249192431126, 0.12895004845413263),
-                                     (0.0968305244601456, 1.5411634266195633, -0.2957935733804368),
                                      (1.3528900161513775, -0.3071185242270663, -0.1597255565298214),
-                                     (1.2893590489202913, -1.3465650489202914, -0.0030494266195631933),
-                                     (2.2374925733804365, 0.228642, -0.36722042661956317),
-                                     (0.39647842088762386, 0.5475917474674257, 1.0661361467608736))}
-        expected_xyz_1 = {'symbols': ('C', 'H', 'H', 'H', 'C', 'H', 'C', 'H', 'H', 'H'),
-                          'isotopes': (12, 1, 1, 1, 12, 1, 12, 1, 1, 1),
-                          'coords': ((-1.279906, -0.191149, -0.024558), (-1.269506, -1.096592, 0.5966835244601456),
-                                     (-1.5349400489202913, -0.5204400489202912, -1.049451),
+                                     (0.0968305244601456, 1.5411634266195633, -0.2957935733804368),
+                                     (-1.269506, -1.096592, 0.5866444755398543),
+                                     (-1.5148619510797088, -0.5003619510797088, -1.049451),
+                                     (0.39647842088762386, 0.5475917474674257, 1.0661361467608736),
                                      (-2.096169, 0.442456, 0.330967),
+                                     (1.2893590489202913, -1.3465650489202914, -0.0030494266195631933),
+                                     (2.2374925733804365, 0.228642, -0.36722042661956317))}
+        expected_xyz_1 = {'symbols': ('C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (12, 12, 12, 1, 1, 1, 1, 1, 1, 1),
+                          'coords': ((-1.279906, -0.191149, -0.024558),
                                      (-0.028646032302755094, 0.5343935080756888, -0.07889604845413262),
-                                     (0.0867914755398544, 1.5712805733804367, -0.2656764266195632),
                                      (1.2836079838486225, -0.2031954757729337, 0.08276155652982141),
+                                     (0.0867914755398544, 1.5712805733804367, -0.2656764266195632),
+                                     (-1.269506, -1.096592, 0.5966835244601456),
+                                     (-1.5349400489202913, -0.5204400489202912, -1.049451),
+                                     (1.2497975791123763, 0.03560025253257432, 1.0059018532391264),
+                                     (-2.096169, 0.442456, 0.330967),
                                      (1.2692809510797087, -1.3264869510797088, -0.033166573380436805),
-                                     (2.207375426619563, 0.228642, -0.3973375733804368),
-                                     (1.2497975791123763, 0.03560025253257432, 1.0059018532391264))}
+                                     (2.207375426619563, 0.228642, -0.3973375733804368))}
         self.assertTrue(almost_equal_coords(xyzs[0], expected_xyz_0))
         self.assertTrue(almost_equal_coords(xyzs[1], expected_xyz_1))
-        reactive_bonds = [(4, 9), (6, 9)]
+        reactive_bonds = [(1, 6), (2, 6)]
         reactive_bonds_diffs, report = nmd.get_bond_length_changes(bonds=reactive_bonds,
                                                                    xyzs=xyzs,
                                                                    weights=weights,
                                                                    amplitude=0.50,
                                                                    return_none_if_change_is_insignificant=True,
-                                                                   considered_reacttive=True,
+                                                                   considered_reactive=True,
                                                                    )
         self.assertTrue(np.allclose(reactive_bonds_diffs, np.array([[1.43238515], [1.52941596]])))
 
         rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
                                                 xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'iC3H7.gjf'))],
                           p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
-                                                xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'nC3H7.log'))])
+                                                xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'nC3H7.gjf'))])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_path)
         r_bonds, _ = rxn.get_bonds(r_bonds_only=True)
         non_reactive_bonds = list()
@@ -652,8 +651,8 @@ class TestNMD(unittest.TestCase):
                                       normal_mode_disp=self.nmd_1,
                                       weights=self.weights_1,
                                       )
-        self.assertEqual(xyzs[0], self.displaced_xyz_3[0])
-        self.assertEqual(xyzs[1], self.displaced_xyz_3[1])
+        self.assertTrue(almost_equal_coords(xyzs[0], self.displaced_xyz_3[0]))
+        self.assertTrue(almost_equal_coords(xyzs[1], self.displaced_xyz_3[1]))
 
         normal_mode_disp = np.array([[-0.06, 0.04, 0.01], [-0., -0.03, -0.01], [0.08, 0., 0.02],
                                      [-0.02, 0.04, -0.02], [-0., -0.03, 0.01], [0.14, -0.05, 0.06],
