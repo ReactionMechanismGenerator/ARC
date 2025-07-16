@@ -921,7 +921,6 @@ def glue_maps(maps: List[List[int]],
         r_label_map (Dict[str, int]): A dictionary mapping the reactant labels to their indices.
         p_label_map (Dict[str, int]): A dictionary mapping the product labels to their indices.
         total_atoms (int): The total number of atoms across all reactants.
-        changed_labels (Optional[set]): The atom *# labels that change bonding during the reaciton.
 
     Returns:
         List[int]: An Atom Map of the complete reaction.
