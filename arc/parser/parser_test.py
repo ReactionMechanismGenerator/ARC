@@ -463,6 +463,25 @@ H      -1.69381305    0.40788834    0.90078104"""
                                      (0.659027, -1.754591, -0.0))}
         self.assertTrue(almost_equal_coords(xyz_5, expected_xyz_5))
 
+    def test_parse_geometry_for_ts(self):
+        """Test parse_geometry() for Transition States"""
+        path_1 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
+        xyz_1 = parser.parse_geometry(log_file_path=path_1)
+        self.assertIsInstance(xyz_1, dict)
+        self.assertEqual(len(xyz_1['symbols']), 10)
+
+        path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'TS_intra_H_migration_CBS-QB3.out')
+        xyz_2 = parser.parse_geometry(log_file_path=path_2)
+        self.assertEqual(len(xyz_2['symbols']), 10)
+
+        path_3 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
+        xyz_3 = parser.parse_geometry(log_file_path=path_3)
+        self.assertEqual(len(xyz_3['symbols']), 8)
+
+        path_4 = os.path.join(ARC_PATH, 'arc', 'testing', 'TS_confs', 'TS0_conf_9.out')
+        xyz_4 = parser.parse_geometry(log_file_path=path_4)
+        self.assertEqual(len(xyz_4['symbols']), 17)
+
     def test_parse_trajectory(self):
         """Test parsing trajectories"""
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'xyz', 'scan_optim.xyz')
