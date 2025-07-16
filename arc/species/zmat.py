@@ -751,7 +751,11 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
     r_constraint, r_constraint_type = check_atom_r_constraints(atom_index, constraints)
     a_constraint, a_constraint_type = check_atom_a_constraints(atom_index, constraints)
     d_constraint, d_constraint_type = check_atom_d_constraints(atom_index, constraints)
-    if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1:
+    if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1 \
+            and not (r_constraint is not None and a_constraint is not None
+                and r_constraint == tuple(a_constraint[:2])) \
+            and not (a_constraint is not None and d_constraint is not None
+                and a_constraint == tuple(d_constraint[:3])):
         raise ZMatError(f'A single atom cannot be constrained by more than one constraint type, got:\n'
                         f'R {r_constraint_type}: {r_constraint}\n'
                         f'A {a_constraint_type}: {a_constraint}\n'
