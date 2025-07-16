@@ -6,7 +6,7 @@ import heapq
 import numpy as np
 from itertools import combinations, product
 from math import dist
-from typing import Any, Iterable
+from typing import Any
 
 from openbabel import pybel
 
@@ -108,7 +108,7 @@ def perceive_molecule_from_xyz(
 
     # otherwise fall back on the existing single‐molecule code
     # (note: symbols, coords, mol0 already built above)
-    multiplicity = multiplicity or infer_multiplicity(symbols, charge)
+    multiplicity = multiplicity or infer_multiplicity(symbols, charge, n_radicals)
     n_radicals = n_radicals or (multiplicity - 1)
 
     rep = generate_lewis_structure(mol0, charge, multiplicity, n_radicals, is_fragment=is_fragment)
@@ -343,10 +343,31 @@ def xyz_to_coords_list(xyz: dict) -> list[list[float]]:
     return coords_list
 
 
-def infer_multiplicity(symbols: Iterable[str], total_charge: int) -> int:
+def infer_multiplicity(symbols: tuple[str],
+                       total_charge: int,
+                       n_radicals: int | None = None,
+                       ) -> int:
     """
     Closed‐shell (even e⁻) → singlet (1); odd e⁻ → doublet (2).
     """
+    if not total_charge and not n_radicals:
+        # guess the multiplicity for some common small species if n_radicals is not provided
+        if len(symbols) == 1:
+            # hard code for some common monatomic species
+            if symbols == ('C'):
+                return 3
+        if len(symbols) == 2:
+            # hard code for some common diatomic species
+            if symbols[0] in ['O', 'S'] and symbols[1] in ['O', 'S']:
+                return 3
+            if symbols in [('N', 'H'), ('H', 'N')]:
+                return 3
+            if symbols in [('C', 'H'), ('H', 'C')]:
+                return 2
+        if len(symbols) == 3:
+            # hard code for some common triatomic species
+            if symbols in [('C', 'H', 'H'), ('H', 'C', 'H'), ('H', 'H', 'C')]:
+                return 3
     total_e = sum(NUMBER_BY_SYMBOL[s] for s in symbols) - total_charge
     return 1 if total_e % 2 == 0 else 2
 
