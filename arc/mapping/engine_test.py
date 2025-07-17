@@ -1007,7 +1007,6 @@ class TestMappingEngine(unittest.TestCase):
 
     def test_map_hydrogens(self):
         """Test the map_hydrogens() function."""
-        # Todo: Add tests with many types of torsions and non(pseudo)-torsions, multiple bonds, cyclics.
         # CH4 different order
         spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
         spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
@@ -1023,6 +1022,64 @@ class TestMappingEngine(unittest.TestCase):
         atom_map = engine.map_hydrogens(self.spc1, self.spc2, backbone_map)
         self.assertEqual(atom_map,
                          {0: 0, 1: 6, 2: 5, 3: 1, 4: 2, 5: 3, 6: 4, 7: 7, 8: 8, 9: 10, 10: 9, 11: 11, 12: 12, 13: 13})
+
+    def test_map_hydrogens_ch3(self):
+        """Three‐H rotor: [CH3] in two different geometries."""
+        spc1 = ARCSpecies(label='CH3a', smiles='[CH3]', xyz=self.ch3_xyz)
+        spc2 = ARCSpecies(label='CH3b', smiles='[CH3]', xyz=self.ch3_xyz_2)
+        # carbon is atom 0 in both
+        backbone_map = {0: 0}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        # C→C must hold
+        self.assertEqual(atom_map[0], 0)
+        # the three H indices (1,2,3) must map bijectively to (1,2,3)
+        self.assertCountEqual([atom_map[i] for i in (1, 2, 3)], [1, 2, 3])
+
+    def test_map_hydrogens_ch3cl(self):
+        """–CH₃ on Cl: all three H’s should batch‐map in index order."""
+        spc1 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)
+        spc2 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)  # same geometry
+        # Cl=atom0, C=atom1
+        backbone_map = {0: 0, 1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        # expect trivial identity
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4})
+
+    def test_map_hydrogens_hcl(self):
+        """Single‐H fallback on HCl."""
+        spc1 = ARCSpecies(label='HCl', smiles='[H]Cl', xyz=self.hcl_xyz)
+        spc2 = ARCSpecies(label='HCl', smiles='[H]Cl', xyz=self.hcl_xyz)
+        # Cl is atom 1 → 1, H is atom 0 → 0
+        backbone_map = {1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        self.assertEqual(atom_map, {0: 0, 1: 1})
+
+    def test_map_hydrogens_two_h_rotor(self):
+        """A genuine two‐H rotor: CH2 in our dihedral‐deviation example."""
+        # ensure the torsions have been found
+        self.spc1_dihedral_deviation.determine_rotors()
+        self.spc2_dihedral_deviation.determine_rotors()
+        fp1 = engine.fingerprint(self.spc1_dihedral_deviation)
+        fp2 = engine.fingerprint(self.spc2_dihedral_deviation)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+        self.assertEqual(backbone_map, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
+        atom_map = engine.map_hydrogens(self.spc1_dihedral_deviation, self.spc2_dihedral_deviation, backbone_map)
+        expected = {0: 0, 3: 1, 5: 3, 6: 4, 4: 2, 7: 7, 13: 13, 2: 5, 1: 6, 11: 11, 12: 12, 8: 8, 9: 10, 10: 9}
+        self.assertEqual(atom_map, expected)
+
+    def test_map_hydrogens_butenylbenzene(self):
+        """Large test: butenyl‐benzene H’s mapping preserves one‐to‐one & element order."""
+        spc1 = ARCSpecies(label='bb1', xyz=self.butenylnebzene_1_xyz)
+        spc2 = ARCSpecies(label='bb2', xyz=self.butenylnebzene_2_xyz)
+        spc1.determine_rotors()
+        spc2.determine_rotors()
+        fp1 = engine.fingerprint(spc1)
+        fp2 = engine.fingerprint(spc2)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        rxn = ARCReaction(r_species=[spc1], p_species=[spc2])
+        rxn.atom_map = [atom_map[i] for i in range(spc1.number_of_atoms)]
+        self.assertTrue(engine.check_atom_map(rxn))
 
     def test_add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(self):
         """test the add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion() function"""
@@ -1199,17 +1256,16 @@ class TestMappingEngine(unittest.TestCase):
         p_cuts = engine.cut_species_based_on_atom_indices(products, p_bdes)
         pairs_of_reactant_and_products = engine.pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
         maps = engine.map_pairs(pairs_of_reactant_and_products)
-        product_dicts = determine_possible_reaction_products_from_family(rxn_1_test, family_label=rxn_1_test.family)
         r_species, p_species = rxn_1_test.get_reactants_and_products()
-        template_order = engine.get_template_product_order(rxn_1_test, product_dicts[0]['products'])
-        updated_p_label_map = engine.reorder_p_label_map(p_label_map=product_dicts[0]['p_label_map'],
+        template_order = engine.get_template_product_order(rxn_1_test, rxn_1_test.product_dicts[0]['products'])
+        updated_p_label_map = engine.reorder_p_label_map(p_label_map=rxn_1_test.product_dicts[0]['p_label_map'],
                                                          template_order=template_order,
-                                                         template_products=product_dicts[0]['products'],
+                                                         template_products=rxn_1_test.product_dicts[0]['products'],
                                                          actual_products= p_species,
                                                          )
         atom_map = engine.glue_maps(maps=maps,
                                     pairs=pairs_of_reactant_and_products,
-                                    r_label_map=product_dicts[0]['r_label_map'],
+                                    r_label_map=rxn_1_test.product_dicts[0]['r_label_map'],
                                     p_label_map=updated_p_label_map,
                                     total_atoms=sum(len(sp.mol.atoms) for sp in r_species)
                                     )
@@ -1566,8 +1622,89 @@ class TestMappingEngine(unittest.TestCase):
         # now test reorder_p_label_map gives exactly the expected new globals:
         expected = {'*1': 5, '*2': 4, '*3': 1, '*4': 0, '*5': 2}
         new_map = engine.reorder_p_label_map(p_label_map_tpl, template_order, template_products, rxn2.get_reactants_and_products()[1])
-        print(new_map)
         self.assertEqual(new_map, expected)
+
+    def test_get_template_product_order(self):
+        """tests the get_template_product_order() function"""
+        ch3nh2_xyz = {'coords': ((-0.5734111454228507, 0.0203516083213337, 0.03088703933770556),
+                                 (0.8105595891860601, 0.00017446498908627427, -0.4077728757313545),
+                                 (-1.1234549667791063, -0.8123899006368857, -0.41607711106038836),
+                                 (-0.6332220120842996, -0.06381791823047896, 1.1196983583774054),
+                                 (-1.053200912106195, 0.9539501896695028, -0.27567270246542575),
+                                 (1.3186422395164141, 0.7623906284020254, 0.038976118645639976),
+                                 (1.2540872076899663, -0.8606590725145833, -0.09003882710357966)),
+                      'isotopes': (12, 14, 1, 1, 1, 1, 1),
+                      'symbols': ('C', 'N', 'H', 'H', 'H', 'H', 'H')}
+        ch2nh2_xyz = {'coords': ((0.6919493009211066, 0.054389375309083846, 0.02065422596281878),
+                                 (1.3094508022837807, -0.830934909576592, 0.14456347719459348),
+                                 (1.1649142139806816, 1.030396183273415, 0.08526955368597328),
+                                 (-0.7278194451655412, -0.06628299353512612, -0.30657582460750543),
+                                 (-1.2832757211903472, 0.7307667658607352, 0.00177732009031573),
+                                 (-1.155219150829674, -0.9183344213315149, 0.05431124767380799)),
+                      'isotopes': (12, 1, 1, 14, 1, 1),
+                      'symbols': ('C', 'H', 'H', 'N', 'H', 'H')}
+        r_1 = ARCSpecies(label='H', smiles='[H]', xyz={'coords': ((0, 0, 0),), 'isotopes': (1,), 'symbols': ('H',)})
+        r_2 = ARCSpecies(label='CH3NH2', smiles='CN', xyz=ch3nh2_xyz)
+        p_1 = ARCSpecies(label='H2', smiles='[H][H]', xyz=self.h2_xyz)
+        p_2 = ARCSpecies(label='CH2NH2', smiles='[CH2]N', xyz=ch2nh2_xyz)
+        rxn_1_a = ARCReaction(r_species=[r_1, r_2], p_species=[p_1, p_2])
+        rxn_1_b = ARCReaction(r_species=[r_1, r_2], p_species=[p_2, p_1])
+        order_1_a = engine.get_template_product_order(rxn=rxn_1_a, template_products=rxn_1_a.product_dicts[0]['products'])
+        self.assertEqual(order_1_a, [1, 0])
+        order_1_b = engine.get_template_product_order(rxn=rxn_1_b, template_products=rxn_1_b.product_dicts[0]['products'])
+        self.assertEqual(order_1_b, [0, 1])
+
+        c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
+                                   (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
+                                   (0.9737380560194014, 0.5278617594060281, -1.1526858375270472),
+                                   (1.2607098516126556, 1.1809007875206383, -1.9621017164412065),
+                                   (-0.36396095305912823, -0.13214785064139675, -1.0200667625809143),
+                                   (-1.5172464644867296, 0.8364138939810618, -1.0669384323486588),
+                                   (-2.4922101649968655, 0.8316551483126366, -0.14124720277902958),
+                                   (-2.462598061982958, -0.09755474191953761, 0.9703503187569243),
+                                   (-1.4080417204047313, -0.8976377310686736, 1.1927020968566089),
+                                   (-0.27981087345916755, -0.8670643393461046, 0.29587765657632165),
+                                   (1.1395623815572733, -0.9147118621123697, 0.771368745020215),
+                                   (3.7901243915692864, -0.006544237180536178, 0.7580206603561134),
+                                   (3.6186251824572455, 1.0920401631166292, -0.725695658374561),
+                                   (-0.4799044636709365, -0.8577283498506146, -1.8345168113636874),
+                                   (-1.5704890060131314, 1.527002009812866, -1.902575985299536),
+                                   (-3.3260277144990296, 1.5238536460491903, -0.20338465526703625),
+                                   (-3.311126364299293, -0.09969554359088921, 1.6478137927333953),
+                                   (-1.3707042898204835, -1.549541647625315, 2.0589774409040964),
+                                   (1.5338362221707007, -1.9310023570889727, 0.6663504223502944),
+                                   (1.2246749300961473, -0.5970975942012858, 1.816181327157103)),
+                        'isotopes': (12, 12, 12, 1, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c10h10_b_xyz = {'coords': ((3.247237794328524, -0.13719671162966918, 0.19555833918937052),
+                                   (1.9094861712282774, -0.08067655688828143, 0.14898941432495702),
+                                   (0.9973729357914858, -1.2703386896415134, -0.09322848415119056),
+                                   (-0.37904449715218924, -0.6747166782032148, -0.049044448345326556),
+                                   (-0.32906812544096026, 0.704634441388649, 0.189424753183012),
+                                   (-1.4900181263846768, 1.4572613706024167, 0.2695747550348709),
+                                   (-2.715200996994148, 0.8069241052920498, 0.10660938013945513),
+                                   (-2.765284083663716, -0.5753713833636181, -0.13236922431004927),
+                                   (-1.5909002849280705, -1.3270914347507115, -0.21179882275795825),
+                                   (1.0862366144301145, 1.1823049698313937, 0.33079658088902575),
+                                   (3.8424769924852367, 0.7530758608805569, 0.37314678191170336),
+                                   (3.7762437608797406, -1.0749685445597326, 0.05710603017340202),
+                                   (1.1128196175313243, -2.0170485762246773, 0.6986324476157837),
+                                   (1.187449599052061, -1.7129398667445945, -1.0760419644685346),
+                                   (-1.453108430051206, 2.525963604437891, 0.45426129138400156),
+                                   (-3.639988653002051, 1.3756767310587803, 0.16518163487425436),
+                                   (-3.7283956370857467, -1.0643593255501977, -0.2566648708585298),
+                                   (-1.631427244782937, -2.3956407728893367, -0.3966116183664473),
+                                   (1.3188711462571718, 1.9143096670969255, -0.4489453399950017),
+                                   (1.2442414475018486, 1.6101977898569013, 1.3257284397785851)),
+                        'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        r_1 = ARCSpecies(label='C10H10_a', smiles='C=C1[CH]C2C=CC=C[C]2C1', xyz=c10h10_a_xyz, multiplicity=1, number_of_radicals=2)
+        p_1 = ARCSpecies(label='C10H10_b', smiles='C=C1CC2=C(C=CC=C2)C1', xyz=c10h10_b_xyz)
+        rxn_2 = ARCReaction(reactants=['C10H10_a'], products=['C10H10_b'], r_species=[r_1], p_species=[p_1])
+        order_2 = engine.get_template_product_order(rxn=rxn_2, template_products=rxn_2.product_dicts[0]['products'])
+        self.assertEqual(order_2, [0])
 
 
     @classmethod
