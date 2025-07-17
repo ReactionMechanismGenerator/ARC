@@ -28,7 +28,7 @@ from arc.imports import settings
 from arc.level import Level
 from arc.molecule.atomtype import ATOMTYPES
 from arc.molecule.molecule import Atom, Bond, Molecule
-from arc.molecule.resonance import generate_kekule_structure, generate_resonance_structures_safely
+from arc.molecule.resonance import generate_aromatic_resonance_structure, generate_kekule_structure, generate_resonance_structures_safely
 from arc.parser.parser import (parse_1d_scan_energies,
                                parse_dipole_moment,
                                parse_geometry,
@@ -1058,15 +1058,17 @@ class ARCSpecies(object):
             if other.mol is None:
                 return None
             other = other.mol
+        other = other.copy(deep=True)
+        other_aromatic = generate_aromatic_resonance_structure(mol=other, copy=False) if other.is_cyclic() else []
+        other = other_aromatic[0] if len(other_aromatic) else other
         if isinstance(other, Molecule):
             if self.mol_list is not None and len(self.mol_list):
                 for mol_ in [self.mol] + self.mol_list:
-                    if mol_.copy(deep=True).is_isomorphic(other.copy(deep=True)):
+                    if mol_.copy(deep=True).is_isomorphic(other):
                         return True
                 return False
             else:
-                return self.mol.copy(deep=True).is_isomorphic(other.copy(deep=True))
-            return False
+                return self.mol.copy(deep=True).is_isomorphic(other)
         raise SpeciesError(f'Can only compare isomorphism to other ARCSpecies, RMG Species, or Molecule '
                            f'object instances, got {other} which is of type {type(other)}.')
 
