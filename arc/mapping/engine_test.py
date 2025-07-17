@@ -176,6 +176,15 @@ class TestMappingEngine(unittest.TestCase):
                           H      -1.18655934   -0.63438343    0.06795859
                           H      -0.71586186    0.90189070   -0.18800765
                           H       1.56071894    0.18069099    0.00439608"""
+        cls.xyz_ethanol = """C    1.1658210   -0.4043550    0.0000000
+                             C    0.0000000    0.5518050    0.0000000
+                             O   -1.1894600   -0.2141940    0.0000000
+                             H   -1.9412580    0.3751850    0.0000000
+                             H    2.1054020    0.1451160    0.0000000
+                             H    1.1306240   -1.0387850    0.8830320
+                             H    1.1306240   -1.0387850   -0.8830320
+                             H    0.0476820    1.1930570    0.8835910
+                             H    0.0476820    1.1930570   -0.8835910"""
         cls.arc_reaction_1 = ARCReaction(label='CH4 + OH <=> CH3 + H2O',
                                          r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
                                                     ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
@@ -207,9 +216,17 @@ class TestMappingEngine(unittest.TestCase):
                                                                       H      -1.69636720    0.21982441    1.34850246
                                                                       H      -0.39178710    1.38838724    1.61666119"""),
                                                     ARCSpecies(label='NH3', smiles='N', xyz=cls.nh3_xyz)])
+        cls.c2h6_xyz = """C       0.75285806   -0.06808234   -0.01222083
+                          C      -0.75285808    0.06808231    0.01222086
+                          H       1.04189871   -1.10666259   -0.19883980
+                          H       1.18246189    0.24239475    0.94489176
+                          H       1.18249214    0.55617994   -0.80135396
+                          H      -1.18249194   -0.55617970    0.80135433
+                          H      -1.18246208   -0.24239528   -0.94489147
+                          H      -1.04189873    1.10666263    0.19883924"""
         cls.arc_reaction_3 = ARCReaction(label='CH3 + CH3 <=> C2H6',
                                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
-                                         p_species=[ARCSpecies(label='C2H6', smiles='CC')])
+                                         p_species=[ARCSpecies(label='C2H6', smiles='CC', xyz=cls.c2h6_xyz)])
         cls.arc_reaction_4 = ARCReaction(label='CH2CH2NH2 <=> CH3CH2NH',
                                          r_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN',
                                                                xyz="""C      -1.24450121    0.17451352    0.00786829
@@ -487,6 +504,40 @@ class TestMappingEngine(unittest.TestCase):
                             H      -0.92134271   -0.74783968   -0.82281679
                             H      -1.04996634   -0.37234114    0.91874740
                             H       1.36260637    0.37153887   -0.86221771"""
+        cls.ip1_xyz = """ C                  0.23537226    1.11846087   -0.01756422
+                          H                  0.62797226    0.12368275   -0.05194069
+                          H                  0.55388639    1.65778122   -0.88507924
+                          C                 -1.30324095    1.06223033    0.01571514
+                          H                 -1.69584095    2.05700844    0.05009160
+                          C                 -1.76166316    0.28601226    1.26428816
+                          H                 -1.40374084    0.78053929    2.14305697
+                          H                 -2.83069961    0.24694299    1.28741083
+                          H                 -1.36906315   -0.70876586    1.22991169
+                          C                 -1.81838148    0.35048114   -1.24905493
+                          H                 -2.88741793    0.31141187   -1.22593226
+                          H                 -1.49986735    0.88980149   -2.11656995
+                          H                 -1.42578148   -0.64429698   -1.28343139
+                          C                  0.75051279    1.83021006    1.24720584
+                          H                  0.43199866    1.29088971    2.11472086
+                          H                  1.81954925    1.86927933    1.22408317
+                          H                  0.35791279    2.82498817    1.28158231"""
+        cls.ip2_xyz = """ C                  0.24171794    1.05804677   -0.05782384
+                          H                  0.61304261    1.59287556    0.79127931
+                          H                  0.61267153    0.05461321   -0.03746400
+                          C                 -1.29763479    1.03716009   -0.01836598
+                          H                 -1.66858838    2.04059365   -0.03872582
+                          C                 -1.76866179    0.34183289    1.27246850
+                          H                 -1.39733711    0.87666169    2.12157164
+                          H                 -2.83821206    0.32732072    1.29988402
+                          H                 -1.39770820   -0.66160067    1.29282834
+                          C                 -1.83206470    0.26740650   -1.24043967
+                          H                 -2.90161497    0.25289432   -1.21302415
+                          H                 -1.50479269    0.75052344   -2.13731817
+                          H                 -1.46111111   -0.73602706   -1.22007983
+                          C                  0.71274494    1.75337396   -1.34865832
+                          H                  0.34179135    2.75680752   -1.36901816
+                          H                  1.78229521    1.76788614   -1.37607384
+                          H                  0.34142026    1.21854517   -2.19776146"""
 
     def test_map_two_species(self):
         """Test the map_two_species() function."""
@@ -639,6 +690,12 @@ class TestMappingEngine(unittest.TestCase):
         b2 = ARCSpecies(label='benzene', smiles='c1ccccc1')
         atom_map = engine.map_two_species(b1, b2)
         self.assertEqual(len(atom_map), 12)
+
+        # Map ethane
+        e1 = ARCSpecies(label='ethane_1', smiles='CC')
+        e2 = ARCSpecies(label='ethane_2', smiles='CC')
+        atom_map = engine.map_two_species(e1, e2)
+        self.assertEqual(len(atom_map), 8)
 
     def test_inc_valss(self):
         s1 = ARCSpecies(label='S1', smiles='C=CC1C(C)C=CC(C)C1C')
@@ -892,15 +949,11 @@ class TestMappingEngine(unittest.TestCase):
                                                      1: {'self': 'C', 'H': [3, 4]}},
                                       fingerprint_2={0: {'self': 'C', 'C': [1]},
                                                      1: {'self': 'C', 'H': [3, 4]}},
-                                      key_1=0,
-                                      key_2=0,
-                                      )
+                                      key_1=0, key_2=0)
         self.assertEqual(result, {0: 0, 1: 1})
         result = engine.iterative_dfs(fingerprint_1=self.fingerprint_1,
                                       fingerprint_2=self.fingerprint_2,
-                                      key_1=0,
-                                      key_2=0,
-                                      )
+                                      key_1=0, key_2=0)
         self.assertEqual(result, {0: 0, 3: 1, 4: 2, 5: 3, 6: 4})
 
         fingerprint_2 = {
@@ -929,9 +982,7 @@ class TestMappingEngine(unittest.TestCase):
             10: {'self': 'C', 'C': [9], 'H': [26, 27, 28]}}  # 31
         result = engine.iterative_dfs(fingerprint_1=fingerprint_2,
                                       fingerprint_2=fingerprint_3b,
-                                      key_1=7,
-                                      key_2=7,
-                                      )
+                                      key_1=7, key_2=7)
         self.assertEqual(result, {7: 7, 6: 6, 5: 5, 3: 3, 4: 4, 2: 2, 1: 1, 0: 0, 9: 9, 10: 10, 8: 8})
 
     def test_prune_identical_dicts(self):
@@ -1005,14 +1056,328 @@ class TestMappingEngine(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.map_lists([5.0], [3.2, 7.9])
 
-    def test_map_hydrogens(self):
-        """Test the map_hydrogens() function."""
+    def test_find_hydrogen_neighbors(self):
+        """Test the _find_hydrogen_neighbors() function."""
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(0, [])
+
+        # No hydrogens (N2 molecule)
+        spc_n2 = ARCSpecies(label='N2', smiles='N#N', xyz="""N 0 0 0\nN 0 0 1""")
+        atoms_n2 = spc_n2.mol.atoms
+        self.assertEqual(engine._find_hydrogen_neighbors(0, atoms_n2), [])
+        self.assertEqual(engine._find_hydrogen_neighbors(1, atoms_n2), [])
+
+        spc_ch4 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        atoms_ch4 = spc_ch4.mol.atoms
+        neighbors = engine._find_hydrogen_neighbors(0, atoms_ch4)
+        self.assertCountEqual(neighbors, [1, 2, 3, 4])
+        self.assertEqual(neighbors, sorted(neighbors), "Neighbors should be returned sorted")
+
+        # Edge: negative and out-of-range indices
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(-1, atoms_ch4)
+        with self.assertRaises(IndexError):
+            engine._find_hydrogen_neighbors(len(atoms_ch4), atoms_ch4)
+
+        spc_etoh = ARCSpecies(label='EtOH', smiles='CCO', xyz=self.xyz_ethanol)
+        atoms_etoh = spc_etoh.mol.atoms
+        self.assertCountEqual(engine._find_hydrogen_neighbors(0, atoms_etoh), [4, 5, 6])
+        self.assertCountEqual(engine._find_hydrogen_neighbors(1, atoms_etoh), [7, 8])
+        self.assertCountEqual(engine._find_hydrogen_neighbors(2, atoms_etoh), [3])
+
+    def test_select_ch3_anchors_rotor_branch(self):
+        """Test that rotors_dict entries are picked first in _select_ch3_anchors."""
+        # Use the product species from setUp which contains a CH₃ with a real internal rotor
+        spc = self.p_1
+        # Populate rotors_dict
+        spc.determine_rotors()
+        atoms = spc.mol.atoms
+        # Find the CH₃ center: heavy atom with exactly 3 H neighbors
+        heavy_idx = next(
+            i for i in range(len(atoms))
+            if not atoms[i].is_hydrogen()
+            and len(engine._find_hydrogen_neighbors(i, atoms)) == 3
+        )
+        # Identity mapping for this heavy atom
+        backbone_map = {heavy_idx: heavy_idx}
+        # Select anchors
+        anchors = engine._select_ch3_anchors(heavy_idx, spc, backbone_map)
+        self.assertIsNotNone(anchors, "Expected rotor‐based anchors for CH₃")
+        A_idx, B_idx = anchors
+
+        # A must be one of the two heavy neighbors of the CH₃ carbon
+        heavy_nb = engine._find_preferably_heavy_neighbor(heavy_idx, spc)
+        self.assertEqual(A_idx, heavy_nb)
+
+        # B must be the non‐H end of the rotor (e.g., an O or C), not H, and not the center or A
+        self.assertFalse(atoms[B_idx].is_hydrogen(), "Rotor anchor B must be non‐hydrogen")
+        self.assertNotIn(B_idx, (heavy_idx, A_idx), "Anchor B must be distinct from C and A")
+
+    def test_construct_local_axes(self):
+        """Test the _construct_local_axes() helper for building a local frame."""
+        # Simple orthonormal case: C at origin, A on x, B on y
+        coords = [(0.0, 0.0, 0.0),
+                  (1.0, 0.0, 0.0),
+                  (0.0, 1.0, 0.0)]
+        e_x, e_y, e_z = engine._construct_local_axes(center_idx=0, anchor1_idx=1, anchor2_idx=2, coords=coords)
+        # x-axis should be unit x, y unit y, z unit z
+        np.testing.assert_allclose(e_x, [1.0, 0.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(e_y, [0.0, 1.0, 0.0], atol=1e-6)
+        np.testing.assert_allclose(e_z, [0.0, 0.0, 1.0], atol=1e-6)
+
+        # Colinear anchors → cannot define unique plane
+        coords_colinear = [(0.0, 0.0, 0.0),
+                           (1.0, 0.0, 0.0),
+                           (2.0, 0.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_colinear)
+
+        # Zero‐length anchor1 (A coincides with C)
+        coords_overlap1 = [(0.0, 0.0, 0.0),
+                           (0.0, 0.0, 0.0),
+                           (0.0, 1.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_overlap1)
+
+        # Zero‐length anchor2 (B coincides with C)
+        coords_overlap2 = [(0.0, 0.0, 0.0),
+                           (1.0, 0.0, 0.0),
+                           (0.0, 0.0, 0.0)]
+        with self.assertRaises(ValueError):
+            engine._construct_local_axes(0, 1, 2, coords_overlap2)
+
+    def test_compute_azimuthal_angles(self):
+        """Test the _compute_azimuthal_angles() helper for azimuth calculations."""
+        # setup simple coords: center at 0, 1:+y, 2:+z, 3:-y, 4:-z
+        coords = [(0.0, 0.0, 0.0),  # center
+                  (0.0, 1.0, 0.0),  # +y
+                  (0.0, 0.0, 1.0),  # +z
+                  (0.0, -1.0, 0.0),  # -y
+                  (0.0, 0.0, -1.0)]  # -z
+        # axes: y-axis and z-axis
+        e_y = np.array([0.0, 1.0, 0.0])
+        e_z = np.array([0.0, 0.0, 1.0])
+        # compute angles
+        angles = engine._compute_azimuthal_angles(center_idx=0,
+                                                  hydrogen_indices=[1,2,3,4],
+                                                  coords=coords,
+                                                  e_y=e_y,
+                                                  e_z=e_z)
+        # check expected: +y→0°, +z→90°, -y→180°, -z→270°
+        self.assertAlmostEqual(angles[1], 0.0, places=6)
+        self.assertAlmostEqual(angles[2], 90.0, places=6)
+        self.assertAlmostEqual(angles[3], 180.0, places=6)
+        self.assertAlmostEqual(angles[4], 270.0, places=6)
+
+        # empty hydrogen list → empty dict
+        empty = engine._compute_azimuthal_angles(center_idx=0,
+                                                hydrogen_indices=[],
+                                                coords=coords,
+                                                e_y=e_y,
+                                                e_z=e_z)
+        self.assertEqual(empty, {})
+
+        # non-origin center
+        coords2 = [(1.0, 1.0, 1.0),  # center
+                   (1.0, 2.0, 1.0),  # +y
+                   (1.0, 1.0, 2.0)]  # +z
+        angles2 = engine._compute_azimuthal_angles(center_idx=0,
+                                                   hydrogen_indices=[1,2],
+                                                   coords=coords2,
+                                                   e_y=e_y,
+                                                   e_z=e_z)
+        self.assertAlmostEqual(angles2[1], 0.0, places=6)
+        self.assertAlmostEqual(angles2[2], 90.0, places=6)
+
+    def test_determine_cyclic_shift(self):
+        """Test the _determine_cyclic_shift() helper for cyclic permutation mapping."""
+        # Trivial empty inputs
+        self.assertEqual(engine._determine_cyclic_shift({}, {}), {})
+
+        # Single hydrogen → maps to itself
+        angles_a = {1: 45.0}
+        angles_b = {1: 200.0}
+        self.assertEqual(engine._determine_cyclic_shift(angles_a, angles_b), {1: 1})
+
+        # Three‐H case: simple 120° rotations
+        angles1 = {1: 0.0, 2: 120.0, 3: 240.0}
+        # rotated forward by one position: H1→120°, H2→240°, H3→0°
+        angles2 = {1: 120.0, 2: 240.0, 3: 0.0}
+        # items1 sorted: [1,2,3]; items2 sorted by angle gives [3,1,2];
+        # best shift is 0, so 1→3, 2→1, 3→2
+        expected = {1: 3, 2: 1, 3: 2}
+        self.assertEqual(engine._determine_cyclic_shift(angles1, angles2), expected)
+
+        # rotated another way: H1→240°, H2→0°, H3→120°
+        angles3 = {1: 240.0, 2: 0.0, 3: 120.0}
+        # items2 sorted gives [2,3,1]; shift=0 best, mapping 1→2,2→3,3→1
+        expected3 = {1: 2, 2: 3, 3: 1}
+        self.assertEqual(engine._determine_cyclic_shift(angles1, angles3), expected3)
+
+        # Four‐H case: 90° spacing
+        angles4 = {1: 0.0, 2: 90.0, 3: 180.0, 4: 270.0}
+        # rotate by two positions: H1→180°, H2→270°, H3→0°, H4→90°
+        angles5 = {1: 180.0, 2: 270.0, 3: 0.0, 4: 90.0}
+        # items1 sorted [1,2,3,4]; items2 sorted [3,4,1,2]; best shift = 2
+        expected45 = {1: 3, 2: 4, 3: 1, 4: 2}
+        self.assertEqual(engine._determine_cyclic_shift(angles4, angles5), expected45)
+
+    def test_map_xh3_group(self):
+        """Test the _map_xh3_group() helper on isopentane conformers."""
+        spc1 = ARCSpecies(label='ip1', smiles='CCC(C)C', xyz=self.ip1_xyz)
+        spc2 = ARCSpecies(label='ip2', smiles='CCC(C)C', xyz=self.ip2_xyz)
+
+        # identify the heavy‐atom map
+        fp1 = engine.fingerprint(spc1)
+        fp2 = engine.fingerprint(spc2)
+        backbone_map = engine.identify_superimposable_candidates(fp1, fp2)[0]
+
+        # Choose the CH3 center in spc1 (atom 13) and its counterpart in spc2
+        heavy_idx_1 = 13
+        heavy_idx_2 = backbone_map[heavy_idx_1]
+        self.assertIn(heavy_idx_1, backbone_map)
+
+        # Now map just that CH3 group
+        h_map = engine._map_xh3_group(heavy_idx_1, heavy_idx_2, spc1, spc2, backbone_map)
+        self.assertIsInstance(h_map, dict)
+
+        # The three H’s on heavy_idx_1 should map bijectively to those on heavy_idx_2
+        from_atoms = set(engine._find_hydrogen_neighbors(heavy_idx_1, spc1.mol.atoms))
+        to_atoms   = set(engine._find_hydrogen_neighbors(heavy_idx_2, spc2.mol.atoms))
+        self.assertEqual(set(h_map.keys()),   from_atoms)
+        self.assertEqual(set(h_map.values()), to_atoms)
+        self.assertEqual(len(h_map), 3)
+        self.assertEqual(len(set(h_map.values())), 3)
+
+    def test_map_hydrogens_for_ch4(self):
+        """Test the map_hydrogens() function for a single heavy atom with only H's."""
         # CH4 different order
-        spc1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
-        spc2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
-        atom_map = engine.map_hydrogens(spc1, spc2, {0: 2})
+        spc_1 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz)
+        spc_2 = ARCSpecies(label='CH4', smiles='C', xyz=self.ch4_xyz_diff_order)
+        atom_map = engine.map_hydrogens(spc_1, spc_2, {0: 2})
         self.assertEqual(atom_map, {0: 2, 1: 0, 2: 1, 3: 3, 4: 4})
 
+    def test_map_hydrogens_for_single_h_on_heavy_atoms(self):
+        """Test the map_hydrogens() function for heavy atoms with maximum one single hydrogen on each."""
+        xyz_1 = """O      -1.78378112   -0.07989467   -0.47936774
+                   N      -1.16852603   -0.02514720    0.84471578
+                   C       0.22018472    0.38367028    0.66125478
+                   O       0.24312897    1.55910092   -0.11622817
+                   C       1.03976213   -0.70604389    0.03329338
+                   C       1.67134490   -0.65646332   -1.10629070
+                   H      -2.11442122   -1.00024313   -0.50590521
+                   H      -1.65290299    0.76853334    1.27089430
+                   H       0.65354019    0.61949070    1.63872434
+                   H       0.17700909    2.25408216    0.56213511
+                   H       1.10670066   -1.62397813    0.60964145
+                   H       2.18842073   -0.59379847   -2.03612575"""
+        xyz_2 = """O       0.41112542   -1.22479678    2.75467095
+                   N      -0.42661217   -0.50407979    1.96197968
+                   C       0.35967522    0.24409217    0.97057227
+                   O      -0.52118100    1.00191440    0.13708582
+                   C       1.16481566   -0.74191592    0.10389284
+                   C       0.62499012   -1.23995505   -1.03500421
+                   H       1.01405509   -0.63028060    3.20702754
+                   H      -1.05466203   -1.12336547    1.49077159
+                   H       1.03169372    0.90672185    1.47476659
+                   H      -1.12411657    0.40740453   -0.31527139
+                   H       2.15045290   -1.03377272    0.40094515
+                   H       0.19872637   -1.63316639   -1.93423041"""
+        spc_1 = ARCSpecies(label='spc1', smiles='ONC(O)C=[CH]', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='ONC(O)C=[CH]', xyz=xyz_2)
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5})
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10, 11: 11})
+        xyz_3 = """O       0.41112542   -1.22479678    2.75467095
+                   N      -0.42661217   -0.50407979    1.96197968
+                   C       0.35967522    0.24409217    0.97057227
+                   O      -0.52118100    1.00191440    0.13708582
+                   C       1.16481566   -0.74191592    0.10389284
+                   C       0.62499012   -1.23995505   -1.03500421
+                   H      -1.05466203   -1.12336547    1.49077159
+                   H       2.15045290   -1.03377272    0.40094515
+                   H       1.03169372    0.90672185    1.47476659
+                   H       1.01405509   -0.63028060    3.20702754
+                   H      -1.12411657    0.40740453   -0.31527139
+                   H       0.19872637   -1.63316639   -1.93423041"""
+        spc_3 = ARCSpecies(label='spc3', smiles='ONC(O)C=[CH]', xyz=xyz_3)
+        atom_map = engine.map_hydrogens(spc_1, spc_3, backbone_map={0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5})
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 9, 7: 6, 8: 8, 9: 10, 10: 7, 11: 11})
+
+    def test_map_xh2_group(self):
+        """Test the _map_xh2_group() function"""
+        xyz_1 = """C       1.71777985    0.22186921   -0.32888859
+                   C       0.44722671   -0.23882480    0.28782542
+                   O      -0.48797990    0.84313759    0.23934840
+                   N      -1.74672519    0.40251813    0.83397838
+                   H       2.63121996   -0.33161432   -0.15320366
+                   H       1.70806777    0.99933016   -1.08280545
+                   H       0.62398733   -0.52636323    1.32981975
+                   H       0.05456545   -1.09437630   -0.27196331
+                   H      -1.88642313    1.12251331    1.54492954
+                   H      -2.40284632    0.62316863    0.08295105"""
+        xyz_2 = """C      -1.31502876    0.82850696   -2.07759014
+                   C      -0.39947562    0.21077887   -1.00438259
+                   O      -1.19482148   -0.26236793    0.08578119
+                   N      -1.88870944    0.77572628    0.62474305
+                   H      -1.24822024    1.46878060    0.95557426
+                   H       0.28584783    0.95234699   -0.65039319
+                   H       0.14645095   -0.60595702   -1.42841876
+                   H      -1.70702067    0.21669181   -2.86303559
+                   H      -1.55916794    1.86952281   -2.03781486
+                   H      -2.48322447    1.17684842   -0.07214496"""
+        spc_1 = ARCSpecies(label='spc1', smiles='[CH2]CON', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='[CH2]CON', xyz=xyz_2)
+        spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
+                                                                backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 1, 2: 2, 3: 3})
+        self.assertIn(atom_map, [{0: 0, 1: 1, 2: 2, 3: 3, 4: 8, 5: 7, 6: 5, 7: 6, 8: 9, 9: 4},
+                                 {0: 0, 1: 1, 2: 2, 3: 3, 4: 7, 5: 8, 6: 5, 7: 6, 8: 9, 9: 4}])
+
+        xyz_1 = """N      -2.31169934    0.57251914    1.41398587
+                   C      -1.95790794   -0.61538632    0.62830129
+                   C      -1.19614695   -0.24565674   -0.66106245
+                   N      -0.10805638    0.69926830   -0.37270500
+                   C       0.63334828    1.01379951   -1.56146932
+                   N       1.72970712    1.78584426   -1.04974580
+                   H      -1.46140921    1.14556886    1.45605403
+                   H      -2.95048877    1.14456485    0.86175692
+                   H      -1.32992599   -1.26283108    1.25066829
+                   H      -2.86469243   -1.17672538    0.38054649
+                   H      -0.80679217   -1.16334732   -1.11746963
+                   H      -1.89850797    0.21433169   -1.36696304
+                   H       0.54924511    0.26849764    0.27776412
+                   H       0.03525073    1.60547903   -2.26189226
+                   H       1.01127042    0.12215965   -2.07192540
+                   H       1.32623020    2.53876080   -0.49516348
+                   H       2.21486569    2.23175743   -1.82460787"""
+        xyz_2 = """N      -1.20064542   -1.12464685    1.63577019
+                   H       1.14397561    2.09602183   -1.07719477
+                   C      -2.02201648   -0.76564162    0.47071017
+                   H      -1.70418185   -0.06891996   -1.53642545
+                   H       2.02197473   -0.10223554   -0.94359559
+                   H       0.24890968    0.58918291    0.51947681
+                   C       0.56423434    1.24901795   -1.37949346
+                   H      -2.60175775   -1.61264550    0.16841148
+                   N       1.46321891    0.14198569   -1.73615342
+                   H      -1.79525799   -1.40737732    2.38843171
+                   H      -0.58909129   -1.87773001    1.39314436
+                   H      -2.67637939    0.04015737    0.73031981
+                   H      -0.03363439    1.51033468   -2.22753034
+                   C      -1.10631312   -0.33023669   -0.68838857
+                   N      -0.30984614    0.83340415   -0.27308102
+                   H       0.92140464   -0.64960671   -2.01867556
+                   H      -0.45195020   -1.13603568   -0.94799820"""
+        spc_1 = ARCSpecies(label='spc1', smiles='NCCNCN', xyz=xyz_1)
+        spc_2 = ARCSpecies(label='spc2', smiles='NCCNCN', xyz=xyz_2)
+        spc_1, spc_2 = engine.fix_dihedrals_by_backbone_mapping(spc_1=spc_1, spc_2=spc_2,
+                                                                backbone_map={0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8})
+        atom_map = engine.map_hydrogens(spc_1, spc_2, backbone_map={0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8})
+        self.assertIn(atom_map,
+                      [{0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 4, 16: 15},
+                       {0: 0, 1: 2, 2: 13, 3: 14, 4: 6, 5: 8, 6: 10, 7: 9, 8: 7, 9: 11, 10: 16, 11: 3, 12: 5, 13: 1, 14: 12, 15: 15, 16: 4}])
+
+    def test_map_hydrogens_for_rotors(self):
+        """Test the map_hydrogens() function for a species with 5 heavy atoms."""
         # One inner torsion, several terminal torsions.
         self.spc1.determine_rotors()
         self.spc2.determine_rotors()
@@ -1036,7 +1401,7 @@ class TestMappingEngine(unittest.TestCase):
         self.assertCountEqual([atom_map[i] for i in (1, 2, 3)], [1, 2, 3])
 
     def test_map_hydrogens_ch3cl(self):
-        """–CH₃ on Cl: all three H’s should batch‐map in index order."""
+        """–CH3 on Cl: all three H’s should batch‐map in index order."""
         spc1 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)
         spc2 = ARCSpecies(label='ClCH3', smiles='ClC', xyz=self.ch3cl_xyz)  # same geometry
         # Cl=atom0, C=atom1
@@ -1053,6 +1418,14 @@ class TestMappingEngine(unittest.TestCase):
         backbone_map = {1: 1}
         atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
         self.assertEqual(atom_map, {0: 0, 1: 1})
+
+    def test_map_hydrogens_ethane(self):
+        """Map hydrogens in ethane."""
+        spc1 = ARCSpecies(label='ethane_1', smiles='CC', xyz=self.c2h6_xyz)
+        spc2 = ARCSpecies(label='ethane_2', smiles='CC', xyz=self.c2h6_xyz)
+        backbone_map = {0:0, 1: 1}
+        atom_map = engine.map_hydrogens(spc1, spc2, backbone_map)
+        self.assertEqual(atom_map, {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7})
 
     def test_map_hydrogens_two_h_rotor(self):
         """A genuine two‐H rotor: CH2 in our dihedral‐deviation example."""
@@ -1333,9 +1706,7 @@ class TestMappingEngine(unittest.TestCase):
         self.assertEqual(len(cuts), 4)
 
         spc = [ARCSpecies(label="ring", smiles='CC1CCOCC1[N+](=O)([O-])',
-                          xyz={'symbols': (
-                          'C', 'C', 'C', 'C', 'O', 'C', 'C', 'N', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
-                          'H', 'H'),
+                          xyz={'symbols': ('C', 'C', 'C', 'C', 'O', 'C', 'C', 'N', 'O', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                                'isotopes': (12, 12, 12, 12, 16, 12, 12, 14, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
                                'coords': ((-0.19963202410071415, 2.11431236883385, 0.35512152305302197),
                                           (-0.21499972296989353, 0.5855566636041595, 0.4252779409474618),
@@ -1566,10 +1937,10 @@ class TestMappingEngine(unittest.TestCase):
         self.assertIn(new_map_1a, [{'*1': 2, '*2': 1, '*3': 0}, {'*1': 2, '*2': 0, '*3': 1}])
         new_map_1b = engine.reorder_p_label_map(p_label_map_tpl_1b, template_order_1b, template_products_1b, rxn_1b.get_reactants_and_products()[1])
         self.assertEqual(new_map_1b, {'*1': 0, '*2': 7, '*3': 6})
-        lengths_1a = [len(m.atoms) for m in template_products_1a]                # [6, 2]
-        orig_offsets_1a = list(itertools.accumulate([0] + lengths_1a))      # [0, 6, 8]
-        new_lengths_1a  = [lengths_1a[i] for i in template_order_1a]             # [2, 6]
-        new_offsets_1a  = list(itertools.accumulate([0] + new_lengths_1a))  # [0, 2, 8]
+        lengths_1a = [len(m.atoms) for m in template_products_1a]          # [6, 2]
+        orig_offsets_1a = list(itertools.accumulate([0] + lengths_1a))     # [0, 6, 8]
+        new_lengths_1a = [lengths_1a[i] for i in template_order_1a]        # [2, 6]
+        new_offsets_1a = list(itertools.accumulate([0] + new_lengths_1a))  # [0, 2, 8]
         for tag, old_glob in p_label_map_tpl_1a.items():
             new_glob = new_map_1a[tag]
             # if it was <6, now must be >=2; if >=6, now must be <2
