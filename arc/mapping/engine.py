@@ -13,7 +13,7 @@ from itertools import product
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, logger, signed_angular_diff
-from arc.exceptions import AtomTypeError, SpeciesError
+from arc.exceptions import AtomTypeError, ConformerError, InputError, SpeciesError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -829,21 +829,24 @@ def _map_xh3_group(heavy_idx_1: int,
     return _determine_cyclic_shift(angles_1, angles_2)
 
 
-def _compute_ch2_pair_dihedrals(coords1, coords2,
-                                pivot1: Tuple[int, int], pivot2: Tuple[int, int],
-                                h1: Tuple[int, int], h2: Tuple[int, int],
+def _compute_ch2_pair_dihedrals(coords_1, coords_2,
+                                heavy_index_1, heavy_index_2,
+                                neighbor_A1, neighbor_A2, neighbor_B1, neighbor_B2,
+                                h_a_1, h_b_1, h_a_2, h_b_2,
                                 ) -> Tuple[float, float, float, float]:
-    """Return phi1_a, phi1_b, phi2_a, phi2_b all mapped into [-180,180)."""
-    p1, c1 = pivot1
-    p2, c2 = pivot2
-    ha1, hb1 = h1
-    ha2, hb2 = h2
-    phi_1_a = get_angle_in_180_range(calculate_dihedral_angle(coords=coords1, torsion=[p1, c1, ha1, hb1]))
-    phi_1_b = get_angle_in_180_range(calculate_dihedral_angle(coords=coords1, torsion=[p1, c1, ha1, hb1]))
-    phi_2_a = get_angle_in_180_range(calculate_dihedral_angle(coords=coords2, torsion=[p2, c2, ha2, hb2]))
-    phi_2_b = get_angle_in_180_range(calculate_dihedral_angle(coords=coords2, torsion=[p2, c2, ha2, hb2]))
+    """
+    A helper function for _map_xh2_group.
+    Return phi_1_a, phi_1_b, phi_2_a, phi_2_b all mapped into [-180,180).
+    """
+    phi_1_a = get_angle_in_180_range(
+        calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_a_1]))
+    phi_1_b = get_angle_in_180_range(
+        calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_b_1]))
+    phi_2_a = get_angle_in_180_range(
+        calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_a_2]))
+    phi_2_b = get_angle_in_180_range(
+        calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
     return phi_1_a, phi_1_b, phi_2_a, phi_2_b
-
 
 
 def _map_xh2_group(heavy_index_1: int,
@@ -892,10 +895,9 @@ def _map_xh2_group(heavy_index_1: int,
         neighbor_B1 = _find_preferably_heavy_neighbor(neighbor_A1, spc_1, partial_atom_map=backbone_map, exclude_index=heavy_index_1)
         neighbor_B2 = backbone_map.get(neighbor_B1, None)
         if neighbor_B2 is not None:
-            phi_h_a_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_a_1]))
-            phi_h_b_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_b_1]))
-            phi_h_a_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_a_2]))
-            phi_h_b_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
+            phi_h_a_1, phi_h_b_1, phi_h_a_2, phi_h_b_2 = _compute_ch2_pair_dihedrals(
+                coords_1, coords_2, heavy_index_1, heavy_index_2,
+                neighbor_A1, neighbor_A2, neighbor_B1, neighbor_B2, h_a_1, h_b_1, h_a_2, h_b_2)
             diff_ha1_ha2, diff_hb1_hb2 = signed_angular_diff(phi_h_a_1, phi_h_a_2), signed_angular_diff(phi_h_b_1, phi_h_b_2)
             diff_ha1_hb2, diff_hb1_ha2 = signed_angular_diff(phi_h_a_1, phi_h_b_2), signed_angular_diff(phi_h_b_1, phi_h_a_2)
             fwd_diff, rev_diff = abs(diff_ha1_ha2) + abs(diff_hb1_hb2), abs(diff_ha1_hb2) + abs(diff_hb1_ha2)
@@ -925,10 +927,9 @@ def _map_xh2_group(heavy_index_1: int,
         neighbor_B1 = _find_preferably_heavy_neighbor(neighbor_A1, spc_1, partial_atom_map=backbone_map, exclude_index=heavy_index_1)
         neighbor_B2 = backbone_map.get(neighbor_B1, None)
         if neighbor_B2 is not None:
-            phi_h_a_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_a_1]))
-            phi_h_b_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_b_1]))
-            phi_h_a_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_a_2]))
-            phi_h_b_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
+            phi_h_a_1, phi_h_b_1, phi_h_a_2, phi_h_b_2 = _compute_ch2_pair_dihedrals(
+                coords_1, coords_2, heavy_index_1, heavy_index_2,
+                neighbor_A1, neighbor_A2, neighbor_B1, neighbor_B2, h_a_1, h_b_1, h_a_2, h_b_2)
             avg_abs_1, avg_abs_2 = (abs(phi_h_a_1) + abs(phi_h_b_1)) / 2, (abs(phi_h_a_2) + abs(phi_h_b_2)) / 2
             n_inversion_mode_1, n_inversion_mode_2 = avg_abs_1 < 90.0, avg_abs_2 < 90.0
             if n_inversion_mode_1 != n_inversion_mode_2:
@@ -942,19 +943,9 @@ def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
                   backbone_map: Dict[int, int],
                   ) -> Dict[int, int]:
-    r"""
+    """
     Atom map hydrogen atoms between two species with a known mapped heavy atom backbone.
     If only a single hydrogen atom is bonded to a given heavy atom, it is straight-forwardly mapped.
-    If more than one hydrogen atom is bonded to a given heavy atom forming a "terminal" internal rotor,
-    an internal rotation will be attempted to find the closest match, e.g., in cases such as::
-
-        C -- H1     |         H1
-         \          |       /
-          H2        |     C -- H2
-
-    To avoid mapping H2 to H1 due to small RMSD, but H1 to H2 although the RMSD is huge.
-    Further, we assume that each H has but one covalent bond, and that there are maximum 4 hydrogen atoms per heavy atom
-    (e.g., CH4 or SiH4).
 
     Args:
         spc_1 (ARCSpecies): Species 1.
@@ -1098,14 +1089,11 @@ def flip_map(atom_map: Optional[List[int]]) -> Optional[List[int]]:
     return flipped_map
 
 
-def make_bond_changes(rxn: 'ARCReaction',
-                      r_cuts: List[ARCSpecies],
-                      r_label_dict: dict,
-                      ) -> None:
+def make_bond_changes(rxn: 'ARCReaction', r_cuts: List[ARCSpecies], r_label_dict: dict) -> None:
     """
     Makes bond changes before matching the reactants and products.
 
-    Ags:
+    Args:
         rxn ('ARCReaction'): An ARCReaction object
         r_cuts (List[ARCSpecies]): The cut products
         r_label_dict (dict): The dictionary of reactant atom labels for the family recipe.
@@ -1164,11 +1152,11 @@ def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
         xyz_1, xyz_2 = None, None
         try:
             xyz_1 = new_spc.get_xyz()
-        except:
+        except (ConformerError, InputError, TypeError, ValueError):
             pass
         try:
             xyz_2 = spc.get_xyz()
-        except:
+        except (ConformerError, InputError, TypeError, ValueError):
             pass
         new_spc.final_xyz = xyz_1 or xyz_2
         new.append(new_spc)
