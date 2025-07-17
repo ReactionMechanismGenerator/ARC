@@ -7,11 +7,12 @@ Strategy:
     3) The atom map is returned to the driver.
 """
 
+import numpy as np
 from collections import deque
 from itertools import product
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-from arc.common import convert_list_index_0_to_1, extremum_list, logger
+from arc.common import convert_list_index_0_to_1, extremum_list, get_angle_in_180_range, logger, signed_angular_diff
 from arc.exceptions import AtomTypeError, SpeciesError
 from arc.family import ReactionFamily
 from arc.molecule import Molecule
@@ -19,8 +20,7 @@ from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
 from arc.species.conformers import determine_chirality
 from arc.species.converter import compare_confs, sort_xyz_using_indices, xyz_from_data
-from arc.species.vectors import calculate_angle, calculate_dihedral_angle, calculate_distance, get_delta_angle
-from numpy import unique
+from arc.species.vectors import calculate_dihedral_angle, get_delta_angle
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Atom
@@ -152,8 +152,7 @@ def get_arc_species(spc: Union[ARCSpecies, Molecule]) -> ARCSpecies:
         return spc
     if isinstance(spc, Molecule):
         return ARCSpecies(label='S', mol=spc)
-    raise ValueError(f'Species entries may only be ARCSpecies, RMG Species, or RMG Molecule.\n'
-                     f'Got {spc} which is a {type(spc)}.')
+    raise ValueError(f'Species entries may only be ARCSpecies or RMG Molecule.\nGot {spc} which is a {type(spc)}.')
 
 
 def check_species_before_mapping(spc_1: ARCSpecies,
@@ -545,6 +544,400 @@ def map_lists(list_1: List[float],
     return list_map
 
 
+def _find_hydrogen_neighbors(heavy_index: int, atoms: List['Atom']) -> List[int]:
+    """
+    Return the indices of all hydrogen atoms bonded to the specified heavy atom.
+
+    Args:
+        heavy_index (int): Index of the heavy atom in the atoms list.
+        atoms (List[Atom]): List of Atom objects comprising the molecule.
+
+    Returns:
+        List[int]: Sorted list of indices of hydrogen atoms bonded to the heavy atom.
+
+    Raises:
+        IndexError: If heavy_index is out of range.
+    """
+    if heavy_index < 0 or heavy_index >= len(atoms):
+        raise IndexError(f"heavy_index {heavy_index} is out of range for atoms list of length {len(atoms)}")
+    heavy = atoms[heavy_index]
+    neighbors = [i for i, atom in enumerate(atoms) if atom.is_hydrogen() and heavy in atom.bonds]
+    return sorted(neighbors)
+
+
+def _find_preferably_heavy_neighbor(heavy_index: int,
+                                    spc: ARCSpecies,
+                                    partial_atom_map: Optional[Dict[int, int]] = None,
+                                    exclude_index: Optional[int] = None,
+                                    ) -> Optional[int]:
+    """
+    Return the indices of a non-hydrogen atoms bonded to the specified heavy atom.
+    If no heavy atom neighbors are found, it will return a hydrogen neighbor.
+    Anyway, the returned atom is verified to be in the partial_atom_map.
+
+    Args:
+        heavy_index (int): Index of the heavy atom in the atoms list.
+        spc (ARCSpecies): ARCSpecies object containing the molecule.
+        exclude_index (Optional[int]): Index of an atom to exclude from the result.
+        partial_atom_map (Optional[Dict[int, int]]): A mapping of atom indices to indices in the product species.
+
+    Returns:
+        Optional[int]: An integer atom index, or None if no neighbor qualifies.
+
+    Raises:
+        IndexError: If heavy_index is out of range.
+    """
+    atoms = spc.mol.atoms
+    if heavy_index < 0 or heavy_index >= len(atoms):
+        raise IndexError(f"heavy_index {heavy_index} is out of range for atoms list of length {len(atoms)}")
+    partial_atom_map = partial_atom_map or {}
+
+    # 1) Try rotors_dict first
+    if spc.rotors_dict:
+        for rotor_dict in spc.rotors_dict.values():
+            if heavy_index == rotor_dict['torsion'][1] and exclude_index != rotor_dict['torsion'][2]:
+                return rotor_dict['torsion'][2]
+            elif heavy_index == rotor_dict['torsion'][2] and exclude_index != rotor_dict['torsion'][1]:
+                return rotor_dict['torsion'][1]
+
+    # 2) Fall back to any non-H neighbor
+    neighbors = [i for i, atom in enumerate(atoms) if not atom.is_hydrogen()
+                 and atoms[heavy_index] in atom.bonds and i != exclude_index]
+    if not neighbors:
+        # 3) If no non-H neighbors, try to find a hydrogen neighbor
+        neighbors = [i for i, atom in enumerate(atoms) if atom.is_hydrogen()
+                     and atoms[heavy_index] in atom.bonds and i != exclude_index and i in partial_atom_map]
+    if len(neighbors):
+        for neighbor in neighbors:
+            if neighbor in partial_atom_map:
+                return neighbor
+    return None
+
+
+def _select_ch3_anchors(heavy_index: int,
+                        spc: ARCSpecies,
+                        backbone_map: Dict[int, int],
+                        ) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Select two anchors A and B for a XH3 center X (usually X is C) so that:
+      - A is the mapped heavy neighbor (C → A)
+      - B is a second anchor forming a non-linear angle B-A-X
+
+    Strategy:
+      1) Identify the one heavy neighbor A of X.
+      2) B should preferably be a heavy atom, but can also be an H.
+      3) Fallback to any other heavy atom B ≠ X, A that gives a non‐linear angle.
+      4) Fallback to any hydrogen already present in backbone_map.
+      5) Fallback to any hydrogen.
+
+    Args:
+        heavy_index: index of CH3 carbon in spc.mol.atoms
+        spc: ARCSpecies with rotors_dict and xyz
+        backbone_map: heavy-atom map C→C' in product
+
+    Returns:
+        Tuple(A_index, B_index) or None, None if no valid anchors.
+    """
+    A_index = _find_preferably_heavy_neighbor(heavy_index=heavy_index, spc=spc, partial_atom_map=backbone_map)
+    if A_index is None:
+        return None, None
+    B_index = _find_preferably_heavy_neighbor(heavy_index=A_index, spc=spc, partial_atom_map=backbone_map, exclude_index=heavy_index)
+    if B_index is None:
+        for atom in spc.mol.atoms[A_index].edges:
+            atom_index = spc.mol.atoms.index(atom)
+            if atom_index != heavy_index:
+                B_index = atom_index
+                break
+    if B_index is None:
+        return None, None
+    return A_index, B_index
+
+
+def _construct_local_axes(center_idx: int,
+                          anchor1_idx: int,
+                          anchor2_idx: int,
+                          coords: List[Tuple[float, float, float]]
+                          ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """
+    Construct a right-handed local coordinate frame at a central atom C.
+
+    The x-axis is defined along the vector from C to anchor1 (A).
+    The y-axis lies in the plane defined by atoms (B, C, A), orthogonal to x.
+    The z-axis is orthonormal to the plane (x × y).
+
+    Args:
+        center_idx (int): Index of the central atom C.
+        anchor1_idx (int): Index of the primary anchor A.
+        anchor2_idx (int): Index of the secondary anchor B.
+        coords (List[Tuple[float, float, float]]): List of 3D coordinates for all atoms.
+
+    Returns: Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]
+        Tuple of three numpy arrays (e_x, e_y, e_z), each shape (3,), forming an orthonormal basis.
+
+    Raises:
+        ValueError: if any two anchor vectors are co-linear or zero-length.
+    """
+    if center_idx is None or anchor1_idx is None or anchor2_idx is None:
+        return None, None, None
+    # Convert to numpy arrays
+    c = np.array(coords[center_idx], dtype=float)
+    a = np.array(coords[anchor1_idx], dtype=float)
+    b = np.array(coords[anchor2_idx], dtype=float)
+
+    # Primary axis: C->A
+    v_ca = a - c
+    norm_ca = np.linalg.norm(v_ca)
+    if norm_ca < 1e-8:
+        raise ValueError(f"Anchor1 at index {anchor1_idx} coincides with center {center_idx}.")
+    e_x = v_ca / norm_ca
+
+    # Secondary vector: C->B
+    v_cb = b - c
+    norm_cb = np.linalg.norm(v_cb)
+    if norm_cb < 1e-8:
+        raise ValueError(f"Anchor2 at index {anchor2_idx} coincides with center {center_idx}.")
+
+    # z-axis: perpendicular to plane CA-CB
+    e_z = np.cross(e_x, v_cb)
+    norm_z = np.linalg.norm(e_z)
+    if norm_z < 1e-8:
+        raise ValueError("Anchors are colinear; cannot define unique plane.")
+    e_z /= norm_z
+
+    # y-axis: complete right-handed system
+    e_y = np.cross(e_z, e_x)
+
+    return e_x, e_y, e_z
+
+
+def _compute_azimuthal_angles(center_idx: int,
+                              hydrogen_indices: List[int],
+                              coords: List[Tuple[float, float, float]],
+                              e_y: np.ndarray,
+                              e_z: np.ndarray
+                              ) -> Dict[int, float]:
+    """
+    Compute the azimuthal angles (in degrees) of hydrogen atoms around a principal axis.
+
+    For each hydrogen, project vector C->H onto the plane spanned by e_y and e_z,
+    then calculate φ = atan2(dot(v, e_z), dot(v, e_y)) mod 360.
+
+    Args:
+        center_idx (int): Index of the central atom C.
+        hydrogen_indices (List[int]): List of hydrogen atom indices.
+        coords (List[Tuple[float, float, float]]): 3D coordinates for all atoms.
+        e_y (np.ndarray): Local unit y-axis.
+        e_z (np.ndarray): Local unit z-axis.
+
+    Returns:
+        Dict mapping each hydrogen index to its azimuthal angle in [0, 360).
+    """
+    c = np.array(coords[center_idx], dtype=float)
+    angles: Dict[int, float] = dict()
+    for h_idx in hydrogen_indices:
+        v = np.array(coords[h_idx], dtype=float) - c
+        proj_y = float(np.dot(v, e_y))
+        proj_z = float(np.dot(v, e_z))
+        angle = float(np.degrees(np.arctan2(proj_z, proj_y)) % 360)
+        angles[h_idx] = angle
+    return angles
+
+
+def _determine_cyclic_shift(angles_1: Dict[int, float],
+                            angles_2: Dict[int, float]
+                            ) -> Dict[int, int]:
+    """
+    Determine the optimal cyclic permutation mapping between two sets of azimuthal angles.
+
+    Given two dictionaries of hydrogen indices to angles (in degrees),
+    this finds the cyclic shift of the second angle-list that minimizes
+    the total periodic angular difference to the first.
+
+    Args:
+        angles_1 (Dict[int, float]): Mapping H-index → angle for species1.
+        angles_2 (Dict[int, float]): Mapping H-index → angle for species2.
+
+    Returns:
+        Dict[int, int]: Mapping from each H-index in angles_1 to the best-matched H-index in angles_2.
+    """
+    # If no hydrogens, return empty mapping
+    if not angles_1 or not angles_2:
+        return {}
+    # Sort by angle
+    items1 = sorted(angles_1.items(), key=lambda x: x[1])  # List of (h_idx, angle)
+    items2 = sorted(angles_2.items(), key=lambda x: x[1])
+    idx1, ang1 = zip(*items1)
+    idx2, ang2 = zip(*items2)
+    n = len(idx1)
+    best_cost = float('inf')
+    best_shift = 0
+    # Try all cyclic shifts
+    for shift in range(n):
+        cost = 0.0
+        for i in range(n):
+            a1 = ang1[i]
+            a2 = ang2[(i + shift) % n]
+            diff = abs(a1 - a2) % 360
+            diff = min(diff, 360 - diff)
+            cost += diff
+        if cost < best_cost:
+            best_cost = cost
+            best_shift = shift
+    # Build mapping using best shift
+    mapping: Dict[int, int] = dict()
+    for i in range(n):
+        mapping[idx1[i]] = idx2[(i + best_shift) % n]
+    return mapping
+
+
+def _map_xh3_group(heavy_idx_1: int,
+                   heavy_index_2: int,
+                   spc_1: ARCSpecies,
+                   spc_2: ARCSpecies,
+                   backbone_map: Dict[int, int]
+                   ) -> Optional[Dict[int, int]]:
+    """
+    Map hydrogens of a CH3 group between two species using local azimuthal angles.
+
+    Args:
+        heavy_idx_1 (int): Index of CH3 carbon atom in species 1.
+        heavy_index_2 (int): Index of CH3 carbon atom in species 2.
+        spc_1 (ARCSpecies): Species 1.
+        spc_2 (ARCSpecies): Species 2.
+        backbone_map (Dict[int, int]): Existing backbone atom mapping.
+
+    Returns:
+        Optional[Dict[int, int]]: Mapping from hydrogen indices in spc_1 to hydrogen indices in spc_2.
+    """
+    anchors_1 = _select_ch3_anchors(heavy_idx_1, spc_1, backbone_map)
+    anchors_2 = _select_ch3_anchors(heavy_index_2, spc_2, {val: key for key, val in backbone_map.items()})  # reverse map
+
+    if not anchors_1 or not anchors_2:
+        return None
+
+    coords_1, coords_2 = spc_1.get_xyz()['coords'], spc_2.get_xyz()['coords']
+
+    e_x1, e_y1, e_z1 = _construct_local_axes(heavy_idx_1, anchors_1[0], anchors_1[1], coords_1)
+    e_x2, e_y2, e_z2 = _construct_local_axes(heavy_index_2, anchors_2[0], anchors_2[1], coords_2)
+
+    hydrogens_1 = _find_hydrogen_neighbors(heavy_idx_1, spc_1.mol.atoms)
+    hydrogens_2 = _find_hydrogen_neighbors(heavy_index_2, spc_2.mol.atoms)
+
+    angles_1 = _compute_azimuthal_angles(heavy_idx_1, hydrogens_1, coords_1, e_y1, e_z1)
+    angles_2 = _compute_azimuthal_angles(heavy_index_2, hydrogens_2, coords_2, e_y2, e_z2)
+
+    return _determine_cyclic_shift(angles_1, angles_2)
+
+
+def _compute_ch2_pair_dihedrals(coords1, coords2,
+                                pivot1: Tuple[int, int], pivot2: Tuple[int, int],
+                                h1: Tuple[int, int], h2: Tuple[int, int],
+                                ) -> Tuple[float, float, float, float]:
+    """Return phi1_a, phi1_b, phi2_a, phi2_b all mapped into [-180,180)."""
+    p1, c1 = pivot1
+    p2, c2 = pivot2
+    ha1, hb1 = h1
+    ha2, hb2 = h2
+    phi_1_a = get_angle_in_180_range(calculate_dihedral_angle(coords=coords1, torsion=[p1, c1, ha1, hb1]))
+    phi_1_b = get_angle_in_180_range(calculate_dihedral_angle(coords=coords1, torsion=[p1, c1, ha1, hb1]))
+    phi_2_a = get_angle_in_180_range(calculate_dihedral_angle(coords=coords2, torsion=[p2, c2, ha2, hb2]))
+    phi_2_b = get_angle_in_180_range(calculate_dihedral_angle(coords=coords2, torsion=[p2, c2, ha2, hb2]))
+    return phi_1_a, phi_1_b, phi_2_a, phi_2_b
+
+
+
+def _map_xh2_group(heavy_index_1: int,
+                   heavy_index_2: int,
+                   spc_1: ARCSpecies,
+                   spc_2: ARCSpecies,
+                   backbone_map: Dict[int, int],
+                   ) -> Dict[int, int]:
+    """
+    Map the two hydrogens of a XH2 group (X is, e.g., C) by comparing signed dihedral angles.
+
+    Strategy:
+      1. Identify the two H's on X1 and X2.
+      2. Find a non-H neighbor A1 of X1 and its mapped counterpart A2 in X2.
+      3. Compute dihedral φ1 = dihedral(A1–X1–Ha1–Hb1) in species 1.
+      4. Compute φ2_fwd = dihedral(A2–X2–Ha2–Hb2) and φ2_rev = dihedral(A2–X2–Hb2–Ha2).
+      5. Assign Ha1→Ha2, Hb1→Hb2 if |φ1–φ2_fwd| < |φ1–φ2_rev|, else swap.
+
+    Args:
+        heavy_index_1: Index of the CH2 carbon in species 1.
+        heavy_index_2: Index of the corresponding CH2 carbon in species 2.
+        spc_1: ARCSpecies for species 1.
+        spc_2: ARCSpecies for species 2.
+        backbone_map: Existing heavy‐atom mapping X1→X2, etc.
+
+    Returns:
+        Dict[int,int]: Mapping of the two H indices from spc_1 to spc_2, or {} if unable to apply dihedral strategy.
+    """
+    h_list_1 = _find_hydrogen_neighbors(heavy_index_1, spc_1.mol.atoms)
+    h_list_2 = _find_hydrogen_neighbors(heavy_index_2, spc_2.mol.atoms)
+    if len(h_list_1) != 2 or len(h_list_2) != 2:
+        return {}
+
+    neighbor_A1 = _find_preferably_heavy_neighbor(heavy_index_1, spc_1, partial_atom_map=backbone_map)
+    neighbor_A2 = backbone_map.get(neighbor_A1, None)
+    if neighbor_A2 is None:
+        return {}
+
+    coords_1, coords_2 = spc_1.get_xyz()['coords'], spc_2.get_xyz()['coords']
+    h_a_1, h_b_1 = h_list_1
+    h_a_2, h_b_2 = h_list_2
+
+    heavy_atom_terminal = len([atom for atom in spc_1.mol.atoms[heavy_index_1].edges if not atom.is_hydrogen()
+                           and spc_1.mol.atoms.index(atom) != neighbor_A1]) == 0
+    if heavy_atom_terminal:
+        neighbor_B1 = _find_preferably_heavy_neighbor(neighbor_A1, spc_1, partial_atom_map=backbone_map, exclude_index=heavy_index_1)
+        neighbor_B2 = backbone_map.get(neighbor_B1, None)
+        if neighbor_B2 is not None:
+            phi_h_a_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_a_1]))
+            phi_h_b_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_b_1]))
+            phi_h_a_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_a_2]))
+            phi_h_b_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
+            diff_ha1_ha2, diff_hb1_hb2 = signed_angular_diff(phi_h_a_1, phi_h_a_2), signed_angular_diff(phi_h_b_1, phi_h_b_2)
+            diff_ha1_hb2, diff_hb1_ha2 = signed_angular_diff(phi_h_a_1, phi_h_b_2), signed_angular_diff(phi_h_b_1, phi_h_a_2)
+            fwd_diff, rev_diff = abs(diff_ha1_ha2) + abs(diff_hb1_hb2), abs(diff_ha1_hb2) + abs(diff_hb1_ha2)
+            if fwd_diff < rev_diff:
+                # prefer Ha1-Ha2, Hb1-Hb2 mapping
+                return {h_a_1: h_a_2, h_b_1: h_b_2}
+            # prefer Ha1-Hb2, Hb1-Ha2 mapping
+            return {h_a_1: h_b_2, h_b_1: h_a_2}
+
+    # compute reference dihedral in species 1
+    phi_1 = calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_A1, heavy_index_1, h_a_1, h_b_1])
+
+    # compute two candidate dihedrals in species 2
+    phi_2_fwd = calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_A2, heavy_index_2, h_a_2, h_b_2])
+    phi_2_rev = calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_A2, heavy_index_2, h_b_2, h_a_2])
+
+    # choose pairing minimizing angular separation
+    diff_fwd = signed_angular_diff(phi_1, phi_2_fwd)
+    diff_rev = signed_angular_diff(phi_1, phi_2_rev)
+
+    forward_mapping = {h_a_1: h_a_2, h_b_1: h_b_2}
+    reverse_mapping = {h_a_1: h_b_2, h_b_1: h_a_2}
+
+    chosen_mapping = forward_mapping if abs(diff_fwd) < abs(diff_rev) else reverse_mapping
+
+    if spc_1.mol.atoms[heavy_index_1].is_nitrogen():
+        neighbor_B1 = _find_preferably_heavy_neighbor(neighbor_A1, spc_1, partial_atom_map=backbone_map, exclude_index=heavy_index_1)
+        neighbor_B2 = backbone_map.get(neighbor_B1, None)
+        if neighbor_B2 is not None:
+            phi_h_a_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_a_1]))
+            phi_h_b_1 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_1, torsion=[neighbor_B1, neighbor_A1, heavy_index_1, h_b_1]))
+            phi_h_a_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_a_2]))
+            phi_h_b_2 = get_angle_in_180_range(calculate_dihedral_angle(coords=coords_2, torsion=[neighbor_B2, neighbor_A2, heavy_index_2, h_b_2]))
+            avg_abs_1, avg_abs_2 = (abs(phi_h_a_1) + abs(phi_h_b_1)) / 2, (abs(phi_h_a_2) + abs(phi_h_b_2)) / 2
+            n_inversion_mode_1, n_inversion_mode_2 = avg_abs_1 < 90.0, avg_abs_2 < 90.0
+            if n_inversion_mode_1 != n_inversion_mode_2:
+                # identified an N inversion mode, swap the mapping
+                chosen_mapping = reverse_mapping if chosen_mapping is forward_mapping else forward_mapping
+
+    return chosen_mapping
+
+
 def map_hydrogens(spc_1: ARCSpecies,
                   spc_2: ARCSpecies,
                   backbone_map: Dict[int, int],
@@ -571,97 +964,40 @@ def map_hydrogens(spc_1: ARCSpecies,
     Returns:
         Dict[int, int]: The atom map. Keys are 0-indices in ``spc_1``, values are corresponding 0-indices in ``spc_2``.
     """
-    atom_map = backbone_map
+    atom_map = backbone_map.copy()
     atoms_1, atoms_2 = spc_1.mol.atoms, spc_2.mol.atoms
-    for hydrogen_1 in atoms_1:
-        if hydrogen_1.is_hydrogen() and atoms_1.index(hydrogen_1) not in atom_map.keys():
-            success = False
-            heavy_atom_1 = list(hydrogen_1.edges.keys())[0]
-            heavy_atom_2 = atoms_2[backbone_map[atoms_1.index(heavy_atom_1)]]
-            num_hydrogens_1 = len([atom for atom in heavy_atom_1.edges.keys() if atom.is_hydrogen()])
-            if num_hydrogens_1 == 1:
-                # We know that num_hydrogens_2 == 1 because the candidate map resulted from are_adj_elements_in_agreement().
-                hydrogen_2 = [atom for atom in heavy_atom_2.edges.keys() if atom.is_hydrogen()][0]
-                atom_map[atoms_1.index(hydrogen_1)] = atoms_2.index(hydrogen_2)
-                success = True
-            # Consider 2/3/4 hydrogen atoms on this heavy atom.
-            # 1. Check for a heavy atom with only H atoms adjacent to it (CH4, NH3, H2).
-            if not success:
-                if all(atom.is_hydrogen() for atom in heavy_atom_1.edges.keys()):
-                    for atom_1, atom_2 in zip([atom for atom in atoms_1 if atom.is_hydrogen()],
-                                              [atom for atom in atoms_2 if atom.is_hydrogen()]):
-                        atom_map[atoms_1.index(atom_1)] = atoms_2.index(atom_2)
-                    success = True
-            # 2. Check for a torsion involving heavy_atom_1 as a pivotal atom (most common case).
-            if not success:
-                if spc_1.rotors_dict is not None:
-                    heavy_atom_1_index = atoms_1.index(heavy_atom_1)
-                    for rotor_dict in spc_1.rotors_dict.values():
-                        if heavy_atom_1_index in [rotor_dict['torsion'][1], rotor_dict['torsion'][2]]:
-                            atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
-                                spc_1=spc_1,
-                                spc_2=spc_2,
-                                heavy_atom_1=heavy_atom_1,
-                                heavy_atom_2=heavy_atom_2,
-                                torsion=rotor_dict['torsion'],
-                                atom_map=atom_map,
-                                find_torsion_end_to_map=True,
-                            )
-                            success = True
-                            break
-            # 3. Check for a pseudo-torsion (may involve multiple bonds) with heavy_atom_1 as a pivot.
-            if not success:
-                pseudo_torsion = list()
-                for atom_1_3 in heavy_atom_1.edges.keys():
-                    if atom_1_3.is_non_hydrogen():
-                        for atom_1_4 in atom_1_3.edges.keys():
-                            if atom_1_4.is_non_hydrogen() and atom_1_4 is not heavy_atom_1:
-                                pseudo_torsion = [atoms_1.index(atom) for atom in [hydrogen_1, heavy_atom_1, atom_1_3, atom_1_4]]
-                                break
-                        if not len(pseudo_torsion):
-                            # Compromise for a hydrogen atom in position 4.
-                            for atom_1_4 in atom_1_3.edges.keys():
-                                if atom_1_4 is not heavy_atom_1:
-                                    pseudo_torsion = [atoms_1.index(atom) for atom in [hydrogen_1, heavy_atom_1, atom_1_3, atom_1_4]]
-                                    break
-                        if len(pseudo_torsion):
-                            atom_map = add_adjacent_hydrogen_atoms_to_map_based_on_a_specific_torsion(
-                                spc_1=spc_1,
-                                spc_2=spc_2,
-                                heavy_atom_1=heavy_atom_1,
-                                heavy_atom_2=heavy_atom_2,
-                                torsion=pseudo_torsion[::-1],
-                                atom_map=atom_map,
-                                find_torsion_end_to_map=False,
-                            )
-                            success = True
-                            break
-            # 4. Check by angles and bond lengths (search for 2 consecutive heavy atoms).
-            if not success:
-                atom_1_3, angle_1, bond_length_1 = None, None, None
-                for atom_1_3 in heavy_atom_1.edges.keys():
-                    if atom_1_3.is_non_hydrogen():
-                        heavy_atom_1_index, hydrogen_1_index = atoms_1.index(heavy_atom_1), atoms_1.index(hydrogen_1)
-                        angle_1 = calculate_angle(coords=spc_1.get_xyz(),
-                                                  atoms=[atoms_1.index(atom_1_3), heavy_atom_1_index, hydrogen_1_index])
-                        bond_length_1 = calculate_distance(coords=spc_1.get_xyz(),
-                                                           atoms=[heavy_atom_1_index, hydrogen_1_index])
-                        break
-                if atom_1_3 is not None:
-                    atom_2_3_index = atom_map[atoms_1.index(atom_1_3)]
-                    angle_deviations, bond_length_deviations, hydrogen_indices_2 = list(), list(), list()
-                    for hydrogen_2 in heavy_atom_2.edges.keys():
-                        if hydrogen_2.is_hydrogen() and atoms_2.index(hydrogen_2) not in atom_map.values():
-                            heavy_atom_2_index, hydrogen_2_index = atoms_2.index(heavy_atom_2), atoms_2.index(hydrogen_2)
-                            angle_2 = calculate_angle(coords=spc_2.get_xyz(),
-                                                      atoms=[atom_2_3_index, heavy_atom_2_index, hydrogen_2_index])
-                            bond_length_2 = calculate_distance(coords=spc_2.get_xyz(),
-                                                               atoms=[heavy_atom_2_index, hydrogen_2_index])
-                            angle_deviations.append(abs(angle_1 - angle_2))
-                            bond_length_deviations.append(abs(bond_length_1 - bond_length_2))
-                            hydrogen_indices_2.append(hydrogen_2_index)
-                    deviations = [bond_length_deviations[i] * hydrogen_indices_2[i] for i in range(len(angle_deviations))]
-                    atom_map[atoms_1.index(hydrogen_1)] = hydrogen_indices_2[deviations.index(min(deviations))]
+    for heavy_index_1, heavy_index_2 in backbone_map.items():
+        h_indices_1 = [h for h in _find_hydrogen_neighbors(heavy_index_1, atoms_1) if h not in atom_map]
+        if not h_indices_1:
+            continue
+        h_indices_2 = _find_hydrogen_neighbors(heavy_index_2, atoms_2)
+        if len(h_indices_1) != len(h_indices_2):
+            raise ValueError(f"Mismatch H‐counts at {heavy_index_1}: {len(h_indices_2)} vs {len(h_indices_2)}.\n"
+                             f"Cannot atom map species {spc_1.mol.smiles} and {spc_2.mol.smiles}.")
+
+        if all(atom.is_hydrogen() for atom in atoms_1[heavy_index_1].edges.keys()):
+            # This is a heavy atom with only H atoms adjacent to it (e.g., CH4, NH3, H2).
+            for atom_1, atom_2 in zip([atom for atom in atoms_1 if atom.is_hydrogen()],
+                                      [atom for atom in atoms_2 if atom.is_hydrogen()]):
+                atom_map[atoms_1.index(atom_1)] = atoms_2.index(atom_2)
+        elif len(h_indices_1) == 1:
+            atom_map[h_indices_1[0]] = h_indices_2[0]
+            continue
+        elif len(h_indices_1) == 2:
+            mapped = _map_xh2_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
+            if mapped:
+                atom_map.update(mapped)
+                continue
+        elif len(h_indices_1) == 3:
+            if len(spc_1.mol.atoms) <= 5:
+                # A-XH3 should be a trivial assignment:
+                atom_map[h_indices_1[0]] = h_indices_2[0]
+                atom_map[h_indices_1[1]] = h_indices_2[1]
+                atom_map[h_indices_1[2]] = h_indices_2[2]
+            else:
+                mapped = _map_xh3_group(heavy_index_1, heavy_index_2, spc_1, spc_2, atom_map)
+                if mapped:
+                    atom_map.update(mapped)
     return atom_map
 
 
@@ -674,7 +1010,7 @@ def check_atom_map(rxn: 'ARCReaction') -> bool:
 
     Args:
         rxn (ARCReaction): The reaction to examine.
-    
+
     Returns: bool
         Whether the atom mapping makes sense.
     """
@@ -688,8 +1024,8 @@ def check_atom_map(rxn: 'ARCReaction') -> bool:
     for i, map_i in enumerate(rxn.atom_map):
         if r_elements[i] != p_elements[map_i]:
             break
-    for i in range(len(unique(rxn.atom_map))):
-        if unique(rxn.atom_map)[i] != i:
+    for i in range(len(np.unique(rxn.atom_map))):
+        if np.unique(rxn.atom_map)[i] != i:
             return False
     return True
 
@@ -801,7 +1137,7 @@ def make_bond_changes(rxn: 'ARCReaction',
                         atom2.charge += 1
                         atom1.charge -= 1
                         atom1.radical_electrons -= 2
-                    else:    
+                    else:
                         atom1.decrement_radical()
                         atom2.decrement_radical()
                     r_cut.mol.get_bond(atom1, atom2).order += action[2]
@@ -899,7 +1235,7 @@ def map_pairs(pairs: List[Tuple[ARCSpecies, ARCSpecies]]) -> List[List[int]]:
 def label_species_atoms(species: List['ARCSpecies']) -> None:
     """
     Adds the labels to the ``.mol.atoms`` properties of the species object.
-    
+
     Args:
         species (List['ARCSpecies']): ARCSpecies object to be labeled.
     """
@@ -929,51 +1265,38 @@ def glue_maps(maps: List[List[int]],
     Returns:
         List[int]: An Atom Map of the complete reaction.
     """
-    # 1) Build initial global map from each partial cut
-    am_dict: Dict[int, int] = {}
-    for cut_idx, (map_list, (r_cut, p_cut)) in enumerate(zip(maps, pairs)):
-        for local_idx, r_atom in enumerate(r_cut.mol.atoms):
+    # 1) Build base map
+    am_dict: Dict[int,int] = {}
+    for map_list, (r_cut, p_cut) in zip(maps, pairs):
+        for local_i, r_atom in enumerate(r_cut.mol.atoms):
             r_glob = int(r_atom.label)
-            try:
-                p_glob = int(p_cut.mol.atoms[ map_list[local_idx] ].label)
-            except Exception as e:
-                logger.error(f"Error processing cut {cut_idx} (r_cut: {r_cut.label}, p_cut: {p_cut.label}). Got:\n{e}")
-                raise
+            p_glob = int(p_cut.mol.atoms[map_list[local_i]].label)
             am_dict[r_glob] = p_glob
 
-    # 2) Decide which labelled‐atom overrides to apply.
-    # Precompute which r_glob actually *need* overriding (orig != target)
-    need_override = {r_glob
-                     for tag, r_glob in r_label_map.items()
-                     if tag in p_label_map and am_dict.get(r_glob) != p_label_map[tag]}
+    # 2) Override via swap: any time we impose r_glob→target,
+    #    if some other r2 already points at target, swap their values.
     for tag, r_glob in r_label_map.items():
         if tag not in p_label_map:
             continue
-        p_glob = p_label_map[tag]
-        orig = am_dict.get(r_glob)
-        if orig == p_glob:
+        target = p_label_map[tag]
+        original = am_dict[r_glob]
+        if original == target:
             continue
+        # find any other reactant already pointing at `target`
+        rival = next((r for r, p in am_dict.items() if p == target and r != r_glob), None)
+        if rival is not None:
+            # swap: rival takes `original`
+            am_dict[rival] = original
+        # now assign r_glob → target
+        am_dict[r_glob] = target
 
-        # Find any other reactant indices mapping *now* to p_glob
-        other_rs = [ridx for ridx, pg in am_dict.items() if pg == p_glob and ridx != r_glob]
-
-        if not other_rs:
-            # free to assign
-            am_dict[r_glob] = p_glob
-            continue
-
-        # If all those others are themselves going to be overridden, we're safe
-        if all(r in need_override for r in other_rs):
-            am_dict[r_glob] = p_glob
-
-    # 3) Build the final list, error if anything missing
-    final_map: List[int] = list()
+    # 3) Build final list, error if missing any index
+    final = []
     for i in range(total_atoms):
         if i not in am_dict:
-            raise ValueError(f"Invalid glue_maps: missing index {i}")
-        final_map.append(am_dict[i])
-
-    return final_map
+            raise ValueError(f"Invalid atom_map: missing reactant index {i}")
+        final.append(am_dict[i])
+    return final
 
 
 def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int, int]) -> bool:
@@ -1158,6 +1481,7 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
 
 def find_all_breaking_bonds(rxn: "ARCReaction",
                             r_direction: bool,
+                            pdi: int = 0,
                             ) -> Optional[List[Tuple[int, int]]]:
     """
     A function for finding all the broken (or formed of the direction to consider starts with the products)
@@ -1166,6 +1490,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
     Args:
         rxn (ARCReaction): The reaction in question.
         r_direction (bool): Whether to consider the reactants direction (``True``) or the products direction (``False``).
+        pdi (int): The product dictionary index to consider. Defaults to 0.
 
     Returns:
         List[Tuple[int, int]]: Entries are tuples of the form (atom_index1, atom_index2) for each broken bond (1-indexed),
@@ -1174,7 +1499,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
     family = ReactionFamily(label=rxn.family)
     if not len(rxn.product_dicts):
         return None
-    label_dict = rxn.product_dicts[0][f'{"r" if r_direction else "p"}_label_map']
+    label_dict = rxn.product_dicts[pdi][f'{"r" if r_direction else "p"}_label_map']
     breaking_bonds = list()
     for action in family.actions:
         if action[0].lower() == ("break_bond" if r_direction else "form_bond"):
@@ -1182,7 +1507,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
     if not r_direction:
         breaking_bonds = translate_bdes_based_on_ref_species(
             species=rxn.get_reactants_and_products()[1],
-            ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(rxn.product_dicts[0]['products'])],
+            ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(rxn.product_dicts[pdi]['products'])],
             bdes=breaking_bonds)
     return breaking_bonds
 
@@ -1210,8 +1535,8 @@ def get_template_product_order(rxn: 'ARCReaction',
                 used.add(i)
                 break
         else:
-            raise ValueError(f"No template‐product match for ARCSpecies '{prod.label}'. "
-                             f"Got the following templates: {[template_mol.to_smiles() for template_mol in template_products]}.")
+            raise ValueError(f"No template‐product match. Got the following templates:\n"
+                             f"{[template_mol.to_smiles() for template_mol in template_products]}.")
     return order
 
 
