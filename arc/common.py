@@ -1506,6 +1506,9 @@ def is_xyz_linear(xyz: Optional[dict]) -> Optional[bool]:
     return True
 
 
+FULL_CIRCLE = 360.0
+HALF_CIRCLE = 180.0
+
 def get_angle_in_180_range(angle: float,
                            round_to: Optional[int] = 2,
                            ) -> float:
@@ -1520,13 +1523,40 @@ def get_angle_in_180_range(angle: float,
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
-    angle = float(angle)
-    while not (-180 <= angle < 180):
-        factor = 360 if angle < -180 else -360
-        angle += factor
-    if round_to is not None:
-        return round(angle, round_to)
-    return angle
+    return (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
+
+
+def signed_angular_diff(phi_1: float, phi_2: float) -> float:
+    r"""
+    Compute the signed minimal angular difference between two angles (in degrees).
+
+    This returns the value of (phi1 - phi2), wrapped into the interval (-180, 180],
+    so that the result represents the smallest signed rotation from phi_2 to phi_1:
+      - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
+      - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
+
+    Args:
+        phi_1 (float): First angle in degrees.
+        phi_2 (float): Second angle in degrees to subtract from phi1.
+
+    Returns:
+        float: The signed minimal difference in the range (-180, 180].
+
+    Examples:
+        >>> signed_angular_diff(10, 15)
+        -5.0
+        >>> signed_angular_diff(15, 10)
+        5.0
+        >>> signed_angular_diff(350, 10)
+        -20.0
+        >>> signed_angular_diff(10, 350)
+        20.0
+        >>> signed_angular_diff(-170, 170)
+        20.0
+        >>> signed_angular_diff(170, -170)
+        -20.0
+    """
+    return get_angle_in_180_range(phi_1 - phi_2)
 
 
 def get_close_tuple(key_1: Tuple[Union[float, str], ...],
