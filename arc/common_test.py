@@ -1076,18 +1076,52 @@ class TestCommon(unittest.TestCase):
         """Test the getting a corresponding angle in the -180 to +180 range"""
         self.assertEqual(common.get_angle_in_180_range(0), 0)
         self.assertEqual(common.get_angle_in_180_range(10), 10)
-        self.assertEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
-        self.assertEqual(common.get_angle_in_180_range(-5.364589), -5.36)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
-        self.assertEqual(common.get_angle_in_180_range(179.999), 180)
+        self.assertAlmostEqual(common.get_angle_in_180_range(179.999), 180, 2)
         self.assertEqual(common.get_angle_in_180_range(180), -180)
         self.assertEqual(common.get_angle_in_180_range(-180), -180)
         self.assertEqual(common.get_angle_in_180_range(181), -179)
         self.assertEqual(common.get_angle_in_180_range(360), 0)
+        self.assertEqual(common.get_angle_in_180_range(-360), 0)
         self.assertEqual(common.get_angle_in_180_range(362), 2)
         self.assertEqual(common.get_angle_in_180_range(1000), -80)
         self.assertEqual(common.get_angle_in_180_range(-1000), 80)
         self.assertEqual(common.get_angle_in_180_range(247.62), -112.38)
+        self.assertEqual(common.get_angle_in_180_range(0), 0)
+        self.assertEqual(common.get_angle_in_180_range(180), -180)
+        self.assertEqual(common.get_angle_in_180_range(-180), -180)
+        self.assertEqual(common.get_angle_in_180_range(360), 0)
+        self.assertEqual(common.get_angle_in_180_range(270), -90)
+        self.assertEqual(common.get_angle_in_180_range(-270), 90)
+        self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+
+    def test_signed_angular_diff(self):
+        """Test the signed angular difference between two angles"""
+        # simple forward/backward diffs
+        self.assertEqual(common.signed_angular_diff(10, 15), -5)
+        self.assertEqual(common.signed_angular_diff(15, 10), 5)
+        # wrap‑around behavior
+        self.assertEqual(common.signed_angular_diff(350, 10), -20)
+        self.assertEqual(common.signed_angular_diff(10, 350), 20)
+        # edge at 180°
+        self.assertEqual(common.signed_angular_diff(0, 180), -180)
+        self.assertEqual(common.signed_angular_diff(180, 0), -180)
+        # decimal diffs
+        self.assertAlmostEqual(common.signed_angular_diff(1.5, -1.5), 3.0, places=7)
+        self.assertAlmostEqual(common.signed_angular_diff(-1.5, 1.5), -3.0, places=7)
+        # across the ±180 boundary
+        self.assertEqual(common.signed_angular_diff(181, -179), 0)
+        self.assertEqual(common.signed_angular_diff(-179, 181), 0)
+        self.assertEqual(common.signed_angular_diff(-179, 183), -2.0)
+        self.assertEqual(common.signed_angular_diff(-179, 179), 2.0)
+        self.assertEqual(common.signed_angular_diff(179, -179), -2)
+        self.assertEqual(common.signed_angular_diff(-179, 179), 2)
+        self.assertEqual(common.signed_angular_diff(120, -120), -120)
+        self.assertEqual(common.signed_angular_diff(120, 240), -120)
+
 
     def test_get_close_tuple(self):
         """Test getting a close tuple of strings from a list of tuples for a given tuple"""
