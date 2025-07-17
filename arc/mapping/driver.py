@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     from arc.molecule.molecule import Molecule
     from arc.reaction import ARCReaction
 
+MAX_PDI = 25
+
 
 def map_reaction(rxn: 'ARCReaction',
                  backend: str = 'ARC',
@@ -87,19 +89,19 @@ def check_atom_map_and_return(atom_map: Optional[List[int]]) -> Optional[List[in
     if atom_map is None:
         return None
     if not isinstance(atom_map, list):
-        logger.debug(f'Expected a list, got {type(atom_map)}.')
+        logger.error(f'Atom map must be a list. Got type {type(atom_map)}: {atom_map}.')
         return None
     if not all(isinstance(i, int) for i in atom_map):
-        logger.debug('All elements in the atom map should be integers.')
+        logger.error(f'All elements in the atom map must be integers. Got:\n{atom_map}.')
         return None
     if any(i < 0 for i in atom_map):
-        logger.debug(f'Atom map indices must be non‐negative. Got: {atom_map}')
+        logger.error(f'Atom map indices must be non‐negative. Got:\n{atom_map}')
         return None
     if not len(set(atom_map)) == len(atom_map):
-        logger.debug(f'The atom map should not contain duplicate indices. Got: {atom_map}')
+        logger.error(f'The atom map should not contain duplicate indices. Got:\n{atom_map}')
         return None
     if set(atom_map) != set(range(len(atom_map))):
-        logger.debug(f'Atom map must be a permutation of 0..{len(atom_map) - 1}, got {atom_map}')
+        logger.error(f'Atom map must be a permutation of 0..{len(atom_map) - 1}. Got:\n{atom_map}')
         return None
     return atom_map
 
@@ -254,7 +256,7 @@ def map_rxn(rxn: 'ARCReaction',
 
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
-        backend (str, optional): Currently only supports ``'ARC'``.
+        backend (str, optional): Currently only supports ``'ARC'``. Currently not used, only one backend is implemented.
         product_dict_index_to_try (int, optional): The index of the reaction family product dictionary to try.
                                                    Defaults to 0, which is the first product dictionary.
 
@@ -278,21 +280,27 @@ def map_rxn(rxn: 'ARCReaction',
     except (IndexError, KeyError) as e:
         logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
         return None
-    template_order = get_template_product_order(rxn, template_products)
+    try:
+        template_order = get_template_product_order(rxn, template_products)
+    except ValueError:
+        if rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
+            return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
+        else:
+            logger.error(f'No valid template order for reaction {rxn} ({rxn.family}), cannot atom map.')
+            return None
+
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
                                               template_order=template_order,
                                               template_products=template_products,
-                                              actual_products=rxn.get_reactants_and_products()[1],
-                                              )
+                                              actual_products=rxn.get_reactants_and_products()[1])
     try:
         make_bond_changes(rxn, r_cuts, r_label_map)
     except (ValueError, IndexError, ActionError, AtomTypeError) as e:
         logger.warning(e)
-
     r_cuts, p_cuts = update_xyz(r_cuts), update_xyz(p_cuts)
     pairs = pairing_reactants_and_products_for_mapping(r_cuts, p_cuts)
     if p_cuts:
-        logger.error(f"Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}")
+        logger.error(f'Could not find isomorphism for scissored species: {[cut.mol.smiles for cut in p_cuts]}')
         return None
 
     fragment_maps = map_pairs(pairs)
@@ -303,7 +311,7 @@ def map_rxn(rxn: 'ARCReaction',
                          p_label_map=updated_p_label_map,
                          total_atoms=total_atoms,
                          )
-    if atom_map is None and rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < 25:
+    if atom_map is None and rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < MAX_PDI:
         return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
     return atom_map
 
