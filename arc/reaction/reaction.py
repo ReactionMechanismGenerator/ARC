@@ -80,6 +80,7 @@ class ARCReaction(object):
         ts_label (str): The :ref:`ARCSpecies <species>` label of the respective TS.
         preserve_param_in_scan (list): Entries are length two iterables of atom indices (1-indexed) between which
                                        distances and dihedrals of these pivots must be preserved.
+        product_dicts (List[dict]): A list of dictionaries with the RMG reaction family products.
         atom_map (List[int]): An atom map, mapping the reactant atoms to the product atoms.
                               I.e., an atom map of [0, 2, 1] means that reactant atom 0 matches product atom 0,
                               reactant atom 1 matches product atom 2, and reactant atom 2 matches product atom 1.
@@ -114,6 +115,7 @@ class ARCReaction(object):
         self.dh_rxn298 = None
         self.ts_xyz_guess = ts_xyz_guess or xyz or list()
         self.preserve_param_in_scan = preserve_param_in_scan
+        self._product_dicts = None
         self._atom_map = None
         self._charge = charge
         self._multiplicity = multiplicity
@@ -160,6 +162,18 @@ class ARCReaction(object):
     def atom_map(self, value):
         """Allow setting the atom map"""
         self._atom_map = value
+
+    @property
+    def product_dicts(self):
+        """The RMG reaction family product dictionaries"""
+        if self._product_dicts is None:
+            self._product_dicts = self.get_product_dicts()
+        return self._product_dicts
+
+    @product_dicts.setter
+    def product_dicts(self, value):
+        """Allow setting family"""
+        self._product_dicts = value
 
     @property
     def charge(self):
@@ -492,6 +506,39 @@ class ARCReaction(object):
             return None
         return multiplicity
 
+    def get_product_dicts(self,
+                          rmg_family_set: str = 'default',
+                          consider_rmg_families: bool = True,
+                          consider_arc_families: bool = True,
+                          discover_own_reverse_rxns_in_reverse: bool = False,
+                          ) -> List[dict]:
+        """
+        A helper function for getting the RMG family product_dicts using the ARC family module.
+
+        Structure of the returned product_dicts::
+
+            [{'family': str: Family label,
+              'group_labels': Tuple[str, str]: Group labels used to generate the products,
+              'products': List['Molecule']: The generated products,
+              'r_label_map': Dict[int, str]: Mapping of reactant atom indices to labels,
+              'p_label_map': Dict[str, int]: Mapping of product labels to atom indices
+                                             (refers to the given 'products' in this dict
+                                             and not to the products of the original reaction),
+              'own_reverse': bool: Whether the family's template also represents its own reverse,
+              'discovered_in_reverse': bool: Whether the reaction was discovered in reverse},
+             ]
+
+        Returns:
+            List[dict]: A list of dictionaries with the RMG reaction family products.
+        """
+        product_dicts = get_reaction_family_products(rxn=self,
+                                                     rmg_family_set=rmg_family_set,
+                                                     consider_rmg_families=consider_rmg_families,
+                                                     consider_arc_families=consider_arc_families,
+                                                     discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                                     )
+        return product_dicts
+
     def determine_family(self,
                          rmg_family_set: str = 'default',
                          consider_rmg_families: bool = True,
@@ -508,12 +555,16 @@ class ARCReaction(object):
             consider_arc_families (bool, optional): Whether to consider ARC's families in addition to RMG's.
             discover_own_reverse_rxns_in_reverse (bool, optional): Whether to discover own reverse reactions in reverse.
         """
-        product_dicts = get_reaction_family_products(rxn=self,
-                                                     rmg_family_set=rmg_family_set,
-                                                     consider_rmg_families=consider_rmg_families,
-                                                     consider_arc_families=consider_arc_families,
-                                                     discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
-                                                     )
+        if rmg_family_set == 'default' and consider_rmg_families and consider_arc_families and not discover_own_reverse_rxns_in_reverse:
+            # these are the default values, don't bother generating a new product_dicts list, use the property
+            product_dicts = self.product_dicts
+        else:
+            product_dicts = get_reaction_family_products(rxn=self,
+                                                         rmg_family_set=rmg_family_set,
+                                                         consider_rmg_families=consider_rmg_families,
+                                                         consider_arc_families=consider_arc_families,
+                                                         discover_own_reverse_rxns_in_reverse=discover_own_reverse_rxns_in_reverse,
+                                                         )
         if len(product_dicts):
             family, family_own_reverse = product_dicts[0]['family'], product_dicts[0]['own_reverse']
             return family, family_own_reverse
