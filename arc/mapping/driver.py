@@ -270,7 +270,7 @@ def map_rxn(rxn: 'ARCReaction',
     reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
     label_species_atoms(reactants), label_species_atoms(products)
 
-    r_bdes, p_bdes = find_all_breaking_bonds(rxn, r_direction=True), find_all_breaking_bonds(rxn, r_direction=False)
+    r_bdes, p_bdes = find_all_breaking_bonds(rxn, r_direction=True, pdi=pdi), find_all_breaking_bonds(rxn, r_direction=False, pdi=pdi)
     r_cuts, p_cuts = cut_species_based_on_atom_indices(reactants, r_bdes), cut_species_based_on_atom_indices(products, p_bdes)
 
     try:
