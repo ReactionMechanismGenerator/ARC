@@ -638,7 +638,7 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertEqual(mol.get_net_charge(), 0)
         self.assertEqual(mol.to_smiles(), '[O]N=C')
 
-    def test_ono_xyz(self):
+    def test_ono_no2__xyz(self):
         """Test perceiving CC[N+](=O)[O-]"""
         c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
                          N                  0.43574593    0.41740669    0.07732982
@@ -650,13 +650,32 @@ H      -0.57000001    0.25001318    0.00000000"""
                          H                 -1.23537748   -1.55521250   -0.66607681
                          H                 -2.68617014   -0.87982825    0.03543830
                          H                 -1.86062564   -0.03164117   -1.24991054"""
-        mol = perceive_molecule_from_xyz(str_to_xyz(c2h5no2_xyz), multiplicity=1, charge=0)
-        self.assertEqual(mol.get_net_charge(), 0)
-        smiles = mol.to_smiles()
+        c2h5ono_xyz = {'coords': ((-1.3334725178745668, 0.2849178019354427, 0.4149005134933577),
+                                  (-0.08765353373275289, 0.24941420749682627, -0.4497882845360618),
+                                  (1.0488580188184402, 0.3986394744609146, 0.39515448276833964),
+                                  (2.2292240798482883, 0.36629637181188207, -0.4124684043339001),
+                                  (3.2413605054484185, 0.4928521621538312, 0.283008378837631),
+                                  (-1.3088339518827734, -0.5173661350567303, 1.1597967522753032),
+                                  (-2.23462275856269, 0.17332354052924734, -0.19455307765792382),
+                                  (-1.393828440234405, 1.2294860794610234, 0.9656140588162426),
+                                  (-0.12370667081323389, 1.0672740524773998, -1.1795070012935482),
+                                  (-0.037324731014725374, -0.7080479312151163, -0.9821574183694773)),
+                       'isotopes': (12, 12, 16, 14, 16, 1, 1, 1, 1, 1),
+                       'symbols': ('C', 'C', 'O', 'N', 'O', 'H', 'H', 'H', 'H', 'H')}
+        mol_c2h5no2 = perceive_molecule_from_xyz(str_to_xyz(c2h5no2_xyz), multiplicity=1, charge=0)
+        self.assertEqual(mol_c2h5no2.get_net_charge(), 0)
+        smiles = mol_c2h5no2.to_smiles()
         self.assertIn('[N+]', smiles)
         self.assertIn('[O-]', smiles)
         self.assertIn('=O', smiles)
-        self.assertEqual([atom.element.symbol for atom in mol.atoms], ['O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'])
+        self.assertEqual([atom.element.symbol for atom in mol_c2h5no2.atoms], ['O', 'N', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'])
+        self.assertIn(mol_c2h5no2.to_smiles(), ['[O-][N+](=O)CC'])
+        self.assertEqual(mol_c2h5no2.multiplicity, 1)
+        self.assertEqual(mol_c2h5no2.get_net_charge(), 0)
+        mol_c2h5ono = perceive_molecule_from_xyz(c2h5ono_xyz)
+        self.assertIn(mol_c2h5ono.to_smiles(), ['CCON=O'])
+        self.assertEqual(mol_c2h5ono.multiplicity, 1)
+        self.assertEqual(mol_c2h5ono.get_net_charge(), 0)
 
     def test_h2so4(self):
         """
@@ -668,6 +687,63 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertEqual(mol.multiplicity, 1)
         self.assertEqual(mol.get_net_charge(), 0)
         self.assertEqual(mol.to_smiles(), 'OS(=O)(=O)O')
+
+    def test_o2_triplet(self):
+        """
+        Test that perceiving O2 in triplet state works.
+        """
+        o2_triplet_xyz = str_to_xyz("""O    0.0000000    0.0000000    0.6099360
+                                       O    0.0000000    0.0000000   -0.6099360""")
+        mol = perceive_molecule_from_xyz(o2_triplet_xyz, charge=0, multiplicity=3)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(len(mol.atoms), 2)
+        self.assertEqual(mol.multiplicity, 3)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertEqual(mol.to_smiles(), '[O][O]')
+
+    def test_o2_singlet(self):
+        """
+        Test that perceiving O2 in singlet state works.
+        """
+        o2_singlet_xyz = str_to_xyz("""O    0.0000000    0.0000000    0.6088000
+                                       O    0.0000000    0.0000000   -0.6088000""")
+        mol = perceive_molecule_from_xyz(o2_singlet_xyz, charge=0, multiplicity=1)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(len(mol.atoms), 2)
+        self.assertEqual(mol.multiplicity, 1)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertEqual(mol.to_smiles(), 'O=O')
+
+    def test_so2_triplet(self):
+        """
+        Test that perceiving SO2 in triplet state works.
+        """
+        so2_t_xyz = {'coords': ((0.02724478716956233, 0.6093829407458188, 0.0),
+                                (-1.3946381818031768, -0.24294788636871906, 0.0),
+                                (1.3673933946336125, -0.36643505437710233, 0.0)),
+                     'isotopes': (32, 16, 16), 'symbols': ('S', 'O', 'O')}
+        mol = perceive_molecule_from_xyz(so2_t_xyz, charge=0, multiplicity=3, n_radicals=2, n_fragments=1)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(len(mol.atoms), 3)
+        self.assertEqual(mol.multiplicity, 3)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertEqual(mol.to_smiles(), '[O]S[O]')
+        for atom in mol.atoms:
+            self.assertEqual(atom.charge, 0)
+
+    def test_so2_singlet(self):
+        """
+        Test that perceiving SO2 in singlet state works.
+        """
+        so2_t_xyz = str_to_xyz("""S    0.0000000    0.0000000    0.3636520
+                                  O    0.0000000    1.2410480   -0.3636520
+                                  O    0.0000000   -1.2410480   -0.3636520""")
+        mol = perceive_molecule_from_xyz(so2_t_xyz, charge=0, multiplicity=1, n_radicals=0, n_fragments=1)
+        self.assertIsInstance(mol, Molecule)
+        self.assertEqual(len(mol.atoms), 3)
+        self.assertEqual(mol.multiplicity, 1)
+        self.assertEqual(mol.get_net_charge(), 0)
+        self.assertIn(mol.to_smiles(), 'O=S=O')
 
     def test_so3(self):
         """
@@ -1234,7 +1310,7 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertEqual(mol.get_net_charge(), 0)
         self.assertIn(mol.to_smiles(), ['OC=CC(N)(S)', 'NC(C=CO)S'])
 
-    def test_a_collection_of_molecules_from_arc_tests_that_gave_warnings(self):
+    def test_a_collection_of_molecules_from_various_arc_tests(self):
         """
         Test that perceiving a collection of molecules from ARC tests that gave warnings works.
         """
@@ -1390,11 +1466,102 @@ H      -0.57000001    0.25001318    0.00000000"""
         self.assertEqual(mol.to_smiles(), 'C1=CC2CC2=C1')
         self.assertEqual(mol.multiplicity, 1)
         self.assertEqual(mol.get_net_charge(), 0)
-        mol = perceive_molecule_from_xyz(c6h6_b_xyz, charge=0, multiplicity=1, n_fragments=1)
+        mol = perceive_molecule_from_xyz(c6h6_b_xyz, charge=0, multiplicity=1, n_fragments=1, n_radicals=2)
         self.assertIn(mol.to_smiles(), ['[C]1=CC=C[CH]C1', '[C]1=C[CH]C=CC1', '[C]1C=CC=CC1'])
         self.assertEqual(mol.multiplicity, 1)
         self.assertEqual(mol.get_net_charge(), 0)
-        self.assertTrue(all(atom.radical_electrons == 0 for atom in mol.atoms))
+        self.assertTrue(all(atom.charge == 0 for atom in mol.atoms))
+
+        c10h10_a_xyz = {'coords': ((3.1623638230700997, 0.39331289450005563, -0.031839117414963584),
+                                   (1.8784852381397288, 0.037685951926618944, -0.13659028131444134),
+                                   (0.9737380560194014, 0.5278617594060281, -1.1526858375270472),
+                                   (1.2607098516126556, 1.1809007875206383, -1.9621017164412065),
+                                   (-0.36396095305912823, -0.13214785064139675, -1.0200667625809143),
+                                   (-1.5172464644867296, 0.8364138939810618, -1.0669384323486588),
+                                   (-2.4922101649968655, 0.8316551483126366, -0.14124720277902958),
+                                   (-2.462598061982958, -0.09755474191953761, 0.9703503187569243),
+                                   (-1.4080417204047313, -0.8976377310686736, 1.1927020968566089),
+                                   (-0.27981087345916755, -0.8670643393461046, 0.29587765657632165),
+                                   (1.1395623815572733, -0.9147118621123697, 0.771368745020215),
+                                   (3.7901243915692864, -0.006544237180536178, 0.7580206603561134),
+                                   (3.6186251824572455, 1.0920401631166292, -0.725695658374561),
+                                   (-0.4799044636709365, -0.8577283498506146, -1.8345168113636874),
+                                   (-1.5704890060131314, 1.527002009812866, -1.902575985299536),
+                                   (-3.3260277144990296, 1.5238536460491903, -0.20338465526703625),
+                                   (-3.311126364299293, -0.09969554359088921, 1.6478137927333953),
+                                   (-1.3707042898204835, -1.549541647625315, 2.0589774409040964),
+                                   (1.5338362221707007, -1.9310023570889727, 0.6663504223502944),
+                                   (1.2246749300961473, -0.5970975942012858, 1.816181327157103)),
+                        'isotopes': (12, 12, 12, 1, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        c10h10_b_xyz = {'coords': ((3.247237794328524, -0.13719671162966918, 0.19555833918937052),
+                                   (1.9094861712282774, -0.08067655688828143, 0.14898941432495702),
+                                   (0.9973729357914858, -1.2703386896415134, -0.09322848415119056),
+                                   (-0.37904449715218924, -0.6747166782032148, -0.049044448345326556),
+                                   (-0.32906812544096026, 0.704634441388649, 0.189424753183012),
+                                   (-1.4900181263846768, 1.4572613706024167, 0.2695747550348709),
+                                   (-2.715200996994148, 0.8069241052920498, 0.10660938013945513),
+                                   (-2.765284083663716, -0.5753713833636181, -0.13236922431004927),
+                                   (-1.5909002849280705, -1.3270914347507115, -0.21179882275795825),
+                                   (1.0862366144301145, 1.1823049698313937, 0.33079658088902575),
+                                   (3.8424769924852367, 0.7530758608805569, 0.37314678191170336),
+                                   (3.7762437608797406, -1.0749685445597326, 0.05710603017340202),
+                                   (1.1128196175313243, -2.0170485762246773, 0.6986324476157837),
+                                   (1.187449599052061, -1.7129398667445945, -1.0760419644685346),
+                                   (-1.453108430051206, 2.525963604437891, 0.45426129138400156),
+                                   (-3.639988653002051, 1.3756767310587803, 0.16518163487425436),
+                                   (-3.7283956370857467, -1.0643593255501977, -0.2566648708585298),
+                                   (-1.631427244782937, -2.3956407728893367, -0.3966116183664473),
+                                   (1.3188711462571718, 1.9143096670969255, -0.4489453399950017),
+                                   (1.2442414475018486, 1.6101977898569013, 1.3257284397785851)),
+                        'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
+                                    'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        mol_c10h10_a = perceive_molecule_from_xyz(c10h10_a_xyz, multiplicity=1, n_radicals=2)
+        self.assertIn(mol_c10h10_a.to_smiles(), ['C=C1[CH]C2C=CC=C[C]2C1', 'C=C1[CH]C2C=C[CH]C=C2C1',
+                                                 '[CH2]C1=CC2C=CC=C[C]2C1', '[CH2]C1=CC2C=C[CH]C=C2C1',
+                                                 'C=C1[CH]C2[CH]C=CC=C2C1', '[CH2]C1=CC2[CH]C=CC=C2C1'])
+        self.assertEqual(mol_c10h10_a.multiplicity, 1)
+        self.assertEqual(mol_c10h10_a.get_net_charge(), 0)
+        mol_c10h10_b = perceive_molecule_from_xyz(c10h10_b_xyz, multiplicity=1, n_radicals=0)
+        self.assertIn(mol_c10h10_b.to_smiles(), ['C=C1CC2=C(C=CC=C2)C1', 'C=C1Cc2ccccc2C1'])
+        self.assertEqual(mol_c10h10_b.multiplicity, 1)
+        self.assertEqual(mol_c10h10_b.get_net_charge(), 0)
+
+        c4h7_xyz = {'coords': ((-2.040921404503424, -0.12903384637698798, 0.1559892045303822),
+                               (-0.7546540332943176, -0.4098957103161423, -0.07681407943731554),
+                               (0.3137517227573887, 0.47379064315829633, 0.303025839828397),
+                               (0.09502978026667419, 1.3942096052269417, 0.834199535314798),
+                               (1.734012668678617, 0.08135386277553083, 0.0906583073064836),
+                               (-2.352694765027891, 0.7875623110661275, 0.6465408489803196),
+                               (-2.8196259554078997, -0.8225020395029484, -0.14562281062524043),
+                               (-0.49241522029670126, -1.3423933663677394, -0.5719234920796793),
+                               (2.1384679029944533, -0.37774268314938586, 0.9976275308860051),
+                               (2.3331746195641365, 0.9677350359207318, -0.13953736233285224),
+                               (1.8458746842689961, -0.623083812434417, -0.7393520512375593)),
+                    'isotopes': (12, 12, 12, 1, 12, 1, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'H', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        mol_c4h7 = perceive_molecule_from_xyz(c4h7_xyz)
+        self.assertIn(mol_c4h7.to_smiles(), ['C=C[CH]C', '[CH2]C=CC'])
+        self.assertEqual(mol_c4h7.multiplicity, 2)
+        self.assertEqual(mol_c4h7.get_net_charge(), 0)
+        c4h6_xyz = {'coords': ((-1.1313721520581368, 0.4375787725187425, 1.3741095482244203),
+                               (-0.5236696446754213, -0.27046339876338915, 0.4152401808417905),
+                               (0.5236696150303143, 0.2704633473040529, -0.41524017130113694),
+                               (1.1313721685204072, -0.4375787650279751, -1.3741095524658273),
+                               (-0.8696512779281117, 1.4694838181320669, 1.5851480041034802),
+                               (-1.915706463982211, -0.010750118295295768, 1.9758596362701513),
+                               (-0.8263303869083625, -1.301920739528746, 0.24674332317151054),
+                               (0.8263303006084768, 1.3019207019374226, -0.24674330995607902),
+                               (1.9157064555415753, 0.010750214228214268, -1.9758596165946158),
+                               (0.8696513858514865, -1.469483832503432, -1.5851480422945032)),
+                    'isotopes': (12, 12, 12, 12, 1, 1, 1, 1, 1, 1),
+                    'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H')}
+        mol_c4h6 = perceive_molecule_from_xyz(c4h6_xyz, multiplicity=1, n_radicals=0)
+        self.assertEqual(mol_c4h6.to_smiles(), 'C=CC=C')
+        self.assertEqual(mol_c4h6.multiplicity, 1)
+        self.assertEqual(mol_c4h6.get_net_charge(), 0)
 
 
 if __name__ == '__main__':
