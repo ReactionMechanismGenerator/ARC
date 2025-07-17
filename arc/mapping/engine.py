@@ -3,7 +3,7 @@ This is the engine part of the atom mapping module.
 Here, the core function for calculation the atom map are located.
 Strategy:
     1) The wrapper function map_rxn is called by the driver.
-    2) The wrapper calls the relevant functions, in order. The algorithem is speciefied on each of the functions.
+    2) The wrapper calls the relevant functions, in order. The algorithm is specified on each of the functions.
     3) The atom map is returned to the driver.
 """
 
@@ -12,8 +12,8 @@ from itertools import product
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from arc.common import convert_list_index_0_to_1, extremum_list, logger
-from arc.exceptions import SpeciesError
-from arc.family import ReactionFamily, get_reaction_family_products
+from arc.exceptions import AtomTypeError, SpeciesError
+from arc.family import ReactionFamily
 from arc.molecule import Molecule
 from arc.molecule.resonance import generate_resonance_structures_safely
 from arc.species import ARCSpecies
@@ -767,18 +767,19 @@ def make_bond_changes(rxn: 'ARCReaction',
                       r_label_dict: dict,
                       ) -> None:
     """
-    Makes the bond change before matching the reactants and products
+    Makes bond changes before matching the reactants and products.
 
     Ags:
         rxn ('ARCReaction'): An ARCReaction object
-        r_cuts (List[ARCSpecies]): the cut products
-        r_label_dict (dict): the dictionary object the find the relevant location.
+        r_cuts (List[ARCSpecies]): The cut products
+        r_label_dict (dict): The dictionary of reactant atom labels for the family recipe.
     """
     family = ReactionFamily(label=rxn.family)
     for action in family.actions:
         if action[0].lower() == "change_bond":
             indices = r_label_dict[action[1]], r_label_dict[action[3]]
             for r_cut in r_cuts:
+                r_cut_mol_copy = r_cut.mol.copy(deep=True)
                 if indices[0] in [int(atom.label) for atom in r_cut.mol.atoms] and indices[1] in [int(atom.label) for atom in r_cut.mol.atoms]:
                     atom1, atom2 = 0, 0
                     for atom in r_cut.mol.atoms:
@@ -804,7 +805,10 @@ def make_bond_changes(rxn: 'ARCReaction',
                         atom1.decrement_radical()
                         atom2.decrement_radical()
                     r_cut.mol.get_bond(atom1, atom2).order += action[2]
-                    r_cut.mol.update(sort_atoms=False)
+                    try:
+                        r_cut.mol.update(sort_atoms=False)
+                    except AtomTypeError:
+                        r_cut.mol = r_cut_mol_copy
 
 
 def update_xyz(species: List[ARCSpecies]) -> List[ARCSpecies]:
@@ -846,7 +850,7 @@ def r_cut_p_cut_isomorphic(reactant: ARCSpecies, product_: ARCSpecies) -> bool:
     Returns:
         bool: ``True`` if they are isomorphic, ``False`` otherwise.
     """
-    res1 = generate_resonance_structures_safely(reactant.mol, save_order = True)
+    res1 = generate_resonance_structures_safely(reactant.mol, save_order=True)
     for res in res1:
         if res.fingerprint == product_.mol.fingerprint or product_.mol.is_isomorphic(res, save_order=True):
             return True
@@ -976,11 +980,11 @@ def determine_bdes_on_spc_based_on_atom_labels(spc: "ARCSpecies", bde: Tuple[int
     """
     A function for determining whether the species in question contains the bond specified by the bond dissociation indices.
     Also, assigns the correct BDE to the species.
-    
+
     Args:
         spc (ARCSpecies): The species in question, with labels atom indices.
         bde (Tuple[int, int]): The bde in question.
-    
+
     Returns:
         bool: Whether the bde is based on the atom labels.
     """
@@ -1168,10 +1172,9 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
                                representing the atom indices to be cut.
     """
     family = ReactionFamily(label=rxn.family)
-    product_dicts = get_reaction_family_products(rxn=rxn, rmg_family_set=[rxn.family])
-    if not len(product_dicts):
+    if not len(rxn.product_dicts):
         return None
-    label_dict = product_dicts[0]['r_label_map'] if r_direction else product_dicts[0]['p_label_map']
+    label_dict = rxn.product_dicts[0][f'{"r" if r_direction else "p"}_label_map']
     breaking_bonds = list()
     for action in family.actions:
         if action[0].lower() == ("break_bond" if r_direction else "form_bond"):
@@ -1179,7 +1182,7 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
     if not r_direction:
         breaking_bonds = translate_bdes_based_on_ref_species(
             species=rxn.get_reactants_and_products()[1],
-            ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(product_dicts[0]['products'])],
+            ref_species=[ARCSpecies(label=f'S{i}', mol=mol) for i, mol in enumerate(rxn.product_dicts[0]['products'])],
             bdes=breaking_bonds)
     return breaking_bonds
 

@@ -9,9 +9,9 @@ Strategy:
 
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from arc.family import ReactionFamily, determine_possible_reaction_products_from_family
-from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
-                                are_adj_elements_in_agreement,
+from arc.common import logger
+from arc.exceptions import ActionError, AtomTypeError
+from arc.mapping.engine import (are_adj_elements_in_agreement,
                                 copy_species_list_for_mapping,
                                 cut_species_based_on_atom_indices,
                                 find_all_breaking_bonds,
@@ -27,10 +27,7 @@ from arc.mapping.engine import (RESERVED_FINGERPRINT_KEYS,
                                 reorder_p_label_map,
                                 update_xyz,
                                 )
-from arc.common import logger
 from arc.species.converter import check_molecule_list_order
-
-from arc.exceptions import ActionError, AtomTypeError
 
 if TYPE_CHECKING:
     from arc.molecule.molecule import Molecule
@@ -141,7 +138,7 @@ def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
-    reactant,product = rxn.r_species[0], rxn.p_species[0]
+    reactant, product = rxn.r_species[0], rxn.p_species[0]
 
     # Build edge‐sets for reactant & product
     r_atoms, p_atoms = reactant.mol.atoms, product.mol.atoms
@@ -245,6 +242,7 @@ def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
 
 def map_rxn(rxn: 'ARCReaction',
             backend: str = 'ARC',
+            product_dict_index_to_try: int = 0,
             ) -> Optional[List[int]]:
     """
     A wrapper function for mapping reaction, uses databases for mapping with the correct reaction family parameters.
@@ -257,12 +255,15 @@ def map_rxn(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance that belongs to the RMG H_Abstraction reaction family.
         backend (str, optional): Currently only supports ``'ARC'``.
+        product_dict_index_to_try (int, optional): The index of the reaction family product dictionary to try.
+                                                   Defaults to 0, which is the first product dictionary.
 
     Returns:
         Optional[List[int]]:
             Entry indices are running atom indices of the reactants,
             corresponding entry values are running atom indices of the products.
     """
+    pdi = product_dict_index_to_try
     reactants, products = rxn.get_reactants_and_products(return_copies=False)
     reactants, products = copy_species_list_for_mapping(reactants), copy_species_list_for_mapping(products)
     label_species_atoms(reactants), label_species_atoms(products)
@@ -270,15 +271,13 @@ def map_rxn(rxn: 'ARCReaction',
     r_bdes, p_bdes = find_all_breaking_bonds(rxn, r_direction=True), find_all_breaking_bonds(rxn, r_direction=False)
     r_cuts, p_cuts = cut_species_based_on_atom_indices(reactants, r_bdes), cut_species_based_on_atom_indices(products, p_bdes)
 
-    product_dicts = determine_possible_reaction_products_from_family(rxn, family_label=rxn.family)
     try:
-        r_label_map = product_dicts[0]['r_label_map']
-        p_label_map = product_dicts[0]['p_label_map']
-        template_products    = product_dicts[0]['products']
+        r_label_map = rxn.product_dicts[pdi]['r_label_map']
+        p_label_map = rxn.product_dicts[pdi]['p_label_map']
+        template_products = rxn.product_dicts[pdi]['products']
     except (IndexError, KeyError) as e:
         logger.error(f"No valid template maps for reaction {rxn} ({rxn.family}), cannot atom map. Got:\n{e}")
         return None
-    family = ReactionFamily(label=rxn.family)
     template_order = get_template_product_order(rxn, template_products)
     updated_p_label_map = reorder_p_label_map(p_label_map=p_label_map,
                                               template_order=template_order,
@@ -304,6 +303,8 @@ def map_rxn(rxn: 'ARCReaction',
                          p_label_map=updated_p_label_map,
                          total_atoms=total_atoms,
                          )
+    if atom_map is None and rxn.product_dicts is not None and len(rxn.product_dicts) - 1 > pdi < 25:
+        return map_rxn(rxn, backend=backend, product_dict_index_to_try=pdi + 1)
     return atom_map
 
 
