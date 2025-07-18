@@ -182,8 +182,8 @@ class ARCSpecies(object):
                                    result in one direction.
         project_directory (str, optional): The path to the project directory.
         multi_species: (str, optional): The multi-species set this species belongs to. Used for running a set of species
-                                       simultaneously in a single ESS input file. A species marked as multi_species
-                                       will only have one conformer considered (n_confs set to 1).
+                                        simultaneously in a single ESS input file. A species marked as multi_species
+                                        will only have one conformer considered (n_confs set to 1).
 
     Attributes:
         label (str): The species' label.
@@ -285,7 +285,7 @@ class ARCSpecies(object):
                          labels of the two corresponding "IRC species", separated by a blank space.
         project_directory (str): The path to the project directory.
         multi_species: (str): The multi-species set this species belongs to. Used for running a set of species
-                             simultaneously in a single ESS input file.
+                              simultaneously in a single ESS input file.
         symmetry_number (int): The external symmetry number of the species, calculated from mol_list.
     """
 
