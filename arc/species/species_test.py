@@ -227,14 +227,6 @@ class TestARCSpecies(unittest.TestCase):
                                 (0.9972006722528377, -0.7025586995487184, -1.3391950754631268),
                                 (2.377638769033351, 0.43380253822255727, 0.17647842348371048))}
         c4h9o = ARCSpecies(label='[CH2]C(C)CO', smiles='[CH2]C(C)CO', xyz=c4h9o_xyz)
-        print('*****')
-        print(f'mol smiles: {c4h9o.mol.to_smiles()}')
-        print(f'mol elements: {[a.element.symbol for a in c4h9o.mol.atoms]}')
-        # c4h9o.set_mol_list()
-        print(f"  → mol_list length: {len(c4h9o.mol_list)}")
-        for i, mol in enumerate(c4h9o.mol_list):
-            print(f"Form {i}: SMILES = {mol.to_smiles()}")
-            print("         symbols:", [a.element.symbol for a in mol.atoms])
         for mol in c4h9o.mol_list:
             for atom_1, atom_2 in zip(c4h9o.mol.atoms, mol.atoms):
                 self.assertEqual(atom_1.element.symbol, atom_2.element.symbol)
