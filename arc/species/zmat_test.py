@@ -9,7 +9,6 @@ import unittest
 
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
-from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 
 
@@ -141,7 +140,6 @@ class TestZMat(unittest.TestCase):
                                           (1.6504484708523275, -1.0197745053207323, 1.2634073789063887),
                                           (3.225226315786351, -0.5670700918169522, 0.58983306593164),
                                           (3.082988492711173, 1.9016049221399955, 0.0959260108384249))}
-
         cls.phenanthrene = {'symbols': ('C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                         'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
                             'isotopes': (12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
@@ -301,6 +299,26 @@ class TestZMat(unittest.TestCase):
                                      (-0.3666944041136225, 0.93929612792765, 1.3165056205355823),
                                      (1.0539967067607323, -1.1163467004545098, 1.0431166714415472),
                                      (2.9282442861316, -0.01599923747767672, -1.0799306728760611))}
+        cls.zmat_2 = {'symbols': ('H', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
+                      'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                                 ('R_3_1', 'A_3_1_0', 'D_3_1_0_2'), ('R_4_2', 'A_4_2_3', 'D_4_2_3_1'),
+                                 ('R_5_2', 'A_5_2_3', 'D_5_2_3_4'), ('R_6_2', 'A_6_2_3', 'D_6_2_3_5'),
+                                 ('R_7_3', 'A_7_3_2', 'D_7_3_2_6'), ('R_8_3', 'A_8_3_2', 'D_8_3_2_7')),
+                      'vars': {'R_1_0': 1.1668620586395264, 'R_2_1': 2.3889963626861572,
+                               'A_2_1_0': 143.86575317382812,
+                               'R_3_1': 1.4197372198104858, 'A_3_1_0': 107.0633544921875,
+                               'D_3_1_0_2': 359.99950824713164,
+                               'R_4_2': 1.0950337648391724, 'A_4_2_3': 110.6325912475586,
+                               'D_4_2_3_1': 59.12026293645304,
+                               'R_5_2': 1.0935593843460083, 'A_5_2_3': 110.9225845336914,
+                               'D_5_2_3_4': 120.87939658650379,
+                               'R_6_2': 1.0950340032577515, 'A_6_2_3': 110.63255310058594,
+                               'D_6_2_3_5': 120.87939551565508,
+                               'R_7_3': 1.0941026210784912, 'A_7_3_2': 110.54409790039062,
+                               'D_7_3_2_6': 181.34310124526942,
+                               'R_8_3': 1.094102382659912, 'A_8_3_2': 110.54409790039062,
+                               'D_8_3_2_7': 239.07189759901027},
+                      'map': {0: 8, 1: 2, 2: 0, 3: 1, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7}}
 
     def test_get_atom_connectivity_from_mol(self):
         """Test listing an atom's connectivity in a molecule"""
@@ -1579,11 +1597,61 @@ class TestZMat(unittest.TestCase):
             param = 'A_1_2_9'
             zmat.up_param(param, -18)
 
-    def test_remove_1st_atom(self):
-        """Test removing the first atom in a zmat."""
+    def test_remove_zmat_atom_0_a(self):
+        """Test remove_zmat_atom_0 should drop atom 0, purge all _0 refs, renumber, and rebuild map."""
+        # A small toy Z-matrix that has:
+        #  • 5 atoms (0…4)
+        #  • row 4 contains a D‐parameter pointing at atom 0 that must get purged/renumbered
+        old = {'symbols': ('A', 'B', 'C', 'D', 'E'),
+               'coords': ((None, None, None),                  # atom 0
+                          ('R_1_0', None, None),               # atom 1 → refers to 0 (OK, row<4)
+                          ('R_2_1', 'A_2_1_0', None),          # atom 2 → refers to 1,0 (OK, row<4)
+                          ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'),   # atom 3 → refers to 2,1,0 (OK, row<4)
+                          ('R_4_3', 'A_4_3_2', 'D_4_3_2_0')),  # atom 4 → refers to 3,2,0 (must be rewritten)
+               'vars': {'R_1_0': 1.00,
+                        'R_2_1': 1.10, 'A_2_1_0': 60.0,
+                        'R_3_2': 1.20, 'A_3_2_1': 70.0, 'D_3_2_1_0': 120.0,
+                        'R_4_3': 1.30, 'A_4_3_2': 80.0, 'D_4_3_2_0': 180.0},
+               'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}}
+
+        new = zmat.remove_zmat_atom_0(old)
+
+        for key in new['vars']:
+            indices = zmat.get_atom_indices_from_zmat_parameter(key)[0]
+            for index in indices:
+                self.assertGreaterEqual(index, 0, f"Found negative index {index} in parameter '{key}'")
+
+        # 1) We must have dropped exactly one symbol and one coords‐row:
+        self.assertEqual(len(new['symbols']), len(old['symbols']) - 1)
+        self.assertEqual(len(new['coords']),  len(old['coords']) - 1)
+
+        # 2) There must be no more “_0” in any parameter (all 0‐refs purged):
+        for i, row in enumerate(new['coords']):
+            if i < 4:
+                # rows 0–3 may legitimately refer to _0
+                continue
+            for p in row:
+                if isinstance(p, str):
+                    self.assertFalse(p.endswith('_0'), f"Found lingering _0 in '{p}' at row {i}")
+
+        # 3) The new map must have keys 0…N-1 and no key 0 (it was dropped):
+        expected_keys = set(range(len(new['coords'])))
+        self.assertEqual(set(new['map'].keys()), expected_keys)
+
+        # 4) All map‐values (ints or 'Xn') must span 0…N-1 with no holes:
+        mapped = []
+        for v in new['map'].values():
+            if isinstance(v, str) and v.startswith('X'):
+                mapped.append(int(v[1:]))
+            else:
+                mapped.append(v)
+        self.assertEqual(set(mapped), set(range(len(new['coords']))))
+
+    def test_remove_zmat_atom_0_b(self):
+        """Test removing the first (zeroth) atom in a zmat."""
         zmat_1 = {'symbols': ('O',), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}}
         expected_zmat_1 = {'symbols': (), 'coords': (), 'vars': {}, 'map': {}}
-        self.assertEqual(zmat.remove_1st_atom(zmat_1), expected_zmat_1)
+        self.assertEqual(zmat.remove_zmat_atom_0(zmat_1), expected_zmat_1)
 
         zmat_2 = {'symbols': ('H', 'H'),
                   'coords': ((None, None, None),
@@ -1592,9 +1660,9 @@ class TestZMat(unittest.TestCase):
                   'map': {0: 0, 1: 1}}
         expected_zmat_2 = {'symbols': ('H',), 'coords': ((None, None, None),),
                            'vars': {}, 'map': {0: 0}}
-        self.assertEqual(zmat.remove_1st_atom(zmat_2), expected_zmat_2)
+        self.assertEqual(zmat.remove_zmat_atom_0(zmat_2), expected_zmat_2)
 
-        zmat_3 = zmat.remove_1st_atom({'symbols': ('H', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
+        zmat_3 = zmat.remove_zmat_atom_0({'symbols': ('H', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
                                        'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
                                                   ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'), ('R_4_1', 'A_4_1_2', 'D_4_1_2_3'),
                                                   ('R_5_2', 'A_5_2_1', 'D_5_2_1_4'), ('R_6_2', 'A_6_2_1', 'D_6_2_1_5'),
@@ -1613,33 +1681,53 @@ class TestZMat(unittest.TestCase):
                            'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
                                       ('R_3_0', 'A_3_0_1', 'D_3_0_1_2'), ('R_4_1', 'A_4_1_0', 'D_4_1_0_3'),
                                       ('R_5_1', 'A_5_1_0', 'D_5_1_0_4'), ('R_6_1', 'A_6_1_0', 'D_6_1_0_5')),
-                           'vars': {'R_1_0': 1.5120487296562577, 'R_2_0': 1.0940725668318991, 'A_2_0_1': 110.56890700195424,
-                                    'R_3_0': 1.0940817193677925, 'A_3_0_1': 110.56754686774481, 'D_3_0_1_2': 239.9997190582892,
-                                    'R_4_1': 1.0940725668318991, 'A_4_1_0': 110.56890700195424, 'D_4_1_0_3': 59.99971758419434,
-                                    'R_5_1': 1.0940840619688397, 'A_5_1_0': 110.56790845138725, 'D_5_1_0_4': 239.99905123159166,
-                                    'R_6_1': 1.0940817193677925, 'A_6_1_0': 110.56754686774481, 'D_6_1_0_5': 240.00122783407815},
+                           'vars': {'R_1_0': 1.5120487296562577, 'R_2_0': 1.0940725668318991,
+                                    'A_2_0_1': 110.56890700195424,
+                                    'R_3_0': 1.0940817193677925, 'A_3_0_1': 110.56754686774481,
+                                    'D_3_0_1_2': 239.9997190582892,
+                                    'R_4_1': 1.0940725668318991, 'A_4_1_0': 110.56890700195424,
+                                    'D_4_1_0_3': 59.99971758419434,
+                                    'R_5_1': 1.0940840619688397, 'A_5_1_0': 110.56790845138725,
+                                    'D_5_1_0_4': 239.99905123159166,
+                                    'R_6_1': 1.0940817193677925, 'A_6_1_0': 110.56754686774481,
+                                    'D_6_1_0_5': 240.00122783407815},
                            'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}}
         self.assertEqual(zmat_3['symbols'], expected_zmat_3['symbols'])
         self.assertEqual(zmat_3['map'], expected_zmat_3['map'])
         self.assertAlmostEqual(zmat_3['vars'], expected_zmat_3['vars'])
 
-        zmat_4 = zmat.remove_1st_atom({'symbols': ('H', 'C', 'C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
+        zmat_4 = zmat.remove_zmat_atom_0({'symbols': ('H', 'C', 'C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
                                        'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
-                                                  ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'), ('RX_4_2', 'AX_4_2_1', 'DX_4_2_1_3'),
-                                                  ('R_5_2', 'AX_5_2_4', 'DX_5_2_4_1'), ('RX_6_3', 'AX_6_3_1', 'DX_6_3_1_2'),
-                                                  ('R_7_3', 'AX_7_3_6', 'DX_7_3_6_1'), ('RX_8_5', 'AX_8_5_2', 'DX_8_5_2_7'),
-                                                  ('R_9_5', 'AX_9_5_8', 'DX_9_5_8_2'), ('R_10_1', 'A_10_1_2', 'D_10_1_2_7'),
-                                                  ('RX_11_7', 'AX_11_7_3', 'DX_11_7_3_2'), ('R_12_7', 'AX_12_7_11', 'DX_12_7_11_3')),
-                                       'vars': {'R_1_0': 1.3155122903491134, 'R_2_1': 1.4707410587114869, 'A_2_1_0': 109.22799244788278,
-                                                'R_3_1': 1.4707410587114869, 'A_3_1_2': 113.21235050581743, 'D_3_1_2_0': 121.94357782706227,
-                                                'RX_4_2': 1.0, 'AX_4_2_1': 90.0, 'DX_4_2_1_3': 180, 'R_5_2': 1.2013089233618282,
-                                                'AX_5_2_4': 90.0, 'DX_5_2_4_1': 180.0, 'RX_6_3': 1.0, 'AX_6_3_1': 90.0, 'DX_6_3_1_2': 180,
-                                                'R_7_3': 1.2013088241289895, 'AX_7_3_6': 90.0, 'DX_7_3_6_1': 180.0, 'RX_8_5': 1.0,
-                                                'AX_8_5_2': 90.0, 'DX_8_5_2_7': 180, 'R_9_5': 1.06567033240585, 'AX_9_5_8': 90.0,
-                                                'DX_9_5_8_2': 180.0, 'R_10_1': 1.0962601875867035, 'A_10_1_2': 109.22799322222649,
-                                                'D_10_1_2_7': 121.94358050468233, 'RX_11_7': 1.0, 'AX_11_7_3': 90.0, 'DX_11_7_3_2': 180,
-                                                'R_12_7': 1.0656705002006313, 'AX_12_7_11': 90.0, 'DX_12_7_11_3': 180.0},
-                                       'map': {0: 7, 1: 2, 2: 1, 3: 3, 4: 'X9', 5: 0, 6: 'X10', 7: 4, 8: 'X11', 9: 5, 10: 6, 11: 'X12', 12: 8}})
+                                                  ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
+                                                  ('RX_4_2', 'AX_4_2_1', 'DX_4_2_1_3'),
+                                                  ('R_5_2', 'AX_5_2_4', 'DX_5_2_4_1'),
+                                                  ('RX_6_3', 'AX_6_3_1', 'DX_6_3_1_2'),
+                                                  ('R_7_3', 'AX_7_3_6', 'DX_7_3_6_1'),
+                                                  ('RX_8_5', 'AX_8_5_2', 'DX_8_5_2_7'),
+                                                  ('R_9_5', 'AX_9_5_8', 'DX_9_5_8_2'),
+                                                  ('R_10_1', 'A_10_1_2', 'D_10_1_2_7'),
+                                                  ('RX_11_7', 'AX_11_7_3', 'DX_11_7_3_2'),
+                                                  ('R_12_7', 'AX_12_7_11', 'DX_12_7_11_3')),
+                                       'vars': {'R_1_0': 1.3155122903491134, 'R_2_1': 1.4707410587114869,
+                                                'A_2_1_0': 109.22799244788278,
+                                                'R_3_1': 1.4707410587114869, 'A_3_1_2': 113.21235050581743,
+                                                'D_3_1_2_0': 121.94357782706227,
+                                                'RX_4_2': 1.0, 'AX_4_2_1': 90.0, 'DX_4_2_1_3': 180,
+                                                'R_5_2': 1.2013089233618282,
+                                                'AX_5_2_4': 90.0, 'DX_5_2_4_1': 180.0, 'RX_6_3': 1.0, 'AX_6_3_1': 90.0,
+                                                'DX_6_3_1_2': 180,
+                                                'R_7_3': 1.2013088241289895, 'AX_7_3_6': 90.0, 'DX_7_3_6_1': 180.0,
+                                                'RX_8_5': 1.0,
+                                                'AX_8_5_2': 90.0, 'DX_8_5_2_7': 180, 'R_9_5': 1.06567033240585,
+                                                'AX_9_5_8': 90.0,
+                                                'DX_9_5_8_2': 180.0, 'R_10_1': 1.0962601875867035,
+                                                'A_10_1_2': 109.22799322222649,
+                                                'D_10_1_2_7': 121.94358050468233, 'RX_11_7': 1.0, 'AX_11_7_3': 90.0,
+                                                'DX_11_7_3_2': 180,
+                                                'R_12_7': 1.0656705002006313, 'AX_12_7_11': 90.0,
+                                                'DX_12_7_11_3': 180.0},
+                                       'map': {0: 7, 1: 2, 2: 1, 3: 3, 4: 'X9', 5: 0, 6: 'X10', 7: 4, 8: 'X11', 9: 5,
+                                               10: 6, 11: 'X12', 12: 8}})
         expected_zmat_4 = {'symbols': ('C', 'C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
                            'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
                                       ('RX_3_1', 'AX_3_1_0', 'DX_3_1_0_2'), ('R_4_1', 'AX_4_1_3', 'DX_4_1_3_0'),
@@ -1657,24 +1745,30 @@ class TestZMat(unittest.TestCase):
                                     'D_9_0_1_6': 121.94358050468233, 'RX_10_6': 1.0, 'AX_10_6_2': 90.0,
                                     'DX_10_6_2_1': 180, 'R_11_6': 1.0656705002006313, 'AX_11_6_10': 90.0,
                                     'DX_11_6_10_2': 180.0},
-                           'map': {0: 2, 1: 1, 2: 3, 3: 'X8', 4: 0, 5: 'X9', 6: 4, 7: 'X10', 8: 5, 9: 6, 10: 'X11', 11: 7}}
+                           'map': {0: 2, 1: 1, 2: 3, 3: 'X8', 4: 0, 5: 'X9', 6: 4, 7: 'X10', 8: 5, 9: 6, 10: 'X11',
+                                   11: 7}}
         self.assertEqual(zmat_4['symbols'], expected_zmat_4['symbols'])
         self.assertEqual(zmat_4['map'], expected_zmat_4['map'])
         self.assertAlmostEqual(zmat_4['vars'], expected_zmat_4['vars'])
 
         # An example where one of the atoms in the zmat refers to the 1st atom that is being removed
-        zmat_5 = zmat.remove_1st_atom({'symbols': ('H', 'C', 'H', 'H', 'H'),
+        zmat_5 = zmat.remove_zmat_atom_0({'symbols': ('H', 'C', 'H', 'H', 'H'),
                                        'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
                                                   ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'), ('R_4_1', 'A_4_1_0', 'D_4_1_0_3')),
-                                       'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749, 'A_2_1_0': 109.47121834780573,
-                                                'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
-                                                'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
+                                       'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749,
+                                                'A_2_1_0': 109.47121834780573,
+                                                'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586,
+                                                'D_3_1_2_0': 120.0000002999208,
+                                                'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166,
+                                                'D_4_1_0_3': 239.99999891956398},
                                        'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}})
         expected_zmat_5 = {'symbols': ('C', 'H', 'H', 'H'),
                            'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
                                       ('R_3_0', 'A_3_0_1', 'D_3_0_1_2')),
-                           'vars': {'R_1_0': 1.0921994253661749, 'R_2_0': 1.092199370793132, 'A_2_0_1': 109.47122048587586,
-                                    'R_3_0': 1.0921994253661749, 'A_3_0_0': 109.47122150322166, 'D_3_0_0_2': 239.99999891956398,
+                           'vars': {'R_1_0': 1.0921994253661749, 'R_2_0': 1.092199370793132,
+                                    'A_2_0_1': 109.47122048587586,
+                                    'R_3_0': 1.0921994253661749, 'A_3_0_0': 109.47122150322166,
+                                    'D_3_0_0_2': 239.99999891956398,
                                     'A_3_0_1': 63.024513203726876, 'D_3_0_1_2': 287.0894016092067},
                            'map': {0: 0, 1: 1, 2: 2, 3: 3}}
         self.assertEqual(zmat_5['symbols'], expected_zmat_5['symbols'])
@@ -1682,7 +1776,44 @@ class TestZMat(unittest.TestCase):
         for key in zmat_5['vars']:
             self.assertAlmostEqual(zmat_5['vars'][key], expected_zmat_5['vars'][key], delta=1e-5)
 
-    def test_remove_1st_atom_references(self):
+        zmat_6 = zmat.remove_zmat_atom_0(self.zmat_2)
+        for var in zmat_6['vars']:
+            indices = zmat.get_atom_indices_from_zmat_parameter(var)[0]
+            self.assertTrue(all(index >= 0 for index in indices))
+            self.assertTrue(len(set(indices)) == len(indices))
+
+    def test_remove_zmat_atom_0_c(self):
+        """Test removing the first (zeroth) atom in a zmat."""
+        old = {'symbols': ('X', 'Y', 'Z'),
+               'coords': ((None, None, None),  # atom 0
+                          ('R_1_0', None, None),  # atom 1 refers to 0
+                          ('R_2_1', 'A_2_1_0', None)),  # atom 2 refers to 1 and 0
+               'vars': {'R_1_0': 1.00, 'R_2_1': 1.10, 'A_2_1_0': 60.0},
+               'map': {0: 0, 1: 1, 2: 2}}
+        new = zmat.remove_zmat_atom_0(old)
+        self.assertEqual(new['symbols'], ('Y', 'Z'))
+        # coords: two rows (for old atoms 1 & 2)
+        # new['coords'][0] corresponds to old atom 1 → all None
+        self.assertEqual(new['coords'][0], (None, None, None))
+        # new['coords'][1] corresponds to old atom 2:
+        # R_2_1 → R_1_0, A_2_1_0 is purged (None), no dihedral
+        self.assertEqual(new['coords'][1], ('R_1_0', None, None))
+        # vars: 'A_2_1_0' must have been removed entirely;
+        # the remaining 'R_1_0' must carry the original R_2_1 value
+        self.assertNotIn('A_2_1_0', new['vars'])
+        self.assertIn('R_1_0', new['vars'])
+        self.assertAlmostEqual(new['vars']['R_1_0'], 1.10)
+        # map: key 0 gone, keys decremented by 1, values >0 decremented by 1
+        # old.map was {0:0,1:1,2:2} → new.map should be {0:0,1:1}
+        self.assertEqual(set(new['map'].keys()), {0, 1})
+        self.assertEqual(new['map'][0], 0)
+        self.assertEqual(new['map'][1], 1)
+
+        zmat_2 = zmat.remove_zmat_atom_0(self.zmat_2)
+        self.assertEqual(zmat_2['symbols'], ('O', 'C', 'C', 'H', 'H', 'H', 'H', 'H'))
+        self.assertEqual(zmat_2['coords'][1], ('R_1_0', None, None))
+
+    def test_remove_zmat_atom_0_d(self):
         """Test the remove_1st_atom_references() function."""
         zmat_1 = {'symbols': ('H', 'C', 'C', 'H', 'H', 'H', 'H', 'H'),
                   'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
@@ -1699,7 +1830,20 @@ class TestZMat(unittest.TestCase):
                            'D_6_2_1_5': 239.99905123159166, 'R_7_2': 1.0940817193677925,
                            'A_7_2_1': 110.56754686774481, 'D_7_2_1_6': 240.00122783407815},
                   'map': {0: 3, 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 6, 7: 7}}
-        self.assertEqual(zmat.remove_1st_atom_references(zmat_1), zmat_1)
+        expected_zmat_1 = {'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H'),
+                           'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
+                                      ('R_3_0', 'A_3_0_1', 'D_3_0_1_2'), ('R_4_1', 'A_4_1_0', 'D_4_1_0_3'),
+                                      ('R_5_1', 'A_5_1_0', 'D_5_1_0_4'), ('R_6_1', 'A_6_1_0', 'D_6_1_0_5')),
+                           'vars': {'R_1_0': 1.5120487296562577, 'R_2_0': 1.0940725668318991,
+                                    'A_2_0_1': 110.56890700195424, 'R_3_0': 1.0940817193677925,
+                                    'A_3_0_1': 110.56754686774481, 'D_3_0_1_2': 239.9997190582892,
+                                    'R_4_1': 1.0940725668318991, 'A_4_1_0': 110.56890700195424,
+                                    'D_4_1_0_3': 59.99971758419434, 'R_5_1': 1.0940840619688397,
+                                    'A_5_1_0': 110.56790845138725, 'D_5_1_0_4': 239.99905123159166,
+                                    'R_6_1': 1.0940817193677925, 'A_6_1_0': 110.56754686774481,
+                                    'D_6_1_0_5': 240.00122783407815},
+                           'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}}
+        self.assertEqual(zmat.remove_zmat_atom_0(zmat_1), expected_zmat_1)
 
         zmat_2 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
                   'coords': ((None, None, None),
@@ -1711,22 +1855,15 @@ class TestZMat(unittest.TestCase):
                            'R_3_1': 1.092199370793132, 'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
                            'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166, 'D_4_1_0_3': 239.99999891956398},
                   'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
-        expected_zmat_2 = {'symbols': ('H', 'C', 'H', 'H', 'H'),
-                           'coords': ((None, None, None),
-                                      ('R_1_0', None, None),
-                                      ('R_2_1', 'A_2_1_0', None),
-                                      ('R_3_1', 'A_3_1_2', 'D_3_1_2_0'),
-                                      ('R_4_1', 'A_4_1_2', 'D_4_1_2_3')),
-                           'vars': {'R_1_0': 1.3106392449517583, 'R_2_1': 1.0921994253661749,
-                                    'A_2_1_0': 109.47121834780573, 'R_3_1': 1.092199370793132,
-                                    'A_3_1_2': 109.47122048587586, 'D_3_1_2_0': 120.0000002999208,
-                                    'R_4_1': 1.0921994253661749, 'A_4_1_0': 109.47122150322166,
-                                    'D_4_1_0_3': 239.99999891956398, 'A_4_1_2': 63.024513203726876,
-                                    'D_4_1_2_3': 287.0894016092067},
-                           'map': {0: 4, 1: 0, 2: 1, 3: 2, 4: 3}}
-        self.assertEqual(zmat.remove_1st_atom_references(zmat_2)['coords'], expected_zmat_2['coords'])
-        self.assertEqual(list(zmat.remove_1st_atom_references(zmat_2)['vars'].keys()),
-                         list(expected_zmat_2['vars'].keys()))
+        expected_zmat_2 = {'symbols': ('C', 'H', 'H', 'H'),
+                           'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
+                                      ('R_3_0', 'A_3_0_1', 'D_3_0_1_2')),
+                           'vars': {'R_1_0': 1.0921994253661749, 'R_2_0': 1.092199370793132,
+                                    'A_2_0_1': 109.47122048587586, 'R_3_0': 1.0921994253661749,
+                                    'A_3_0_1': 63.02452087402344, 'D_3_0_1_2': 287.0894016092067},
+                           'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        self.assertEqual(zmat.remove_zmat_atom_0(zmat_2)['coords'], expected_zmat_2['coords'])
+        self.assertEqual(list(zmat.remove_zmat_atom_0(zmat_2)['vars'].keys()), list(expected_zmat_2['vars'].keys()))
 
         zmat_3 = {'symbols': ('C', 'C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
                   'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
@@ -1746,29 +1883,167 @@ class TestZMat(unittest.TestCase):
                            'DX_10_6_2_1': 180, 'R_11_6': 1.0656705002006313, 'AX_11_6_10': 90.0,
                            'DX_11_6_10_2': 180.0},
                   'map': {0: 2, 1: 1, 2: 3, 3: 'X8', 4: 0, 5: 'X9', 6: 4, 7: 'X10', 8: 5, 9: 6, 10: 'X11', 11: 7}}
-        expected_zmat_3 = {'symbols': ('C', 'C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
-                           'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_0', 'A_2_0_1', None),
-                                      ('RX_3_1', 'AX_3_1_0', 'DX_3_1_0_2'), ('R_4_1', 'AX_4_1_3', 'DX_4_1_3_2'),
-                                      ('RX_5_2', 'AX_5_2_1', 'DX_5_2_3_1'), ('R_6_2', 'AX_6_2_5', 'DX_6_2_5_1'),
-                                      ('RX_7_4', 'AX_7_4_1', 'DX_7_4_1_6'), ('R_8_4', 'AX_8_4_7', 'DX_8_4_7_1'),
-                                      ('R_9_1', 'A_9_2_1', 'D_9_2_1_6'), ('RX_10_6', 'AX_10_6_2', 'DX_10_6_2_1'),
-                                      ('R_11_6', 'AX_11_6_10', 'DX_11_6_10_2')),
-                           'vars': {'R_1_0': 1.4707410587114869, 'R_2_0': 1.4707410587114869,
-                                    'A_2_0_1': 113.21235050581743, 'RX_3_1': 1.0, 'AX_3_1_0': 90.0, 'DX_3_1_0_2': 180,
-                                    'R_4_1': 1.2013089233618282, 'AX_4_1_3': 90.0, 'DX_4_1_3_0': 180.0, 'RX_5_2': 1.0,
-                                    'AX_5_2_0': 90.0, 'DX_5_2_0_1': 180, 'R_6_2': 1.2013088241289895, 'AX_6_2_5': 90.0,
-                                    'DX_6_2_5_0': 180.0, 'RX_7_4': 1.0, 'AX_7_4_1': 90.0, 'DX_7_4_1_6': 180,
-                                    'R_8_4': 1.06567033240585, 'AX_8_4_7': 90.0, 'DX_8_4_7_1': 180.0,
-                                    'R_9_0': 1.0962601875867035, 'A_9_0_1': 109.22799322222649,
-                                    'D_9_0_1_6': 121.94358050468233, 'RX_10_6': 1.0, 'AX_10_6_2': 90.0,
-                                    'DX_10_6_2_1': 180, 'R_11_6': 1.0656705002006313, 'AX_11_6_10': 90.0,
-                                    'DX_11_6_10_2': 180.0, 'DX_4_1_3_2': 180.0, 'AX_5_2_1': 0.007619013216077339,
-                                    'DX_5_2_3_1': 0.0, 'DX_6_2_5_1': 50.7276048578378, 'R_9_1': 3.12003863359643,
-                                    'A_9_2_1': 147.4252799529316, 'D_9_2_1_6': 238.05641967369294},
-                           'map': {0: 2, 1: 1, 2: 3, 3: 'X8', 4: 0, 5: 'X9', 6: 4, 7: 'X10', 8: 5, 9: 6, 10: 'X11', 11: 7}}
-        self.assertEqual(zmat.remove_1st_atom_references(zmat_3)['coords'], expected_zmat_3['coords'])
-        self.assertEqual(list(zmat.remove_1st_atom_references(zmat_3)['vars'].keys()),
-                         list(expected_zmat_3['vars'].keys()))
+        expected_zmat_3 = {'symbols': ('C', 'C', 'X', 'C', 'X', 'C', 'X', 'H', 'H', 'X', 'H'),
+                           'coords': ((None, None, None), ('R_1_0', None, None), ('RX_2_0', 'AX_2_0_1', None),
+                                      ('R_3_0', 'AX_3_0_2', 'DX_3_0_2_1'), ('RX_4_1', 'AX_4_1_0', 'DX_4_1_2_0'),
+                                      ('R_5_1', 'AX_5_1_4', 'DX_5_1_4_0'), ('RX_6_3', 'AX_6_3_0', 'DX_6_3_0_5'),
+                                      ('R_7_3', 'AX_7_3_6', 'DX_7_3_6_0'), ('R_8_0', 'A_8_1_0', 'D_8_1_0_5'),
+                                      ('RX_9_5', 'AX_9_5_1', 'DX_9_5_1_0'), ('R_10_5', 'AX_10_5_9', 'DX_10_5_9_1')),
+                           'vars': {'RX_2_0': 1.0, 'R_3_0': 1.2013089233618282, 'AX_3_0_2': 90.0, 'RX_4_1': 1.0,
+                                    'R_5_1': 1.2013088241289895, 'AX_5_1_4': 90.0, 'RX_6_3': 1.0, 'AX_6_3_0': 90.0,
+                                    'DX_6_3_0_5': 180, 'R_7_3': 1.06567033240585, 'AX_7_3_6': 90.0, 'DX_7_3_6_0': 180.0,
+                                    'RX_9_5': 1.0, 'AX_9_5_1': 90.0, 'DX_9_5_1_0': 180, 'R_10_5': 1.0656705002006313,
+                                    'AX_10_5_9': 90.0, 'DX_10_5_9_1': 180.0, 'R_1_0': 1.4707410335540771,
+                                    'AX_2_0_1': 33.39382553100586, 'DX_3_0_2_1': 180.0, 'AX_4_1_0': 0.0,
+                                    'DX_4_1_2_0': 0.0, 'DX_5_1_4_0': 50.7276048578378, 'R_8_0': 3.1200387477874756,
+                                    'A_8_1_0': 147.42529296875, 'D_8_1_0_5': 238.05641967369294},
+                           'map': {0: 1, 1: 2, 2: 'X7', 3: 0, 4: 'X8', 5: 3, 6: 'X9', 7: 4, 8: 5, 9: 'X10', 10: 6}}
+        self.assertEqual(zmat.remove_zmat_atom_0(zmat_3)['coords'], expected_zmat_3['coords'])
+        self.assertEqual(list(zmat.remove_zmat_atom_0(zmat_3)['vars'].keys()), list(expected_zmat_3['vars'].keys()))
+
+
+    def test_purge_references_to_atom0_basic(self):
+        """Test that any '_0' references in atoms ≥ index 4 are re-indexed away from 0."""
+        original = {'symbols': ('A', 'B', 'C', 'D', 'E', 'F'),
+                    'coords': ((None, None, None),  # 0
+                               ('R_1_0', None, None),  # 1
+                               ('R_2_1', 'A_2_1_0', None),  # 2
+                               ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'),  # 3
+                               ('R_4_3', 'A_4_3_2', 'D_4_3_2_0'),  # 4 ← clean this
+                               ('R_5_4', 'A_5_4_3', 'D_5_4_3_0')),  # 5 ← clean this
+                    'vars': {'R_1_0': 1.0,
+                             'R_2_1': 1.1, 'A_2_1_0': 60.0,
+                             'R_3_2': 1.2, 'A_3_2_1': 70.0, 'D_3_2_1_0': 120.0,
+                             'R_4_3': 1.3, 'A_4_3_2': 80.0, 'D_4_3_2_0': 180.0,
+                             'R_5_4': 1.4, 'A_5_4_3': 90.0, 'D_5_4_3_0': 240.0},
+                    'map': {i: i for i in range(6)}}
+        cleaned = zmat.purge_references_to_atom_0(original)
+        # atom 4: the dihedral changed _0 → _1
+        self.assertEqual(cleaned['coords'][4][2], 'D_4_3_2_1')
+        self.assertIn('D_4_3_2_1', cleaned['vars'])
+        self.assertNotIn('D_4_3_2_0', cleaned['vars'])
+        # atom 5: same treatment
+        self.assertEqual(cleaned['coords'][5][2], 'D_5_4_3_1')
+        self.assertIn('D_5_4_3_1', cleaned['vars'])
+        self.assertNotIn('D_5_4_3_0', cleaned['vars'])
+
+        original = {'symbols': ('A', 'B', 'C', 'D'),
+                    'coords': ((None, None, None),
+                               ('R_1_0', None, None),
+                               ('R_2_1', 'A_2_1_0', None),
+                               ('R_3_2', 'A_3_2_1', 'D_3_2_1_0')),
+                    'vars': {'R_1_0': 1.0,
+                             'R_2_1': 1.1, 'A_2_1_0': 60.0,
+                             'R_3_2': 1.2, 'A_3_2_1': 70.0, 'D_3_2_1_0': 120.0},
+                    'map': {i: i for i in range(4)}}
+        expected = {'symbols': ('A', 'B', 'C', 'D'),
+                    'coords': ((None, None, None),
+                               ('R_1_2', None, None),
+                               ('R_2_1', 'A_2_1_3', None),  # modified to refer to atom 3
+                               ('R_3_2', 'A_3_2_1', 'D_3_2_1_4')),
+                    'vars': {'R_2_1': 1.1, 'R_3_2': 1.2, 'A_3_2_1': 70.0, 'R_1_2': 1.100000023841858,
+                             'A_2_1_3': 58.553123474121094, 'D_3_2_1_4': None},
+                    'map': {i: i for i in range(4)}}
+        cleaned = zmat.purge_references_to_atom_0(original)
+        self.assertEqual(cleaned, expected)
+
+    def test_drop_symbol_and_coords_row0(self):
+        """Test dropping the 0th symbol/coords row and clearing any leftover _0-refs."""
+        original = {'symbols': ('C', 'O', 'H', 'H'),
+                    'coords': ((None, None, None),                  # atom 0
+                               ('R_1_0', None, None),               # atom 1 → refers to 0
+                               ('R_2_0', 'A_2_0_1', None),          # atom 2 → both refer to 0
+                               ('R_3_0', 'A_3_0_1', 'D_3_0_1_2')),  # atom 3 → all refer to 0
+                    'vars': {'R_1_0': 1.2,
+                             'R_2_0': 1.0, 'A_2_0_1': 120.0,
+                             'R_3_0': 1.1, 'A_3_0_1': 109.5, 'D_3_0_1_2': 180.0},
+                    'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+
+        modified = zmat.drop_symbol_and_coords_row_0(original)
+        self.assertEqual(modified, {'symbols': ('O', 'H', 'H'),
+                                    'coords': ((None, None, None), ('R_2_0', None, None), ('R_3_0', 'A_3_0_1', None)),
+                                    'vars': {'R_2_0': 1.0, 'R_3_0': 1.1, 'A_3_0_1': 109.5},
+                                    'map': {0: 0, 1: 1, 2: 2, 3: 3}})
+        self.assertEqual(modified['map'], original['map'])
+
+        # And on a one‐atom ZMat it still just drops row0 and leaves map alone:
+        minimal_zmat = {'symbols': ('X',), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}}
+        minimal_mod = zmat.drop_symbol_and_coords_row_0(minimal_zmat)
+        self.assertEqual(minimal_mod['symbols'], ())
+        self.assertEqual(minimal_mod['coords'], ())
+        self.assertEqual(minimal_mod['vars'], {})
+        self.assertEqual(minimal_mod['map'], {0: 0})
+
+    def test_renumber_params(self):
+        """Test that renumber_params() correctly renumbers atom indices in zmat params."""
+        original_zmat = {'symbols': ('C', 'H', 'O', 'N'),
+                         'coords': ((None, None, None),
+                                    ('R_1_0', None, None),
+                                    ('R_2_0', 'A_2_0_1', None),
+                                    ('R_3_0', 'A_3_0_1', 'D_3_0_1_2')),
+                         'vars': {'R_1_0': 1.0,
+                                  'R_2_0': 1.5, 'A_2_0_1': 90.0,
+                                  'R_3_0': 1.3, 'A_3_0_1': 120.0, 'D_3_0_1_2': 180.0},
+                         'map': {0: 0, 1: 1, 2: 2, 3: 3}}
+        expected_coords_delta_minus_1 = ((None, None, None),
+                                         ('R_0_0', None, None),
+                                         ('R_1_0', 'A_1_0_0', None),
+                                         ('R_2_0', 'A_2_0_0', 'D_2_0_0_1'))
+        expected_coords_delta_plus_1 = ((None, None, None),
+                                        ('R_2_1', None, None),
+                                        ('R_3_1', 'A_3_1_2', None),
+                                        ('R_4_1', 'A_4_1_2', 'D_4_1_2_3'))
+        # test with delta = -1
+        modified_zmat_minus_1 = zmat.renumber_params(original_zmat.copy(), delta=-1)
+        self.assertEqual(modified_zmat_minus_1['coords'], expected_coords_delta_minus_1)
+        # test with delta = +1
+        modified_zmat_plus_1 = zmat.renumber_params(original_zmat.copy(), delta=+1)
+        self.assertEqual(modified_zmat_plus_1['coords'], expected_coords_delta_plus_1)
+        # ensure original vars/symbols remain untouched
+        self.assertEqual(original_zmat['vars'], modified_zmat_minus_1['vars'])
+        self.assertEqual(original_zmat['symbols'], modified_zmat_minus_1['symbols'])
+
+    def test_rebuild_vars(self):
+        """Test that rebuild_vars shifts all numeric parts by –1."""
+        z = {'vars': {'R_3_2': 1.00, 'A_4_3_2': 60.0, 'D_10_9_8_7': 120.0,
+                      # also test that non-numeric suffixes are untouched
+                      'X_label': 999.0}}
+        rebuilt = zmat.rebuild_vars(z, delta=-1)
+        expected = {'R_2_1': 1.00, 'A_3_2_1': 60.0, 'D_9_8_7_6': 120.0, 'X_label': 999.0}
+        self.assertEqual(rebuilt['vars'], expected)
+        z = {'vars': {'R_0_1': 1.23, 'A_5_0_2': 45.0, 'D_2_3_4_5': 180.0}}
+        rebuilt = zmat.rebuild_vars(z, delta=2)
+        expected = {'R_2_3': 1.23, 'A_7_2_4': 45.0, 'D_4_5_6_7': 180.0, }
+        self.assertEqual(rebuilt['vars'], expected)
+
+    def test_rebuild_map(self):
+        """Test the rebuild_map() function."""
+        old_map = {0: 0, 1: 1, 2: 2, 3: 3}
+        new_map = zmat.rebuild_map(old_map, dropped_idx=1)
+        expected = {0: 1, 1: 1, 2: 2}
+        self.assertEqual(new_map, expected)
+
+        old_map = {0: 0, 1: 'X2', 2: 'X3', 3: 1}
+        new_map = zmat.rebuild_map(old_map, dropped_idx=1)
+        expected = {0: 'X1', 1: 'X2', 2: 1}
+        self.assertEqual(new_map, expected)
+
+        old_map = {0: 0, 1: 1, 2: 'X1', 3: 'X0'}
+        new_map = zmat.rebuild_map(old_map, dropped_idx=2)
+        expected = {0: 1, 1: 'X1', 2: 'X0'}
+        self.assertEqual(new_map, expected)
+
+        old_map = {0: 42}
+        new_map = zmat.rebuild_map(old_map, dropped_idx=42)
+        self.assertEqual(new_map, {})
+
+        old_map = {0: 2, 1: 0, 2: 5, 3: 'X3', 4: 4}
+        new_map = zmat.rebuild_map(old_map, dropped_idx=2)
+        expected = {0: 0,     # old key1→new key0, old val0→0
+                    1: 4,     # old key2→new key1, 5→4
+                    2: 'X2',  # old key3→new key2, 'X3'→'X2'
+                    3: 3}     # old key4→new key3, 4→3
+        self.assertEqual(new_map, expected)
 
     def test_map_index_to_int(self):
         """Test the map_index_to_int() function."""
