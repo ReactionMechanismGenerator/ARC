@@ -30,9 +30,10 @@ import math
 import numpy as np
 import operator
 import re
+from copy import deepcopy
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
-from arc.common import get_logger, is_angle_linear, key_by_val, determine_top_group_indices
+from arc.common import get_logger, is_angle_linear, key_by_val
 from arc.exceptions import ZMatError, VectorsError
 from arc.molecule.molecule import Molecule
 from arc.species.vectors import calculate_param, get_vector_length
@@ -1404,14 +1405,17 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
 
     atom_order = list()
     if mol is not None:
-        atom_order = _accumulated_atom_order(fragments,
-                                             lambda frag: get_atom_order_from_mol(
-                                                 mol=mol,
-                                                 fragment=frag,
-                                                 constraints_dict=constraints_dict))
+        for fragment in fragments:
+            sequence = get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict)
+            for i in sequence:
+                if i not in atom_order:
+                    atom_order.append(i)
     elif xyz is not None:
-        atom_order = _accumulated_atom_order(fragments,
-                                             lambda frag: get_atom_order_from_xyz(xyz, fragment=frag))
+        for fragment in fragments:
+            sequence = get_atom_order_from_xyz(xyz, fragment=fragment)
+            for i in sequence:
+                if i not in atom_order:
+                    atom_order.append(i)
     return atom_order
 
 
@@ -2091,69 +2095,167 @@ def up_param(param: str,
     return new_param
 
 
-def remove_1st_atom(zmat: dict) -> dict:
+def remove_zmat_atom_0(zmat: dict) -> dict:
     """
-    Remove the first atom of a zmat.
-    Note: The first atom in 'symbols' with map key 0 is removed,
-    it is not necessarily the first atom in the corresponding xyz with map value 0.
-
-    Args:
-        zmat (dict): The zmat to process.
-
-    Returns:
-        dict: The updated zmat.
+    Remove atom 0 from a Z-matrix complete structure, dropping all references to it
+    and renumbering the remaining atoms, parameters, and map accordingly.
     """
-    zmat = remove_1st_atom_references(zmat=zmat)
-    new_symbols = tuple(zmat['symbols'][1:])
-    new_coords, removed_vars = list(), list()
-    for i, coords in enumerate(zmat['coords']):
-        if i == 0:
-            continue
-        removed_vars.extend([coord for j, coord in enumerate(coords) if coord is not None and j > i - 2])
-        new_coords.append((up_param(coords[0], increment=-1) if i >= 2 else None,
-                           up_param(coords[1], increment=-1) if i >= 3 else None,
-                           up_param(coords[2], increment=-1) if i >= 4 else None))
+    if len(zmat['symbols']) <= 1:
+        return {'symbols': (), 'coords': (), 'vars': {}, 'map': {}}
+    if len(zmat['symbols']) == 2:
+        return {'symbols': (zmat['symbols'][1],), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}}
+    cleaned = purge_references_to_atom_0(zmat)
+    orig_map0 = cleaned['map'][0]
+    dropped_idx = int(orig_map0[1:]) if isinstance(orig_map0, str) and orig_map0.startswith('X') else orig_map0
+    dropped = drop_symbol_and_coords_row_0(cleaned)
+    renumbered = renumber_params(dropped, delta=-1)
+    pruned = rebuild_vars(renumbered)
+    pruned['map'] = rebuild_map(pruned['map'], dropped_idx)
+    return pruned
+
+
+def purge_references_to_atom_0(zmat: dict) -> dict:
+    """
+    For any Z-matrix parameter that mentions atom 0 (e.g. “R_3_0”,
+    “A_4_3_0”, “DX_5_4_0_2”, etc.), replace each 0 with the smallest
+    nonzero index not already in that parameter.  Never produces negative
+    numbers or duplicates.  Returns a brand-new dict; does not mutate input.
+    """
+    z0 = deepcopy(zmat)
+    xyz_coords, _ = zmat_to_coords(zmat=z0, keep_dummy=True)
+    new_vars = z0["vars"].copy()
+    new_coords = list()
+    pattern = re.compile(r'^(?:[RAD]X?)_(?:\d+_)*0(?:$|_)')  # matches R_, A_, D_, RX_, AX_, DX_ parameters that contain “…_0” anywhere
+
+    def safe_calc_param(atoms):
+        try:
+            return calculate_param(coords=xyz_coords, atoms=atoms)
+        except IndexError:
+            return None
+
+    for row in z0['coords']:
+        out = list()
+        for p in row:
+            if isinstance(p, str) and pattern.match(p):
+                groups = get_atom_indices_from_zmat_parameter(p)
+                flat = [i for grp in groups for i in grp]
+                if 0 in flat:
+                    used = set(flat) - {0}
+                    candidate = 1
+                    while candidate in used:
+                        candidate += 1
+                    new_flat = [candidate if x == 0 else x for x in flat]
+                    tag = p.split("_")[0]
+                    new_p = "_".join([tag] + [str(i) for i in new_flat])
+                    new_vars.pop(p, None)
+                    new_vars[new_p] = safe_calc_param(atoms=new_flat)
+                    p = new_p
+            out.append(p)
+        new_coords.append(tuple(out))
+    return {**z0, 'coords': tuple(new_coords), 'vars':   new_vars}
+
+
+def drop_symbol_and_coords_row_0(zmat: dict) -> dict:
+    """
+    Non-destructively drop the 0th Z-matrix symbol and its coords row,
+    prune out any vars no longer referenced, and leave map untouched
+    for rebuild_map() later.
+    """
+    z0 = deepcopy(zmat)
+    new_symbols = tuple(z0['symbols'][1:])
+    new_coords  = list(z0['coords'][1:])
+    if len(new_symbols) >= 1:
+        new_coords[0] = (None, None, None)
+    if len(new_symbols) >= 2:
+        new_coords[1] = (new_coords[1][0], None, None)
+    if len(new_symbols) >= 3:
+        new_coords[2] = (new_coords[2][0], new_coords[2][1], None)
     new_coords = tuple(new_coords)
-    new_vars = {up_param(key, increment=-1): val for key, val in zmat['vars'].items() if key not in removed_vars}
-    val_0 = map_index_to_int(zmat['map'][0])
-    keys_of_x_atoms = [key - 1 for key, val in zmat['map'].items() if isinstance(val, str) and 'X' in val]
-    new_map = {key - 1: map_index_to_int(val) - 1 if map_index_to_int(val) > val_0 else val for key, val in zmat['map'].items() if key != 0}
-    new_map = {key: val if key not in keys_of_x_atoms else f'X{val}' for key, val in new_map.items()}
+    keep = {p for row in new_coords for p in row if isinstance(p, str)}
+    new_vars = {k: v for k, v in z0['vars'].items() if k in keep}
+    new_map = z0['map'].copy()
     return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
 
 
-def remove_1st_atom_references(zmat: dict) -> dict:
+def renumber_params(zmat: dict, delta: int = -1) -> dict:
     """
-    Remove references for the 1st atom (index 0) in the zmat in all coords and respective vars
-    from the 5th atom (index 4) on. I.e., the 2nd, 3rd, and 4th atoms can include references to the 1st atom.
+    Shift *all* atom indices in every z-matrix parameter by `delta`, but
+    clamp at zero (never negative).  E.g. R_2_1 → R_1_0 if delta = –1,
+    and A_1_0 → A_0_0 rather than A_0_–1.
+    """
+    pattern = re.compile(r'([RAD]X?)_'    # R_, RX_, A_, AX_, D_, DX_
+                         r'(\d+)'         # first index
+                         r'_(\d+)'        # second index
+                         r'(?:_(\d+))?'   # optional third
+                         r'(?:_(\d+))?')  # optional fourth
+
+    def _shift_param(match):
+        tag, *idxs = match.groups()
+        shifted = list()
+        for idx in idxs:
+            if idx is None:
+                break
+            val = int(idx) + delta
+            shifted.append(str(max(val, 0)))
+        return "_".join([tag] + shifted)
+
+    new_coords = list()
+    for row in zmat['coords']:
+        new_row = list()
+        for p in row:
+            if isinstance(p, str):
+                p = pattern.sub(_shift_param, p)
+            new_row.append(p)
+        new_coords.append(tuple(new_row))
+    zmat['coords'] = tuple(new_coords)
+    return zmat
+
+
+def rebuild_vars(zmat: dict, delta: int = -1) -> dict:
+    """
+    Rebuild the vars dict to match renumbered parameter names.
+    """
+    new_vars = {}
+    for key, val in zmat['vars'].items():
+        new_key = re.sub(r'_(\d+)', lambda m: f"_{int(m.group(1)) + delta}", key)
+        new_vars[new_key] = val
+    zmat['vars'] = new_vars
+    return zmat
+
+
+def rebuild_map(old_map: Dict[int, Union[int, str]], dropped_idx: int) -> Dict[int, Union[int, str]]:
+    """
+    Given a zmat‐>xyz index map from before dropping atom 0, produce the new map
+    after removing atom 0 (and hence removing its row in the Z‐matrix and its entry
+    in the xyz array at position dropped_idx).
+
+    All remaining z‐matrix atom indices (the dict keys) are shifted down by 1.
+    All remaining xyz indices (the dict values) greater than dropped_idx are shifted
+    down by 1; values <= dropped_idx stay the same.  Dummy‐atom entries 'Xn' are
+    handled similarly.
 
     Args:
-        zmat (dict): The zmat to process.
+        old_map: map from pre‐drop zmat indices → pre‐drop xyz indices (int or 'Xn')
+        dropped_idx: the xyz index of the atom that was removed
 
     Returns:
-        dict: The updated zmat.
+        new_map: map from post‐drop zmat indices → post‐drop xyz indices (int or 'Xn')
     """
-    zmat = zmat.copy()
-    xyz_coords = None
-    new_zmat_coords, new_vals = list(), list()
-    for i, coords in enumerate(zmat['coords']):
-        new_coords = list(coords)
-        if i >= 4:
-            for j in range(3):
-                if '_0' in new_coords[j]:
-                    if xyz_coords is None:
-                        xyz_coords = zmat_to_coords(zmat=zmat, keep_dummy=True)[0]
-                    indices = get_atom_indices_from_zmat_parameter(new_coords[j])[0]
-                    new_index = 1
-                    while new_index in indices:
-                        new_index += 1
-                    new_indices = [index if index else new_index for index in indices]
-                    new_val = calculate_param(coords=xyz_coords, atoms=new_indices)
-                    new_coords[j] = '_'.join([new_coords[j].split('_')[0]] + [str(index) for index in new_indices])
-                    zmat['vars'][new_coords[j]] = new_val
-        new_zmat_coords.append(tuple(new_coords))
-    zmat['coords'] = tuple(new_zmat_coords)
-    return zmat
+    new_map: Dict[int, Union[int, str]] = dict()
+    for old_z_i, old_xyz_i in old_map.items():
+        if old_z_i == 0:
+            continue
+        new_z_i = old_z_i - 1
+        if isinstance(old_xyz_i, str) and old_xyz_i.startswith('X'):
+            idx = int(old_xyz_i[1:])
+            new_idx = idx - 1 if idx > dropped_idx else idx
+            new_xyz_i: Union[int, str] = f'X{new_idx}'
+        else:
+            idx = old_xyz_i
+            new_idx = idx - 1 if idx > dropped_idx else idx
+            new_xyz_i = new_idx
+        new_map[new_z_i] = new_xyz_i
+    return new_map
 
 
 def map_index_to_int(index: Union[int, str]) -> int:
