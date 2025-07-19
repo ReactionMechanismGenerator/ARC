@@ -170,6 +170,8 @@ def check_species_before_mapping(spc_1: ARCSpecies,
     Returns:
         bool: ``True`` if all checks passed, ``False`` otherwise.
     """
+    if spc_1.mol is None or spc_2.mol is None:
+        return False
     if spc_1.mol.fingerprint != spc_2.mol.fingerprint:
         raise ValueError(f'The two species sent for mapping have different molecular formula. Got:\n{spc_1.mol.to_smiles()}\n{spc_2.mol.to_smiles()}')
     # Check number of atoms > 0.
