@@ -702,8 +702,7 @@ def check_zmat_dict(zmat: Union[dict, str]) -> dict:
         # add a trivial map
         zmat_dict['map'] = {i: i for i in range(len(zmat_dict['symbols']))}
     if len(zmat_dict['symbols']) != len(zmat_dict['map']):
-        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["isotopes"])} '
-                             f'isotopes:\n{zmat_dict}')
+        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["map"])} Zmat::\n{zmat_dict}')
     for i, coord in enumerate(zmat_dict['coords']):
         for j, param in enumerate(coord):
             if param is not None:
