@@ -153,15 +153,14 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
         if num_of_skipped_atoms == len(skipped_atoms):
             # No atoms were popped from the skipped atoms list when iterating through all skipped atoms.
             raise ZMatError(f"Could not generate the zmat, skipped atoms could not be assigned, there's probably "
-                            f"a constraint lock. The partial zmat is:\n{zmat}\n\nskipped atoms are:\n{skipped_atoms}.")
-
+                            f"a constraint lock. The partial zmat is:\n{zmat}\n\nskipped atoms are:\n{skipped_atoms}.\n"
+                            f"constraints were:\n{constraints}")
     if consolidate and not constraints:
         try:
             zmat = consolidate_zmat(zmat, mol, consolidation_tols)
         except (KeyError, ZMatError) as e:
             logger.error(f'Could not consolidate zmat, got:\n{e.__class__}: {str(e)}')
             logger.error(f'Generating zmat without consolidation.')
-
     zmat['symbols'] = tuple(zmat['symbols'])
     zmat['coords'] = tuple(zmat['coords'])
     return zmat
@@ -389,14 +388,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                             # Atom B might be in a linear chain, determine the A -- B -- C angle.
                             b_neighbors = connectivity[atom_b]
                             atom_a = b_neighbors[0] if b_neighbors[0] != atom_c else b_neighbors[1]
-                            angle = calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                            if is_angle_linear(angle, tolerance=TOL_180):
-                                # A -- B -- C is linear, change indices and test angle E -- A -- B instead.
-                                atom_c = atom_b
-                                atom_b = atom_a
-                            elif key_by_val(zmat['map'], atom_b) not in a_atoms:
-                                # A -- B -- C is not linear, use atom B.
-                                zmat_index = key_by_val(zmat['map'], atom_b)
+                            zmat_index = key_by_val(zmat['map'], atom_b)
                         elif num_of_neighbors > 2:
                             # Atom B does not necessarily lead to a linear A -- B -- C chain, no need to intervene.
                             zmat_index = key_by_val(zmat['map'], atom_b)
@@ -431,15 +423,9 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     if j != i and atom_a not in [atom_b, atom_c] \
                             and (j in list(zmat['map'].keys()) and not is_dummy(zmat, j)
                                  or j not in list(zmat['map'].keys())):
-                        angle = calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                        if is_angle_linear(angle, tolerance=TOL_180):
-                            # A -- B -- C is linear, change indices and test angle E -- A -- B.
-                            atom_b = atom_a
-                        elif zmat_index not in a_atoms:
-                            # A -- B -- C is not linear, use atom B.
-                            zmat_index = key_by_val(zmat['map'], atom_b)
-                            a_atoms.append(zmat_index)
-                            break
+                        zmat_index = key_by_val(zmat['map'], atom_b)
+                        a_atoms.append(zmat_index)
+                        break
                     j -= 1  # Don't loop forever.
             if len(a_atoms) == 3:
                 break
@@ -746,6 +732,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
           - The xyz coordinates updated with dummy atoms.
           - A 0- or 1-length list with the skipped atom index.
     """
+    num_initial_atoms = len(xyz['symbols'])
     coords = xyz['coords']
     skipped_atoms = list()
     specific_last_d_atom = None
@@ -770,7 +757,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
 
         # If an '_atom' constraint was specified, only consider this atom if n is the last atom to consider.
         if (r_constraint_type == 'R_atom' or a_constraint_type == 'A_atom' or d_constraint_type == 'D_atom') \
-                and n != len([symbol for symbol in xyz['symbols'] if 'X' not in symbol]) - 1:
+                and n != num_initial_atoms - 1:
             logger.debug(f'Skipping atom index {atom_index} when creating a zmat due to a specified _atom constraint.')
             skipped_atoms.append(atom_index)
             return zmat, xyz, skipped_atoms
@@ -805,7 +792,6 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
         )
-
         # Calculate the angle, add a dummy atom if needed.
         added_dummy = False
         if a_atoms is not None and all([not re.match(r'X\d', str(zmat['map'][atom])) for atom in a_atoms[1:]]):
@@ -1408,7 +1394,7 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
     atom_order = list()
     if mol is not None:
         for fragment in fragments:
-            sequence = get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict)
+            sequence = get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict, xyz=xyz)
             for i in sequence:
                 if i not in atom_order:
                     atom_order.append(i)
@@ -1442,6 +1428,7 @@ def _accumulated_atom_order(fragments: List[List[int]],
 def get_atom_order_from_mol(mol: Molecule,
                             fragment: List[int] = None,
                             constraints_dict: Optional[Dict[str, List[tuple]]] = None,
+                            xyz: Optional[dict] = None,
                             ) -> List[int]:
     """
     Determine Z-matrix atom order based on molecular connectivity and an optional single constraint.
@@ -1462,6 +1449,7 @@ def get_atom_order_from_mol(mol: Molecule,
             'D_atom': [(move_idx, ref1, ref2, ref3)]
             'D_group': [(move_idx, ref1, ref2, ref3)]
             'D_groups': [(pivot2, pivot3, ref?, ref?)]
+        xyz (dict, optional): Optional 3D coordinates dict, used for checking linear motifs to avoid starting with them.
 
     Returns:
         A list of atom indices in Z-matrix order, where any unconstrained
@@ -1516,32 +1504,40 @@ def get_atom_order_from_mol(mol: Molecule,
 
     # 3) Base BFS ordering on heavy-atom graph
     # find start: a heavy with <=1 heavy neighbor not in constrained_set if possible
-    heavy_neighbors = lambda a: sum(nb.is_non_hydrogen() for nb in a.edges)
-    start = None
-    for atom in mol.atoms:
-        i = mol.atoms.index(atom)
-        if i in fragment and not atom.is_hydrogen() and i not in constrained_set and heavy_neighbors(atom) <= 1:
-            start = i
-            break
-    if start is None:
+    # Avoid atoms that are A in a linear A–B–C motif
+
+    def find_start(avoid_linear: bool = True) -> Optional[int]:
+        """Find a suitable start atom in the fragment."""
         for atom in mol.atoms:
             i = mol.atoms.index(atom)
-            if i in fragment and not atom.is_hydrogen() and i not in constrained_set:
-                start = i
-                break
-    if start is None:
-        # last resort: any heavy
+            if (
+                i in fragment and
+                not atom.is_hydrogen() and
+                i not in constrained_set and
+                (not avoid_linear or not is_atom_in_linear_angle(i=i, xyz=xyz, mol=mol)) and
+                sum(nb.is_non_hydrogen() for nb in atom.edges) <= 1
+            ):
+                return i
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if (
+                i in fragment and
+                not atom.is_hydrogen() and
+                i not in constrained_set and
+                (not avoid_linear or not is_atom_in_linear_angle(i=i, xyz=xyz, mol=mol))
+            ):
+                return i
         for atom in mol.atoms:
             i = mol.atoms.index(atom)
             if i in fragment and not atom.is_hydrogen():
-                start = i
-                break
-    if start is None:
-        # no heavy found, pick any atom
-        start = next(iter(fragment))
+                return i
+        return next(iter(fragment))
+
+    # Attempt to find a non-linear start; fall back if needed
+    start = find_start(avoid_linear=True)
 
     visited = set()
-    base_heavies = []
+    base_heavies = list()
     queue = [start]
     while queue:
         i = queue.pop(0)
@@ -1636,6 +1632,27 @@ def get_atom_order_from_mol(mol: Molecule,
     # 7) Final atom_order: unconstrained heavies, unconstrained H's, then tail
     atom_order = heavy_uncon + h_uncon + tail
     return atom_order
+
+
+def is_atom_in_linear_angle(i: int, xyz: Optional[dict], mol: Molecule, tol: float = 0.9) -> bool:
+    """
+    Check if atom i is involved in a linear A–B–C motif (i.e., angle ~180),
+    whether as A, B, or C.
+    """
+    if not xyz:
+        return False
+    for b in range(len(mol.atoms)):
+        b_neighbors = [mol.atoms.index(atom) for atom in mol.atoms[b].edges]
+        for a in b_neighbors:
+            for c in b_neighbors:
+                if a >= c:
+                    continue  # avoid redundant pairs and self-pairs
+                if i not in (a, b, c):
+                    continue
+                angle = calculate_param(coords=xyz['coords'], atoms=[a, b, c])
+                if is_angle_linear(angle, tolerance=tol):
+                    return True
+    return False
 
 
 def get_atom_order_from_xyz(xyz: Dict[str, tuple],
