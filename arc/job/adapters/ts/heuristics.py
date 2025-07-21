@@ -270,6 +270,9 @@ class HeuristicsAdapter(JobAdapter):
                     tsg = TSGuess(method='Heuristics')
                     tsg.tic()
                     xyzs, families, indices = hydrolysis(reaction=rxn)
+                    if not xyzs:
+                        logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
+                        continue
                 except ValueError:
                     continue
 
