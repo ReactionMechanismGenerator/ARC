@@ -469,6 +469,7 @@ class TestJobAdapter(unittest.TestCase):
         """
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_scan'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
 
 
 if __name__ == '__main__':
