@@ -1176,7 +1176,7 @@ def process_chosen_d_indices(initial_xyz: dict,
         zmats_to_process = [current_zmat]
 
         if should_adjust_dihedral:
-            adjustment_factors = hydrolysis_parameters['default_parameters']['dihedral_adjustment_factors']
+            adjustment_factors = hydrolysis_parameters['dihedral_adjustment_factors']
             indices_list = matches[:dihedrals_to_change_num]
             adjusted_zmats = []
             for indices in indices_list:

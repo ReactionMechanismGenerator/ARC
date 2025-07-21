@@ -1,5 +1,7 @@
 # Configuration file for hydrolysis reaction parameters
 
+dihedral_adjustment_factors: [0.1,0.15,0.2,0.25,0.3]
+
 # Family sets definition
 family_sets:
   set_1:
@@ -8,18 +10,6 @@ family_sets:
     - imine_hydrolysis
   set_2:
     - nitrile_hydrolysis
-
-# Default parameters used across all calculations
-# NOT RECOMMENDED
-default_parameters:
-  r_value: [1.93, 1.25, 0.97]
-  a_value: [79, 70, 115]
-  d_values:
-      - [135, -0.69, 106.5]
-      - [-135, -0.69, 106.5]
-      - [135, -0.69, -106.5]
-      - [-135, -0.69, -106.5]
-  dihedral_adjustment_factors: [0.1,0.15,0.2,0.25,0.3]
 
 # Family-specific parameters for different reaction types
 family_parameters:
@@ -70,4 +60,3 @@ units:
   distances: Angstroms
   angles: degrees
   stretching_factors: dimensionless
-  thresholds: dimensionless
