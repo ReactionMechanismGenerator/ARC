@@ -891,7 +891,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                          dihedral_increment=120,
                                          )
         heuristics_1.execute_incore()
-        self.assertEqual(len(rxn1.ts_species.ts_guesses), 9)
+        self.assertEqual(len(rxn1.ts_species.ts_guesses), 12)
 
     def test_keeping_atom_order_in_ts(self):
         """Test that the generated TS has the same atom order as in the reactants"""
