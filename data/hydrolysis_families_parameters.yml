@@ -10,8 +10,15 @@ family_sets:
     - nitrile_hydrolysis
 
 # Default parameters used across all calculations
+# NOT RECOMMENDED
 default_parameters:
-  r_value: [1.8, 1.21, 0.97]
+  r_value: [1.93, 1.25, 0.97]
+  a_value: [79, 70, 115]
+  d_values:
+      - [135, -0.69, 106.5]
+      - [-135, -0.69, 106.5]
+      - [135, -0.69, -106.5]
+      - [-135, -0.69, -106.5]
   dihedral_adjustment_factors: [0.1,0.15,0.2,0.25,0.3]
 
 # Family-specific parameters for different reaction types
@@ -19,29 +26,28 @@ family_parameters:
   # Set 1 Families
   ether_hydrolysis:
     stretch: 1.5
-    # Adjustment for r_value[0]
-    r_value_adjustment: 2.1
-    a_value: [65, 72, 106]
+    r_value: [2.1, 1.09, 0.97]
+    a_value: [66, 73, 106]
     d_values:
-      - [98.25, -0.72, 103]
-      - [-98.25, -0.72, 103]
-      - [98.25, -0.72, -103]
-      - [-98.25, -0.72, -103]
+      - [102.5, 1, 101.5]
+      - [-102.5, 1, 101.5]
+      - [102.5, 1, -101.5]
+      - [-102.5, 1, -101.5]
 
   imine_hydrolysis:
-    stretch: 1.3
-    r_value_adjustment: null
-    a_value: [78, 70, 111]
+    stretch: 1.1
+    r_value: [2.1, 1.5, 0.97]
+    a_value: [80, 57, 136]
     d_values:
-      - [108, 12, 113]
-      - [-108, 12, 113]
-      - [108, 12, -113]
-      - [-108, 12, -113]
+      - [109, -12, 129]
+      - [-109, -12, 129]
+      - [109, -12, -129]
+      - [-109, -12, -129]
 
   ester_hydrolysis:
     stretch: 1.3
-    r_value_adjustment: null
-    a_value: [77, 71, 111]
+    r_value: [1.8, 1.21, 0.97]
+    a_value: [77, 76, 112]
     d_values:
       - [140, 1.64, 103]
       - [-140, 1.64, 103]
@@ -51,8 +57,8 @@ family_parameters:
   # Set 2 Families
   nitrile_hydrolysis:
     stretch: 1.1
-    r_value_adjustment: null
-    a_value: [97, 58, 111]
+    r_value: [1.8, 1.3, 0.97]
+    a_value: [97, 58, 114]
     d_values:
       - [174, -0.0154, 104]
       - [-174, -0.0154, 104]

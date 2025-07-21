@@ -1483,13 +1483,11 @@ def process_family_specific_adjustments(is_set_1: bool,
     d_atoms = ([[f_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
                if d_xyz is not None else
                [[f_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]])
-    r_value = copy.deepcopy(hydrolysis_parameters['default_parameters']['r_value'])
+    r_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value']
     a_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['a_value']
     d_values = hydrolysis_parameters['family_parameters'][str(reaction_family)]['d_values']
 
     if is_set_1 or is_set_2:
-        if reaction_family == 'ether_hydrolysis':
-            r_value[0] = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value_adjustment']
         initial_xyz = zmat_to_xyz(initial_zmat)
         return generate_hydrolysis_ts_guess(initial_xyz, xyz_indices.values(), water, r_atoms, a_atoms, d_atoms,
                                             r_value, a_value, d_values, zmats_total, is_set_1,
