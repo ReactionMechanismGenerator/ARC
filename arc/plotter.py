@@ -438,10 +438,10 @@ def draw_thermo_parity_plots(species_list: list,
     for spc in species_list:
         labels.append(spc.label)
         h298_arc.append(spc.thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
-        h298_rmg.append(spc.rmg_thermo['H298'])
+        h298_rmg.append(spc.rmg_thermo['H298'])  # todo: no more rmg_thermo attr, just thermo which is now the dict
         s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
-        s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K
-        comments.append(spc.rmg_thermo['comment'] if 'comment' in spc.rmg_thermo else '')
+        s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K  # todo: no more rmg_thermo attr, just thermo which is now the dict
+        comments.append(spc.rmg_thermo['comment'] if 'comment' in spc.rmg_thermo else '')  # todo: no more rmg_thermo attr, just thermo which is now the dict
     var_units_h = r"$\left(\frac{J}{mol}\right)$"
     var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
     label_h = r"$\Delta H ^{298_K} _f}$"
