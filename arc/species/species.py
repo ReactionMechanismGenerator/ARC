@@ -535,6 +535,18 @@ class ARCSpecies(object):
         str_representation += f'charge={self.charge})'
         return str_representation
 
+    def __eq__(self, other):
+        """
+        Check if two ARCSpecies objects are equal based on their labels.
+        Since ARCSpecies have unique labels during an ARC run, this is valid.
+        """
+        if not isinstance(other, ARCSpecies):
+            return NotImplemented
+        return self.label == other.label
+
+    def __hash__(self):
+        return hash(self.label)
+
     @property
     def number_of_atoms(self):
         """The number of atoms in the species"""
