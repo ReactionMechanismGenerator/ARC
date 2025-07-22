@@ -437,15 +437,15 @@ def draw_thermo_parity_plots(species_list: list,
     labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
     for spc in species_list:
         labels.append(spc.label)
-        h298_arc.append(spc.thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
-        h298_rmg.append(spc.rmg_thermo['H298'])
-        s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
-        s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K
-        comments.append(spc.rmg_thermo['comment'] if 'comment' in spc.rmg_thermo else '')
-    var_units_h = r"$\left(\frac{J}{mol}\right)$"
-    var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
-    label_h = r"$\Delta H ^{298_K} _f}$"
-    label_s = r"$\Delta S ^{298_K} _f}$"
+        h298_arc.append(spc.thermo.H298)
+        h298_rmg.append(spc.rmg_thermo.H298)
+        s298_arc.append(spc.thermo.S298)
+        s298_rmg.append(spc.rmg_thermo.S298)
+        comments.append(spc.rmg_thermo.comment)
+    var_units_h = r"$\mathrm{J\,mol^{-1}}$"
+    var_units_s = r"$\mathrm{J\,mol^{-1}\,K^{-1}}$"
+    label_h = r"$\Delta H^\circ_{f}(298\,\mathrm{K})$"
+    label_s = r"$\Delta S^\circ_{f}(298\,\mathrm{K})$"
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label=label_h, var_units=var_units_h, labels=labels, pp=pp)
     draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label=label_s, var_units=var_units_s, labels=labels, pp=pp)
     pp.close()
@@ -469,9 +469,11 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         labels (list): Species labels corresponding to the data in ``var_arc`` and ``var_rmg``.
         var_label (str): The variable name.
         var_units (str): The variable units.
-        pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
+        pp (PdfPages, optional): Used for storing the image as a multipage PFD file.
     """
     combined= [x for n in (var_arc, var_rmg) for x in n]
+    if any(x is None for x in combined):
+        return
     min_var = min(combined)
     max_var = max(combined)
     fig, ax = plt.subplots(dpi=120)
@@ -786,11 +788,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
         return
 
     for i, spc in enumerate(species_list):
-        thermo_key = 'thermo_data' if hasattr(spc.thermo, 'thermo_data') else 'nasa' if hasattr(spc.thermo, 'nasa') else None
-        if thermo_key is None:
-            logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo library.')
-            continue
-        if spc.thermo is not None and 'thermo_data' and spc.include_in_thermo_lib:
+        if spc.thermo.data and spc.include_in_thermo_lib:
             if spc.label not in species_dict:
                 adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
                 species_dict[spc.label] = adjlist
@@ -799,12 +797,12 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
                 f'optical isomers: {spc.optical_isomers}\n'
                 f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
             )
-            comment = spc.thermo.comment if hasattr(spc.thermo, 'comment') else ''
+            comment = spc.thermo.comment or ''
             thermo_txt += f"""entry(
     index = {i + 1},
     label = "{spc.label}",
     molecule = \"\"\"\n{species_dict[spc.label]}\n\"\"\",
-    thermo = {repr(spc.thermo[thermo_key])},
+    thermo = {spc.thermo.data},
     shortDesc = u\"\"\"{comment}\"\"\",
     longDesc = u\"\"\"\n{spc.long_thermo_description}\n\"\"\",
 )
@@ -825,7 +823,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
     species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
     with open(species_dict_path, 'w') as f:
         for label, adjlist in species_dict.items():
-            f.write(f'{label}\n{adjlist}\n\n')
+            f.write(f'{label}\n{adjlist}\n')
 
 
 def save_transport_lib(species_list, path, name, lib_long_desc=''):
@@ -910,7 +908,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
     species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
     with open(species_dict_path, 'w') as f:
         for label, adjlist in species_dict.items():
-            f.write(f'{label}\n{adjlist}\n\n')
+            f.write(f'{label}\n{adjlist}\n')
 
 
 def save_conformers_file(project_directory: str,
