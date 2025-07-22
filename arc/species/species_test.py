@@ -2741,6 +2741,32 @@ H      -1.47626400   -0.10694600   -1.88883800"""
              (2, 19), (4, 9), (6, 7), (12, 13), (7, 24), (11, 27), (13, 29), (5, 22), (3, 4), (12, 28), (8, 25), (4, 5),
              (2, 20), (2, 3), (6, 23), (14, 15), (11, 12), (0, 1), (13, 14), (1, 18), (7, 8)]))
 
+    def test_eq(self):
+        """Species equality is based on label."""
+        vinoxy = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertEqual(self.spc1, vinoxy)
+        self.assertNotEqual(self.spc1, self.spc2)
+        self.assertFalse(self.spc1 == object())
+        self.assertTrue(self.spc1 != object())
+
+    def test_hash(self):
+        """Species.__hash__ is consistent with __eq__ and allows using Species in sets/dicts."""
+        vinoxy = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertEqual(hash(self.spc1), hash(vinoxy))
+        self.assertNotEqual(hash(self.spc1), hash(self.spc2))
+
+        # using Species as dict keys
+        d = {self.spc1: 'vinoxy'}
+        self.assertIn(self.spc1, d)
+        self.assertEqual(d[self.spc1], 'vinoxy')
+
+        # using Species in a set
+        s = {self.spc1, self.spc2}
+        # adding s1b should not increase size
+        s.add(self.spc1)
+        self.assertEqual(len(s), 2)
+        self.assertIn(self.spc1, s)
+
 
 class TestTSGuess(unittest.TestCase):
     """
