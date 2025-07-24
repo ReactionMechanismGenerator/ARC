@@ -2,27 +2,39 @@
 Submit scripts and incore commands
 """
 
+
+def _make_activate_block(env_name):
+    return f"""\
+if command -v micromamba &>/dev/null; then
+    # micromamba installs itself without conda-init
+    eval "$(micromamba shell hook --shell=bash)"
+    micromamba activate {env_name}
+elif command -v mamba &>/dev/null || command -v conda &>/dev/null; then
+    # conda or mamba both use the same conda.sh
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate {env_name}
+else
+    echo "❌ Micromamba, Mamba or Conda required" >&2
+    exit 1
+fi"""
+
+
 # commands to execute ESS incore (without cluster software submission)
 incore_commands = {
     'gaussian': ['g16 < input.gjf > input.log',
                  'formchk check.chk check.fchk',
                  ],
-    'xtb': ['CONDA_BASE=$(conda info --base)',
-            'source $CONDA_BASE/etc/profile.d/conda.sh',
-            'conda activate xtb_env',
+    'xtb': [_make_activate_block('xtb_env'),
             'bash input.sh',
             ],
-    'xtb_gsm': ['CONDA_BASE=$(conda info --base)',
-                'source $CONDA_BASE/etc/profile.d/conda.sh',
-                'conda activate xtb_env',
+    'xtb_gsm': [_make_activate_block('xtb_env'),
                 './gsm.orca',
                 ],
-    'sella': ['CONDA_BASE=$(conda info --base)',
-              'source $CONDA_BASE/etc/profile.d/conda.sh',
-              'conda activate sella_env',
+    'sella': [_make_activate_block('sella_env'),
               'python sella_runner.py',
               ],
 }
+
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
 pipe_submit = {
@@ -43,6 +55,7 @@ python {arc_path}/arc/job/scripts/pipe.py {hdf5_path}
 
 """,
 }
+
 
 # Submission scripts stored as a dictionary with server and software as primary and secondary keys
 submit_scripts = {
