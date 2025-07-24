@@ -8,33 +8,49 @@ incore_commands = {
     'gaussian': ['g16 < input.gjf > input.log',
                  'formchk check.chk check.fchk',
                  ],
-    'xtb': [r"""
-if command -v micromamba &>/dev/null; then
-    micromamba run -n xtb_env --no-capture-output bash input.sh
-elif command -v mamba &>/dev/null; then
-    mamba run -n xtb_env bash input.sh
-else
-    conda run -n xtb_env --no-capture-output bash input.sh
-fi
-"""],
-    'xtb_gsm': [r"""
-if command -v micromamba &>/dev/null; then
-    micromamba run -n xtb_env --no-capture-output ./gsm.orca
-elif command -v mamba &>/dev/null; then
-    mamba run -n xtb_env ./gsm.orca
-else
-    conda run -n xtb_env --no-capture-output ./gsm.orca
-fi
-"""],
-    'sella': [r"""
-if command -v micromamba &>/dev/null; then
-    micromamba run -n sella_env --no-capture-output python sella_runner.py
-elif command -v mamba &>/dev/null; then
-    mamba run -n sella_env python sella_runner.py
-else
-    conda run -n sella_env --no-capture-output python sella_runner.py
-fi
-"""],
+
+    'xtb': [
+        # 1 login‐shell invocation to hook, activate, then run input.sh
+        'bash -lc "'
+        'if     command -v micromamba >/dev/null; then '
+        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
+        '  micromamba activate xtb_env; '
+        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
+        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
+        '  conda activate xtb_env; '
+        'else '
+        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
+        'fi; '
+        'bash input.sh"'
+    ],
+
+    'xtb_gsm': [
+        'bash -lc "'
+        'if     command -v micromamba >/dev/null; then '
+        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
+        '  micromamba activate xtb_env; '
+        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
+        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
+        '  conda activate xtb_env; '
+        'else '
+        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
+        'fi; '
+        './gsm.orca"'
+    ],
+
+    'sella': [
+        'bash -lc "'
+        'if     command -v micromamba >/dev/null; then '
+        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
+        '  micromamba activate sella_env; '
+        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
+        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
+        '  conda activate sella_env; '
+        'else '
+        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
+        'fi; '
+        'python sella_runner.py"'
+    ],
 }
 
 
