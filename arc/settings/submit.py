@@ -10,18 +10,15 @@ incore_commands = {
                  ],
 
     'xtb': [
-        # 1 login‐shell invocation to hook, activate, then run input.sh
+        # Run the input.sh inside the xtb_env without sourcing user rc files.
         'bash -lc "'
         'if     command -v micromamba >/dev/null; then '
-        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
-        '  micromamba activate xtb_env; '
-        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
-        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
-        '  conda activate xtb_env; '
+        '  micromamba run -n xtb_env bash input.sh; '
+        'elif   command -v conda     >/dev/null || command -v mamba >/dev/null; then '
+        '  conda run -n xtb_env bash input.sh; '
         'else '
-        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
-        'fi; '
-        'bash input.sh"'
+        '  echo \\"❌ Micromamba or Conda required\\" >&2; exit 1; '
+        'fi"'
     ],
 
     'xtb_gsm': [
