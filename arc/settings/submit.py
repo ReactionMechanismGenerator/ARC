@@ -2,27 +2,45 @@
 Submit scripts and incore commands
 """
 
+
 # commands to execute ESS incore (without cluster software submission)
 incore_commands = {
     'gaussian': ['g16 < input.gjf > input.log',
                  'formchk check.chk check.fchk',
                  ],
-    'xtb': ['CONDA_BASE=$(conda info --base)',
-            'source $CONDA_BASE/etc/profile.d/conda.sh',
-            'conda activate xtb_env',
-            'bash input.sh',
-            ],
-    'xtb_gsm': ['CONDA_BASE=$(conda info --base)',
-                'source $CONDA_BASE/etc/profile.d/conda.sh',
-                'conda activate xtb_env',
-                './gsm.orca',
-                ],
-    'sella': ['CONDA_BASE=$(conda info --base)',
-              'source $CONDA_BASE/etc/profile.d/conda.sh',
-              'conda activate sella_env',
-              'python sella_runner.py',
-              ],
+    'xtb': [
+        'bash -lc "set -euo pipefail; '
+        'export LC_ALL=C; export OPENBLAS_NUM_THREADS=1; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n xtb_env bash input.sh; '
+        'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+        '    conda   run -n xtb_env bash input.sh; '
+        'else '
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
+    ],
+    'xtb_gsm': [
+        'bash -lc "set -euo pipefail; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n xtb_env ./gsm.orca; '
+        'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+        '    conda run -n xtb_env ./gsm.orca; '
+        'else '
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
+    ],
+    'sella': [
+        'bash -lc "set -euo pipefail; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n sella_env python sella_runner.py; '
+        'elif command -v mamba >/dev/null 2>&1 || command -v conda >/dev/null 2>&1; then '
+        '    conda run -n sella_env python sella_runner.py; '
+        'else '
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
+    ],
 }
+
 
 # Submission scripts for pipe.py stored as a dictionary with server as the key
 pipe_submit = {
@@ -43,6 +61,7 @@ python {arc_path}/arc/job/scripts/pipe.py {hdf5_path}
 
 """,
 }
+
 
 # Submission scripts stored as a dictionary with server and software as primary and secondary keys
 submit_scripts = {
