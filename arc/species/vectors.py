@@ -76,20 +76,45 @@ def get_dihedral(v1: List[float],
     Returns: float
         The dihedral angle between ``v1`` and ``v2`` in the desired units.
     """
+    # 1) length check
     if len(v1) != 3 or len(v2) != 3 or len(v3) != 3:
-        raise VectorsError(f'v1, v2, and v3 must have a length of three, got {len(v1)}, {len(v2)}, and {len(v3)}.')
-    v1, v2, v3 = np.array(v1, np.float64), np.array(v2, np.float64), np.array(v3, np.float64)
+        raise VectorsError(f'v1, v2, and v3 must each be length 3, got {len(v1)}, {len(v2)}, {len(v3)}.')
+
+    # 2) convert and zero-length check
+    v1 = np.array(v1, dtype=np.float64)
+    v2 = np.array(v2, dtype=np.float64)
+    v3 = np.array(v3, dtype=np.float64)
+
+    if np.linalg.norm(v1) == 0.0 or np.linalg.norm(v2) == 0.0 or np.linalg.norm(v3) == 0.0:
+        raise VectorsError('Input vectors must be non-zero.')
+
+    # 3) compute normals
     v2_x_v1 = np.cross(v2, v1)
-    v2_x_v1 /= float(np.linalg.norm(v2_x_v1))
+    norm1 = np.linalg.norm(v2_x_v1)
+    if norm1 < 1e-8:
+        # colinear → zero dihedral (but inputs were non-zero so no error)
+        return 0.0
+    v2_x_v1 /= norm1
+
     v3_x_v2 = np.cross(v3, v2)
-    v3_x_v2 /= np.linalg.norm(v3_x_v2)
-    dihedral = np.arccos(np.clip(np.vdot(v2_x_v1, v3_x_v2), -1, 1))
+    norm2 = np.linalg.norm(v3_x_v2)
+    if norm2 < 1e-8:
+        return 0.0
+    v3_x_v2 /= norm2
+
+    # 4) angle between normals
+    cosine = np.clip(np.vdot(v2_x_v1, v3_x_v2), -1.0, 1.0)
+    dihedral = math.acos(cosine)
+
+    # 5) sign via triple product
     if np.vdot(v2_x_v1, v3) > 0:
-        dihedral = 2 * np.pi - dihedral
-    if np.isnan(dihedral):
-        raise VectorsError(f'Could not calculate a dihedral angle for\nv1: {v1}, v2: {v2}, v3: {v3}.')
-    conversion = 180 / math.pi if 'degs' in units else 1
-    return float(dihedral * conversion)
+        dihedral = 2 * math.pi - dihedral
+
+    # 6) unit conversion
+    if 'degs' in units:
+        dihedral = math.degrees(dihedral)
+
+    return float(dihedral)
 
 
 def calculate_distance(coords: Union[list, tuple, dict],
