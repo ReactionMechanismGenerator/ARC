@@ -3,36 +3,38 @@ Submit scripts and incore commands
 """
 
 
-def _make_activate_block(env_name):
-    return f"""\
-if command -v micromamba &>/dev/null; then
-    # micromamba installs itself without conda-init
-    eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate {env_name}
-elif command -v mamba &>/dev/null || command -v conda &>/dev/null; then
-    # conda or mamba both use the same conda.sh
-    source "$(conda info --base)/etc/profile.d/conda.sh"
-    conda activate {env_name}
-else
-    echo "❌ Micromamba, Mamba or Conda required" >&2
-    exit 1
-fi"""
-
-
 # commands to execute ESS incore (without cluster software submission)
 incore_commands = {
     'gaussian': ['g16 < input.gjf > input.log',
                  'formchk check.chk check.fchk',
                  ],
-    'xtb': [_make_activate_block('xtb_env'),
-            'bash input.sh',
-            ],
-    'xtb_gsm': [_make_activate_block('xtb_env'),
-                './gsm.orca',
-                ],
-    'sella': [_make_activate_block('sella_env'),
-              'python sella_runner.py',
-              ],
+    'xtb': [r"""
+if command -v micromamba &>/dev/null; then
+    micromamba run -n xtb_env --no-capture-output bash input.sh
+elif command -v mamba &>/dev/null; then
+    mamba run -n xtb_env bash input.sh
+else
+    conda run -n xtb_env --no-capture-output bash input.sh
+fi
+"""],
+    'xtb_gsm': [r"""
+if command -v micromamba &>/dev/null; then
+    micromamba run -n xtb_env --no-capture-output ./gsm.orca
+elif command -v mamba &>/dev/null; then
+    mamba run -n xtb_env ./gsm.orca
+else
+    conda run -n xtb_env --no-capture-output ./gsm.orca
+fi
+"""],
+    'sella': [r"""
+if command -v micromamba &>/dev/null; then
+    micromamba run -n sella_env --no-capture-output python sella_runner.py
+elif command -v mamba &>/dev/null; then
+    mamba run -n sella_env python sella_runner.py
+else
+    conda run -n sella_env --no-capture-output python sella_runner.py
+fi
+"""],
 }
 
 
