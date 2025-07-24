@@ -436,7 +436,9 @@ class xTBAdapter(JobAdapter):
             # Use Sella with xTB via ASE
             self.opt_ts()
         else:
-            execute_command([f'cd {self.local_path}'] + incore_commands[self.job_adapter], executable='/bin/bash')
+            stdout, stderr = execute_command([f'cd {self.local_path}'] + incore_commands[self.job_adapter], executable='/bin/bash')
+            logger.warning(stdout)
+            logger.error(stderr)
 
     def execute_queue(self):
         """
