@@ -2191,19 +2191,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
             float: The sum of the squared differences between the constraints and their desired values.
         """
         x, y, z = coord
-        distance_constraint_ = sphere_eq(x, y, z)
-        angle_constraint_ = angle_eq(x, y, z)
-        dihedral_constraint_ = dihedral_eq(x, y, z)
-
-        sphere_error = sphere_eq(*coord)
-        angle_error = angle_eq(*coord)
-        dihedral_error = dihedral_eq(*coord)
-
-        total_error = ((distance_constraint_ / r_value) ** 2 +
-                       (angle_constraint_ / math.radians(a_value)) ** 2 +
-                       (dihedral_constraint_ / math.radians(d_value)) ** 2)
-
-        return total_error
+        d_err = sphere_eq(x, y, z) / r_value
+        a_err = angle_eq(x, y, z) / math.radians(a_value)
+        t_err = dihedral_eq(x, y, z) / math.radians(d_value)
+        return d_err ** 2 + a_err ** 2 + t_err ** 2
 
     result = minimize(objective_func, initial_guess, method=opt_method,
                       options={'maxiter': 1e+4, 'ftol': 1e-10, 'xtol': 1e-10})
