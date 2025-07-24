@@ -16,7 +16,7 @@ from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
-from arc.parser.parser import parse_geometry, parse_normal_mode_displacement
+from arc.parser.parser import parse_normal_mode_displacement
 from arc.reaction import ARCReaction
 from arc.species.species import ARCSpecies
 from arc.species.converter import check_xyz_dict
