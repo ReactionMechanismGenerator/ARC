@@ -41,8 +41,10 @@ fi
 # Activate environment temporarily for the check
 if [ "$COMMAND_PKG" = "micromamba" ]; then
     micromamba activate xtb_env
+    micromamba list
 else
     conda activate xtb_env
+    conda list
 fi
 
 echo ">>> Checking xTB installation..."
