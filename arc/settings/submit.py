@@ -10,15 +10,13 @@ incore_commands = {
                  ],
 
     'xtb': [
-    "bash", "-lc",
-    'if command -v micromamba &> /dev/null; then echo "✔️ Micromamba is installed."; COMMAND_PKG=micromamba; '
-    'elif command -v mamba &> /dev/null; then echo "✔️ Mamba is installed."; COMMAND_PKG=mamba; '
-    'elif command -v conda &> /dev/null; then echo "✔️ Conda is installed."; COMMAND_PKG=conda; '
-    'else echo "❌ Micromamba, Mamba, or Conda is required. Please install one."; exit 1; fi; '
-    'if [ "$COMMAND_PKG" = "micromamba" ]; then eval "$(micromamba shell hook --shell=bash)"; '
-    'elif [ "$COMMAND_PKG" = "mamba" ] || [ "$COMMAND_PKG" = "conda" ]; then BASE=$(conda info --base); source "$BASE/etc/profile.d/conda.sh"; fi; '
-    '$COMMAND_PKG activate xtb_env; bash input.sh',
-],
+    'bash -lc "if command -v micromamba &> /dev/null; then echo ✔️; COMMAND_PKG=micromamba; '
+    'elif command -v mamba &> /dev/null; then echo ✔️; COMMAND_PKG=mamba; '
+    'elif command -v conda &> /dev/null; then echo ✔️; COMMAND_PKG=conda; '
+    'else echo ❌; exit 1; fi; '
+    'if [ \\"$COMMAND_PKG\\" = \\"micromamba\\" ]; then eval \\"$(micromamba shell hook --shell=bash)\\"; '
+    'elif [ \\"$COMMAND_PKG\\" = \\"mamba\\" ] || [ \\"$COMMAND_PKG\\" = \\"conda\\" ]; then BASE=$(conda info --base); source \\"$BASE/etc/profile.d/conda.sh\\"; fi; '
+    '\$COMMAND_PKG activate xtb_env; bash input.sh"'],
 
     'xtb_gsm': [
         'bash -lc "'
