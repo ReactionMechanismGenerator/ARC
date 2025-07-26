@@ -10,7 +10,7 @@ incore_commands = {
                  ],
 
     'xtb': [
-    'bash -lc "if command -v micromamba &> /dev/null; then echo ✔️; COMMAND_PKG=micromamba; '
+    'bash -lc "export LC_ALL=C; if command -v micromamba &> /dev/null; then echo ✔️; COMMAND_PKG=micromamba; '
     'elif command -v mamba &> /dev/null; then echo ✔️; COMMAND_PKG=mamba; '
     'elif command -v conda &> /dev/null; then echo ✔️; COMMAND_PKG=conda; '
     'else echo ❌; exit 1; fi; '
