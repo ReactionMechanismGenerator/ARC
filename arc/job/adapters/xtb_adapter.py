@@ -438,7 +438,9 @@ class xTBAdapter(JobAdapter):
         else:
             stdout, stderr = execute_command([f'cd {self.local_path}'] + incore_commands[self.job_adapter], executable='/bin/bash')
             logger.warning(stdout)
+            print(stdout)
             logger.error(stderr)
+            print(stderr)
 
     def execute_queue(self):
         """
