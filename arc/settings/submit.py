@@ -19,32 +19,26 @@ incore_commands = {
     '\$COMMAND_PKG activate xtb_env; bash input.sh"'],
 
     'xtb_gsm': [
-        'bash -lc "'
-        'if     command -v micromamba >/dev/null; then '
-        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
-        '  micromamba activate xtb_env; '
-        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
-        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
-        '  conda activate xtb_env; '
+        'bash -lc "set -euo pipefail; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n xtb_env ./gsm.orca; '
+        'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+        '    conda run -n xtb_env ./gsm.orca; '
         'else '
-        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
-        'fi; '
-        './gsm.orca"'
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
     ],
 
     'sella': [
-        'bash -lc "'
-        'if     command -v micromamba >/dev/null; then '
-        '  eval \\\"$(micromamba shell hook --shell=bash)\\\"; '
-        '  micromamba activate sella_env; '
-        'elif   command -v mamba     >/dev/null || command -v conda >/dev/null; then '
-        '  source \\\"$(conda info --base)/etc/profile.d/conda.sh\\\"; '
-        '  conda activate sella_env; '
+        'bash -lc "set -euo pipefail; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n sella_env python sella_runner.py; '
+        'elif command -v mamba >/dev/null 2>&1 || command -v conda >/dev/null 2>&1; then '
+        '    conda run -n sella_env python sella_runner.py; '
         'else '
-        '  echo \\"❌ Micromamba, Mamba or Conda required\\" >&2; exit 1; '
-        'fi; '
-        'python sella_runner.py"'
-    ],
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
+    ]
 }
 
 
