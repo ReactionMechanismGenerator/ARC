@@ -29,6 +29,7 @@ def process_arc_project(thermo_adapter: str,
                         output_dict: dict,
                         bac_type: Optional[str] = None,
                         sp_level: Optional[Level] = None,
+                        freq_level: Optional[Level] = None,
                         freq_scale_factor: float = 1.0,
                         compute_thermo: bool = True,
                         compute_rates: bool = True,
@@ -55,6 +56,7 @@ def process_arc_project(thermo_adapter: str,
         bac_type (str, optional): The bond additivity correction type. 'p' for Petersson- or 'm' for Melius-type BAC.
                                   ``None`` to not use BAC.
         sp_level (Level, optional): The level of theory used for energy corrections.
+        freq_level (Level, optional): The level of theory used for frequency calculations.
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor.
         compute_thermo (bool, optional): Whether to compute thermodynamic properties for the provided species.
         compute_rates (bool, optional): Whether to compute high pressure limit rate coefficients.
@@ -111,10 +113,11 @@ def process_arc_project(thermo_adapter: str,
                                                 output_directory=output_directory,
                                                 calcs_directory=calcs_directory,
                                                 output_dict=output_dict,
-                                                species=list({s for rxn in converged_rxns for s in rxn.r_species + rxn.p_specie}),
+                                                species=list({s for rxn in converged_rxns for s in rxn.r_species + rxn.p_species}),
                                                 reactions=converged_rxns,
                                                 bac_type=None,
                                                 sp_level=sp_level,
+                                                freq_level=freq_level,
                                                 freq_scale_factor=freq_scale_factor,
                                                 species_dict=species_dict,
                                                 T_min=T_min,
@@ -141,6 +144,8 @@ def process_arc_project(thermo_adapter: str,
     # 2. Thermo
     if compute_thermo:
         for spc in species_dict.values():
+            if spc.is_ts:
+                continue
             if (spc.compute_thermo or spc.e0_only) and output_dict[spc.label]['convergence']:
                 if spc.e0_only:
                     converged_e0_only_species.append(spc)
@@ -160,6 +165,7 @@ def process_arc_project(thermo_adapter: str,
                                             species=converged_species,
                                             bac_type=bac_type,
                                             sp_level=sp_level,
+                                            freq_level=freq_level,
                                             freq_scale_factor=freq_scale_factor,
                                             species_dict=species_dict,
                                             )
@@ -172,6 +178,7 @@ def process_arc_project(thermo_adapter: str,
                                             species=converged_e0_only_species,
                                             bac_type=bac_type,
                                             sp_level=sp_level,
+                                            freq_level=freq_level,
                                             freq_scale_factor=freq_scale_factor,
                                             species_dict=species_dict,
                                             )
@@ -239,13 +246,25 @@ def compare_thermo(species_for_thermo_lib: list,
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
-    command = f'python {THERMO_SCRIPT_PATH} {species_thermo_path}'
-    execute_command(command=command, no_fail=True)
+    commands = ['bash -lc "set -euo pipefail; '
+                'if command -v micromamba >/dev/null 2>&1; then '
+                f'    micromamba run -n rmg_env python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+                f'    conda run -n rmg_env python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                'else '
+                '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+                'fi"',
+                ]
+    stdout, stderr = execute_command(command=commands, no_fail=True)
+    if len(stderr):
+        logger.error(f'Error while running RMG thermo script: {stderr}')
     species_list = read_yaml_file(path=species_thermo_path)
     for original_spc, rmg_spc in zip(species_for_thermo_lib, species_list):
         h298, s298, comment = rmg_spc.get('h298', None), rmg_spc.get('s298', None), rmg_spc.get('comment', None)
         if h298 is not None and s298 is not None:
-            original_spc.rmg_thermo = {'H298': h298, 'S298': s298, 'comment': comment}
+            original_spc.rmg_thermo.H298 = h298
+            original_spc.rmg_thermo.S298 = s298
+            original_spc.rmg_thermo.comment = comment
         species_to_compare.append(original_spc)
     if len(species_to_compare):
         plotter.draw_thermo_parity_plots(species_list=species_to_compare, path=output_directory)
