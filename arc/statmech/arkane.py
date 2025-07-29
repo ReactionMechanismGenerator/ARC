@@ -458,21 +458,19 @@ def run_arkane(statmech_dir: str) -> None:
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not contain an input.py file.')
         return
     env_name = 'rmg_env'
-    shell_script = f"""cd "{statmech_dir}"
-if command -v micromamba &> /dev/null; then
-    eval "$(micromamba shell hook --shell=bash)"
-    micromamba activate {env_name}
-elif command -v mamba &> /dev/null; then
-    eval "$(mamba shell hook --shell=bash)"
-    mamba activate {env_name}
-elif command -v conda &> /dev/null; then
-    source "$(conda info --base)/etc/profile.d/conda.sh"
-    conda activate {env_name}
+    arkane_cmd = f'python "{RMG_PATH}/Arkane.py" input.py'
+    arkane_cmd += ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
+    shell_script = rf'''bash -lc 'set -euo pipefail
+cd "{statmech_dir}"
+
+if command -v micromamba >/dev/null 2>&1; then
+    micromamba run -n {env_name} {arkane_cmd}
+elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
+    conda   run -n {env_name} {arkane_cmd}
 else
+    echo "❌ Micromamba/Mamba/Conda required" >&2
     exit 1
-fi
-python {RMG_PATH}/Arkane.py input.py   > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)
-"""
+fi' '''
 
     std_out, std_err = execute_command(command=shell_script,
                                        shell=True,
