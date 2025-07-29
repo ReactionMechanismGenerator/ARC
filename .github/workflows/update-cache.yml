@@ -5,6 +5,9 @@ on:
     - cron: '0 0 */7 * *'
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   update_cache:
@@ -128,10 +131,12 @@ jobs:
 
       # ────────── Update env & save to cache ──────────
       - name: Update environment
-        run: mamba env update -n arc_env -f environment.yml
+        run: conda env update -n arc_env -f environment.yml
 
       - name: Cache ARC env
+        if: github.event_name == 'push'
         uses: actions/cache@v4
         with:
           path: ${{ env.CONDA }}/envs
           key: conda-${{ runner.os }}-${{ runner.arch }}-0
+
