@@ -2,82 +2,83 @@ name: github pages
 
 on:
   push:
-    branches:
-      - main
-      - docs
+    branches: [ main, docs ]
+  pull_request:
+    branches: [ main, docs ]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v3
+      # ── clone ARC repo ───────────────────────────────────────────
+      - name: Checkout ARC
+        uses: actions/checkout@v4
+        with:
+          repository: ReactionMechanismGenerator/ARC
+          path: ARC
+          fetch-depth: 1
 
-    - name: Clean Ubuntu Image
-      uses: kfir4444/free-disk-space@main
-      with:
-        # This may remove tools actually needed - currently does not
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        swap-storage: true
+      # ── pull RMG sources ────────────────────────────────────────
+      - name: Checkout RMG‑Py
+        uses: actions/checkout@v4
+        with:
+          repository: ReactionMechanismGenerator/RMG-Py
+          path: RMG-Py
+          ref: 55464c54d1fa61b531e865682df598d33718597d
+          fetch-depth: 1
 
-    - name: Set up miniconda
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-          auto-update-conda: true
-          environment-file: environment.yml
-          activate-environment: arc_env
-          miniconda-version: latest
-          conda-solver: libmamba
+      - name: Checkout RMG‑database
+        uses: actions/checkout@v4
+        with:
+          repository: ReactionMechanismGenerator/RMG-database
+          path: RMG-database
+          fetch-depth: 1
 
-    # - name: Update environment
-    #   run: |
-    #     conda env update -n arc_env -f environment.yml
-    #     conda list
+      # ── build‑only env ───────────────────────────────────────────
+      - name: Set up micromamba (rmg_env)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: rmg_env
+          environment-file: RMG-Py/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          generate-run-shell: false
 
-    - name: Install LaTeX
-      run: |
-        sudo apt update -y && sudo apt upgrade -y && sudo apt autoremove -y
-        sudo apt install texlive-latex-base -y
-        sudo apt-get install texlive-latex-extra -y
-        sudo apt-get install -y dvipng
+      - name: Build RMG‑Py in rmg_env
+        run: micromamba run -n rmg_env make -C RMG-Py -j"$(nproc)"
 
+      # ── docs env (wrapper shell) ────────────────────────────────
+      - name: Set up micromamba (arc_env)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
 
-    - name: Install codecov
-      run: conda install --force-reinstall ld_impl_linux-64 -y && conda install -y -c conda-forge codecov
+      # ── minimal TeX for png‑math in Sphinx ──────────────────────
+      - name: System TeX tools
+        run: sudo apt-get update -y && sudo apt-get -y install texlive-latex-extra dvipng
 
-    - name: Install dependencies
-      run: |
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        conda activate arc_env
-        cd ..
-        git clone https://github.com/ReactionMechanismGenerator/RMG-database
-        git clone https://github.com/ReactionMechanismGenerator/RMG-Py
-        cd RMG-Py
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        make
-        cd ../ARC/
-        conda deactivate
+      # ── add legacy ABI runtime for NumPy/PyDAS ─────────────────
+      - name: Add legacy gfortran runtime
+        run: micromamba install -y -n arc_env -c conda-forge libgfortran=3
+        shell: micromamba-shell {0}
 
-    - name: Compile docs
-      run: |
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        conda activate arc_env
-        cd ../RMG-Py
-        export PYTHONPATH=$PYTHONPATH:$(pwd)
-        cd ../ARC/docs/
-        make html
+      # ── build HTML docs ─────────────────────────────────────────
+      - name: Build docs
+        run: |
+          export PYTHONPATH=$GITHUB_WORKSPACE/RMG-Py:$GITHUB_WORKSPACE/ARC:$PYTHONPATH
+          export PATH=$GITHUB_WORKSPACE/ARC:$PATH
+          make -C ARC/docs html
+        shell: micromamba-shell {0}
 
-    - name: Deploy
-      uses: peaceiris/actions-gh-pages@v3.7.3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./docs/build/html/
-
-# https://github.com/marketplace/actions/github-pages-action
+      # ── deploy only on push ─────────────────────────────────────
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/build/html/

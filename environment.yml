@@ -12,7 +12,7 @@ dependencies:
 
   # ——— chemistry / RMG stack ————————————————
   - rmg::chemprop
-  - rmg::pydas>=1.0.2
+  - rmg::pydas>=1.0.3
   - rmg::pydqed>=1.0.1
   - rmg::pyrdl
   - rmg::lpsolve55
