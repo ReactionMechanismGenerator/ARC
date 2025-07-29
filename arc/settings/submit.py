@@ -10,20 +10,16 @@ incore_commands = {
                  ],
 
     'xtb': [
-        'bash -lc "export LC_ALL=C; export OPENBLAS_NUM_THREADS=1; '
-        'if command -v micromamba &> /dev/null; then '
-        '  eval \\"$(micromamba shell hook --shell=bash)\\"; '
-        '  micromamba activate xtb_env; '
-        'elif command -v mamba &> /dev/null; then '
-        '  source \\"$(mamba info --base)/etc/profile.d/conda.sh\\"; '
-        '  mamba activate xtb_env; '
-        'elif command -v conda &> /dev/null; then '
-        '  source \\"$(conda info --base)/etc/profile.d/conda.sh\\"; '
-        '  conda activate xtb_env; '
+        'bash -lc "set -euo pipefail; '
+        'export LC_ALL=C; export OPENBLAS_NUM_THREADS=1; '
+        'if command -v micromamba >/dev/null 2>&1; then '
+        '    micromamba run -n xtb_env bash input.sh; '
+        'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
+        '    conda   run -n xtb_env bash input.sh; '
         'else '
-        '  echo ❌; exit 1; '
-        'fi; '
-        'bash input.sh"'],
+        '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
+        'fi"'
+    ],
 
     'xtb_gsm': [
         'bash -lc "set -euo pipefail; '
