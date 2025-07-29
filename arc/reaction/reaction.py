@@ -10,7 +10,7 @@ from rmgpy.species import Species
 
 from arc.common import get_logger
 from arc.exceptions import ReactionError, InputError
-from arc.family.family import ReactionFamily, get_reaction_family_products
+from arc.family.family import ReactionFamily, get_reaction_family_products, check_family_name
 from arc.species.converter import (check_xyz_dict,
                                    sort_xyz_using_indices,
                                    translate_to_center_of_mass,
@@ -44,6 +44,7 @@ class ARCReaction(object):
         p_species (List[ARCSpecies], optional): A list of products :ref:`ARCSpecies <species>` objects.
         ts_label (str, optional): The :ref:`ARCSpecies <species>` label of the respective TS.
         ts_xyz_guess (list, optional): A list of TS XYZ user guesses, each in a string format.
+        family (str, optional): The reaction family, if applicable.
         xyz (list, optional): Identical to `ts_xyz_guess`, used as a shortcut.
         multiplicity (int, optional): The reaction surface multiplicity. A trivial guess will be made unless provided.
         charge (int, optional): The reaction surface charge.
@@ -94,6 +95,7 @@ class ARCReaction(object):
                  p_species: Optional[List[ARCSpecies]] = None,
                  ts_label: Optional[str] = None,
                  ts_xyz_guess: Optional[list] = None,
+                 family: Optional[str] = None,
                  xyz: Optional[list] = None,
                  multiplicity: Optional[int] = None,
                  charge: Optional[int] = None,
@@ -109,7 +111,10 @@ class ARCReaction(object):
         self.kinetics = kinetics
         self.rmg_kinetics = None
         self.long_kinetic_description = ''
-        self._family = None
+        if check_family_name(family):
+            self._family = family
+        else:
+            raise ValueError(f"Invalid family name: {family}")
         self._family_own_reverse = False
         self.ts_label = ts_label
         self.dh_rxn298 = None
