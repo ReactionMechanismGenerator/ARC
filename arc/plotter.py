@@ -915,7 +915,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
     species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
     with open(species_dict_path, 'w') as f:
         for label, adjlist in species_dict.items():
-            f.write(f'{label}:\n{adjlist}\n\n')
+            f.write(f'{label}\n{adjlist}\n')
 
 
 def save_conformers_file(project_directory: str,
