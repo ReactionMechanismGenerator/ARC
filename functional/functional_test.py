@@ -11,7 +11,6 @@ import unittest
 
 from arc import ARC
 from arc.common import ARC_PATH
-from arc.exceptions import InputError
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
@@ -86,8 +85,8 @@ class TestFunctional(unittest.TestCase):
         for _, ter in summary.items():
             self.assertTrue(ter)
         self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, "functional", "test", "thermo", "calcs", "statmech", "thermo", "arkane.log")))
+        species, thermo = 0, 0
         with open(file=os.path.join(ARC_PATH, "functional", "test", "thermo", "calcs", "statmech", "thermo", "input.py"), mode='r') as f:
-            species, thermo = 0, 0
             for line in f.readlines():
                 if "species('" in line:
                     species += 1
@@ -102,16 +101,28 @@ class TestFunctional(unittest.TestCase):
         summary = self.arc_object_2.summary()
         for _, ter in summary.items():
             self.assertTrue(ter)
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, "functional", "test", "kinetic", "calcs", "statmech", "thermo", "input.py")))
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, "functional", "test", "kinetic", "calcs", "statmech", "kinetics", "input.py")))
-        has_content = False
-        with open(file=os.path.join(ARC_PATH, "functional", "test", "kinetic", "output", "RMG libraries", "kinetics", "reactions.py"), mode='r') as f:
+        base_path = os.path.join(ARC_PATH, "functional", "test", "kinetic", "calcs", "statmech")
+        self.assertTrue(os.path.isfile(os.path.join(base_path, "thermo", "input.py")))
+        self.assertTrue(os.path.isfile(os.path.join(base_path, "kinetics", "input.py")))
+        self.assertTrue(os.path.isfile(os.path.join(base_path, "kinetics", "species", "iC3H7.py")))
+        self.assertTrue(os.path.isfile(os.path.join(base_path, "kinetics", "species", "nC3H7.py")))
+        self.assertTrue(os.path.isfile(os.path.join(base_path, "kinetics", "TSs", "TS0.py")))
+        species, thermo, kinetics, ts = 0, 0, 0, 0
+        with open(file=os.path.join(base_path, "kinetics", "input.py"), mode='r') as f:
             for line in f.readlines():
-                if "Arrhenius" in line:
-                    has_content = True
-                    break
-        self.assertTrue(has_content)
-    
+                if "species('" in line:
+                    species += 1
+                elif "thermo('" in line:
+                    thermo += 1
+                elif "kinetics(label='" in line:
+                    kinetics += 1
+                elif "transitionState" in line:
+                    ts += 1
+        self.assertEqual(species, 2)
+        self.assertEqual(thermo, 0)
+        self.assertEqual(kinetics, 1)
+        self.assertEqual(ts, 2)
+
     @classmethod
     def tearDownClass(cls):
         """
