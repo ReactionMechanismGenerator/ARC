@@ -92,8 +92,8 @@ output:
     paths:
       composite: ''
       freq: ''
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/H/sp_a4339/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/H/sp_a4339/output.out
+      geo: /calcs/Species/H/sp_a4339/output.out
+      sp: /calcs/Species/H/sp_a4339/output.out
     restart: 'Restarted ARC at 2020-03-01 22:55:56.979546; Restarted ARC at 2020-05-30
       22:06:46.684281; '
     warnings: ''
@@ -119,9 +119,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/freq_a4345/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/freq_a4345/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/opt_a4344/output.out
+      freq: /calcs/Species/anilino_radical/freq_a4345/output.out
+      geo: /calcs/Species/anilino_radical/freq_a4345/output.out
+      sp: /calcs/Species/anilino_radical/opt_a4344/output.out
     restart: 'Restarted ARC at 2020-03-01 22:55:56.979303; Restarted ARC at 2020-05-30
       22:06:46.684219; '
     warnings: ''
@@ -146,9 +146,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_1_9_A/opt_a4382/output.out
+      freq: /calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
+      geo: /calcs/Species/anilino_radical_BDE_1_9_A/freq_a4387/output.out
+      sp: /calcs/Species/anilino_radical_BDE_1_9_A/opt_a4382/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684325; '
     warnings: ''
   anilino_radical_BDE_3_4_A:
@@ -172,9 +172,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_3_4_A/opt_a4381/output.out
+      freq: /calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
+      geo: /calcs/Species/anilino_radical_BDE_3_4_A/freq_a4388/output.out
+      sp: /calcs/Species/anilino_radical_BDE_3_4_A/opt_a4381/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684314; '
     warnings: ''
   anilino_radical_BDE_5_10_A:
@@ -198,9 +198,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_5_10_A/opt_a4383/output.out
+      freq: /calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
+      geo: /calcs/Species/anilino_radical_BDE_5_10_A/freq_a4389/output.out
+      sp: /calcs/Species/anilino_radical_BDE_5_10_A/opt_a4383/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684428; '
     warnings: ''
   anilino_radical_BDE_6_11_A:
@@ -224,9 +224,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_6_11_A/opt_a4384/output.out
+      freq: /calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
+      geo: /calcs/Species/anilino_radical_BDE_6_11_A/freq_a4390/output.out
+      sp: /calcs/Species/anilino_radical_BDE_6_11_A/opt_a4384/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684439; '
     warnings: ''
   anilino_radical_BDE_7_12_A:
@@ -250,9 +250,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_7_12_A/opt_a4386/output.out
+      freq: /calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
+      geo: /calcs/Species/anilino_radical_BDE_7_12_A/freq_a4391/output.out
+      sp: /calcs/Species/anilino_radical_BDE_7_12_A/opt_a4386/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684449; '
     warnings: ''
   anilino_radical_BDE_8_13_A:
@@ -276,9 +276,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
-      geo: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
-      sp: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical_BDE_8_13_A/opt_a4385/output.out
+      freq: /calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
+      geo: /calcs/Species/anilino_radical_BDE_8_13_A/freq_a4392/output.out
+      sp: /calcs/Species/anilino_radical_BDE_8_13_A/opt_a4385/output.out
     restart: 'Restarted ARC at 2020-05-30 22:06:46.684458; '
     warnings: ''
 project: test_restart_bde
@@ -489,7 +489,7 @@ species:
       - 1
       - 2
       - 3
-      scan_path: arc/testing/restart/3_restart_bde/calcs/Species/anilino_radical/scan_a4346/output.out
+      scan_path: /calcs/Species/anilino_radical/scan_a4346/output.out
       success: true
       symmetry: 2
       times_dihedral_set: 0
