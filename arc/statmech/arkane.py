@@ -466,7 +466,7 @@ cd "{statmech_dir}"
 if command -v micromamba >/dev/null 2>&1; then
     micromamba run -n {env_name} {arkane_cmd}
 elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
-    conda   run -n {env_name} {arkane_cmd}
+    conda run -n {env_name} {arkane_cmd}
 else
     echo "❌ Micromamba/Mamba/Conda required" >&2
     exit 1
@@ -650,7 +650,7 @@ def get_arkane_model_chemistry(sp_level: 'Level',
         Optional[str]: Arkane-compatible model chemistry string.
     """
     if sp_level.method_type == 'composite':
-        return sp_level.method
+        return f"modelChemistry = '{sp_level.method}'"
 
     qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
 
