@@ -552,6 +552,7 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_float(' '))
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
+        self.assertFalse(common.is_str_float('--'))
 
     def test_is_str_int(self):
         """Test the is_str_int() function"""
