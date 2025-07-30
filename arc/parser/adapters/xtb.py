@@ -10,6 +10,7 @@ import numpy as np
 import os
 import pandas as pd
 
+from arc.common import is_str_float
 from arc.constants import E_h_kJmol
 from arc.species.converter import str_to_xyz, xyz_from_data, logger
 from arc.parser.adapter import ESSAdapter
@@ -166,43 +167,56 @@ class XTBParser(ESSAdapter, ABC):
         with open(g98_path, 'r') as f:
             lines = f.readlines()
 
-        i = 0
+        i, n_modes_in_block = 0, 0
         while i < len(lines):
             line = lines[i]
 
             # Frequencies
             if 'Frequencies --' in line:
-                parts = line.split()[2:]
-                freqs = [float(x) for x in parts]
-                n_modes = len(freqs)
+                freq_block = [float(x) for x in line.split()[2:]]
+                freqs.extend(freq_block)
+                n_modes_in_block = len(freq_block)
+                i += 1
 
             # Atom AN ... displacement values
-            if line.strip().startswith('Atom AN'):
+            elif line.strip().startswith('Atom AN'):
                 i += 1
-                atom_disps = []
-
-                while i < len(lines) and lines[i].strip():
-                    parts = lines[i].split()
-                    if len(parts) >= 2 + 3 * n_modes:
-                        disp_values = [float(x) for x in parts[2:]]
-                        atom_disps.append([
-                            disp_values[3 * j: 3 * j + 3] for j in range(n_modes)
-                        ])
+                floats_list = list()
+                while i < len(lines):
+                    next_line = lines[i].strip()
+                    if not next_line or next_line.startswith('----'):
+                        break
+                    parts = next_line.split()[2:]  # skip Atom index and Atomic Number
+                    if not parts:
+                        i += 1
+                        continue
+                    if not any(is_str_float(x) for x in parts):
+                        break
+                    if len(parts) != 3 * n_modes_in_block:
+                        i += 1
+                        continue
+                    floats_list.append([float(x) for x in parts])
                     i += 1
 
-                # Transpose to (n_modes, n_atoms, 3)
-                displacements = list(map(list, zip(*atom_disps)))
-                break
+                n_atoms = len(floats_list)
+                current_block = np.zeros((n_modes_in_block, n_atoms, 3), dtype=np.float64)
 
-            i += 1
+                for atom_idx, floats in enumerate(floats_list):
+                    if len(floats) != 3 * n_modes_in_block:
+                        continue
+                    for mode in range(n_modes_in_block):
+                        current_block[mode, atom_idx] = floats[3 * mode: 3 * mode + 3]
+
+                displacements.append(current_block)
+            else:
+                i += 1
 
         if not freqs or not displacements:
             return None, None
 
-        return (
-            np.array(freqs, dtype=np.float64),
-            np.array(displacements, dtype=np.float64)
-        )
+        full_displacements = np.concatenate(displacements, axis=0)
+
+        return np.array(freqs, dtype=np.float64), full_displacements
 
     def parse_t1(self) -> Optional[float]:
         """
