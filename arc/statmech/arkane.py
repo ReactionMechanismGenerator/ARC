@@ -65,7 +65,7 @@ reaction(
 % if len(reaction_list):
 % for rxn in reaction_list:
 kinetics(label='${rxn.label}',
-         Tmin=(${t_min or 300}, 'K'), Tmax=(${t_max or 3000}, 'K'), Tcount=${t_count or 25})
+         Tmin=${t_min or (300, 'K')}, Tmax=${t_max or (3000, 'K')}, Tcount=${t_count or 25})
 % endfor
 % endif
 
@@ -318,7 +318,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                         for spc in self.species if e0_only or spc.compute_thermo]
         ts_list = [{'label': rxn.ts_species.label,
                      'path': os.path.join(statmech_dir, 'TSs', f'{rxn.ts_species.label}.py')}
-                     for rxn in self.reactions]
+                     for rxn in self.reactions] if self.reactions else list()
 
         model_chemistry = get_arkane_model_chemistry(sp_level=self.sp_level,
                                                      freq_level=self.freq_level,
