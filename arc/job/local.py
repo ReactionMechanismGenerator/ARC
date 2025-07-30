@@ -54,6 +54,8 @@ def execute_command(command: Union[str, List[str]],
     command = [' && '.join(command)]
     i, max_times_to_try = 1, 30
     sleep_time = 60  # Seconds
+    logger.info(f'Executing command:\n{command}')
+    print(f'Executing command:\n{command}')
     while i < max_times_to_try:
         try:
             if executable is None:

@@ -36,7 +36,6 @@ from arc.job.local import (change_mode,
 from arc.job.trsh import trsh_job_on_server, trsh_job_queue
 from arc.job.ssh import SSHClient
 from arc.job.trsh import determine_ess_status
-from arc.species.converter import xyz_to_str
 from arc.species.vectors import calculate_dihedral_angle
 
 if TYPE_CHECKING:

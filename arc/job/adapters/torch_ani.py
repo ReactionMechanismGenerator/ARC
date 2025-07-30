@@ -9,12 +9,9 @@ ASE: https://wiki.fysik.dtu.dk/ase/index.html, https://core.ac.uk/download/84004
 import datetime
 import os
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
-import numpy as np
 import subprocess
 
-from arkane.statmech import is_linear
-
-from arc.common import ARC_PATH, get_logger, save_yaml_file, read_yaml_file
+from arc.common import ARC_PATH, get_logger, is_xyz_linear, save_yaml_file, read_yaml_file
 from arc.imports import settings
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter
@@ -279,9 +276,8 @@ class TorchANIAdapter(JobAdapter):
                                                         output["opt_xyz"] if "opt_xyz" in output.keys() else None, \
                                                         output["freqs"] if "freqs" in output.keys() else None
         if self.freqs is not None:
-            self.freqs = self.freqs[6 if \
-                is_linear(np.array(self.xyz["coords"] or self.opt_xyz["coords"]))\
-                    else 5:]
+            dofs = 6 if is_xyz_linear(self.xyz["coords"] or self.opt_xyz["coords"]) else 5
+            self.freqs = self.freqs[dofs:]
 
     def execute_queue(self):
         """
