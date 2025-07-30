@@ -60,6 +60,9 @@ class TestArkaneAdapter(unittest.TestCase):
                                      calcs_directory=calcs_path_1,
                                      output_dict=dict(),
                                      bac_type=None,
+                                     sp_level=Level('gfn2'),
+                                     freq_level=Level('gfn2'),
+                                     freq_scale_factor=1.0,
                                      species=rxn_1.r_species + rxn_1.p_species + [rxn_1.ts_species],
                                      reactions=[rxn_1],
                                      )
@@ -109,7 +112,7 @@ class TestArkaneAdapter(unittest.TestCase):
                                                     'statmech', 'thermo', 'plots', 'iC3H7.pdf')))
         self.assertAlmostEqual(self.ic3h7.e0, -306902)
 
-    def test__level_to_str(self):
+    def test_level_to_str(self):
         """Test the _level_to_str function"""
         self.assertEqual(_level_to_str(Level('gfn2')),
                          "LevelOfTheory(method='gfn2',software='xtb')")
@@ -118,7 +121,7 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertEqual(_level_to_str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
 
-    def test__section_contains_key(self):
+    def test_section_contains_key(self):
         """Test the _section_contains_key function"""
         file_path = os.path.join(os.path.dirname(ARC_PATH), 'RMG-database', 'input', 'quantum_corrections', 'data.py')
         self.assertTrue(_section_contains_key(file_path=file_path,
@@ -134,7 +137,6 @@ class TestArkaneAdapter(unittest.TestCase):
                                                section_end="pbac = {",
                                                target="LevelOfTheory(method=imaginary',basis='basis',software='ess')"))
 
-
     def test_get_arkane_model_chemistry(self):
         """Test the get_arkane_model_chemistry function"""
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12'),
@@ -144,13 +146,39 @@ class TestArkaneAdapter(unittest.TestCase):
                                                     freq_scale_factor=1.0),
                          "modelChemistry = 'cbs-qb3'")
 
+    def test_generate_arkane_input(self):
+        """Test generating Arkane input"""
+        statmech_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_input_tests_delete')
+        os.makedirs(statmech_dir, exist_ok=True)
+        self.arkane_1.generate_arkane_input(statmech_dir=statmech_dir)
+        input_path = os.path.join(statmech_dir, 'input.py')
+        expected_lines = ["#!/usr/bin/env python",
+                          "title = 'Arkane kinetics calculation'",
+                          "        structure=SMILES('C[NH]'))",
+                          "        structure=SMILES('[CH2]N'))",
+                          "    label = 'CH3NH <=> CH2NH2',",
+                          "    reactants = ['CH3NH'],",
+                          "    products = ['CH2NH2'],",
+                          "    transitionState = 'TS1',",
+                          "    tunneling = 'Eckart',",
+                          "kinetics(label='CH3NH <=> CH2NH2',",
+                          "         Tmin=(300, 'K'), Tmax=(3000, 'K'), Tcount=50)",
+                          ]
+        with open(input_path, 'r') as f:
+            lines = f.readlines()
+        for expected_line in expected_lines:
+            self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
+
+
+
 
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete'), ignore_errors=True)
+        for folder in ['arkane_tests_delete', 'arkane_input_tests_delete']:
+            shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', folder), ignore_errors=True)
 
 
 if __name__ == '__main__':
