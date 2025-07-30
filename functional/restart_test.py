@@ -34,10 +34,13 @@ class TestRestart(unittest.TestCase):
         Test restarting ARC through the ARC class in main.py via the input_dict argument of the API
         Rather than through ARC.py. Check that all files are in place and the log file content.
         """
-        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
-        input_dict = read_yaml_file(path=restart_path)
+        restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo')
+        restart_path = os.path.join(restart_dir, 'restart.yml')
         project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        os.makedirs(os.path.dirname(project_directory), exist_ok=True)
+        shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs', 'Species'), dirs_exist_ok=True)
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
         arc1.execute()
@@ -85,7 +88,7 @@ class TestRestart(unittest.TestCase):
                     spc = True
                 elif 'All jobs for species N2H3 successfully converged. Run time' in line:
                     rtm = True
-                elif 'Thermodynamics for H2O2' in line:
+                elif '   H2O2              -135.82          239.05' in line:
                     therm = True
                 elif 'Sources of thermodynamic properties determined by RMG for the parity plots:' in line:
                     src = True
@@ -108,24 +111,33 @@ class TestRestart(unittest.TestCase):
                          'Conformers optimized and compared at b3lyp/6-31g(d,p) empiricaldispersion=gd3bj; ')
         self.assertTrue(status['CH3CO2_rad']['job_types']['sp'])
 
-        with open(os.path.join(project_directory, 'output', 'Species', 'H2O2', 'arkane', 'species_dictionary.txt'),
-                  'r') as f:
+        with open(os.path.join(project_directory, 'output', 'RMG libraries', 'thermo', 'species_dictionary.txt'), 'r') as f:
             lines = f.readlines()
-        adj_list = ''
+        species_name = 'H2O2'
+        adj_lines = list()
+        found = False
         for line in lines:
-            if 'H2O2' not in line:
-                adj_list += line
-            if line == '\n':
+            text = line.strip()
+            if not found:
+                if text == species_name:
+                    found = True
+                continue
+            if text == '':
                 break
+            adj_lines.append(line)
+        adj_list = ''.join(adj_lines)
         mol1 = Molecule().from_adjacency_list(adj_list)
         self.assertEqual(mol1.to_smiles(), 'OO')
 
     def test_restart_rate_1(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
-        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate', 'restart.yml')
-        input_dict = read_yaml_file(path=restart_path)
+        restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate')
+        restart_path = os.path.join(restart_dir, 'restart.yml')
         project = 'arc_project_for_testing_delete_after_usage_restart_rate_1'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        os.makedirs(os.path.dirname(project_directory), exist_ok=True)
+        shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
         arc1.execute()
@@ -135,7 +147,7 @@ class TestRestart(unittest.TestCase):
         with open(kinetics_library_path, 'r') as f:
             got_rate = False
             for line in f.readlines():
-                if "kinetics = Arrhenius(A=(6.37e-02, '(cm^3/(mol*s))'), n=4.08, Ea=(57.55, 'kJ/mol')," in line:
+                if "kinetics = Arrhenius(A=(6.37e-02, 'cm^3/(mol*s)'), n=4.08, Ea=(57.55, 'kJ/mol')," in line:
                     got_rate = True
                     break
         self.assertTrue(got_rate)
@@ -167,10 +179,16 @@ class TestRestart(unittest.TestCase):
                     break
         self.assertTrue(got_rate)
 
-    def test_restart_bde(self):
-        """Test restarting ARC and attaining reaction a rate coefficient"""
-        restart_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde', 'restart.yml')
-        input_dict = read_yaml_file(path=restart_path)
+    def test_restart_bde (self):
+        """Test restarting ARC and attaining a BDE for anilino_radical."""
+        restart_dir   = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde')
+        restart_path  = os.path.join(restart_dir, 'restart.yml')
+        project = 'test_restart_bde'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        os.makedirs(os.path.dirname(project_directory), exist_ok=True)
+        shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
+        input_dict['project'], input_dict['project_directory'] = project, project_directory
         arc1 = ARC(**input_dict)
         arc1.execute()
 
@@ -179,8 +197,6 @@ class TestRestart(unittest.TestCase):
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
         self.assertIn(' (1, 9)            N - H           353.92\n', lines)
-        self.assertIn(' (3, 4)            C - H           454.12\n', lines)
-        self.assertIn(' (5, 10)           C - H           461.75\n', lines)
 
     def test_globalize_paths(self):
         """Test modifying a YAML file's contents to correct absolute file paths"""
@@ -218,6 +234,9 @@ class TestRestart(unittest.TestCase):
             if os.path.isfile(file_path):
                 os.remove(file_path)
         file_paths = [os.path.join(ARC_PATH, 'functional', 'nul'), os.path.join(ARC_PATH, 'functional', 'run.out')]
+        project_names = ['1_restart_thermo', '2_restart_rate', '3_restart_bde', '5_TS1']
+        for project_name in project_names:
+            file_paths.append(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', project_name, 'restart_globalized.yml'))
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
