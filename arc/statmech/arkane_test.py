@@ -140,6 +140,9 @@ class TestArkaneAdapter(unittest.TestCase):
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12'),
                                                     freq_scale_factor=1.0),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
+        self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
+                                                    freq_scale_factor=1.0),
+                         "modelChemistry = 'cbs-qb3'")
 
 
     @classmethod
