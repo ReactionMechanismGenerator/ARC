@@ -169,9 +169,6 @@ class TestArkaneAdapter(unittest.TestCase):
         for expected_line in expected_lines:
             self.assertIn(expected_line + '\n', lines, f"Expected line '{expected_line}' not found in {input_path}")
 
-
-
-
     @classmethod
     def tearDownClass(cls):
         """
