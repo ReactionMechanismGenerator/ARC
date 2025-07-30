@@ -78,7 +78,7 @@ class TestFunctional(unittest.TestCase):
                                compare_to_rmg=False,
                                )
     
-    def testThermo(self):
+    def test_thermo(self):
         """Test thermo"""
         self.arc_object_1.execute()
         summary = self.arc_object_1.summary()
@@ -95,7 +95,7 @@ class TestFunctional(unittest.TestCase):
         self.assertEqual(species, len(self.species_list_1))
         self.assertEqual(thermo, len(self.species_list_1))
 
-    def testKinetic(self):
+    def test_kinetic(self):
         """Test kinetics"""
         self.arc_object_2.execute()
         summary = self.arc_object_2.summary()
