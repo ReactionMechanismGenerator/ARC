@@ -324,7 +324,8 @@ class xTBAdapter(JobAdapter):
                                          executable='/bin/bash')
 
         # If Sella crashed, Python’s traceback is in stderr
-        if stderr:            # non-empty list → something went wrong
+        real_errors = [line for line in stderr if not line.strip().lower().startswith('warning:') and line.strip()]
+        if real_errors:
             raise InputError(
                 "Sella run failed.\n\n"
                 "STDERR:\n"  + "\n".join(stderr[-40:]) +   # tail to keep CI logs short
