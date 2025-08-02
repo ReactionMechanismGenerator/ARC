@@ -1370,6 +1370,26 @@ class TestCommon(unittest.TestCase):
             A=1e12, n=0.5, Ea=8.2, T=1000, Ea_units='kJ/mol') / 1.18e+13, 1.0, places=2)
         self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
             A=1e12, n=0.5, Ea=8200, T=1000, Ea_units='J/mol') / 1.18e+13, 1.0, places=2)
+        As = [1e12, 2e12]
+        ns = [0.5, 1.0]
+        Eas = [8.2, 16.4]       # in kJ/mol
+        Ts = [300, 600]
+        rates = common.calculate_arrhenius_rate_coefficient(A=As, n=ns, Ea=Eas, T=Ts, Ea_units='kJ/mol')
+        # should return a numpy array of length 2
+        self.assertIsInstance(rates, np.ndarray)
+        self.assertEqual(rates.shape, (2,))
+        expected = [646906742086.741, 44819013802123.64]
+        for i in range(2):
+            self.assertAlmostEqual(rates[i] / expected[i], 1.0, places=2)
+
+        # invalid units should raise
+        with self.assertRaises(ValueError):
+            common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=300, Ea_units='invalid_unit')
+
+        # non-positive temperature should raise
+        for bad_T in (0, -100):
+            with self.assertRaises(ValueError):
+                common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=bad_T, Ea_units='kJ/mol')
 
     @classmethod
     def tearDownClass(cls):
