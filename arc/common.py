@@ -20,7 +20,7 @@ import time
 import warnings
 import yaml
 from collections import deque
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -1827,20 +1827,40 @@ def convert_to_hours(time_str:str) -> float:
     return h + m / 60 + s / 3600
 
 
-def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float, Ea_units: str = 'kJ/mol') -> float:
+def calculate_arrhenius_rate_coefficient(A: Union[int, float, Sequence[float], np.ndarray],
+                                         n: Union[int, float, Sequence[float], np.ndarray],
+                                         Ea: Union[int, float, Sequence[float], np.ndarray],
+                                         T: Union[int, float, Sequence[float], np.ndarray],
+                                         Ea_units: str = 'kJ/mol',
+                                         ) -> np.ndarray:
     """
-    Calculate the Arrhenius rate coefficient.
+    Calculate the Arrhenius rate coefficient k(T) = A * T^n * exp(-Ea/(R T)).
+
+    Supports scalar or array inputs for A, n, Ea, and T (returns a numpy array).
+    rate is returned in the same units as A.
 
     Args:
-        A (float): Pre-exponential factor in cm^3, mol, s units.
-        n (float): Temperature exponent.
-        Ea (float): Activation energy in J/mol.
-        T (float): Temperature in Kelvin.
-        Ea_units (str): Units of the rate coefficient.
+        A: Pre-exponential factor (float or array-like).
+        n: Temperature exponent (float or array-like).
+        Ea: Activation energy (float or array-like).
+        T: Temperature in K (float or array-like). Must be > 0.
+        Ea_units: Units of Ea; must be a key in EA_UNIT_CONVERSION.
 
     Returns:
-        float: The rate coefficient at the specified temperature.
+        np.ndarray: k(T) with same shape as the broadcast result of A, n, Ea, T.
     """
+    if not isinstance(n, (list, tuple, np.ndarray)) or len(n) == 1:
+        if isinstance(A, (list, tuple, np.ndarray)) and len(A) == 2:
+            A = A[0]
+        if isinstance(Ea, (list, tuple, np.ndarray)) and len(Ea) == 2:
+            Ea = Ea[0]
     if Ea_units not in EA_UNIT_CONVERSION:
-        raise ValueError(f"Unsupported Ea units: {Ea_units}")
-    return A * (T ** n) * math.exp(-1 * (Ea * EA_UNIT_CONVERSION[Ea_units]) / (R * T))
+        raise ValueError(f"Unsupported Ea units: {Ea_units!r}. Must be within: {EA_UNIT_CONVERSION}.")
+    A_arr  = np.asarray(A, dtype=float)
+    n_arr  = np.asarray(n, dtype=float)
+    Ea_arr = np.asarray(Ea, dtype=float) * EA_UNIT_CONVERSION[Ea_units]
+    T_arr  = np.asarray(T, dtype=float)
+    if np.any(T_arr <= 0):
+        raise ValueError("All temperature values must be positive")
+    exp_arg = -Ea_arr / (R * T_arr)
+    return A_arr * np.power(T_arr, n_arr) * np.exp(exp_arg)
