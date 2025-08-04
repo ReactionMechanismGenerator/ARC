@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>arc.utils.scale &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Standalone tools" href="../tools.html" />
+    <link rel="prev" title="arc.level" href="level.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.utils.scale</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.utils.scale.calculate_truhlar_scaling_factors"><code class="docutils literal notranslate"><span class="pre">calculate_truhlar_scaling_factors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.utils.scale.determine_scaling_factors"><code class="docutils literal notranslate"><span class="pre">determine_scaling_factors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.utils.scale.get_species_list"><code class="docutils literal notranslate"><span class="pre">get_species_list()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.utils.scale.rename_level"><code class="docutils literal notranslate"><span class="pre">rename_level()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.utils.scale.summarize_results"><code class="docutils literal notranslate"><span class="pre">summarize_results()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">ARC’s API</a></li>
+      <li class="breadcrumb-item active">arc.utils.scale</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/scale.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-arc.utils.scale">
+<span id="arc-utils-scale"></span><span id="scale"></span><h1>arc.utils.scale<a class="headerlink" href="#module-arc.utils.scale" title="Permalink to this heading"></a></h1>
+<p>Determine scaling factors for a given list of levels of theory</p>
+<p>Based on DOI: 10.1016/j.cpc.2016.09.004
+Adapted by Duminda Ranasinghe and Alon Grinberg Dana</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.utils.scale.calculate_truhlar_scaling_factors">
+<span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">calculate_truhlar_scaling_factors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">zpe_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="../_modules/arc/utils/scale.html#calculate_truhlar_scaling_factors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.calculate_truhlar_scaling_factors" title="Permalink to this definition"></a></dt>
+<dd><p>Calculate the scaling factors using Truhlar’s method:</p>
+<p>FREQ: A PROGRAM FOR OPTIMIZING SCALE FACTORS (Version 1)
+written by Haoyu S. Yu, Lucas J. Fiedler, I.M. Alecu, and Donald G. Truhlar
+Department of Chemistry and Supercomputing Institute
+University of Minnesota, Minnesota 55455-0431</p>
+<dl class="simple">
+<dt>Citations:</dt><dd><ol class="arabic simple">
+<li><p>I.M., Alecu, J. Zheng, Y. Zhao, D.G. Truhlar, J. Chem. Theory Comput. 2010, 6, 9, 2872-2887
+DOI: 10.1021/ct100326h</p></li>
+<li><p>H.S. Yu, L.J. Fiedler, I.M. Alecu,, D.G. Truhlar, Computer Physics Communications 2017, 210, 132-138
+DOI: 10.1016/j.cpc.2016.09.004</p></li>
+</ol>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>zpe_dict</strong> (<em>dict</em>) – The calculated vibrational zero-point energies at the requested level of theory.
+Keys are species labels, values are floats representing the ZPE in J/mol.</p></li>
+<li><p><strong>level</strong> (<em>str</em>) – A string representation of the frequencies level of theory.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The scale factor for the vibrational zero-point energy (lambda ZPE) as defined in reference [2].</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.utils.scale.determine_scaling_factors">
+<span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">determine_scaling_factors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">levels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><span class="pre">Level</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_settings</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_log</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/utils/scale.html#determine_scaling_factors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.determine_scaling_factors" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the zero-point energy, harmonic frequencies, and fundamental frequencies scaling factors
+for a given frequencies level of theory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>levels</strong> (<em>list</em>) – A list of frequencies levels of theory for which scaling factors are determined.
+Entries are either Level instances, dictionaries, or simple string representations.
+If a single entry is given, it will be converted to a list.</p></li>
+<li><p><strong>ess_settings</strong> (<em>dict</em><em>, </em><em>optional</em>) – A dictionary of available ESS (keys) and a corresponding server list (values).</p></li>
+<li><p><strong>init_log</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to initialize the logger. <code class="docutils literal notranslate"><span class="pre">True</span></code> to initialize.
+Should be <code class="docutils literal notranslate"><span class="pre">True</span></code> when called as a standalone, but <code class="docutils literal notranslate"><span class="pre">False</span></code> when called within ARC.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The determined frequency scaling factors.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.utils.scale.get_species_list">
+<span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">get_species_list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/utils/scale.html#get_species_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.get_species_list" title="Permalink to this definition"></a></dt>
+<dd><p>Generates the standardized species list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The standardized species list initialized with xyz.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.utils.scale.rename_level">
+<span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">rename_level</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/arc/utils/scale.html#rename_level"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.rename_level" title="Permalink to this definition"></a></dt>
+<dd><p>Rename the level of theory so it can be used for folder names.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>level</strong> (<em>str</em>) – The level of theory to be renamed.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The renamed level of theory</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.utils.scale.summarize_results">
+<span class="sig-prename descclassname"><span class="pre">arc.utils.scale.</span></span><span class="sig-name descname"><span class="pre">summarize_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lambda_zpes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">levels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><span class="pre">Level</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zpe_dicts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">times</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overall_time</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference internal" href="../_modules/arc/utils/scale.html#summarize_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.utils.scale.summarize_results" title="Permalink to this definition"></a></dt>
+<dd><p>Print and save the results to file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lambda_zpes</strong> (<em>list</em>) – The scale factors for the vibrational zero-point energy, entries are floats.</p></li>
+<li><p><strong>levels</strong> (<em>list</em>) – Entries are the frequency levels of theory.</p></li>
+<li><p><strong>zpe_dicts</strong> (<em>list</em>) – Entries are The calculated vibrational zero-point energies at the requested level of theory.
+Keys are species labels, values are floats representing the ZPE in J/mol.</p></li>
+<li><p><strong>times</strong> (<em>list</em>) – Entries are string-format of the calculation execution times.</p></li>
+<li><p><strong>overall_time</strong> (<em>str</em>) – A string-format of the overall calculation execution time.</p></li>
+<li><p><strong>base_path</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the scaling factors base folder.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="level.html" class="btn btn-neutral float-left" title="arc.level" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../tools.html" class="btn btn-neutral float-right" title="Standalone tools" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

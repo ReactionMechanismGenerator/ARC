@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Running ARC &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="Installation instructions" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Running ARC</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#using-an-input-file">Using an input file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-the-api">Using the API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Running ARC</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/running.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="running-arc">
+<span id="running"></span><h1>Running ARC<a class="headerlink" href="#running-arc" title="Permalink to this heading"></a></h1>
+<section id="using-an-input-file">
+<h2>Using an input file<a class="headerlink" href="#using-an-input-file" title="Permalink to this heading"></a></h2>
+<p>To run ARC, make sure to first activate the ARC environment
+(see the <a class="reference internal" href="installation.html#arce"><span class="std std-ref">installation instructions</span></a>).
+Then simply type:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">&lt;</span><span class="n">path_to_the_ARC_folder</span><span class="o">&gt;/</span><span class="n">ARC</span><span class="o">.</span><span class="n">py</span> <span class="nb">input</span><span class="o">.</span><span class="n">yml</span>
+</pre></div>
+</div>
+<p>replacing <code class="docutils literal notranslate"><span class="pre">&lt;path_to_the_ARC_folder&gt;</span></code> in the above command with the actual path to ARC.
+You could of course name the input file whatever you like.
+However, if you’re using the <a class="reference internal" href="installation.html#aliases"><span class="std std-ref">recommended aliases</span></a>, then simply typing:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arc</span>
+</pre></div>
+</div>
+<p>in any folder with a valid <code class="docutils literal notranslate"><span class="pre">input.yml</span></code> file will execute ARC using that file.</p>
+<p>ARC automatically creates restart files, which have the same format as an input file.
+If ARC crashes (e.g., due to a bug which was later fixed, or due to connectivity issues), typing:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arcrestart</span>
+</pre></div>
+</div>
+<p>in a folder containing an ARC restart.yml file
+(assuming you’re using the <a class="reference internal" href="installation.html#aliases"><span class="std std-ref">recommended aliases</span></a>)
+will cause ARC to execute, considering all previously spawned jobs specified in the restart file.
+In restart mode, ARC is aware of all past submitted jobs and collects their
+output files or waits for them to terminate if they are still running.</p>
+<p>ARC’s adopts the <a class="reference external" href="https://yaml.org/">YAML</a> format for its input/restart files.
+In fact, a restart file is nothing but a very detailed
+input file, and internally ARC treats them the same.
+Other than the file name, the difference is that the restart file
+was automatically generated.</p>
+<p>A (very) simple input file might look like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">example1</span>
+
+<span class="n">species</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">ethanol</span>
+    <span class="n">smiles</span><span class="p">:</span> <span class="n">CCO</span>
+</pre></div>
+</div>
+<p>All the parameters of <a class="reference internal" href="api/main.html#main"><span class="std std-ref">arc.main.ARC</span></a> class are legal input file keywords.
+Specifying species and reactions lists define <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> and <a class="reference internal" href="api/reaction.html#reaction"><span class="std std-ref">ARCReaction</span></a>
+object. See ARC’s API for a complete and updated list of keywords along with their allowed types.</p>
+<p>Additional input file examples are available in ARC’s examples folder
+(<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples">ARC/examples</a>).
+Another convenient way to see a valid and detailed input file is to run an ARC job
+and peak at the automatically generated <code class="docutils literal notranslate"><span class="pre">restart.yml</span></code> file.</p>
+<p>A sample reaction input file with a user-supplied TS geometry guess is:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">example2</span>
+
+<span class="n">species</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H4</span>
+    <span class="n">smiles</span><span class="p">:</span> <span class="n">NN</span>
+
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">NH</span>
+    <span class="n">smiles</span><span class="p">:</span> <span class="s1">&#39;[NH]&#39;</span>
+
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H3</span>
+    <span class="n">smiles</span><span class="p">:</span> <span class="n">N</span><span class="p">[</span><span class="n">NH</span><span class="p">]</span>
+
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">NH2</span>
+    <span class="n">smiles</span><span class="p">:</span> <span class="s1">&#39;[NH2]&#39;</span>
+
+<span class="n">reactions</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">N2H4</span> <span class="o">+</span> <span class="n">NH</span> <span class="o">&lt;=&gt;</span> <span class="n">N2H3</span> <span class="o">+</span> <span class="n">NH2</span>
+    <span class="n">ts_xyz_guess</span><span class="p">:</span>
+    <span class="o">-</span> <span class="o">|</span>
+      <span class="n">N</span>      <span class="o">-</span><span class="mf">0.4465194713</span>     <span class="mf">0.6830090994</span>    <span class="o">-</span><span class="mf">0.0932618217</span>
+      <span class="n">H</span>      <span class="o">-</span><span class="mf">0.4573825998</span>     <span class="mf">1.1483344874</span>     <span class="mf">0.8104886823</span>
+      <span class="n">H</span>       <span class="mf">0.6773598975</span>     <span class="mf">0.3820642106</span>    <span class="o">-</span><span class="mf">0.2197000290</span>
+      <span class="n">N</span>      <span class="o">-</span><span class="mf">1.2239012380</span>    <span class="o">-</span><span class="mf">0.4695695875</span>    <span class="o">-</span><span class="mf">0.0069891203</span>
+      <span class="n">H</span>      <span class="o">-</span><span class="mf">1.8039356973</span>    <span class="o">-</span><span class="mf">0.5112019151</span>     <span class="mf">0.8166872835</span>
+      <span class="n">H</span>      <span class="o">-</span><span class="mf">1.7837217777</span>    <span class="o">-</span><span class="mf">0.5685801608</span>    <span class="o">-</span><span class="mf">0.8405154279</span>
+      <span class="n">N</span>       <span class="mf">1.9039017235</span>    <span class="o">-</span><span class="mf">0.1568337145</span>    <span class="o">-</span><span class="mf">0.0766247796</span>
+      <span class="n">H</span>       <span class="mf">1.7333130781</span>    <span class="o">-</span><span class="mf">0.8468572038</span>     <span class="mf">0.6711695415</span>
+</pre></div>
+</div>
+</section>
+<section id="using-the-api">
+<h2>Using the API<a class="headerlink" href="#using-the-api" title="Permalink to this heading"></a></h2>
+<p>To run ARC, make sure to first activate the ARC environment
+(see the <a class="reference internal" href="installation.html#arce"><span class="std std-ref">installation instructions</span></a>).</p>
+<p>ARC’s API can be reached from any python platform, if ARC was added to the PYTHONPATH
+(see the <a class="reference internal" href="installation.html#path"><span class="std std-ref">installation instructions</span></a>).</p>
+<p>Running ARC using <a class="reference external" href="https://jupyter.org/">Jupyter notebooks</a> (comes pre-installed with Anaconda)
+has the benefit of displaying “live” and interactive
+3D geometries for the species of interest.</p>
+<p>Example iPython notebooks are available in the
+<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/ipython/Demo">ipython/Demo</a>
+folder. Various <a class="reference internal" href="tools.html#tools"><span class="std std-ref">standalone tools</span></a> in an iPython format are also available,
+demonstrating different utilizations of the API.
+Users are of course directed to read <a class="reference internal" href="api/index.html#api"><span class="std std-ref">ARC’s API</span></a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation instructions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

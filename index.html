@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARC - Automated Rate Calculator v1.1.0 &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Installation instructions" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">ARC - Automated Rate Calculator v1.1.0</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="arc-automated-rate-calculator-vrelease">
+<h1>ARC - Automated Rate Calculator v1.1.0<a class="headerlink" href="#arc-automated-rate-calculator-vrelease" title="Permalink to this heading"></a></h1>
+<img alt="_images/arc.png" class="align-center" src="_images/arc.png" />
+<p><strong>ARC - Automated Rate Calculator</strong> is a software for automating
+electronic structure calculations relevant for chemical kinetic modeling.
+ARC has many advanced options, yet at its core it is simple: it accepts 2D
+graph representations of chemical species (e.g., <a class="reference external" href="https://en.wikipedia.org/wiki/Simplified_molecular-input_line-entry_system">SMILES</a>, <a class="reference external" href="https://iupac.org/who-we-are/divisions/division-details/inchi/">InChI</a>, or <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/reference/molecule/adjlist.html">adjacency lists</a>),
+and  automatically executes, tracks, and processes relevant electronic structure
+jobs on user-defined servers. The principal outputs of ARC are thermodynamic properties
+(H, S, Cp) and high-pressure limit kinetic rate coefficients for the defined species
+and reactions.
+(Note that automating transition states is still in progress).</p>
+<p>ARC is written in Python 3.7, and was made open-source under the <a class="reference internal" href="licence.html#licence"><span class="std std-ref">MIT licence</span></a>.</p>
+<p>We use ARC to facilitate our research and have made it available
+as a benefit to the community in the hopes that others may find it useful as well.
+The code is hosted on <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC">GitHub</a>, which is where comments, issues, and community
+contributions are welcomed.</p>
+<p>The following pages describe how to install and execute ARC,
+show some advanced features and what to expect from its output.</p>
+</section>
+<section id="documentation-contents">
+<h1>Documentation Contents<a class="headerlink" href="#documentation-contents" title="Permalink to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#clone-and-setup-path">Clone and setup path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#install-dependencies">Install dependencies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#create-a-arc-folder-optional-but-recommended">Create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder (optional but recommended)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#generating-rsa-ssh-keys-and-defining-servers">Generating RSA SSH keys and defining servers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#associating-software-with-servers">Associating software with servers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#cluster-software-definitions">Cluster software definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#tests">Tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#optional-add-arc-aliases-to-your-bashrc-for-convenience">Optional: Add ARC aliases to your .bashrc (for convenience)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.html#updating-arc">Updating ARC</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="running.html#using-an-input-file">Using an input file</a></li>
+<li class="toctree-l2"><a class="reference internal" href="running.html#using-the-api">Using the API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#calculating-thermodynamic-properties">Calculating thermodynamic properties</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#optimizing-transition-states">Optimizing transition states</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#flexible-coordinates-xyz-input">Flexible coordinates (xyz) input</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#specify-a-specific-job-type-to-execute">Specify a specific job type to execute</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#levels-of-theory">Levels of theory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#adaptive-levels-of-theory">Adaptive levels of theory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#control-job-memory-allocation">Control job memory allocation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#using-a-fine-dft-grid-for-optimization">Using a fine DFT grid for optimization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#rotor-scans">Rotor scans</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#nd-rotor-scans">ND Rotor scans</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#electronic-structure-software-settings">Electronic Structure Software Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#ess-check-files">ESS check files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#frequency-scaling-factors">Frequency scaling factors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#isomorphism-checks">Isomorphism checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#using-a-non-default-project-directory">Using a non-default project directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#visualizing-molecular-orbitals-mos">Visualizing molecular orbitals (MOs)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#consider-a-specific-diastereomer">Consider a specific diastereomer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#don-t-generate-conformers-for-specific-species">Don’t generate conformers for specific species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#writing-an-arc-input-file-using-the-api">Writing an ARC input file using the API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#calculating-bdes-bond-dissociation-energies">Calculating BDEs (bond dissociation energies)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#disable-comparisons-with-the-rmg-database">Disable comparisons with the RMG database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#use-solvent-corrections">Use solvent corrections</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#batch-delete-arc-jobs">Batch delete ARC jobs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="advanced.html#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting">Choose modified/classical Arrhenius equation form for rate coefficient fitting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api/main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/job.html">arc.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api/scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#arc-ess-diagnostics">ARC ESS diagnostics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#conformers">Conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#delete-all-arc-jobs">Delete all ARC jobs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#determine-harmonic-frequencies-scaling-factor">Determine harmonic frequencies scaling factor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#external-symmetry-and-optical-isomers">External symmetry and optical isomers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#onedmin-script">OneDMin script</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#perceive-xyz-xyz-to-smiles">Perceive_xyz_(xyz_to_smiles)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#plot-xyz">Plot xyz</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#visualize-1d-torsion-scan">Visualize 1D Torsion scan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html#visualize-2d-torsion-scan">Visualize 2D Torsion scan</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="media.html#introduction-to-arc">Introduction to ARC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="media.html#arc-how-to">ARC How-to</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="release.html#arc-1-1-0">ARC 1.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="release.html#arc-1-0-0">ARC 1.0.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="release.html#version-style">Version style</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+</div>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-right" title="Installation instructions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

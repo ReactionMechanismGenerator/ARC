@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>arc.job.trsh &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="arc.parser" href="parser.html" />
+    <link rel="prev" title="arc.job.local" href="local.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="conformers.html">arc.species.conformers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.job.trsh</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.determine_ess_status"><code class="docutils literal notranslate"><span class="pre">determine_ess_status()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.determine_job_log_memory_issues"><code class="docutils literal notranslate"><span class="pre">determine_job_log_memory_issues()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.scan_quality_check"><code class="docutils literal notranslate"><span class="pre">scan_quality_check()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_conformer_isomorphism"><code class="docutils literal notranslate"><span class="pre">trsh_conformer_isomorphism()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_ess_job"><code class="docutils literal notranslate"><span class="pre">trsh_ess_job()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_job_on_server"><code class="docutils literal notranslate"><span class="pre">trsh_job_on_server()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_job_queue"><code class="docutils literal notranslate"><span class="pre">trsh_job_queue()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_cartesian"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_cartesian()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_checkfile"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_checkfile()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_inaccurate_quadrature"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_inaccurate_quadrature()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_intaccuracy"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_intaccuracy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_l123"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_l123()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_neg_eigen"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_neg_eigen()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_no_qc"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_no_qc()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_nosymm"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_nosymm()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_opt_maxcycles"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_opt_maxcycles()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_scf"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_scf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_keyword_unconverged"><code class="docutils literal notranslate"><span class="pre">trsh_keyword_unconverged()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_negative_freq"><code class="docutils literal notranslate"><span class="pre">trsh_negative_freq()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_scan_job"><code class="docutils literal notranslate"><span class="pre">trsh_scan_job()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.job.trsh.trsh_special_rotor"><code class="docutils literal notranslate"><span class="pre">trsh_special_rotor()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">ARC’s API</a></li>
+      <li class="breadcrumb-item active">arc.job.trsh</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/trsh.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-arc.job.trsh">
+<span id="arc-job-trsh"></span><span id="trsh"></span><h1>arc.job.trsh<a class="headerlink" href="#module-arc.job.trsh" title="Permalink to this heading"></a></h1>
+<p>The ARC troubleshooting (“trsh”) module</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.determine_ess_status">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">determine_ess_status</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species_label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_log</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">software</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#determine_ess_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.determine_ess_status" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>output_path</strong> (<em>str</em>) – The path to the ESS output file.</p></li>
+<li><p><strong>species_label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>job_type</strong> (<em>str</em>) – The job type (e.g., ‘opt, ‘freq’, ‘ts’, ‘sp’).</p></li>
+<li><p><strong>job_log</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the server job log file (not the ESS output file) or its content.</p></li>
+<li><p><strong>software</strong> (<em>str</em><em>, </em><em>optional</em>) – The ESS software.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[str, List[str], str, str]</dt><dd><ul class="simple">
+<li><p>The status. Either ‘done’ or ‘errored’.</p></li>
+<li><p>The standardized error keywords.</p></li>
+<li><p>A description of the error.</p></li>
+<li><p>The parsed line from the ESS output file indicating the error.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.determine_job_log_memory_issues">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">determine_job_log_memory_issues</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_log</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#determine_job_log_memory_issues"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.determine_job_log_memory_issues" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>job_log</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the server job log file (not the ESS output file) or its content.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[List[str], str, str]</dt><dd><ul class="simple">
+<li><p>The standardized error keywords.</p></li>
+<li><p>A description of the error.</p></li>
+<li><p>The parsed line from the ESS output file indicating the error.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.scan_quality_check">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">scan_quality_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pivots</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energies</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_res</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">8.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">used_methods</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">preserve_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trajectory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#scan_quality_check"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.scan_quality_check" title="Permalink to this definition"></a></dt>
+<dd><p>Checks the scan’s quality:</p>
+<ol class="arabic simple">
+<li><p>Based on intermediate conformers if available:</p>
+<ul class="simple">
+<li><p>whether the initial and final points are consistent</p></li>
+<li><p>whether it is relatively “smooth”</p></li>
+</ul>
+</li>
+<li><p>Based on the PES curve (if intermediate conformers are unavailable):</p>
+<ul class="simple">
+<li><p>whether the initial and final points are consistent</p></li>
+<li><p>whether it is relatively “smooth”</p></li>
+</ul>
+</li>
+<li><p>Common:</p>
+<ul class="simple">
+<li><p>whether the optimized geometry indeed represents the minimum energy conformer (for a non-TS species)</p></li>
+<li><p>whether the barrier height is reasonable</p></li>
+</ul>
+</li>
+<li><p>Based on requested parameters to preserve:</p>
+<ul class="simple">
+<li><p>whether specified atom distances to preserve criteria aren’t violated</p></li>
+</ul>
+</li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>pivots</strong> (<em>list</em>) – The rotor pivots.</p></li>
+<li><p><strong>energies</strong> (<em>list</em>) – The scan energies in kJ/mol.</p></li>
+<li><p><strong>scan_res</strong> (<em>float</em><em>, </em><em>optional</em>) – The scan resolution in degrees.</p></li>
+<li><p><strong>used_methods</strong> (<em>list</em><em>, </em><em>optional</em>) – Troubleshooting methods already tried out.</p></li>
+<li><p><strong>log_file</strong> (<em>str</em><em>, </em><em>optional</em>) – The path to the output file.</p></li>
+<li><p><strong>species</strong> (<a class="reference internal" href="species.html#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a><em>, </em><em>optional</em>) – The ARCSpecies this scan is related to.</p></li>
+<li><p><strong>preserve_params</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are length 2 lists of atom indices (1-indexed) between which the
+distance as well as a torsion dihedral angle with these atoms as its pivots
+must be preserved throughout the scan to a tolerance.</p></li>
+<li><p><strong>trajectory</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are Cartesian coordinates along the scan trajectory.</p></li>
+<li><p><strong>original_xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The optimized coordinated for the species.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[bool, str, str, dict]</dt><dd><ul class="simple">
+<li><p>Whether to invalidate this rotor, <code class="docutils literal notranslate"><span class="pre">True</span></code> to invalidate.</p></li>
+<li><p>Reason for invalidating this rotor.</p></li>
+<li><p>Error or warning message.</p></li>
+<li><p>Troubleshooting methods to apply, including conformational changes.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_conformer_isomorphism">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_conformer_isomorphism</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">software</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_conformer_isomorphism"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_conformer_isomorphism" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshoot conformer optimization for a species that failed isomorphic test in
+<cite>determine_most_stable_conformer</cite> by specifying a “good” level of theory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>software</strong> (<em>str</em>) – The ESS used.</p></li>
+<li><p><strong>ess_trsh_methods</strong> (<em>list</em><em>, </em><em>optional</em>) – The troubleshooting methods tried for this job.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TrshError</strong> – If the requested <code class="docutils literal notranslate"><span class="pre">ess_trsh_methods</span></code> is not supported.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Optional[str]</dt><dd><p>The level of theory to troubleshoot at.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_ess_job">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_ess_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level_of_theory</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><span class="pre">Level</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">software</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fine</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">memory_gb</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_heavy_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cpu_cores</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_h</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_ess_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_ess_job" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshoot issues related to the electronic structure software, such as convergence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>level_of_theory</strong> (<em>Union</em><em>[</em><a class="reference internal" href="level.html#arc.level.Level" title="arc.level.Level"><em>Level</em></a><em>, </em><em>dict</em><em>, </em><em>str</em><em>]</em>) – The original level of theory dictionary of the problematic job.</p></li>
+<li><p><strong>server</strong> (<em>str</em>) – The server used for this job.</p></li>
+<li><p><strong>job_status</strong> (<em>dict</em>) – The ESS job status dictionary with standardized error keywords
+as generated using the <cite>determine_ess_status</cite> function.</p></li>
+<li><p><strong>job_type</strong> (<em>str</em>) – The original job type.</p></li>
+<li><p><strong>software</strong> (<em>str</em>) – The ESS software.</p></li>
+<li><p><strong>fine</strong> (<em>bool</em>) – Whether the job used an ultrafine grid, <cite>True</cite> if it did.</p></li>
+<li><p><strong>memory_gb</strong> (<em>float</em>) – The memory in GB used for the job.</p></li>
+<li><p><strong>num_heavy_atoms</strong> (<em>int</em>) – Number of heavy atoms in a molecule.</p></li>
+<li><p><strong>cpu_cores</strong> (<em>int</em>) – The total number of cpu cores requested for a job.</p></li>
+<li><p><strong>ess_trsh_methods</strong> (<em>list</em>) – The troubleshooting methods tried for this job.</p></li>
+<li><p><strong>is_h</strong> (<em>bool</em>) – Whether the species is a hydrogen atom (or its isotope). e.g., H, D, T.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: tuple</dt><dd><ul class="simple">
+<li><p>output_errors (list): Errors to report.</p></li>
+<li><p>ess_trsh_methods (list): The updated troubleshooting methods tried for this job.</p></li>
+<li><p>remove_checkfile (bool): Whether to remove the checkfile from the job, <cite>True</cite> to remove.</p></li>
+<li><p>level_of_theory (Level): The new level of theory dictionary to use.</p></li>
+<li><p>software (str, optional): The new ESS software to use.</p></li>
+<li><p>job_type (str): The new job type to use.</p></li>
+<li><p>fine (bool): whether the new job should use a fine grid, <cite>True</cite> if it should.</p></li>
+<li><p>trsh_keyword (str): The troubleshooting keyword to use.</p></li>
+<li><p>memory (float): The new memory in GB to use for the job.</p></li>
+<li><p>shift (str): The shift to use (only in Molpro).</p></li>
+<li><p>cpus (int): The total number of cpu cores requested for a job.</p></li>
+<li><p>couldnt_trsh (bool): Whether a troubleshooting solution was found. <cite>True</cite> if it was not found.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_job_on_server">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_job_on_server</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_server_status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remote_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">server_nodes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_job_on_server"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_job_on_server" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshoot server errors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server</strong> (<em>str</em>) – The server name.</p></li>
+<li><p><strong>job_name</strong> (<em>str</em>) – The job’s name (e.g., ‘opt_a103’).</p></li>
+<li><p><strong>job_id</strong> (<em>int</em><em>, </em><em>str</em>) – The job’s ID on the server.</p></li>
+<li><p><strong>job_server_status</strong> (<em>str</em>) – The job server status (either ‘initializing’, ‘running’, ‘errored’, or ‘done’).</p></li>
+<li><p><strong>remote_path</strong> (<em>str</em>) – The remote path to the job folder.</p></li>
+<li><p><strong>server_nodes</strong> (<em>list</em><em>, </em><em>optional</em>) – The nodes already tried on this server for this job.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[str, bool]</dt><dd><ul class="simple">
+<li><p>The new node on the server (or None).</p></li>
+<li><p>Whether to re-run the job, <cite>True</cite> to rerun.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_job_queue">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_job_queue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">server</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_time</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">24</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attempted_queues</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_job_queue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_job_queue" title="Permalink to this definition"></a></dt>
+<dd><dl class="simple">
+<dt>A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.</dt><dd><p>If not, it will attempt to determine if there are any other queues available on the server that provide more time than the walltime failed queue.</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>server</strong> (<em>str</em>) – Name of the server</p></li>
+<li><p><strong>job_name</strong> (<em>str</em>) – Name of the job</p></li>
+<li><p><strong>max_time</strong> (<em>int</em><em>, </em><em>optional</em>) – The max time that the current queue that the job failed on provied. Defaults to 24, measured in hours.</p></li>
+<li><p><strong>attempted_queues</strong> (<em>list</em><em>, </em><em>optional</em>) – Any queues that have already been attempted to run the job on. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A dictionary of the available queues and a boolean indicating if the function was successful.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[dict, bool]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_cartesian">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_cartesian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_cartesian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_cartesian" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of cartesian coordinate</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_checkfile">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_checkfile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_checkfile"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_checkfile" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires removal of checkfile</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_inaccurate_quadrature">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_inaccurate_quadrature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_inaccurate_quadrature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_inaccurate_quadrature" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of inaccurate quadrature</p>
+<p>Explanation</p>
+<blockquote>
+<div><p>The integral not enough, under DFT calculations with some basis sets.</p>
+</div></blockquote>
+<p>Fixing</p>
+<blockquote>
+<div><p>Check the input file, whether there was some miss in basis set or unreasonable structure. If not, use one of following keywords:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>int=ultrafine (default in Gaussian 16), or int=grid=300590.</p></li>
+<li><p>SCF=novaracc.</p></li>
+<li><p>guess=INDO.</p></li>
+</ol>
+</div></blockquote>
+<p>If not work, use (1)~(3) at same time.</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_intaccuracy">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_intaccuracy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_intaccuracy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_intaccuracy" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of 2 electron integral accuracy</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_l123">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_l123</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_l123"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_l123" title="Permalink to this definition"></a></dt>
+<dd><p>When a job fails with l123.exe error, there are two possible solutions based upon the error message:
+1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.
+2. GS2 Optimization failed, then try to change the algorithm to LQA.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_neg_eigen">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_neg_eigen</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_neg_eigen"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_neg_eigen" title="Permalink to this definition"></a></dt>
+<dd><p>Gaussian will check the number of negative frequency after finishing the TS optimization.
+If there is more than one negative frequency, Gaussian will stop the calculation.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_no_qc">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_no_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_no_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_no_qc" title="Permalink to this definition"></a></dt>
+<dd><p>When a job fails with no qc, there are two possible solutions based upon the error message:
+1. If SCF fails, then try to change the algorithm to LQA.
+2. If SCF fails, then try to change the algorithm to LQA.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_nosymm">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_nosymm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_nosymm"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_nosymm" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of nosymm</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_opt_maxcycles">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_opt_maxcycles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_opt_maxcycles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_opt_maxcycles" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of opt(maxcycle=200)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_scf">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_scf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_scf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_scf" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of scf</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_keyword_unconverged">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_keyword_unconverged</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_status</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ess_trsh_methods</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trsh_keyword</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">couldnt_trsh</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fine</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_keyword_unconverged"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_keyword_unconverged" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the job requires change of scf</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_negative_freq">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_negative_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">neg_freqs_trshed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_types</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_negative_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_negative_freq" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshooting cases where non-TS species have negative frequencies.
+We take +/-1.1 displacements, generating several new initial geometries.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>log_file</strong> (<em>str</em>) – The frequency job log file.</p></li>
+<li><p><strong>neg_freqs_trshed</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of negative frequencies the species was troubleshooted for.</p></li>
+<li><p><strong>job_types</strong> (<em>list</em><em>, </em><em>optional</em>) – The job types used for ARC, e.g., [‘opt’, ‘rotors’].</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[list, list, list, list]</dt><dd><ul class="simple">
+<li><p>The current troubleshooted negative frequencies.</p></li>
+<li><p>The new conformers to try optimizing.</p></li>
+<li><p>Errors to report.</p></li>
+<li><p>Warnings to report.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>TrshError</strong> – If a negative frequency could not be determined.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_scan_job">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_scan_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_res</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scan_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">methods</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_scan_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_scan_job" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshooting rotor scans.
+Using the following methods:</p>
+<ol class="arabic simple">
+<li><p>freeze specific internal coordinates identified by scan_quality_check()</p></li>
+<li><p>freeze all torsions other than the rotor to be scanned</p></li>
+<li><p>increasing the scan resolution</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>scan_res</strong> (<em>int</em><em>, </em><em>float</em>) – The scan resolution in degrees.</p></li>
+<li><p><strong>scan</strong> (<em>list</em>) – The four atom indices representing the torsion to be troubleshooted.</p></li>
+<li><p><strong>scan_list</strong> (<em>list</em>) – Entries are the four-atom scan lists (1-indexed) of all torsions
+(without duplicate pivots) in this species.</p></li>
+<li><p><strong>methods</strong> (<em>dict</em>) – <p>The troubleshooting method/s to try. Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s1">&#39;inc_res&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+ <span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="s1">&#39;all&#39;</span> <span class="ow">or</span> <span class="p">[[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="o">...</span><span class="p">]}</span>
+</pre></div>
+</div>
+</p></li>
+<li><p><strong>log_file</strong> (<em>str</em><em>, </em><em>optional</em>) – The related output file path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TrshError</strong> – <ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">scan</span></code> is not included in the <code class="docutils literal notranslate"><span class="pre">scan_list</span></code>
+    2. Freeze method includes an invalid internal coordinates.
+    3. Freeze method does not provide any solution.</p></li>
+</ol>
+</p></li>
+<li><p><strong>InputError</strong> – Invalid <cite>methods</cite> input.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Tuple[str, int]</dt><dd><ul class="simple">
+<li><p>The scan troubleshooting keywords to be appended to the Gaussian input file.</p></li>
+<li><p>The new scan resolution in degrees.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.job.trsh.trsh_special_rotor">
+<span class="sig-prename descclassname"><span class="pre">arc.job.trsh.</span></span><span class="sig-name descname"><span class="pre">trsh_special_rotor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">special_rotor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">problematic_ic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">special_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'scan'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/job/trsh.html#trsh_special_rotor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.job.trsh.trsh_special_rotor" title="Permalink to this definition"></a></dt>
+<dd><p>Troubleshoot special rotor cases given all problematic torsional internal
+coordinates. Special rotors include rotor to be scanned and rotor already frozen.
+For example: If scan = [1, 2, 3, 4], <cite>scan_quality_check()</cite> might find [1, 2, 3, 5]
+problematic. However, we cannot simply freeze [1, 2, 3, 5] which definitely makes
+the scan failed. <cite>trsh_special_rotor()</cite> helps figure out the internal coordinates
+we need to actually freeze to troubleshoot the scan.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>special_rotor</strong> (<em>list</em>) – A list of four atoms indicating the special torsion</p></li>
+<li><p><strong>problematic_ic</strong> (<em>list</em>) – A list of torsions identified as problematic by
+check_scan_quality. This list will be pruned.</p></li>
+<li><p><strong>special_type</strong> – Indicate the type of the special rotor. Either <code class="docutils literal notranslate"><span class="pre">scan</span></code> for
+the rotor to be scanned or <cite>frozen</cite> for the rotor were frozen
+in the previous job</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: list</dt><dd><p>A list of internal coordinates to be frozen</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="local.html" class="btn btn-neutral float-left" title="arc.job.local" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parser.html" class="btn btn-neutral float-right" title="arc.parser" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

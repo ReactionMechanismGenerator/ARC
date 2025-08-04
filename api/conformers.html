@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>arc.species.conformers &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script src="../_static/sphinx_highlight.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="arc.species.vectors" href="vectors.html" />
+    <link rel="prev" title="arc.species.converter" href="converter.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../output.html">Output</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">ARC’s API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="main.html">arc.main</a></li>
+<li class="toctree-l2"><a class="reference internal" href="species.html">arc.species.species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="converter.html">arc.species.converter</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">arc.species.conformers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.add_missing_symmetric_torsion_values"><code class="docutils literal notranslate"><span class="pre">add_missing_symmetric_torsion_values()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.change_dihedrals_and_force_field_it"><code class="docutils literal notranslate"><span class="pre">change_dihedrals_and_force_field_it()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.cheat_sheet"><code class="docutils literal notranslate"><span class="pre">cheat_sheet()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.check_special_non_rotor_cases"><code class="docutils literal notranslate"><span class="pre">check_special_non_rotor_cases()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.chirality_dict_to_tuple"><code class="docutils literal notranslate"><span class="pre">chirality_dict_to_tuple()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.conformers_combinations_by_lowest_conformer"><code class="docutils literal notranslate"><span class="pre">conformers_combinations_by_lowest_conformer()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.deduce_new_conformers"><code class="docutils literal notranslate"><span class="pre">deduce_new_conformers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_chirality"><code class="docutils literal notranslate"><span class="pre">determine_chirality()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_dihedrals"><code class="docutils literal notranslate"><span class="pre">determine_dihedrals()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_number_of_conformers_to_generate"><code class="docutils literal notranslate"><span class="pre">determine_number_of_conformers_to_generate()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_rotors"><code class="docutils literal notranslate"><span class="pre">determine_rotors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_smallest_atom_index_in_scan"><code class="docutils literal notranslate"><span class="pre">determine_smallest_atom_index_in_scan()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_torsion_sampling_points"><code class="docutils literal notranslate"><span class="pre">determine_torsion_sampling_points()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_torsion_symmetry"><code class="docutils literal notranslate"><span class="pre">determine_torsion_symmetry()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.determine_well_width_tolerance"><code class="docutils literal notranslate"><span class="pre">determine_well_width_tolerance()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.embed_rdkit"><code class="docutils literal notranslate"><span class="pre">embed_rdkit()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.find_internal_rotors"><code class="docutils literal notranslate"><span class="pre">find_internal_rotors()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_all_combinations"><code class="docutils literal notranslate"><span class="pre">generate_all_combinations()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_conformer_combinations"><code class="docutils literal notranslate"><span class="pre">generate_conformer_combinations()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_conformers"><code class="docutils literal notranslate"><span class="pre">generate_conformers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_diatomic_conformer"><code class="docutils literal notranslate"><span class="pre">generate_diatomic_conformer()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_force_field_conformers"><code class="docutils literal notranslate"><span class="pre">generate_force_field_conformers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.generate_monoatomic_conformer"><code class="docutils literal notranslate"><span class="pre">generate_monoatomic_conformer()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_force_field_energies"><code class="docutils literal notranslate"><span class="pre">get_force_field_energies()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_lowest_confs"><code class="docutils literal notranslate"><span class="pre">get_lowest_confs()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_lowest_diastereomers"><code class="docutils literal notranslate"><span class="pre">get_lowest_diastereomers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_number_of_chiral_centers"><code class="docutils literal notranslate"><span class="pre">get_number_of_chiral_centers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_top_element_count"><code class="docutils literal notranslate"><span class="pre">get_top_element_count()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_torsion_angles"><code class="docutils literal notranslate"><span class="pre">get_torsion_angles()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.get_wells"><code class="docutils literal notranslate"><span class="pre">get_wells()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.identify_chiral_nitrogen_centers"><code class="docutils literal notranslate"><span class="pre">identify_chiral_nitrogen_centers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.initialize_log"><code class="docutils literal notranslate"><span class="pre">initialize_log()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.inverse_chirality_symbol"><code class="docutils literal notranslate"><span class="pre">inverse_chirality_symbol()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.mix_rdkit_and_openbabel_force_field"><code class="docutils literal notranslate"><span class="pre">mix_rdkit_and_openbabel_force_field()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.openbabel_force_field"><code class="docutils literal notranslate"><span class="pre">openbabel_force_field()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.openbabel_force_field_on_rdkit_conformers"><code class="docutils literal notranslate"><span class="pre">openbabel_force_field_on_rdkit_conformers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.prune_enantiomers_dict"><code class="docutils literal notranslate"><span class="pre">prune_enantiomers_dict()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.rdkit_force_field"><code class="docutils literal notranslate"><span class="pre">rdkit_force_field()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.read_rdkit_embedded_conformer_i"><code class="docutils literal notranslate"><span class="pre">read_rdkit_embedded_conformer_i()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.read_rdkit_embedded_conformers"><code class="docutils literal notranslate"><span class="pre">read_rdkit_embedded_conformers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.replace_n_with_c_in_mol"><code class="docutils literal notranslate"><span class="pre">replace_n_with_c_in_mol()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.replace_n_with_c_in_xyz"><code class="docutils literal notranslate"><span class="pre">replace_n_with_c_in_xyz()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.to_group"><code class="docutils literal notranslate"><span class="pre">to_group()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.translate_group"><code class="docutils literal notranslate"><span class="pre">translate_group()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.translate_groups"><code class="docutils literal notranslate"><span class="pre">translate_groups()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arc.species.conformers.update_mol"><code class="docutils literal notranslate"><span class="pre">update_mol()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="vectors.html">arc.species.vectors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="zmat.html">arc.species.zmat</a></li>
+<li class="toctree-l2"><a class="reference internal" href="reaction.html">arc.reaction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scheduler.html">arc.scheduler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="job.html">arc.job</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ssh.html">arc.job.ssh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="local.html">arc.job.local</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trsh.html">arc.job.trsh</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parser.html">arc.parser</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotter.html">arc.plotter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="processor.html">arc.processor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rmgdb.html">arc.rmgdb</a></li>
+<li class="toctree-l2"><a class="reference internal" href="common.html">arc.common</a></li>
+<li class="toctree-l2"><a class="reference internal" href="level.html">arc.level</a></li>
+<li class="toctree-l2"><a class="reference internal" href="scale.html">arc.utils.scale</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">ARC’s API</a></li>
+      <li class="breadcrumb-item active">arc.species.conformers</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api/conformers.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-arc.species.conformers">
+<span id="arc-species-conformers"></span><span id="conformers"></span><h1>arc.species.conformers<a class="headerlink" href="#module-arc.species.conformers" title="Permalink to this heading"></a></h1>
+<p>A module for (non-TS) species conformer generation</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>variables that contain atom indices such as torsions and tops are 1-indexed,
+while atoms in Molecules are 0-indexed.</p>
+</div>
+<p>conformers is a list of dictionaries, each with the following keys:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">dict</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">int</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">float</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="nb">str</span><span class="o">&gt;</span><span class="p">,</span>
+ <span class="s1">&#39;torsion_dihedrals&#39;</span><span class="p">:</span> <span class="p">{</span><span class="o">&lt;</span><span class="n">torsion</span> <span class="nb">tuple</span> <span class="mi">0</span><span class="o">&gt;</span><span class="p">:</span> <span class="n">angle</span> <span class="mi">0</span><span class="p">,</span>
+                       <span class="o">&lt;</span><span class="n">torsion</span> <span class="nb">tuple</span> <span class="mi">1</span><span class="o">&gt;</span><span class="p">:</span> <span class="n">angle</span> <span class="mi">1</span><span class="p">,</span>
+ <span class="p">}</span>
+</pre></div>
+</div>
+<p>Module workflow:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">generate_conformers</span>
+    <span class="n">generate_force_field_conformers</span>
+        <span class="n">get_force_field_energies</span><span class="p">,</span> <span class="n">rdkit_force_field</span> <span class="ow">or</span> <span class="n">openbabel_force_field_on_rdkit_conformers</span><span class="p">,</span>
+        <span class="n">determine_dihedrals</span>
+    <span class="n">deduce_new_conformers</span>
+        <span class="n">get_torsion_angles</span><span class="p">,</span> <span class="n">determine_torsion_symmetry</span><span class="p">,</span> <span class="n">determine_torsion_sampling_points</span><span class="p">,</span>
+        <span class="n">change_dihedrals_and_force_field_it</span>
+    <span class="n">get_lowest_confs</span>
+</pre></div>
+</div>
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.add_missing_symmetric_torsion_values">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">add_missing_symmetric_torsion_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">top1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_scan</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#add_missing_symmetric_torsion_values"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.add_missing_symmetric_torsion_values" title="Permalink to this definition"></a></dt>
+<dd><p>Add symmetry to a torsion scan in the rotor for efficient conformer generation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>top1</strong> (<em>list</em>) – A list of atom indices on one side of the torsion, including the pivotal atom.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em>) – A list of molecules.</p></li>
+<li><p><strong>torsion_scan</strong> (<em>list</em>) – The angles corresponding to this torsion from all conformers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The modified torsion_scan with added symmetric angles.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torsion_scan (list)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.change_dihedrals_and_force_field_it">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">change_dihedrals_and_force_field_it</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_dihedrals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#change_dihedrals_and_force_field_it"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.change_dihedrals_and_force_field_it" title="Permalink to this definition"></a></dt>
+<dd><p>Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.</p>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">torsions</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="p">(</span><span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]</span>
+<span class="n">new_dihedrals</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">120</span><span class="p">],</span> <span class="p">[</span><span class="mi">90</span><span class="p">,</span> <span class="mi">300</span><span class="p">],</span> <span class="p">[</span><span class="mi">180</span><span class="p">,</span> <span class="mi">270</span><span class="p">],</span> <span class="p">[</span><span class="mi">30</span><span class="p">,</span> <span class="mi">270</span><span class="p">]]</span>
+</pre></div>
+</div>
+<p>This will calculate the energy of the original conformer (defined using <cite>xyz</cite>).
+We iterate through new_dihedrals. The torsions are set accordingly and the energy and xyz of the newly
+generated conformer are kept.
+We assume that each list entry in new_dihedrals is of the length of the torsions list (2 in the example).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule with the connectivity information.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em>) – The base 3D geometry to be changed.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em>) – Entries are torsion tuples for which the dihedral will be changed relative to xyz.</p></li>
+<li><p><strong>new_dihedrals</strong> (<em>list</em>) – Entries are same size lists of dihedral angles (floats) corresponding to the torsions.</p></li>
+<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to optimize the coordinates using FF. True to optimize.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>The conformer FF energies corresponding to the list of dihedrals.</p></li>
+<li><p>The conformer xyz geometries corresponding to the list of dihedrals.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.cheat_sheet">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">cheat_sheet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#cheat_sheet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.cheat_sheet" title="Permalink to this definition"></a></dt>
+<dd><p>Check if the species is in the cheat sheet, and return its correct xyz if it is.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol_list</strong> (<em>Union</em><em>[</em><em>List</em><em>[</em><em>Molecule</em><em>]</em><em>, </em><em>Molecule</em><em>]</em>) – Molecule objects to consider (or Molecule, resonance structures will be generated).</p>
+</dd>
+</dl>
+<p>Returns: Optional[lis[Dict]]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.check_special_non_rotor_cases">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">check_special_non_rotor_cases</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#check_special_non_rotor_cases"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.check_special_non_rotor_cases" title="Permalink to this definition"></a></dt>
+<dd><p>Check whether one of the tops correspond to a special case which does not have a torsional mode.
+Checking for <code class="docutils literal notranslate"><span class="pre">R-[C,N]#[N,[CH],[C]]</span></code> groups, such as: in cyano groups (<cite>R-C#N`</cite>),
+C#C groups (<code class="docutils literal notranslate"><span class="pre">R-C#CH</span></code> or <code class="docutils literal notranslate"><span class="pre">R-C#[C]</span></code>), and azide groups: (<code class="docutils literal notranslate"><span class="pre">R-N#N</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule.</p></li>
+<li><p><strong>top1</strong> (<em>list</em>) – Entries are atom indices (1-indexed) on one side of the torsion, inc. one of the pivotal atoms.</p></li>
+<li><p><strong>top2</strong> (<em>list</em>) – Entries are atom indices (1-indexed) on the other side of the torsion, inc. the other pivotal atom.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> if this is indeed a special case which should <strong>not</strong> be treated as a torsional mode.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.chirality_dict_to_tuple">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">chirality_dict_to_tuple</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">chirality_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#chirality_dict_to_tuple"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.chirality_dict_to_tuple" title="Permalink to this definition"></a></dt>
+<dd><p>A helper function for using the chirality dictionary of a conformer as a key in the enantiomers_dict
+by converting it to a tuple deterministically.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>chirality_dict</strong> (<em>dict</em>) – The chirality dictionary of a conformer.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If the chirality values are wrong.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A deterministic tuple representation of the chirality dictionary.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.conformers_combinations_by_lowest_conformer">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">conformers_combinations_by_lowest_conformer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_tors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_sampling_points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">len_conformers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_combination_iterations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_angles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_sampling_points_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wells_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#conformers_combinations_by_lowest_conformer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.conformers_combinations_by_lowest_conformer" title="Permalink to this definition"></a></dt>
+<dd><p>Iteratively modify dihedrals in the lowest conformer (each iteration deduces a new lowest conformer),
+until convergence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule with the connectivity information.</p></li>
+<li><p><strong>base_xyz</strong> (<em>dict</em>) – The base 3D geometry to be changed.</p></li>
+<li><p><strong>multiple_tors</strong> (<em>list</em>) – Entries are torsion tuples of non-symmetric torsions.</p></li>
+<li><p><strong>multiple_sampling_points</strong> (<em>list</em>) – Entries are lists of dihedral angles (sampling points), respectively correspond
+to torsions in multiple_tors.</p></li>
+<li><p><strong>len_conformers</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the existing conformers list (for consecutive numbering).</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+will not be considered.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
+<li><p><strong>torsion_angles</strong> (<em>dict</em><em>, </em><em>optional</em>) – The torsion angles. Keys are torsion tuples, values are lists of all
+corresponding angles from conformers.</p></li>
+<li><p><strong>multiple_sampling_points_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsion tuples, values are respective sampling points.</p></li>
+<li><p><strong>wells_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsion tuples, values are well dictionaries.</p></li>
+<li><p><strong>plot_path</strong> (<em>str</em><em>, </em><em>optional</em>) – A folder path in which the plot will be saved.
+If None, the plot will not be shown (nor saved).</p></li>
+<li><p><strong>symmetries</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are tuples scan indices (1-indexed), values are internal
+rotation symmetry numbers (sigma).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New conformer combinations, entries are conformer dictionaries.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.deduce_new_conformers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">deduce_new_conformers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tops</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smeared_scan_res</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">combination_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_combination_iterations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diastereomers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#deduce_new_conformers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.deduce_new_conformers" title="Permalink to this definition"></a></dt>
+<dd><p>By knowing the existing torsion wells, get the geometries of all important conformers.
+Validate that atoms don’t collide in the generated conformers (don’t consider ones where they do).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>conformers</strong> (<em>list</em>) – Entries are conformer dictionaries.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em>) – A list of all possible torsion angles in the molecule, each torsion angles list is sorted.</p></li>
+<li><p><strong>tops</strong> (<em>list</em>) – A list of tops corresponding to torsions.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em>) – A list of RMG Molecule objects.</p></li>
+<li><p><strong>smeared_scan_res</strong> (<em>float</em><em>, </em><em>optional</em>) – The resolution (in degrees) for scanning smeared wells.</p></li>
+<li><p><strong>plot_path</strong> (<em>str</em><em>, </em><em>optional</em>) – A folder path in which the plot will be saved.
+If None, the plot will not be shown (nor saved).</p></li>
+<li><p><strong>combination_threshold</strong> (<em>int</em><em>, </em><em>optional</em>) – A threshold below which all combinations will be generated.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
+<li><p><strong>diastereomers</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are xyz’s in a dictionary format or conformer structures
+representing specific diastereomers to keep.</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+will not be considered.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>The deduced conformers.</p></li>
+<li><p>Keys are torsion tuples.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, dict]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_chirality">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_chirality</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_chirality"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_chirality" title="Permalink to this definition"></a></dt>
+<dd><p>Determines the Cahn–Ingold–Prelog (CIP) chirality (R or S) of atoms in the conformer,
+as well as the CIP chirality of double bonds (E or Z).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>conformers</strong> (<em>list</em>) – Entries are conformer dictionaries.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>RMG Molecule</em><em> or </em><em>RDKit RDMol</em>) – The molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>force</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to override data, <code class="docutils literal notranslate"><span class="pre">True</span></code> to override, default is <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>Conformer dictionaries with updated with ‘chirality’. <code class="docutils literal notranslate"><span class="pre">conformer['chirality']</span></code> is a dictionary.</dt><dd><p>Keys are either a 1-length tuple of atom indices (for chiral atom centers) or a 2-length tuple of atom
+indices (for chiral double bonds), values are either ‘R’ or ‘S’ for chiral atom centers
+(or ‘NR’ or ‘NS’ for chiral nitrogen centers), or ‘E’ or ‘Z’ for chiral double bonds.
+All atom indices are 0-indexed.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_dihedrals">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_dihedrals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_dihedrals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_dihedrals" title="Permalink to this definition"></a></dt>
+<dd><p>For each conformer in <cite>conformers</cite> determine the respective dihedrals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>conformers</strong> (<em>list</em>) – Entries are conformer dictionaries.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em>) – All possible torsions in the molecule.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Entries are conformer dictionaries.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_number_of_conformers_to_generate">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_number_of_conformers_to_generate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heavy_atoms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_num</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">minimalist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_number_of_conformers_to_generate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_number_of_conformers_to_generate" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the number of conformers to generate using molecular mechanics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>heavy_atoms</strong> (<em>int</em>) – The number of heavy atoms in the molecule.</p></li>
+<li><p><strong>torsion_num</strong> (<em>int</em>) – The number of potential torsions in the molecule.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em><em>, </em><em>optional</em>) – The RMG Molecule object.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The xyz coordinates.</p></li>
+<li><p><strong>minimalist</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return a small number of conformers, useful when this is just a guess
+before fitting a force field. True to be minimalistic.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If the number of conformers to generate cannot be determined.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p>The number of conformers to generate.</p></li>
+<li><p>The number of chiral centers.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[int, int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_rotors">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_rotors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_rotors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_rotors" title="Permalink to this definition"></a></dt>
+<dd><p>Determine possible unique rotors in the species to be treated as hindered rotors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol_list</strong> (<em>list</em>) – Localized structures (Molecule objects) by which all rotors will be determined.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>A list of indices of scan pivots.</p></li>
+<li><p>A list of indices of top atoms (including one of the pivotal atoms) corresponding to the torsions.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_smallest_atom_index_in_scan">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_smallest_atom_index_in_scan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Atom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Atom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_smallest_atom_index_in_scan"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_smallest_atom_index_in_scan" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the smallest atom index in <code class="docutils literal notranslate"><span class="pre">mol</span></code> connected to <code class="docutils literal notranslate"><span class="pre">atom1</span></code> which is not <code class="docutils literal notranslate"><span class="pre">atom2</span></code>.
+Returns a heavy atom if available, otherwise a hydrogen atom.
+Useful for deterministically determining the indices of four atom in a scan.
+This function assumes there ARE additional atoms connected to <code class="docutils literal notranslate"><span class="pre">atom1</span></code>, and that <code class="docutils literal notranslate"><span class="pre">atom2</span></code> is not a hydrogen atom.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>atom1</strong> (<em>Atom</em>) – The atom whose neighbors will be searched.</p></li>
+<li><p><strong>atom2</strong> (<em>Atom</em>) – An atom connected to <code class="docutils literal notranslate"><span class="pre">atom1</span></code> to exclude (a pivotal atom).</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The molecule to process.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The smallest atom index (1-indexed) connected to <code class="docutils literal notranslate"><span class="pre">atom1</span></code> which is not <code class="docutils literal notranslate"><span class="pre">atom2</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_torsion_sampling_points">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_torsion_sampling_points</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smeared_scan_res</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_torsion_sampling_points"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_torsion_sampling_points" title="Permalink to this definition"></a></dt>
+<dd><p>Determine how many points to consider in each well of a torsion for conformer combinations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>torsion_angles</strong> (<em>list</em>) – Well angles in the torsion.</p></li>
+<li><p><strong>smeared_scan_res</strong> (<em>float</em><em>, </em><em>optional</em>) – The resolution (in degrees) for scanning smeared wells.</p></li>
+<li><p><strong>symmetry</strong> (<em>int</em><em>, </em><em>optional</em>) – The torsion symmetry number.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Sampling points for the torsion.</p></li>
+<li><p>Each entry is a well dictionary with the keys
+<code class="docutils literal notranslate"><span class="pre">start_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">end_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">start_angle</span></code>, <code class="docutils literal notranslate"><span class="pre">end_angle</span></code>, <code class="docutils literal notranslate"><span class="pre">angles</span></code>.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_torsion_symmetry">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_torsion_symmetry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_scan</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_torsion_symmetry"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_torsion_symmetry" title="Permalink to this definition"></a></dt>
+<dd><p>Check whether a torsion is symmetric.
+If a torsion well is “well defined” and not smeared, it could be symmetric.
+Check the groups attached to the rotor pivots to determine whether it is indeed symmetric
+We don’t care about the actual rotor symmetry number here, since we plan to just use the first well
+(they’re all the same).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>top1</strong> (<em>list</em>) – A list of atom indices on one side of the torsion, including the pivotal atom.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em>) – A list of molecules.</p></li>
+<li><p><strong>torsion_scan</strong> (<em>list</em>) – The angles corresponding to this torsion from all conformers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The rotor symmetry number.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.determine_well_width_tolerance">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">determine_well_width_tolerance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean_width</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#determine_well_width_tolerance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.determine_well_width_tolerance" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the tolerance by which well widths are determined to be nearly equal.</p>
+<p>Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mf">0.11</span><span class="p">),</span> <span class="p">(</span><span class="mi">60</span><span class="p">,</span> <span class="mf">0.13</span><span class="p">),</span> <span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">),</span> <span class="p">(</span><span class="mi">25</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.59</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mean_width</strong> (<em>float</em>) – The mean well width in degrees.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tolerance.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.embed_rdkit">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">embed_rdkit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#embed_rdkit"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.embed_rdkit" title="Permalink to this definition"></a></dt>
+<dd><p>Generate unoptimized conformers in RDKit. If <code class="docutils literal notranslate"><span class="pre">xyz</span></code> is not given, random conformers will be generated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>RMG Molecule</em><em> or </em><em>RDKit RDMol</em>) – The molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of random 3D conformations to generate.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The 3D coordinates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An RDKIt molecule with embedded conformers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[RDMol]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.find_internal_rotors">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">find_internal_rotors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#find_internal_rotors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.find_internal_rotors" title="Permalink to this definition"></a></dt>
+<dd><p>Locates the sets of indices corresponding to every internal rotor (1-indexed).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – The molecule for which rotors will be determined.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Entries are rotor dictionaries with the four-atom scan coordinates, the pivots, and the smallest top.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_all_combinations">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_all_combinations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_tors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_sampling_points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">len_conformers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_all_combinations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_all_combinations" title="Permalink to this definition"></a></dt>
+<dd><p>Generate all combinations of torsion wells from a base conformer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule with the connectivity information.</p></li>
+<li><p><strong>base_xyz</strong> (<em>dict</em>) – The base 3D geometry to be changed.</p></li>
+<li><p><strong>multiple_tors</strong> (<em>list</em>) – Entries are torsion tuples of non-symmetric torsions.</p></li>
+<li><p><strong>multiple_sampling_points</strong> (<em>list</em>) – Entries are lists of dihedral angles (sampling points), respectively correspond
+to torsions in multiple_tors.</p></li>
+<li><p><strong>len_conformers</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the existing conformers list (for consecutive numbering).</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of all possible torsions in the molecule. Will be determined if not given.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New conformer combinations, entries are conformer dictionaries.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_conformer_combinations">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_conformer_combinations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hypothetical_num_comb</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_tors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_sampling_points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">combination_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">len_conformers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_combination_iterations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_angles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiple_sampling_points_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wells_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_conformer_combinations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_conformer_combinations" title="Permalink to this definition"></a></dt>
+<dd><p>Call either conformers_combinations_by_lowest_conformer() or generate_all_combinations(),
+according to the hypothetical_num_comb.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule with the connectivity information.</p></li>
+<li><p><strong>base_xyz</strong> (<em>dict</em>) – The base 3D geometry to be changed.</p></li>
+<li><p><strong>hypothetical_num_comb</strong> (<em>int</em>) – The number of combinations that could be generated by changing dihedrals,
+considering symmetry but not considering atom collisions.</p></li>
+<li><p><strong>combination_threshold</strong> (<em>int</em><em>, </em><em>optional</em>) – A threshold below which all combinations will be generated.</p></li>
+<li><p><strong>multiple_tors</strong> (<em>list</em>) – Entries are torsion tuples of non-symmetric torsions.</p></li>
+<li><p><strong>multiple_sampling_points</strong> (<em>list</em>) – Entries are lists of dihedral angles (sampling points), respectively correspond
+to torsions in multiple_tors.</p></li>
+<li><p><strong>len_conformers</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the existing conformers list (for consecutive numbering).</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – An energy threshold (in kJ/mol) above which wells in a torsion
+will not be considered.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The max num of times to iteratively search for the lowest conformer.</p></li>
+<li><p><strong>torsion_angles</strong> (<em>dict</em><em>, </em><em>optional</em>) – The torsion angles. Keys are torsion tuples, values are lists of all
+corresponding angles from conformers.</p></li>
+<li><p><strong>multiple_sampling_points_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsion tuples, values are respective sampling points.</p></li>
+<li><p><strong>wells_dict</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are torsion tuples, values are well dictionaries.</p></li>
+<li><p><strong>plot_path</strong> (<em>str</em><em>, </em><em>optional</em>) – A folder path in which the plot will be saved.
+If None, the plot will not be shown (nor saved).</p></li>
+<li><p><strong>symmetries</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keys are tuples scan indices (1-indexed), values are internal
+rotation symmetry numbers (sigma).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New conformer combinations, entries are conformer dictionaries.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_conformers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_conformers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol_list</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyzs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs_to_generate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">de_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">smeared_scan_res</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">combination_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_combination_iterations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diastereomers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_all_conformers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_logs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_conformers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_conformers" title="Permalink to this definition"></a></dt>
+<dd><p>Generate conformers for (non-TS) species starting from a list of RMG Molecules.
+(resonance structures are assumed to have already been generated and included in the molecule list)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol_list</strong> (<em>Union</em><em>[</em><em>List</em><em>[</em><em>Molecule</em><em>]</em><em>, </em><em>Molecule</em><em>]</em>) – Molecule objects to consider (or Molecule, resonance structures will be generated).</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>xyzs</strong> (<em>list</em>) – A list of user guess xyzs that will also be taken into account, each in a dict format.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of all possible torsions in the molecule. Will be determined if not given.</p></li>
+<li><p><strong>tops</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of tops corresponding to torsions. Will be determined if not given.</p></li>
+<li><p><strong>charge</strong> (<em>int</em><em>, </em><em>optional</em>) – The species charge. Used to perceive a molecule from xyz.</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em><em>, </em><em>optional</em>) – The species multiplicity. Used to perceive a molecule from xyz.</p></li>
+<li><p><strong>num_confs_to_generate</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of conformers to generate (can be determined automatically)</p></li>
+<li><p><strong>n_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of conformers to return.</p></li>
+<li><p><strong>e_confs</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold in kJ/mol above the lowest energy conformer
+below which all (unique) generated conformers will be returned.</p></li>
+<li><p><strong>de_threshold</strong> (<em>float</em><em>, </em><em>optional</em>) – Energy threshold (in kJ/mol) above which wells will not be considered.</p></li>
+<li><p><strong>smeared_scan_res</strong> (<em>float</em><em>, </em><em>optional</em>) – The resolution (in degrees) for scanning smeared wells.</p></li>
+<li><p><strong>combination_threshold</strong> (<em>int</em><em>, </em><em>optional</em>) – A threshold below which all combinations will be generated.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use (MMFF94, MMFF94s, UFF, GAFF).</p></li>
+<li><p><strong>max_combination_iterations</strong> (<em>int</em><em>, </em><em>optional</em>) – The maximum number of times to iteratively search
+for the lowest conformer.</p></li>
+<li><p><strong>diastereomers</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are xyz’s in a dictionary format or conformer structures
+representing specific diastereomers to keep.</p></li>
+<li><p><strong>return_all_conformers</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return the full conformers list of conformer dictionaries
+In addition to the lowest conformers list. Tru to return it.</p></li>
+<li><p><strong>plot_path</strong> (<em>str</em><em>, </em><em>optional</em>) – A folder path in which the plot will be saved.
+If None, the plot will not be shown (nor saved).</p></li>
+<li><p><strong>print_logs</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether define a logger so logs are also printed to stdout.
+Useful when run outside of ARC. True to print.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ConformerError</strong> – If something goes wrong.</p></li>
+<li><p><strong>TypeError</strong> – If xyzs has entries of a wrong type.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Returns: Optional[Union[list, Tuple[list, list]]]</dt><dd><ul class="simple">
+<li><p>Lowest conformers</p></li>
+<li><p>Lowest conformers and all new conformers.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_diatomic_conformer">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_diatomic_conformer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symbol_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symbol_2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_diatomic_conformer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_diatomic_conformer" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a conformer for a diatomic species.
+Data from CCCBDB.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>symbol_1</strong> (<em>str</em>) – The atomic symbol of atom 1.</p></li>
+<li><p><strong>symbol_2</strong> (<em>str</em>) – The atomic symbol of atom 2.</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em><em>, </em><em>optional</em>) – The diatomic species multiplicity</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The diatomic conformer.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_force_field_conformers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_force_field_conformers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsion_num</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyzs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_force_field_conformers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_force_field_conformers" title="Permalink to this definition"></a></dt>
+<dd><p>Generate conformers using RDKit and OpenBabel and optimize them using a force field
+Also consider user guesses in <cite>xyzs</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em>) – Entries are Molecule objects representing resonance structures of a chemical species.</p></li>
+<li><p><strong>xyzs</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are xyz coordinates in dict format, given as initial guesses.</p></li>
+<li><p><strong>torsion_num</strong> (<em>int</em>) – The number of torsions identified in the molecule.</p></li>
+<li><p><strong>charge</strong> (<em>int</em>) – The net charge of the species.</p></li>
+<li><p><strong>multiplicity</strong> (<em>int</em>) – The species spin multiplicity.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of conformers to generate.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If xyzs is given and it is not a list, or its entries are not strings.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Entries are conformer dictionaries.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.generate_monoatomic_conformer">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">generate_monoatomic_conformer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symbol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#generate_monoatomic_conformer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.generate_monoatomic_conformer" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a conformer for a monoatomic species.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>symbol</strong> (<em>str</em>) – The atomic symbol.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The monoatomic conformer.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_force_field_energies">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_force_field_energies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">try_uff</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">try_ob</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">suppress_warning</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_force_field_energies"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_force_field_energies" title="Permalink to this definition"></a></dt>
+<dd><p>Determine force field energies using RDKit.
+If <code class="docutils literal notranslate"><span class="pre">num_confs</span></code> is given, random 3D geometries will be generated. If xyz is given, it will be directly used instead.
+The coordinates are returned in the order of atoms in mol.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of random 3D conformations to generate.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The 3D coordinates guess.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>try_uff</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to try UFF if MMFF94(s) fails. <code class="docutils literal notranslate"><span class="pre">True</span></code> by default.</p></li>
+<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to first optimize the conformer using FF. True to optimize.</p></li>
+<li><p><strong>try_ob</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to try OpenBabel if RDKit fails. <code class="docutils literal notranslate"><span class="pre">True</span></code> to try, <code class="docutils literal notranslate"><span class="pre">True</span></code> by default.</p></li>
+<li><p><strong>suppress_warning</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to suppress OpenBabel warnings. <code class="docutils literal notranslate"><span class="pre">False</span></code> by default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If conformers could not be generated.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p>Entries are xyz coordinates, each in a dict format.</p></li>
+<li><p>Entries are the FF energies (in kJ/mol).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_lowest_confs">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_lowest_confs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">e</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">5.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">energy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'FF</span> <span class="pre">energy'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_lowest_confs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_lowest_confs" title="Permalink to this definition"></a></dt>
+<dd><p>Get the most stable conformer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>confs</strong> (<em>dict</em><em>, </em><em>list</em>) – Entries are either conformer dictionaries or a length two list of xyz coordinates and energy</p></li>
+<li><p><strong>n</strong> (<em>int</em><em>, </em><em>optional</em>) – Number of lowest conformers to return.</p></li>
+<li><p><strong>e</strong> (<em>float</em><em>, </em><em>optional</em>) – The energy threshold above the lowest energy conformer in kJ/mol
+below which all conformers will be returned.</p></li>
+<li><p><strong>energy</strong> (<em>str</em><em>, </em><em>optional</em>) – The energy attribute to search by. Currently only ‘FF energy’ is supported.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If n &lt; 1, e &lt; 0, both n and e are <code class="docutils literal notranslate"><span class="pre">None</span></code>, or if no conformers are given.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Conformer dictionaries.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_lowest_diastereomers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_lowest_diastereomers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diastereomers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_lowest_diastereomers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_lowest_diastereomers" title="Permalink to this definition"></a></dt>
+<dd><p>Get the 2^(n-1) diastereomers with the lowest energy (where n is the number of chiral centers in the molecule).
+We exclude enantiomers (mirror images where ALL chiral centers simultaneously invert).
+If a specific diastereomer is given (in an xyz dict form), then only the lowest conformer with the same chirality
+will be returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The 2D graph representation of the molecule.</p></li>
+<li><p><strong>conformers</strong> (<em>list</em>) – Entries are conformer dictionaries.</p></li>
+<li><p><strong>diastereomers</strong> (<em>list</em><em>, </em><em>optional</em>) – Entries are xyz’s in a dictionary format or conformer structures
+representing specific diastereomers to keep.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If diastereomers is not None and is of wrong type,
+    or if conformers with the requested chirality combination could not be generated.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Entries are lowest energy diastereomeric conformer dictionaries to consider.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_number_of_chiral_centers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_number_of_chiral_centers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">just_get_the_number</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_number_of_chiral_centers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_number_of_chiral_centers" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the number of chiral centers by type. Either <code class="docutils literal notranslate"><span class="pre">conformer</span></code> or <code class="docutils literal notranslate"><span class="pre">xyz</span></code> must be given.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The RMG Molecule object.</p></li>
+<li><p><strong>conformer</strong> (<em>dict</em><em>, </em><em>optional</em>) – A conformer dictionary.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The xyz coordinates.</p></li>
+<li><p><strong>just_get_the_number</strong> (<em>bool</em><em>, </em><em>optional</em>) – Return the number of chiral centers regardless of their type.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>InputError</strong> – If neither <code class="docutils literal notranslate"><span class="pre">conformer</span></code> nor <code class="docutils literal notranslate"><span class="pre">xyz</span></code> were given.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Keys are types of chiral sites (‘C’ for carbon, ‘N’ for nitrogen, ‘D’ for double bond),
+values are the number of chiral centers of each type. If <code class="docutils literal notranslate"><span class="pre">just_get_the_number</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code>,
+just returns the number of chiral centers (integer).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Optional[dict, int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_top_element_count">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_top_element_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_top_element_count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_top_element_count" title="Permalink to this definition"></a></dt>
+<dd><p>Returns the element count for the molecule considering only the atom indices in <code class="docutils literal notranslate"><span class="pre">top</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The molecule to consider.</p></li>
+<li><p><strong>top</strong> (<em>list</em>) – The atom indices to consider.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The element count, keys are tuples of (element symbol, isotope number), values are counts.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_torsion_angles">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_torsion_angles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">conformers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torsions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_torsion_angles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_torsion_angles" title="Permalink to this definition"></a></dt>
+<dd><p>Populate each torsion pivots with all available angles from the generated conformers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>conformers</strong> (<em>list</em>) – The conformers from which to extract the angles.</p></li>
+<li><p><strong>torsions</strong> (<em>list</em>) – The torsions to consider.</p></li>
+<li><p><strong>mol_list</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of Molecule objects.</p></li>
+<li><p><strong>tops</strong> (<em>list</em><em>, </em><em>optional</em>) – A list of tops corresponding to torsions.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The torsion angles. Keys are torsion tuples, values are lists of all corresponding angles from conformers.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.get_wells">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">get_wells</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">angles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blank</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#get_wells"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.get_wells" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the distinct wells from a list of angles.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>angles</strong> (<em>list</em>) – The angles in the torsion.</p></li>
+<li><p><strong>blank</strong> (<em>int</em><em>, </em><em>optional</em>) – The blank space between wells.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Entry are well dicts with keys: <code class="docutils literal notranslate"><span class="pre">start_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">end_idx</span></code>, <code class="docutils literal notranslate"><span class="pre">start_angle</span></code>, <code class="docutils literal notranslate"><span class="pre">end_angle</span></code>, <code class="docutils literal notranslate"><span class="pre">angles</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.identify_chiral_nitrogen_centers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">identify_chiral_nitrogen_centers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#identify_chiral_nitrogen_centers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.identify_chiral_nitrogen_centers" title="Permalink to this definition"></a></dt>
+<dd><p>Identify the atom indices corresponding to a chiral nitrogen centers in a molecule (umbrella modes).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – The molecule to be analyzed.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">mol</span></code> is of wrong type.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Atom numbers (0-indexed) representing chiral nitrogen centers in the molecule (umbrella modes).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.initialize_log">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">initialize_log</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#initialize_log"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.initialize_log" title="Permalink to this definition"></a></dt>
+<dd><p>Set up a simple logger for stdout printing (not saving into as log file).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>verbose</strong> (<em>int</em><em>, </em><em>optional</em>) – Specify the amount of log text seen.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.inverse_chirality_symbol">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">inverse_chirality_symbol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symbol</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#inverse_chirality_symbol"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.inverse_chirality_symbol" title="Permalink to this definition"></a></dt>
+<dd><p>Inverses a chirality symbol, e.g., the ‘R’ character to ‘S’, or ‘NS’ to ‘NR’.
+Note that chiral double bonds (‘E’ and ‘Z’) must not be inversed (they are not mirror images of each other).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>symbol</strong> (<em>str</em>) – The chirality symbol.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>InputError</strong> – If <code class="docutils literal notranslate"><span class="pre">symbol</span></code> could not be recognized.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The inverse chirality symbol.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.mix_rdkit_and_openbabel_force_field">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">mix_rdkit_and_openbabel_force_field</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GAFF'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">try_ob</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#mix_rdkit_and_openbabel_force_field"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.mix_rdkit_and_openbabel_force_field" title="Permalink to this definition"></a></dt>
+<dd><p>Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical)
+Use RDKit to generate the random conformers (OpenBabel isn’t good enough),
+but use OpenBabel to optimize them (RDKit doesn’t have GAFF).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em><em>, </em><em>optional</em>) – The RMG molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of random 3D conformations to generate.</p></li>
+<li><p><strong>xyz</strong> (<em>string</em><em> or </em><em>list</em><em>, </em><em>optional</em>) – The 3D coordinates in either a string or an array format.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>try_ob</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to try OpenBabel if RDKit fails. <code class="docutils literal notranslate"><span class="pre">True</span></code> to try, <code class="docutils literal notranslate"><span class="pre">False</span></code> by default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Entries are optimized xyz’s in a list format.</p></li>
+<li><p>Entries are float numbers representing the energies in kJ/mol.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.openbabel_force_field">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">openbabel_force_field</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'GAFF'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'diverse'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#openbabel_force_field"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.openbabel_force_field" title="Permalink to this definition"></a></dt>
+<dd><p>Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em><em>, </em><em>optional</em>) – The RMG molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of random 3D conformations to generate.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em><em>, </em><em>optional</em>) – The 3D coordinates.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>method</strong> (<em>str</em><em>, </em><em>optional</em>) – The conformer searching method to use in OpenBabel.
+For method description, see <a class="reference external" href="https://openbabel.org/dev-api/group__conformer.shtml">https://openbabel.org/dev-api/group__conformer.shtml</a></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Entries are optimized xyz’s in a list format.</p></li>
+<li><p>Entries are float numbers representing the energies in kJ/mol.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.openbabel_force_field_on_rdkit_conformers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">openbabel_force_field_on_rdkit_conformers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rd_mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#openbabel_force_field_on_rdkit_conformers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.openbabel_force_field_on_rdkit_conformers" title="Permalink to this definition"></a></dt>
+<dd><p>Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).
+This is a fallback method when RDKit fails to generate force field optimized conformers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>rd_mol</strong> (<em>RDKit RDMol</em>) – The RDKit molecule with embedded conformers to optimize.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to first optimize the conformer using FF. True to optimize.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Entries are optimized xyz’s in a dictionary format.</p></li>
+<li><p>Entries are float numbers representing the energies (in kJ/mol).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.prune_enantiomers_dict">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">prune_enantiomers_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enantiomers_dict</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#prune_enantiomers_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.prune_enantiomers_dict" title="Permalink to this definition"></a></dt>
+<dd><p>A helper function for screening out enantiomers from the enantiomers_dict, leaving only diastereomers
+(so removing all exact mirror images). Note that double bond chiralities ‘E’ and ‘Z’ are not mirror images of each
+other, and are not pruned out.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>enantiomers_dict</strong> (<em>dict</em>) – Keys are chirality tuples, values are conformer structures.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The pruned enantiomers_dict.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.rdkit_force_field">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">rdkit_force_field</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rd_mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">EditableMol</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Molecule</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_confs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_field</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MMFF94s'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">try_uff</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">try_ob</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/arc/species/conformers.html#rdkit_force_field"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.rdkit_force_field" title="Permalink to this definition"></a></dt>
+<dd><p>Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
+For UFF see: <a class="reference external" href="https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs">https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>rd_mol</strong> (<em>RDKit RDMol</em>) – The RDKit molecule with embedded conformers to optimize.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em><em>, </em><em>optional</em>) – The RMG molecule object with connectivity and bond order information.</p></li>
+<li><p><strong>num_confs</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of random 3D conformations to generate.</p></li>
+<li><p><strong>force_field</strong> (<em>str</em><em>, </em><em>optional</em>) – The type of force field to use.</p></li>
+<li><p><strong>try_uff</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to try UFF if MMFF94(s) fails. <code class="docutils literal notranslate"><span class="pre">True</span></code> by default.</p></li>
+<li><p><strong>optimize</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to first optimize the conformer using FF. True to optimize.</p></li>
+<li><p><strong>try_ob</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to try OpenBabel if RDKit fails. <code class="docutils literal notranslate"><span class="pre">True</span></code> to try, <code class="docutils literal notranslate"><span class="pre">False</span></code> by default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p>Entries are optimized xyz’s in a dictionary format.</p></li>
+<li><p>Entries are float numbers representing the energies.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[list, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.read_rdkit_embedded_conformer_i">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">read_rdkit_embedded_conformer_i</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rd_mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rd_index_map</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#read_rdkit_embedded_conformer_i"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.read_rdkit_embedded_conformer_i" title="Permalink to this definition"></a></dt>
+<dd><p>Read coordinates from RDKit conformers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rd_mol</strong> (<em>RDKit RDMol</em>) – The RDKit molecule with embedded conformers to optimize.</p></li>
+<li><p><strong>i</strong> (<em>int</em>) – The conformer index from rd_mol to read.</p></li>
+<li><p><strong>rd_index_map</strong> (<em>list</em><em>, </em><em>optional</em>) – An atom map dictionary to reorder the xyz.
+Keys are rdkit atom indices, values are RMG mol atom indices.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>xyz coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.read_rdkit_embedded_conformers">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">read_rdkit_embedded_conformers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rd_mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rd_index_map</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#read_rdkit_embedded_conformers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.read_rdkit_embedded_conformers" title="Permalink to this definition"></a></dt>
+<dd><p>Read coordinates from RDKit conformers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>rd_mol</strong> (<em>RDKit RDMol</em>) – The RDKit molecule with embedded conformers to optimize.</p></li>
+<li><p><strong>i</strong> (<em>int</em><em>, </em><em>optional</em>) – The conformer index from rd_mol to read. If None, all will be read,</p></li>
+<li><p><strong>rd_index_map</strong> (<em>list</em><em>, </em><em>optional</em>) – An atom map dictionary to reorder the xyz. Requires mol to not be <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Entries are xyz coordinate dicts.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.replace_n_with_c_in_mol">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">replace_n_with_c_in_mol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chiral_nitrogen_centers</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#replace_n_with_c_in_mol"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.replace_n_with_c_in_mol" title="Permalink to this definition"></a></dt>
+<dd><p>Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
+(assuming just one exists) with a hydrogen or a halogen atom, preserving any radical electrons on the nitrogen atom.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The molecule to be analyzed.</p></li>
+<li><p><strong>chiral_nitrogen_centers</strong> (<em>list</em>) – The 0-index of chiral (umbrella mode) nitrogen atoms in the molecule.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ConformerError</strong> – If any of the atoms indicated by <code class="docutils literal notranslate"><span class="pre">chiral_nitrogen_centers</span></code> could not be a chiral nitrogen atom.</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p>A copy of the molecule with replaced N atoms.</p></li>
+<li><p>Elements inserted in addition to the C atom, ordered as in <code class="docutils literal notranslate"><span class="pre">chiral_nitrogen_centers</span></code>.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[Molecule, list]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.replace_n_with_c_in_xyz">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">replace_n_with_c_in_xyz</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chiral_nitrogen_centers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">elements_to_insert</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#replace_n_with_c_in_xyz"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.replace_n_with_c_in_xyz" title="Permalink to this definition"></a></dt>
+<dd><p>Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair
+(assuming just one exists) with a hydrogen or a halogen atom.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The respective molecule object.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em>) – The 3D coordinates to process.</p></li>
+<li><p><strong>chiral_nitrogen_centers</strong> (<em>list</em>) – The 0-index of chiral (umbrella mode) nitrogen atoms in the molecule.</p></li>
+<li><p><strong>elements_to_insert</strong> (<em>list</em>) – The element (H/F/Cl/I) to insert in addition to C per nitrogen center.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The coordinates with replaced N atoms.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.to_group">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">to_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atom_indices</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#to_group"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.to_group" title="Permalink to this definition"></a></dt>
+<dd><p>This method converts a defined part of a Molecule into a Group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The base molecule.</p></li>
+<li><p><strong>atom_indices</strong> (<em>list</em>) – 0-indexed atom indices corresponding to atoms in mol to be included in the group.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A group consisting of the desired atoms in mol.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Group</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.translate_group">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">translate_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pivot</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">anchor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vector</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#translate_group"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.translate_group" title="Permalink to this definition"></a></dt>
+<dd><p>Translate a group (a set of atoms from the pivot towards the anchor and onwards) by changing its
+pivot -&gt; anchor vector to the desired new vector. Keep the relative distances between the group’s atoms constant,
+as well as the distance between the anchor and the vector atoms.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The 2D graph representation of the molecule.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em>) – The 3D coordinates of the molecule with the same atom order as in mol.</p></li>
+<li><p><strong>pivot</strong> (<em>int</em>) – The 0-index of the pivotal atom around which groups are to be translated.</p></li>
+<li><p><strong>anchor</strong> (<em>int</em>) – The 0-index of an anchor atom. The group is defined from the pivot atom to the anchor atom,
+including all other atoms in the molecule connected to the anchor. The pivot and anchor
+atoms should not have another path connecting them such as a ring.</p></li>
+<li><p><strong>vector</strong> (<em>list</em>) – The new vector by which the group will be translated.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The translated coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.translate_groups">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">translate_groups</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xyz</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pivot</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#translate_groups"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.translate_groups" title="Permalink to this definition"></a></dt>
+<dd><p>Exchange between two groups in a molecule. The groups cannot share a ring with the pivotal atom.
+The function does not change the atom order, just the coordinates of atoms.
+If the pivotal atom has exactly one lone pair, consider it as well as a dummy atom in translations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>label</strong> (<em>str</em>) – The species’ label.</p></li>
+<li><p><strong>mol</strong> (<em>Molecule</em>) – The 2D graph representation of the molecule.</p></li>
+<li><p><strong>xyz</strong> (<em>dict</em>) – A string-format 3d coordinates of the molecule with the same atom order as in mol.</p></li>
+<li><p><strong>pivot</strong> (<em>int</em>) – The 0-index of the pivotal atom around which groups are to be translated.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The translated coordinates.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="arc.species.conformers.update_mol">
+<span class="sig-prename descclassname"><span class="pre">arc.species.conformers.</span></span><span class="sig-name descname"><span class="pre">update_mol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mol</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/arc/species/conformers.html#update_mol"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.conformers.update_mol" title="Permalink to this definition"></a></dt>
+<dd><p>Update atom types, multiplicity, and atom charges in the molecule.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mol</strong> (<em>Molecule</em>) – The molecule to update.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>the updated molecule.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Molecule</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="converter.html" class="btn btn-neutral float-left" title="arc.species.converter" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vectors.html" class="btn btn-neutral float-right" title="arc.species.vectors" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Features &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Output" href="output.html" />
+    <link rel="prev" title="Examples" href="examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+          </a>
+              <div class="version">
+                1.1
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Advanced Features</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#flexible-coordinates-xyz-input">Flexible coordinates (xyz) input</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#specify-a-specific-job-type-to-execute">Specify a specific job type to execute</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#levels-of-theory">Levels of theory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#adaptive-levels-of-theory">Adaptive levels of theory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#control-job-memory-allocation">Control job memory allocation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-a-fine-dft-grid-for-optimization">Using a fine DFT grid for optimization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#rotor-scans">Rotor scans</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#nd-rotor-scans">ND Rotor scans</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#electronic-structure-software-settings">Electronic Structure Software Settings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#ess-check-files">ESS check files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#frequency-scaling-factors">Frequency scaling factors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#isomorphism-checks">Isomorphism checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#using-a-non-default-project-directory">Using a non-default project directory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#visualizing-molecular-orbitals-mos">Visualizing molecular orbitals (MOs)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#consider-a-specific-diastereomer">Consider a specific diastereomer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#don-t-generate-conformers-for-specific-species">Don’t generate conformers for specific species</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#writing-an-arc-input-file-using-the-api">Writing an ARC input file using the API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#calculating-bdes-bond-dissociation-energies">Calculating BDEs (bond dissociation energies)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#disable-comparisons-with-the-rmg-database">Disable comparisons with the RMG database</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#use-solvent-corrections">Use solvent corrections</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#batch-delete-arc-jobs">Batch delete ARC jobs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting">Choose modified/classical Arrhenius equation form for rate coefficient fitting</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Advanced Features</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/advanced.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="advanced-features">
+<span id="advanced"></span><h1>Advanced Features<a class="headerlink" href="#advanced-features" title="Permalink to this heading"></a></h1>
+<section id="flexible-coordinates-xyz-input">
+<span id="flexxyz"></span><h2>Flexible coordinates (xyz) input<a class="headerlink" href="#flexible-coordinates-xyz-input" title="Permalink to this heading"></a></h2>
+<p>The xyz attribute of an <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> object (whether a TS or not) is extremely flexible.
+It could be a multiline string containing the coordinates, or a list of several such multiline strings.
+It could also contain valid file paths to ESS input files, output files,
+<a class="reference external" href="https://en.wikipedia.org/wiki/XYZ_file_format">XYZ format</a> files, or ARC’s conformers (before/after optimization) files.
+See <a class="reference internal" href="examples.html#examples"><span class="std std-ref">the examples</span></a>.</p>
+</section>
+<section id="specify-a-specific-job-type-to-execute">
+<h2>Specify a specific job type to execute<a class="headerlink" href="#specify-a-specific-job-type-to-execute" title="Permalink to this heading"></a></h2>
+<p>To run ARC with a particular job type <strong>only</strong>, set <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> to the job type you want.
+Currently, ARC supports the following job types: <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code>, <code class="docutils literal notranslate"><span class="pre">conf_sp</span></code>, <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">fine</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">rotors</span></code>, <code class="docutils literal notranslate"><span class="pre">onedmin</span></code>, <code class="docutils literal notranslate"><span class="pre">orbitals</span></code>, <code class="docutils literal notranslate"><span class="pre">bde</span></code>, <code class="docutils literal notranslate"><span class="pre">irc</span></code>.</p>
+<p>Note: <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> takes higher precedence than <code class="docutils literal notranslate"><span class="pre">job_types</span></code>. If you specify both attributes, ARC will
+dismiss the given <code class="docutils literal notranslate"><span class="pre">job_types</span></code> and will only populate the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary using the given
+<code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code>.</p>
+<p>For bond dissociation energy calculation, the following two <code class="docutils literal notranslate"><span class="pre">job_types</span></code> specifications are equivalent:</p>
+<p>Specification 1:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">job_types</span><span class="p">:</span>
+  <span class="n">rotors</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">conformers</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">opt</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">sp</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">bde</span><span class="p">:</span> <span class="n">true</span>
+</pre></div>
+</div>
+<p>Specification 2:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">specific_job_type</span><span class="p">:</span> <span class="n">bde</span>
+</pre></div>
+</div>
+</section>
+<section id="levels-of-theory">
+<span id="levels"></span><h2>Levels of theory<a class="headerlink" href="#levels-of-theory" title="Permalink to this heading"></a></h2>
+<p>ARC’s <a class="reference internal" href="api/level.html#level"><span class="std std-ref">Level</span></a> class is meant to allow detailed and comprehensive specification of
+a level of theory. ARC allows users to specify a level of theory per job type, with some shortcuts
+as described below. Job types for which levels of theory may be specified (otherwise ARC will assume
+defaults values) are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_opt_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">conformer_sp_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ts_guess_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">opt_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">freq_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sp_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">composite_method</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">scan_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">irc_level</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orbitals_level</span></code></p></li>
+</ul>
+</div></blockquote>
+<p>Each level may be defined either by a string or a dictionary.
+Specifying a string may only contain a method and a basis set where applicable, e.g.,
+<code class="docutils literal notranslate"><span class="pre">CBS-QB3</span></code> or <code class="docutils literal notranslate"><span class="pre">wb97xd/def2-tzvp</span></code>. The dictionary allows additional
+arguments to be defined: <code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">basis</span></code>, <code class="docutils literal notranslate"><span class="pre">auxiliary_basis</span></code>, <code class="docutils literal notranslate"><span class="pre">dispersion</span></code>,
+<code class="docutils literal notranslate"><span class="pre">cabs</span></code> (complementary auxiliary basis set for F12 calculations), <code class="docutils literal notranslate"><span class="pre">software</span></code>,
+<code class="docutils literal notranslate"><span class="pre">software_version</span></code> (not used), <code class="docutils literal notranslate"><span class="pre">solvation_method</span></code>, <code class="docutils literal notranslate"><span class="pre">solvent</span></code>, <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code>, <code class="docutils literal notranslate"><span class="pre">args</span></code>.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conformer_opt_level</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp&#39;</span><span class="p">,</span>
+                      <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;6-31g(d,p)&#39;</span><span class="p">,</span>
+                      <span class="s1">&#39;dispersion&#39;</span><span class="p">:</span> <span class="s1">&#39;empiricaldispersion=gd3bj&#39;</span><span class="p">,</span>
+                  <span class="p">}</span>
+</pre></div>
+</div>
+<p>specifies <code class="docutils literal notranslate"><span class="pre">b3lyp/6-31g(d,p)</span></code> model chemistry along with the
+<a class="reference external" href="https://onlinelibrary.wiley.com/doi/full/10.1002/jcc.21759">D3 version of Grimme’s dispersion with Becke-Johnson damping</a> for optimizing conformers.
+Note that <code class="docutils literal notranslate"><span class="pre">empiricaldispersion=gd3bj</span></code> is the format required by <code class="docutils literal notranslate"><span class="pre">Gaussian</span></code>.
+In general, different ESS have various formats for specifying model chemistry.
+Make sure to pass the correct format based on the intended ESS that should be used.</p>
+<p>Another example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sp_level</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;DLPNO-CCSD(T)-F12&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;cc-pVTZ-F12&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;auxiliary_basis&#39;</span><span class="p">:</span> <span class="s1">&#39;aug-cc-pVTZ/C cc-pVTZ-F12-CABS&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;args&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span> <span class="p">:{</span><span class="s1">&#39;opt_convergence&#39;</span><span class="p">:</span> <span class="s1">&#39;TightOpt&#39;</span><span class="p">}},</span>
+           <span class="s1">&#39;software&#39;</span><span class="p">:</span> <span class="s1">&#39;orca&#39;</span><span class="p">,</span>
+           <span class="p">}</span>
+</pre></div>
+</div>
+<p>specifies <code class="docutils literal notranslate"><span class="pre">DLPNO-CCSD(T)-F12/cc-pVTZ-F12</span></code> model chemistry along with two auxiliary basis sets,
+<code class="docutils literal notranslate"><span class="pre">aug-cc-pVTZ/C</span></code> and <code class="docutils literal notranslate"><span class="pre">cc-pVTZ-F12-CABS</span></code>, with <code class="docutils literal notranslate"><span class="pre">TightOpt</span></code> for a single point energy calculation.</p>
+<p>THe following are examples for <strong>equivalent</strong> definitions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="s1">&#39;apfd/def2tzvp&#39;</span>
+<span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2tzvp&#39;</span><span class="p">}</span>
+
+<span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="s1">&#39;PM6&#39;</span>
+<span class="n">conformer_opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;PM6&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Note that the <code class="docutils literal notranslate"><span class="pre">cabs</span></code> and <code class="docutils literal notranslate"><span class="pre">solvation_scheme_level</span></code> arguments currently have no effect
+and will be implemented in future versions. The <code class="docutils literal notranslate"><span class="pre">software</span></code> argument is automatically determined
+unless specified by the user.</p>
+<p>ARC also supports an additional shortcut argument, <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code>,
+to simultaneously specify <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, <code class="docutils literal notranslate"><span class="pre">freq_level</span></code>, <code class="docutils literal notranslate"><span class="pre">sp_level</span></code>, and <code class="docutils literal notranslate"><span class="pre">scan_level</span></code>.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">level_of_theory</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(T)/def2tzvp//apfd/def2svp&#39;</span>
+</pre></div>
+</div>
+<p>is a shortcut for:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">freq_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">scan_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">sp_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(T)&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2tzvp&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Note: If <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> does not contain the <code class="docutils literal notranslate"><span class="pre">//</span></code> deliminator but does contain <code class="docutils literal notranslate"><span class="pre">\/</span></code>,
+it is interpreted as intended for running all opt, freq, scan, <strong>and sp</strong> job types at that level.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">level_of_theory</span><span class="p">:</span> <span class="s1">&#39;wb97xd/def2svp&#39;</span>
+</pre></div>
+</div>
+<p>is equivalent to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">freq_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">scan_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+<span class="n">sp_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>Note: If <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> does not contain any deliminator (neither <code class="docutils literal notranslate"><span class="pre">//</span></code> nor <code class="docutils literal notranslate"><span class="pre">\/</span></code>), it is interpreted as a
+composite method.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">level_of_theory</span><span class="p">:</span> <span class="s1">&#39;cbs-qb3&#39;</span>
+</pre></div>
+</div>
+<p>is interpreted as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">composite_method</span><span class="p">:</span> <span class="s1">&#39;cbs-qb3&#39;</span>
+</pre></div>
+</div>
+<p>If a semi-empirical method was meant to be used (e.g., <code class="docutils literal notranslate"><span class="pre">AM1</span></code>), it must be set using the job-specific level of theory
+arguments (e.g., <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, etc.) using the dictionary format, rather than the <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> shortcut
+argument.</p>
+<p>For example, to specify <code class="docutils literal notranslate"><span class="pre">AM1</span></code> as the geometry optimization method, please use:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;AM1&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>To avoid conflicts and confusion, ARC will raise an <code class="docutils literal notranslate"><span class="pre">InputError</span></code> if
+<code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> is specified along with <code class="docutils literal notranslate"><span class="pre">composite_method</span></code>, <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>,
+or <code class="docutils literal notranslate"><span class="pre">sp_level</span></code>.</p>
+<p>A notable argument is <code class="docutils literal notranslate"><span class="pre">args</span></code>, which is a 2-level nested dictionary
+of additional directives to pass to the ESS.
+There are only two allowed keys for the first level, <code class="docutils literal notranslate"><span class="pre">keyword</span></code> and <code class="docutils literal notranslate"><span class="pre">block</span></code>.
+Entries under <code class="docutils literal notranslate"><span class="pre">keyword</span></code> will be added to the directive line of the ESS input file as keywords,
+while entries under <code class="docutils literal notranslate"><span class="pre">block</span></code> are treated as multiline strings and will be added after the
+directive line of the ESS input file. The corresponding values for these keywords are dictionaries as well.
+While specific keys are used by ARC internally for troubleshooting,
+users are encouraged use <code class="docutils literal notranslate"><span class="pre">general</span></code> as a key for any additional values.
+ARC can deduce the software to be used per level of theory using heuristics, yet since the values of <code class="docutils literal notranslate"><span class="pre">args</span></code>
+are software-dependent, it is highly recommended that users also specify the optional <code class="docutils literal notranslate"><span class="pre">software</span></code> argument
+to avoid using an incompatible software. For convenience,
+<code class="docutils literal notranslate"><span class="pre">args</span></code> can also be inputted as a sting or a list of strings which will be internallt converted to the correct
+dictionary format with <code class="docutils literal notranslate"><span class="pre">keyword</span></code> and <code class="docutils literal notranslate"><span class="pre">general</span></code> keys.</p>
+<p>For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span> <span class="p">:{</span><span class="s1">&#39;opt_convergence&#39;</span><span class="p">:</span> <span class="s1">&#39;TightOpt&#39;</span><span class="p">},</span>
+        <span class="s1">&#39;block&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;general&#39;</span><span class="p">:</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1">cf DryRun true </span><span class="se">\n</span><span class="s1"> end&#39;</span><span class="p">}}</span>
+</pre></div>
+</div>
+<p>Another example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;keyword&#39;</span> <span class="p">:{</span><span class="s1">&#39;general&#39;</span><span class="p">:</span> <span class="s1">&#39;iop(99/33=1)&#39;</span><span class="p">}}</span>
+</pre></div>
+</div>
+<p>will append <code class="docutils literal notranslate"><span class="pre">iop(99/33=1)</span></code> to the respective Gaussian job input file.</p>
+</section>
+<section id="adaptive-levels-of-theory">
+<h2>Adaptive levels of theory<a class="headerlink" href="#adaptive-levels-of-theory" title="Permalink to this heading"></a></h2>
+<p>ARC allows users to adapt the level of theory to the size of the molecule.
+To do so, pass the <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> attribute, which is a dictionary of
+levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
+molecule. Keys are tuples of (<code class="docutils literal notranslate"><span class="pre">min_num_atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">max_num_atoms</span></code>), values are
+dictionaries with the a tuple of job type as the key (<code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>, <code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">scan</span></code>)
+and the respective level of theory as a string or a dictionary is the value.
+Don’t forget to bound the entire range between 1 and <code class="docutils literal notranslate"><span class="pre">inf</span></code>, also make sure
+there aren’t any gaps in the heavy atom ranges. For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">adaptive_levels</span> <span class="o">=</span> <span class="p">{(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">):</span>      <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">,</span>
+                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;ccsd(t)-f12/aug-cc-pvtz-f12&#39;</span><span class="p">},</span>
+                   <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">15</span><span class="p">):</span>     <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/cbsb7&#39;</span><span class="p">,</span>
+                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;dlpno-ccsd(t)/def2-tzvp/c&#39;</span><span class="p">},</span>
+                   <span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">30</span><span class="p">):</span>    <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
+                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd/6-311+g(2d,2p)&#39;</span><span class="p">},</span>
+                   <span class="p">(</span><span class="mi">31</span><span class="p">,</span> <span class="s1">&#39;inf&#39;</span><span class="p">):</span> <span class="p">{(</span><span class="s1">&#39;opt&#39;</span><span class="p">,</span> <span class="s1">&#39;freq&#39;</span><span class="p">):</span> <span class="s1">&#39;b3lyp/6-31g(d,p)&#39;</span><span class="p">,</span>
+                                 <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="s1">&#39;b3lyp/6-311+g(d,p)&#39;</span><span class="p">}}</span>
+</pre></div>
+</div>
+<p>Note that job types which are not specified in <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> will use no-adaptive
+(defined separately e.g., via <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, or using ARC’s defaults.</p>
+</section>
+<section id="control-job-memory-allocation">
+<h2>Control job memory allocation<a class="headerlink" href="#control-job-memory-allocation" title="Permalink to this heading"></a></h2>
+<p>To specify the amount of memory for all jobs in an ARC project,
+set <code class="docutils literal notranslate"><span class="pre">job_memory</span></code> with a positive integer value (units are GB).</p>
+<p>Note that the total memory per node can be modified by setting the value of <code class="docutils literal notranslate"><span class="pre">memory</span></code>
+in the servers dictionary under settings.py.
+This value will be treated as the maximum allowable memory per node, and memory-related troubleshooting
+methods will not be allowed to request more than this value.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">job_memory</span></code> is not defined, ARC will initialize each job using 14 GB memory by default.
+In case a job crashes due to insufficient memory, ARC will try to resubmit that job asking for
+a higher memory allocation up to the specified maximal node <code class="docutils literal notranslate"><span class="pre">memory</span></code>.</p>
+</section>
+<section id="using-a-fine-dft-grid-for-optimization">
+<h2>Using a fine DFT grid for optimization<a class="headerlink" href="#using-a-fine-dft-grid-for-optimization" title="Permalink to this heading"></a></h2>
+<p>This option is turned on by default. If you’d like to turn it off,
+set <code class="docutils literal notranslate"><span class="pre">fine</span></code> in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+<p>If turned on, ARC will spawn another DFT optimization job after the first one converges,
+now with a fine grid settings, using the already optimized geometry.</p>
+<p>It is also possible to instruct ARC not to run the first optimization job,
+and instead use a fine grid to begin with. To do so, set <code class="docutils literal notranslate"><span class="pre">fine:</span> <span class="pre">True</span></code> but <code class="docutils literal notranslate"><span class="pre">opt:</span> <span class="pre">False</span></code>.</p>
+<p>Note that this argument is called <code class="docutils literal notranslate"><span class="pre">fine</span></code> in ARC, although in practice
+it directs the ESS to use an <strong>ultrafine</strong> grid. See, for example, <a class="reference external" href="https://doi.org/10.26434/chemrxiv.8864204.v5">this study</a>
+describing the importance of the DFT grid.</p>
+<p>In Gaussian, <code class="docutils literal notranslate"><span class="pre">fine</span></code> will add the following directive:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">scf</span><span class="o">=</span><span class="p">(</span><span class="n">tight</span><span class="p">,</span> <span class="n">direct</span><span class="p">)</span> <span class="n">integral</span><span class="o">=</span><span class="p">(</span><span class="n">grid</span><span class="o">=</span><span class="n">ultrafine</span><span class="p">,</span> <span class="n">Acc2E</span><span class="o">=</span><span class="mi">12</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>In QChem, it will add the following directives:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GEOM_OPT_TOL_GRADIENT</span>     <span class="mi">15</span>
+<span class="n">GEOM_OPT_TOL_DISPLACEMENT</span> <span class="mi">60</span>
+<span class="n">GEOM_OPT_TOL_ENERGY</span>       <span class="mi">5</span>
+<span class="n">XC_GRID</span>                   <span class="mi">3</span>
+</pre></div>
+</div>
+<p>In TeraChem, it will add the following directives:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">dftgrid</span> <span class="mi">4</span>
+<span class="n">dynamicgrid</span> <span class="n">yes</span>
+</pre></div>
+</div>
+</section>
+<section id="rotor-scans">
+<h2>Rotor scans<a class="headerlink" href="#rotor-scans" title="Permalink to this heading"></a></h2>
+<p>This option is turned on by default. If you’d like to turn it off,
+set <code class="docutils literal notranslate"><span class="pre">rotors</span></code> in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+<p>ARC will perform 1D (one dimensional) rotor scans for all possible unique internal rotors in the species,</p>
+<p>The rotor scan resolution is 8 degrees by default (scanning 360 degrees overall).
+This can be changed via the <code class="docutils literal notranslate"><span class="pre">rotor_scan_resolution</span></code> parameter in the settings.
+Rotors are invalidated (not used for thermo / rate calculations) if at least one barrier
+is above a maximum threshold (40 kJ/mol by default), if the scan is inconsistent by more than 30%
+between two consecutive points, or if the scan is inconsistent by more than 5 kJ/mol
+between the initial anf final points.
+All of the above settings can be modified in the settings.py file.</p>
+</section>
+<section id="nd-rotor-scans">
+<h2>ND Rotor scans<a class="headerlink" href="#nd-rotor-scans" title="Permalink to this heading"></a></h2>
+<p>ARC also supports ND (N dimensional, N &gt;= 1) rotor scans. There are seven different ND types to execute:</p>
+<ul class="simple">
+<li><p>A1. Generate all geometries in advance (brute force), and calculate single point energies (nested or diagonalized).</p></li>
+<li><p>A2. Generate all geometries in advance (brute force), and run constraint optimizations (nested or diagonalized).</p></li>
+<li><ol class="upperalpha simple" start="2">
+<li><p>Derive the geometry from the previous point (continuous) and run constraint optimizations (nested or diagonalized).</p></li>
+</ol>
+</li>
+<li><ol class="upperalpha simple" start="3">
+<li><p>Let the ESS guide the optimizations.</p></li>
+</ol>
+</li>
+</ul>
+<p>Each of the options above (A or B) can be either “nested” (considering all ND dihedral combinations) or “diagonal”
+(resulting in a unique 1D rotor scan across several dimensions). The seventh option (C) allows the ESS to control
+the ND scan, which is similar in principal to option B, but not directly controlled by ARC.</p>
+<p>The optional primary keys are:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">brute_force_sp</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">brute_force_opt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cont_opt</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ess</span></code></p></li>
+</ul>
+<p>The brute force methods will generate all the geometries in advance and submit all relevant
+jobs simultaneously.
+The continuous method will wait for the previous job to terminate, and use its geometry as the
+initial guess for the next job.</p>
+<p>Another set of three keys is allowed, adding <code class="docutils literal notranslate"><span class="pre">_diagonal</span></code> to each of the above keys.
+The secondary keys are therefore:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">brute_force_sp_diagonal</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">brute_force_opt_diagonal</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cont_opt_diagonal</span></code></p></li>
+</ul>
+<p>Specifying <code class="docutils literal notranslate"><span class="pre">_diagonal</span></code> will increment all the respective dihedrals together, resulting in a 1D scan instead of
+an ND scan. Values are nested lists. Each value is a list where the entries are either pivot lists (e.g., <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">5]</span></code>)
+or lists of pivot lists (e.g., <code class="docutils literal notranslate"><span class="pre">[[1,</span> <span class="pre">5],</span> <span class="pre">[6,</span> <span class="pre">8]]</span></code>), or a mix (e.g., <code class="docutils literal notranslate"><span class="pre">[[4,</span> <span class="pre">8],</span> <span class="pre">[[6,</span> <span class="pre">9],</span> <span class="pre">[3,</span> <span class="pre">4]]</span></code>). The requested
+directed scan type will be executed separately for each list entry. A list entry that contains only two pivots
+will result in a 1D scan, while a list entry with N pivots will consider all of them, and will result in an ND scan
+(if <code class="docutils literal notranslate"><span class="pre">_diagonal</span></code> is not specified). Note that indices are 1-indexed.</p>
+<p>ARC will generate geometries using the <code class="docutils literal notranslate"><span class="pre">rotor_scan_resolution</span></code> argument in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>.</p>
+<p>Note: An <code class="docutils literal notranslate"><span class="pre">'all'</span></code> string entry is also allowed in the value list, triggering a directed internal rotation scan for all
+torsions in the molecule. If <code class="docutils literal notranslate"><span class="pre">'all'</span></code> is specified within a second level list, then all the dihedrals will be considered
+together. Currently ARC does not automatically identify torsions to be treated as ND, and this attribute must be
+specified by the user. An additional supported key is ‘ess’, in which case ARC will allow the ESS to take care of
+spawning the ND continuous constrained optimizations.</p>
+<p>To execute ND rotor scans, first set the <code class="docutils literal notranslate"><span class="pre">rotors</span></code> job type to <code class="docutils literal notranslate"><span class="pre">True</span></code>.
+Next, set the <code class="docutils literal notranslate"><span class="pre">directed_rotors</span></code> attribute of the relevant species. Below are several examples.</p>
+<p>To run all dihedral scans of a species separately using brute force sp (each as 1D):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;some_label&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;species_smiles&#39;</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;brute_force_sp&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;all&#39;</span><span class="p">]})</span>
+</pre></div>
+</div>
+<p>To run all dihedral scans of a species as a conjugated scan (ND, N = the number of torsions):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;some_label&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;species_smiles&#39;</span><span class="p">,</span> <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;cont_opt&#39;</span><span class="p">:</span> <span class="p">[[</span><span class="s1">&#39;all&#39;</span><span class="p">]]})</span>
+</pre></div>
+</div>
+<p>Note the change in list level (<code class="docutils literal notranslate"><span class="pre">all</span></code> is either within one or two nested lists) in the above examples.</p>
+<p>To run specific dihedrals as ND (here all 2D combinations for a species with 3 torsions):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;C4O2&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[O]CCCC=O&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                  <span class="n">directed_rotors</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;brute_force_opt&#39;</span><span class="p">:</span> <span class="p">[[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]],</span> <span class="p">[[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]]]})</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>Note: ND rotors are still <strong>not</strong> incorporated into the molecular partition function,
+so currently will not affect thermo or rates.</p></li>
+<li><p>Note: Any torsion defined as part of an ND rotor scan will <strong>not</strong> be spawned for that species as a separate 1D scan.</p></li>
+<li><p>Warning: Job arrays have not been incorporated into ARC yet. Spawning ND rotor scans will result in <strong>many</strong>
+individual jobs being submit to your server queue system.</p></li>
+</ul>
+</section>
+<section id="electronic-structure-software-settings">
+<h2>Electronic Structure Software Settings<a class="headerlink" href="#electronic-structure-software-settings" title="Permalink to this heading"></a></h2>
+<p>ARC currently supports the following electronic structure software (ESS):</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><a class="reference external" href="http://gaussian.com/">Gaussian</a></p></li>
+<li><p><a class="reference external" href="https://www.molpro.net/">Molpro</a></p></li>
+<li><p><a class="reference external" href="https://sites.google.com/site/orcainputlibrary/">Orca</a></p></li>
+<li><p><a class="reference external" href="https://www.q-chem.com/">QChem</a></p></li>
+<li><p><a class="reference external" href="http://www.petachem.com/products.html">TeraChem</a></p></li>
+</ul>
+</div></blockquote>
+<p>ARC also supports the following (non-ESS) software:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><a class="reference external" href="https://tcg.cse.anl.gov/papr/codes/onedmin.html">OneDMin</a> for Lennard-Jones transport coefficient calculations.</p></li>
+<li><p><a class="reference external" href="http://www.gromacs.org/">Gromacs</a> for molecular dynamics simulations.</p></li>
+</ul>
+</div></blockquote>
+<p>You may pass an ESS settings dictionary to direct ARC where to find each software:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">ess_settings</span><span class="p">:</span>
+  <span class="n">gaussian</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">server1</span>
+  <span class="o">-</span> <span class="n">server2</span>
+  <span class="n">gromacs</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">server1</span>
+  <span class="n">molpro</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">server1</span>
+  <span class="n">onedmin</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">server2</span>
+  <span class="n">qchem</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">server1</span>
+</pre></div>
+</div>
+</section>
+<section id="troubleshooting">
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permalink to this heading"></a></h2>
+<p>ARC has fairly good auto-troubleshooting methods.</p>
+<p>However, at times a user might know in advance that a particular additional keyword
+is required for the calculation. In such cases, simply pass the relevant keyword
+in the <code class="docutils literal notranslate"><span class="pre">initial_trsh</span></code> (<code class="docutils literal notranslate"><span class="pre">trsh</span></code> stands for <code class="docutils literal notranslate"><span class="pre">troubleshooting</span></code>) dictionary passed to ARC:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">initial_trsh</span><span class="p">:</span>
+  <span class="n">gaussian</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">iop</span><span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">18</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+  <span class="n">molpro</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">shift</span><span class="p">,</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span><span class="o">-</span><span class="mf">0.5</span><span class="p">;</span>
+  <span class="n">qchem</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">GEOM_OPT_MAX_CYCLES</span> <span class="mi">250</span>
+</pre></div>
+</div>
+</section>
+<section id="ess-check-files">
+<h2>ESS check files<a class="headerlink" href="#ess-check-files" title="Permalink to this heading"></a></h2>
+<p>ARC copies check files from previous <a class="reference external" href="http://gaussian.com/">Gaussian</a> and <a class="reference external" href="http://www.petachem.com/products.html">TeraChem</a> jobs,
+and uses them when spawning additional jobs for the same species.
+When ARC terminates, it will attempt to delete all downloaded checkfiles (remote copies remain).
+To change this behaviour and keep the check files, set the <code class="docutils literal notranslate"><span class="pre">keep_checks</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">True</span></code>
+(it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default).</p>
+</section>
+<section id="frequency-scaling-factors">
+<h2>Frequency scaling factors<a class="headerlink" href="#frequency-scaling-factors" title="Permalink to this heading"></a></h2>
+<p>ARC will look for appropriate available frequency scaling factors in <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html">Arkane</a>
+for the respective <code class="docutils literal notranslate"><span class="pre">freq_level</span></code>. If a frequency scaling factor isn’t available, ARC will attempt
+to determine it using <a class="reference external" href="https://dx.doi.org/10.1021/ct100326h">Truhlar’s method</a>. This involves spawning fine optimizations and frequency
+calculations for a dataset of 15 small molecules. To avoid this, either pass a known frequency scaling
+factor using the <code class="docutils literal notranslate"><span class="pre">freq_scale_factor</span></code> attribute (see <a class="reference internal" href="examples.html#examples"><span class="std std-ref">examples</span></a>), or set the
+<code class="docutils literal notranslate"><span class="pre">calc_freq_factor</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default).</p>
+</section>
+<section id="isomorphism-checks">
+<h2>Isomorphism checks<a class="headerlink" href="#isomorphism-checks" title="Permalink to this heading"></a></h2>
+<p>When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
+is performed on the optimized geometry (all conformers and final optimization).
+If the molecule perceived from the 3D coordinate is not isomorphic
+with the input 2D graph, ARC will not spawn any additional jobs for the species, and will not use it further
+(for thermo and/or rates calculations). However, sometimes the perception algorithm doesn’t work as expected (e.g.,
+issues with charged species and triplets are known). To continue spawning jobs for all species in an ARC
+project, pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">allow_nonisomorphic_2d</span></code> argument (it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default).</p>
+</section>
+<section id="using-a-non-default-project-directory">
+<span id="directory"></span><h2>Using a non-default project directory<a class="headerlink" href="#using-a-non-default-project-directory" title="Permalink to this heading"></a></h2>
+<p>If ARC is run from the terminal with an input/restart file
+then the folder in which that file is located becomes the Project’s folder.
+If ARC is run using the API, a folder with the Project’s name is created under <code class="docutils literal notranslate"><span class="pre">ARC/Projects/</span></code>.
+To change this behavior, you may request a specific project folder. Simply pass the desired project
+folder path using the <code class="docutils literal notranslate"><span class="pre">project_directory</span></code> argument. If the folder does not exist, ARC will create it
+(and all parent folders, if necessary).</p>
+</section>
+<section id="visualizing-molecular-orbitals-mos">
+<h2>Visualizing molecular orbitals (MOs)<a class="headerlink" href="#visualizing-molecular-orbitals-mos" title="Permalink to this heading"></a></h2>
+<p>There are various ways to visualize MOs.
+One way is to open a <a class="reference external" href="http://gaussian.com/">Gaussian</a> output file
+using <a class="reference external" href="https://gaussian.com/gaussview6/">GaussView</a>.</p>
+<p>ARC supports an additional way to generate high quality and good looking MOs.
+Simply set the <code class="docutils literal notranslate"><span class="pre">orbitals</span></code> entry of the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary to <code class="docutils literal notranslate"><span class="pre">True</span></code> (it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default`).
+ARC will spawn a <a class="reference external" href="https://www.q-chem.com/">QChem</a> job with the
+<code class="docutils literal notranslate"><span class="pre">PRINT_ORBITALS</span> <span class="pre">TRUE</span></code> directive using <a class="reference external" href="http://nbo.chem.wisc.edu/">NBO</a>,
+and will copy the resulting FCheck output file.
+Make sure you set the <code class="docutils literal notranslate"><span class="pre">orbitals</span></code> level of theory to the desired level in <code class="docutils literal notranslate"><span class="pre">default_levels_of_theory</span></code>
+in <code class="docutils literal notranslate"><span class="pre">settings.py</span></code>.
+Open the resulting FCheck file using <a class="reference external" href="http://iqmol.org/">IQMol</a>
+to post process and save images.</p>
+</section>
+<section id="consider-a-specific-diastereomer">
+<h2>Consider a specific diastereomer<a class="headerlink" href="#consider-a-specific-diastereomer" title="Permalink to this heading"></a></h2>
+<p>ARC’s conformer generation module will consider by default all non-enantiomeric (non-mirror) diastereomers,
+using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
+To consider a specific diastereomer, pass the 3D xyz coordinates when defining the species, and set the
+<code class="docutils literal notranslate"><span class="pre">consider_all_diastereomers</span></code> species flag to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default). For example, the following code
+will cause ARC to only consider the R-Z diastereomer of the following hypothetical species:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1_xyz</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;Cl      1.47566594   -2.36900082   -0.86260264</span>
+<span class="s2">              O      -1.34833561    1.76407680    0.29252133</span>
+<span class="s2">              C       1.46682130   -0.58010226   -0.70920153</span>
+<span class="s2">              C       0.81289268   -0.14477878    0.61006147</span>
+<span class="s2">              C       2.90276866   -0.07697610   -0.80213588</span>
+<span class="s2">              C      -3.09903967    0.08314581    0.61641835</span>
+<span class="s2">              C      -1.64512811    0.43845470    0.53602810</span>
+<span class="s2">              C      -0.65975628   -0.45946534    0.67414755</span>
+<span class="s2">              H       0.89577875   -0.19512286   -1.56141944</span>
+<span class="s2">              H       0.97218270    0.93173379    0.74977707</span>
+<span class="s2">              H       1.30829197   -0.62970434    1.46110152</span>
+<span class="s2">              H       3.36555034   -0.38002993   -1.74764205</span>
+<span class="s2">              H       3.51837776   -0.46405162    0.01733990</span>
+<span class="s2">              H       2.93198350    1.01693209   -0.75630452</span>
+<span class="s2">              H      -3.57828825    0.63692499    1.43000638</span>
+<span class="s2">              H      -3.60256180    0.33896163   -0.32130952</span>
+<span class="s2">              H      -3.25218225   -0.98524107    0.80024046</span>
+<span class="s2">              H      -0.91263085   -1.50255031    0.85455686</span>
+<span class="s2">              H      -2.18255121    2.26238957    0.24010821&quot;&quot;&quot;</span>
+<span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;CC(Cl)CC=C(C)O&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CC(Cl)CC=C(C)O&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">spc1_xyz</span><span class="p">,</span> <span class="n">consider_all_diastereomers</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Note that the specified xyz don’t have to be the lowest energy conformer (the goal is of course to find it),
+but just be an arbitrary conformer with the required chiralities to be preserved.</p>
+</section>
+<section id="don-t-generate-conformers-for-specific-species">
+<h2>Don’t generate conformers for specific species<a class="headerlink" href="#don-t-generate-conformers-for-specific-species" title="Permalink to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code> entry in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary is a global flag,
+affecting conformer generation of all species in the project.</p>
+<p>If you’d like to avoid generating conformers just for selected species,
+pass their labels to ARC in the <code class="docutils literal notranslate"><span class="pre">dont_gen_confs</span></code> list, e.g.:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">arc_demo_selective_confs</span>
+
+<span class="n">dont_gen_confs</span><span class="p">:</span>
+<span class="o">-</span> <span class="n">propanol</span>
+
+<span class="n">species</span><span class="p">:</span>
+
+<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">propane</span>
+  <span class="n">smiles</span><span class="p">:</span> <span class="n">CCC</span>
+  <span class="n">xyz</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">C</span>   <span class="mf">0.0000000</span>   <span class="mf">0.0000000</span>   <span class="mf">0.5863560</span>
+    <span class="n">C</span>   <span class="mf">0.0000000</span>   <span class="mf">1.2624760</span>  <span class="o">-</span><span class="mf">0.2596090</span>
+    <span class="n">C</span>   <span class="mf">0.0000000</span>  <span class="o">-</span><span class="mf">1.2624760</span>  <span class="o">-</span><span class="mf">0.2596090</span>
+    <span class="n">H</span>   <span class="mf">0.8743630</span>   <span class="mf">0.0000000</span>   <span class="mf">1.2380970</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">0.8743630</span>   <span class="mf">0.0000000</span>   <span class="mf">1.2380970</span>
+    <span class="n">H</span>   <span class="mf">0.0000000</span>   <span class="mf">2.1562580</span>   <span class="mf">0.3624930</span>
+    <span class="n">H</span>   <span class="mf">0.0000000</span>  <span class="o">-</span><span class="mf">2.1562580</span>   <span class="mf">0.3624930</span>
+    <span class="n">H</span>   <span class="mf">0.8805340</span>   <span class="mf">1.2981830</span>  <span class="o">-</span><span class="mf">0.9010030</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">0.8805340</span>   <span class="mf">1.2981830</span>  <span class="o">-</span><span class="mf">0.9010030</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">0.8805340</span>  <span class="o">-</span><span class="mf">1.2981830</span>  <span class="o">-</span><span class="mf">0.9010030</span>
+    <span class="n">H</span>   <span class="mf">0.8805340</span>  <span class="o">-</span><span class="mf">1.2981830</span>  <span class="o">-</span><span class="mf">0.9010030</span>
+
+<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">propanol</span>
+  <span class="n">smiles</span><span class="p">:</span> <span class="n">CCCO</span>
+  <span class="n">xyz</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">C</span>  <span class="o">-</span><span class="mf">1.4392250</span>   <span class="mf">1.2137610</span>   <span class="mf">0.0000000</span>
+    <span class="n">C</span>   <span class="mf">0.0000000</span>   <span class="mf">0.7359250</span>   <span class="mf">0.0000000</span>
+    <span class="n">C</span>   <span class="mf">0.0958270</span>  <span class="o">-</span><span class="mf">0.7679350</span>   <span class="mf">0.0000000</span>
+    <span class="n">O</span>   <span class="mf">1.4668240</span>  <span class="o">-</span><span class="mf">1.1155780</span>   <span class="mf">0.0000000</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">1.4886150</span>   <span class="mf">2.2983600</span>   <span class="mf">0.0000000</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">1.9711060</span>   <span class="mf">0.8557990</span>   <span class="mf">0.8788010</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">1.9711060</span>   <span class="mf">0.8557990</span>  <span class="o">-</span><span class="mf">0.8788010</span>
+    <span class="n">H</span>   <span class="mf">0.5245130</span>   <span class="mf">1.1136730</span>   <span class="mf">0.8740840</span>
+    <span class="n">H</span>   <span class="mf">0.5245130</span>   <span class="mf">1.1136730</span>  <span class="o">-</span><span class="mf">0.8740840</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">0.4095940</span>  <span class="o">-</span><span class="mf">1.1667640</span>   <span class="mf">0.8815110</span>
+    <span class="n">H</span>  <span class="o">-</span><span class="mf">0.4095940</span>  <span class="o">-</span><span class="mf">1.1667640</span>  <span class="o">-</span><span class="mf">0.8815110</span>
+    <span class="n">H</span>   <span class="mf">1.5267840</span>  <span class="o">-</span><span class="mf">2.0696580</span>   <span class="mf">0.0000000</span>
+</pre></div>
+</div>
+<p>In the above example, ARC will only generate conformers for propane (not for propanol).
+For propane, it will compare the selected conformers against the user-given xyz guess using the
+conformer level DFT method, and will take the most stable structure for the rest of the calculations,
+regardless of its source (ARC’s conformers or the user guess). For propanol, on the other hand,
+ARC will not attempt to generate conformers, and will simply use the user guess.</p>
+<p>Note: If a species label is added to the <code class="docutils literal notranslate"><span class="pre">dont_gen_confs</span></code> list, but the species has no 3D
+coordinates, ARC <strong>will</strong> generate conformers for it.</p>
+</section>
+<section id="writing-an-arc-input-file-using-the-api">
+<h2>Writing an ARC input file using the API<a class="headerlink" href="#writing-an-arc-input-file-using-the-api" title="Permalink to this heading"></a></h2>
+<p>Writing in YAML isn’t very intuitive for many, especially without a good editor.
+You could use ARC’s API to define your objects, and then dump it all in a YAML file
+which could be read as an input in ARC:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">save_yaml_file</span>
+
+<span class="n">input_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;project&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Demo_project_input_file_from_API&#39;</span>
+
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;job_types&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;conf_opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;opt&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;fine&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;freq&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;sp&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;rotors&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                           <span class="s1">&#39;conf_sp&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                           <span class="s1">&#39;orbitals&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                           <span class="s1">&#39;lennard_jones&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+                          <span class="p">}</span>
+
+<span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;NO&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[N]=O&#39;</span><span class="p">)</span>
+
+<span class="n">adj1</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;multiplicity 2</span>
+<span class="s2">1 C u0 p0 c0 {2,D} {4,S} {5,S}</span>
+<span class="s2">2 C u0 p0 c0 {1,D} {3,S} {6,S}</span>
+<span class="s2">3 O u1 p2 c0 {2,S}</span>
+<span class="s2">4 H u0 p0 c0 {1,S}</span>
+<span class="s2">5 H u0 p0 c0 {1,S}</span>
+<span class="s2">6 H u0 p0 c0 {2,S}&quot;&quot;&quot;</span>
+
+<span class="n">xyz2</span> <span class="o">=</span> <span class="p">[</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;O       1.35170118   -1.00275231   -0.48283333</span>
+<span class="sd">       C      -0.67437022    0.01989281    0.16029161</span>
+<span class="sd">       C       0.62797113   -0.03193934   -0.15151370</span>
+<span class="sd">       H      -1.14812497    0.95492850    0.42742905</span>
+<span class="sd">       H      -1.27300665   -0.88397696    0.14797321</span>
+<span class="sd">       H       1.11582953    0.94384729   -0.10134685&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;O       1.49847909   -0.87864716    0.21971764</span>
+<span class="sd">       C      -0.69134542   -0.01812252    0.05076812</span>
+<span class="sd">       C       0.64534929    0.00412787   -0.04279617</span>
+<span class="sd">       H      -1.19713983   -0.90988817    0.40350584</span>
+<span class="sd">       H      -1.28488154    0.84437992   -0.22108130</span>
+<span class="sd">       H       1.02953840    0.95815005   -0.41011413&quot;&quot;&quot;</span><span class="p">]</span>
+
+<span class="n">spc2</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;vinoxy&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz2</span><span class="p">,</span> <span class="n">adjlist</span><span class="o">=</span><span class="n">adj1</span><span class="p">)</span>
+
+<span class="n">spc_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc1</span><span class="p">,</span> <span class="n">spc2</span><span class="p">]</span>
+
+<span class="n">input_dict</span><span class="p">[</span><span class="s1">&#39;species&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">spc_list</span><span class="p">]</span>
+
+<span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="s1">&#39;some/path/to/desired/folder/input.yml&#39;</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">input_dict</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The above code generated the following input file:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">Demo_project_input_file_from_API</span>
+
+<span class="n">job_types</span><span class="p">:</span>
+  <span class="n">rotors</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">conf_opt</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">lennard_jones</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">opt</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">orbitals</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">sp</span><span class="p">:</span> <span class="n">true</span>
+
+<span class="n">species</span><span class="p">:</span>
+<span class="o">-</span> <span class="n">E0</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">arkane_file</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">bond_corrections</span><span class="p">:</span>
+    <span class="n">N</span><span class="o">=</span><span class="n">O</span><span class="p">:</span> <span class="mi">1</span>
+  <span class="n">charge</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="n">external_symmetry</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">force_field</span><span class="p">:</span> <span class="n">MMFF94</span>
+  <span class="n">generate_thermo</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">is_ts</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">label</span><span class="p">:</span> <span class="s1">&#39;NO&#39;</span>
+  <span class="n">long_thermo_description</span><span class="p">:</span> <span class="s1">&#39;Bond corrections: {&#39;&#39;N=O&#39;&#39;: 1}</span>
+
+    <span class="s1">&#39;</span>
+  <span class="n">mol</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">multiplicity</span> <span class="mi">2</span>
+    <span class="mi">1</span> <span class="n">N</span> <span class="n">u1</span> <span class="n">p1</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="n">D</span><span class="p">}</span>
+    <span class="mi">2</span> <span class="n">O</span> <span class="n">u0</span> <span class="n">p2</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="n">D</span><span class="p">}</span>
+  <span class="n">multiplicity</span><span class="p">:</span> <span class="mi">2</span>
+  <span class="n">neg_freqs_trshed</span><span class="p">:</span> <span class="p">[]</span>
+  <span class="n">number_of_rotors</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="n">optical_isomers</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">rotors_dict</span><span class="p">:</span> <span class="p">{}</span>
+  <span class="n">t1</span><span class="p">:</span> <span class="n">null</span>
+<span class="o">-</span> <span class="n">E0</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">arkane_file</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">bond_corrections</span><span class="p">:</span>
+    <span class="n">C</span><span class="o">-</span><span class="n">H</span><span class="p">:</span> <span class="mi">3</span>
+    <span class="n">C</span><span class="o">-</span><span class="n">O</span><span class="p">:</span> <span class="mi">1</span>
+    <span class="n">C</span><span class="o">=</span><span class="n">C</span><span class="p">:</span> <span class="mi">1</span>
+  <span class="n">charge</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="n">conformer_energies</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">null</span>
+  <span class="o">-</span> <span class="n">null</span>
+  <span class="n">conformers</span><span class="p">:</span>
+  <span class="o">-</span> <span class="o">|-</span>
+    <span class="n">O</span>       <span class="mf">1.35170118</span>   <span class="o">-</span><span class="mf">1.00275231</span>   <span class="o">-</span><span class="mf">0.48283333</span>
+    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.67437022</span>    <span class="mf">0.01989281</span>    <span class="mf">0.16029161</span>
+    <span class="n">C</span>       <span class="mf">0.62797113</span>   <span class="o">-</span><span class="mf">0.03193934</span>   <span class="o">-</span><span class="mf">0.15151370</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.14812497</span>    <span class="mf">0.95492850</span>    <span class="mf">0.42742905</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.27300665</span>   <span class="o">-</span><span class="mf">0.88397696</span>    <span class="mf">0.14797321</span>
+    <span class="n">H</span>       <span class="mf">1.11582953</span>    <span class="mf">0.94384729</span>   <span class="o">-</span><span class="mf">0.10134685</span>
+  <span class="o">-</span> <span class="o">|-</span>
+    <span class="n">O</span>       <span class="mf">1.49847909</span>   <span class="o">-</span><span class="mf">0.87864716</span>    <span class="mf">0.21971764</span>
+    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.69134542</span>   <span class="o">-</span><span class="mf">0.01812252</span>    <span class="mf">0.05076812</span>
+    <span class="n">C</span>       <span class="mf">0.64534929</span>    <span class="mf">0.00412787</span>   <span class="o">-</span><span class="mf">0.04279617</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.19713983</span>   <span class="o">-</span><span class="mf">0.90988817</span>    <span class="mf">0.40350584</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.28488154</span>    <span class="mf">0.84437992</span>   <span class="o">-</span><span class="mf">0.22108130</span>
+    <span class="n">H</span>       <span class="mf">1.02953840</span>    <span class="mf">0.95815005</span>   <span class="o">-</span><span class="mf">0.41011413</span>
+  <span class="n">external_symmetry</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">force_field</span><span class="p">:</span> <span class="n">MMFF94</span>
+  <span class="n">generate_thermo</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">is_ts</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">label</span><span class="p">:</span> <span class="n">vinoxy</span>
+  <span class="n">long_thermo_description</span><span class="p">:</span> <span class="s1">&#39;Bond corrections: {&#39;&#39;C-O&#39;&#39;: 1, &#39;&#39;C=C&#39;&#39;: 1, &#39;&#39;C-H&#39;&#39;: 3}</span>
+
+    <span class="s1">&#39;</span>
+  <span class="n">mol</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">multiplicity</span> <span class="mi">2</span>
+    <span class="mi">1</span> <span class="n">O</span> <span class="n">u1</span> <span class="n">p2</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">3</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+    <span class="mi">2</span> <span class="n">C</span> <span class="n">u0</span> <span class="n">p0</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">3</span><span class="p">,</span><span class="n">D</span><span class="p">}</span> <span class="p">{</span><span class="mi">4</span><span class="p">,</span><span class="n">S</span><span class="p">}</span> <span class="p">{</span><span class="mi">5</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+    <span class="mi">3</span> <span class="n">C</span> <span class="n">u0</span> <span class="n">p0</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="n">S</span><span class="p">}</span> <span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="n">D</span><span class="p">}</span> <span class="p">{</span><span class="mi">6</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+    <span class="mi">4</span> <span class="n">H</span> <span class="n">u0</span> <span class="n">p0</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+    <span class="mi">5</span> <span class="n">H</span> <span class="n">u0</span> <span class="n">p0</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">2</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+    <span class="mi">6</span> <span class="n">H</span> <span class="n">u0</span> <span class="n">p0</span> <span class="n">c0</span> <span class="p">{</span><span class="mi">3</span><span class="p">,</span><span class="n">S</span><span class="p">}</span>
+  <span class="n">multiplicity</span><span class="p">:</span> <span class="mi">2</span>
+  <span class="n">neg_freqs_trshed</span><span class="p">:</span> <span class="p">[]</span>
+  <span class="n">number_of_rotors</span><span class="p">:</span> <span class="mi">0</span>
+  <span class="n">optical_isomers</span><span class="p">:</span> <span class="n">null</span>
+  <span class="n">rotors_dict</span><span class="p">:</span> <span class="p">{}</span>
+  <span class="n">t1</span><span class="p">:</span> <span class="n">null</span>
+</pre></div>
+</div>
+</section>
+<section id="calculating-bdes-bond-dissociation-energies">
+<h2>Calculating BDEs (bond dissociation energies)<a class="headerlink" href="#calculating-bdes-bond-dissociation-energies" title="Permalink to this heading"></a></h2>
+<p>To direct ARC to calculate BDEs for a species, set the <code class="docutils literal notranslate"><span class="pre">bde</span></code> job type to <code class="docutils literal notranslate"><span class="pre">True</span></code>,
+and set the requested atom indices (1-indexed) in the species <code class="docutils literal notranslate"><span class="pre">.bdes</span></code> argument
+as a list of tuples representing indices of bonded atoms (via a single bond)
+between which the BDE will be calculated (a list of lists is also allowed and will be converted),
+E.g., a species can be defined as:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;label1&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CC(NO)C&#39;</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz1</span><span class="p">,</span> <span class="n">bdes</span><span class="o">=</span><span class="p">[(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">)])</span>
+</pre></div>
+</div>
+<p>Note that the <code class="docutils literal notranslate"><span class="pre">bdes</span></code> species argument also accepts the string <code class="docutils literal notranslate"><span class="pre">'all_h'</span></code> as one of the entries
+in the list, directing ARC to calculate BDEs for all hydrogen atoms in the species.
+Below is an example requesting all hydrogen BDEs in ethanol including the <code class="docutils literal notranslate"><span class="pre">C--O</span></code> BDE:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">ethanol_BDEs</span>
+
+<span class="n">job_types</span><span class="p">:</span>
+  <span class="n">rotors</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">conf_opt</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">fine</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">freq</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">opt</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">sp</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">bde</span><span class="p">:</span> <span class="n">true</span>
+
+<span class="n">species</span><span class="p">:</span>
+<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">ethanol</span>
+  <span class="n">smiles</span><span class="p">:</span> <span class="n">CCO</span>
+  <span class="n">xyz</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">O</span>       <span class="mf">1.20823797</span>   <span class="o">-</span><span class="mf">0.43654321</span>    <span class="mf">0.79046266</span>
+    <span class="n">C</span>       <span class="mf">0.38565457</span>    <span class="mf">0.37473766</span>   <span class="o">-</span><span class="mf">0.03466399</span>
+    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.94122817</span>   <span class="o">-</span><span class="mf">0.32248828</span>   <span class="o">-</span><span class="mf">0.24592109</span>
+    <span class="n">H</span>       <span class="mf">0.89282946</span>    <span class="mf">0.53292877</span>   <span class="o">-</span><span class="mf">0.99112072</span>
+    <span class="n">H</span>       <span class="mf">0.23767951</span>    <span class="mf">1.34108205</span>    <span class="mf">0.45660206</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">0.79278514</span>   <span class="o">-</span><span class="mf">1.30029213</span>   <span class="o">-</span><span class="mf">0.71598886</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.43922693</span>   <span class="o">-</span><span class="mf">0.50288055</span>    <span class="mf">0.71249177</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.60098471</span>    <span class="mf">0.27712988</span>   <span class="o">-</span><span class="mf">0.87920708</span>
+    <span class="n">H</span>       <span class="mf">2.04982343</span>    <span class="mf">0.03632579</span>    <span class="mf">0.90734524</span>
+  <span class="n">bdes</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">all_h</span>
+  <span class="o">-</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="o">-</span> <span class="mi">2</span>
+</pre></div>
+</div>
+<p>Note: In the above example, the BDE calculation is not based on the geometry specified by the given xyz,
+but on the optimal geometry determined by ARC. To calculate the same BDEs in ethanol using specified geometry, use:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">ethanol_BDEs_specific_geometry</span>
+
+<span class="n">specific_job_type</span> <span class="p">:</span> <span class="n">bde</span>
+
+<span class="n">species</span><span class="p">:</span>
+<span class="o">-</span> <span class="n">label</span><span class="p">:</span> <span class="n">ethanol</span>
+  <span class="n">smiles</span><span class="p">:</span> <span class="n">CCO</span>
+  <span class="n">xyz</span><span class="p">:</span> <span class="o">|</span>
+    <span class="n">O</span>       <span class="mf">1.20823797</span>   <span class="o">-</span><span class="mf">0.43654321</span>    <span class="mf">0.79046266</span>
+    <span class="n">C</span>       <span class="mf">0.38565457</span>    <span class="mf">0.37473766</span>   <span class="o">-</span><span class="mf">0.03466399</span>
+    <span class="n">C</span>      <span class="o">-</span><span class="mf">0.94122817</span>   <span class="o">-</span><span class="mf">0.32248828</span>   <span class="o">-</span><span class="mf">0.24592109</span>
+    <span class="n">H</span>       <span class="mf">0.89282946</span>    <span class="mf">0.53292877</span>   <span class="o">-</span><span class="mf">0.99112072</span>
+    <span class="n">H</span>       <span class="mf">0.23767951</span>    <span class="mf">1.34108205</span>    <span class="mf">0.45660206</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">0.79278514</span>   <span class="o">-</span><span class="mf">1.30029213</span>   <span class="o">-</span><span class="mf">0.71598886</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.43922693</span>   <span class="o">-</span><span class="mf">0.50288055</span>    <span class="mf">0.71249177</span>
+    <span class="n">H</span>      <span class="o">-</span><span class="mf">1.60098471</span>    <span class="mf">0.27712988</span>   <span class="o">-</span><span class="mf">0.87920708</span>
+    <span class="n">H</span>       <span class="mf">2.04982343</span>    <span class="mf">0.03632579</span>    <span class="mf">0.90734524</span>
+  <span class="n">bdes</span><span class="p">:</span>
+  <span class="o">-</span> <span class="n">all_h</span>
+  <span class="o">-</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="o">-</span> <span class="mi">2</span>
+</pre></div>
+</div>
+<p>Note: The BDEs are determined based on <code class="docutils literal notranslate"><span class="pre">E0</span></code>, therefore both <code class="docutils literal notranslate"><span class="pre">sp</span></code> and <code class="docutils literal notranslate"><span class="pre">freq</span></code> jobs
+must be spawned (and successfully terminated for all species and fragments).</p>
+<p>The calculated BDEs are reported in the log file as well as in a designated <code class="docutils literal notranslate"><span class="pre">BDE_report.yml</span></code>
+file under the <code class="docutils literal notranslate"><span class="pre">output</span></code> directory in the project’s folder. Units are kJ/mol.</p>
+</section>
+<section id="disable-comparisons-with-the-rmg-database">
+<h2>Disable comparisons with the RMG database<a class="headerlink" href="#disable-comparisons-with-the-rmg-database" title="Permalink to this heading"></a></h2>
+<p>By default, at the end of an ARC job, ARC will try to compare the calculated
+thermochemistry and kinetics to estimates from the RMG database to assist the human reality-check.
+The comparison is saved as a parity plot in the output directory.</p>
+<p>Sometimes though, it is desirable to disable these comparisons with the RMG database.
+For example, although ARC will not crash due to any exceptions encountered while making
+the parity plots, it makes sense to disable these comparisons when dealing with species
+that cannot be estimated by the RMG database (e.g. because of the presence of atom types that
+are currently not supported). In other circumstances it may make sense to disable this comparison
+simply to save time by not having to load the entire RMG database.</p>
+<p>To disable ARC from generating these parity plots,
+simply pass the following argument to ARC:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">compare_to_rmg</span><span class="p">:</span> <span class="kc">False</span>
+</pre></div>
+</div>
+<p>With this option specified, ARC will not load the RMG database, and parity plots will not be generated.</p>
+</section>
+<section id="use-solvent-corrections">
+<h2>Use solvent corrections<a class="headerlink" href="#use-solvent-corrections" title="Permalink to this heading"></a></h2>
+<p>This feature is currently only implemented for jobs spawned using Gaussian.
+The <code class="docutils literal notranslate"><span class="pre">solvation</span></code> argument of a level of theory, if not <code class="docutils literal notranslate"><span class="pre">None</span></code>, requests that a calculation
+be performed in the presence of a solvent by placing the solute (the species) in a cavity within
+the solvent reaction field. This argument is a dictionary, with the following keys:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>‘method’ (optional values: ‘pcm’ (default), ‘cpcm’, ‘dipole’, ‘ipcm’, ‘scipcm’)</p></li>
+<li><p>‘solvent’ (values are strings of “known” solvents, default is “water”)</p></li>
+</ul>
+</div></blockquote>
+<p>Example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span>
+             <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2tzvp&#39;</span><span class="p">,</span>
+             <span class="s1">&#39;solvation&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;pcm&#39;</span><span class="p">,</span>
+                           <span class="s1">&#39;solvent: &#39;</span><span class="n">DiethylEther</span><span class="s1">&#39;},</span>
+            <span class="p">}</span>
+</pre></div>
+</div>
+<p>See <a class="reference external" href="https://gaussian.com/scrf/">https://gaussian.com/scrf/</a> for more details.</p>
+</section>
+<section id="batch-delete-arc-jobs">
+<h2>Batch delete ARC jobs<a class="headerlink" href="#batch-delete-arc-jobs" title="Permalink to this heading"></a></h2>
+<p>DANGER ZONE: Make sure you understand what you’re doing before running this script! Data of running jobs will be lost.</p>
+<p>ARC has a feature that deletes all ARC-spawned jobs from selected servers and projects.
+To delete all ARC jobs, type in a terminal in the ARC code folder after activating <code class="docutils literal notranslate"><span class="pre">arc_env</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">arc</span><span class="o">/</span><span class="n">utils</span><span class="o">/</span><span class="n">delete</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">a</span>
+</pre></div>
+</div>
+<p>You can also request to delete jobs from a specific server by specifying its name after the <code class="docutils literal notranslate"><span class="pre">-s</span></code> flag:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">arc</span><span class="o">/</span><span class="n">utils</span><span class="o">/</span><span class="n">delete</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">s</span> <span class="n">server1</span> <span class="o">-</span><span class="n">a</span>
+</pre></div>
+</div>
+<p>To delete jobs from a specific ARC project, pass the project’s name after the <code class="docutils literal notranslate"><span class="pre">-p</span></code> flag:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">arc</span><span class="o">/</span><span class="n">utils</span><span class="o">/</span><span class="n">delete</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">p</span> <span class="n">project1</span>
+</pre></div>
+</div>
+<p>Alternatively (since project names might be long and not always shown in full when requesting the server job status),
+one can supply an ARC job ID, and ALL jobs related to the project of the given job ID will be deleted
+(NOT only the given job!):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="n">arc</span><span class="o">/</span><span class="n">utils</span><span class="o">/</span><span class="n">delete</span><span class="o">.</span><span class="n">py</span> <span class="o">-</span><span class="n">j</span> <span class="n">a_54836</span>
+</pre></div>
+</div>
+<p>Note that either a <code class="docutils literal notranslate"><span class="pre">-a</span></code>, a <code class="docutils literal notranslate"><span class="pre">-p</span></code>, or a <code class="docutils literal notranslate"><span class="pre">-j</span></code> flag must be given.
+All flags can be combined with the optional <code class="docutils literal notranslate"><span class="pre">-s</span></code> flag.</p>
+</section>
+<section id="choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting">
+<h2>Choose modified/classical Arrhenius equation form for rate coefficient fitting<a class="headerlink" href="#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting" title="Permalink to this heading"></a></h2>
+<p>ARC uses statistical mechanics software packages (e.g., Arkane) to compute rate coefficients for chemical reactions from
+the results of quantum chemistry calculations. By default, ARC instructs the statmech programs to compute rate
+coefficients in the modified three-parameter Arrhenius equation format:</p>
+<div class="math">
+<p><img src="_images/math/e010542136fb8ad219a70747e0d68fea0de202a7.png" alt="k(T) = A \left( \frac{T}{T_0} \right)^n \exp \left( -\frac{E_a}{RT} \right)"/></p>
+</div><p>Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:</p>
+<div class="math">
+<p><img src="_images/math/65c258feec6808325490782dac7df28d797a63c8.png" alt="k(T) = A \exp \left( -\frac{E_a}{RT} \right)"/></p>
+</div><p>by setting the <code class="docutils literal notranslate"><span class="pre">three_params</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default). For example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">use_classical_arrhenius_eqn_for_rate_calc_demo</span>
+<span class="n">three_params</span><span class="p">:</span> <span class="kc">False</span>
+</pre></div>
+</div>
+<p>instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
+all reactions in the same ARC project.</p>
+<p>Advanced: to recompute the rate coefficient in the modified three-parameter Arrhenius equation format, simply change
+<code class="docutils literal notranslate"><span class="pre">three_params</span></code> to <code class="docutils literal notranslate"><span class="pre">True</span></code> in the ARC project’s restart.yml file, and then restart ARC.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="examples.html" class="btn btn-neutral float-left" title="Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="output.html" class="btn btn-neutral float-right" title="Output" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
