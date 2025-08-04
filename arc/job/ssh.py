@@ -540,7 +540,7 @@ class SSHClient(object):
 def check_job_status_in_stdout(job_id: int,
                                stdout: Union[list, str],
                                server: str,
-                               ) -> str:
+                               ) -> Optional[str]:
     """
     A helper function for checking job status.
 
@@ -579,8 +579,7 @@ def check_job_status_in_stdout(job_id: int,
             return 'errored'
     elif servers[server]['cluster_soft'].lower() == 'htcondor':
         return 'running'
-    else:
-        raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
+    raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
 
 def delete_all_arc_jobs(server_list: list,
