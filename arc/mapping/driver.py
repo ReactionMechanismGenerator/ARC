@@ -46,6 +46,7 @@ def map_reaction(rxn: 'ARCReaction',
     Args:
         rxn (ARCReaction): An ARCReaction object instance.
         backend (str, optional): Whether to use ``'QCElemental'`` or ``ARC``'s method as the backend.
+        flip (bool, optional): Try mapping with a flipped reaction.
 
     Returns:
         Optional[List[int]]:
@@ -53,7 +54,8 @@ def map_reaction(rxn: 'ARCReaction',
             corresponding entry values are running atom indices of the products.
     """
     if flip:
-        logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. Trying again with the flipped reaction.")
+        logger.warning(f"The requested ARC reaction {rxn} could not be atom mapped using {backend}. "
+                       f"Trying again with the flipped reaction.")
         try:
             _map = flip_map(map_rxn(rxn.flip_reaction(), backend=backend))
         except ValueError:
