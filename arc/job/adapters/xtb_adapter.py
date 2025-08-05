@@ -22,6 +22,8 @@ from arc.level import Level
 from arc.species.converter import species_to_sdf_file, xyz_from_data, xyz_to_coords_and_element_numbers
 from arc.species.vectors import calculate_dihedral_angle
 
+from arc.exceptions import InputError
+
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
@@ -318,8 +320,23 @@ class xTBAdapter(JobAdapter):
         with open(self.sella_runner_path, 'w') as f:
             f.write(Template(input_template).render(**input_dict))
 
-        execute_command([f'cd {self.local_path}'] + incore_commands['sella'], executable='/bin/bash')
+        stdout, stderr = execute_command([f'cd {self.local_path}'] + incore_commands['sella'],
+                                         executable='/bin/bash')
 
+        # If Sella crashed, Python’s traceback is in stderr
+        real_errors = [line for line in stderr if not line.strip().lower().startswith('warning:') and line.strip()]
+        if real_errors:
+            raise InputError(
+                "Sella run failed.\n\n"
+                "STDERR:\n"  + "\n".join(stderr[-40:]) +   # tail to keep CI logs short
+                "\n\nSTDOUT:\n" + "\n".join(stdout[-40:])
+            )
+
+        if not os.path.isfile(self.local_path_to_output_file):
+            raise InputError(
+                f"output.yml missing at {self.local_path_to_output_file}\n\n"
+                "STDERR (tail):\n" + "\n".join(stderr[-40:])
+            )
         results = read_yaml_file(os.path.join(self.local_path_to_output_file))
         self.species[0].e_elect = results['sp']
         results['xyz'] = self.species[0].final_xyz = xyz_from_data(coords=results['coords'], numbers=z_list)
@@ -436,7 +453,11 @@ class xTBAdapter(JobAdapter):
             # Use Sella with xTB via ASE
             self.opt_ts()
         else:
-            execute_command([f'cd {self.local_path}'] + incore_commands[self.job_adapter], executable='/bin/bash')
+            stdout, stderr = execute_command([f'cd {self.local_path}'] + incore_commands[self.job_adapter], executable='/bin/bash')
+            logger.warning(stdout)
+            print(stdout)
+            logger.error(stderr)
+            print(stderr)
 
     def execute_queue(self):
         """

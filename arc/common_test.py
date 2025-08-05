@@ -15,13 +15,11 @@ import numpy as np
 import pandas as pd
 from random import shuffle
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.species import Species
-
 import arc.common as common
+import arc.species.converter as converter
 from arc.exceptions import InputError, SettingsError
 from arc.imports import settings
-import arc.species.converter as converter
+from arc.molecule import Molecule
 from arc.species.species import ARCSpecies
 
 
@@ -442,16 +440,6 @@ class TestCommon(unittest.TestCase):
             specific_job_type = 'fake_job_type'
             common.initialize_job_types({}, specific_job_type=specific_job_type)
 
-    def test_determine_ess(self):
-        """Test the determine_ess function"""
-        gaussian = os.path.join(common.ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
-        qchem = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
-        molpro = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CH2O_freq_molpro.out')
-
-        self.assertEqual(common.determine_ess(gaussian), 'gaussian')
-        self.assertEqual(common.determine_ess(qchem), 'qchem')
-        self.assertEqual(common.determine_ess(molpro), 'molpro')
-
     def test_sort_two_lists_by_the_first(self):
         """Test the sort_two_lists_by_the_first function"""
         list1 = [5, 2, 8, 1, 0]
@@ -564,6 +552,7 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_str_float(' '))
         self.assertFalse(common.is_str_float('R1'))
         self.assertFalse(common.is_str_float('D_3_5_7_4'))
+        self.assertFalse(common.is_str_float('--'))
 
     def test_is_str_int(self):
         """Test the is_str_int() function"""
@@ -596,6 +585,13 @@ class TestCommon(unittest.TestCase):
 4    H         u0 {1,S}
 5    [O2d,S2d] u0 {2,D}""")
 
+    def test_get_element_mass(self):
+        """Test determining the mass of an atom"""
+        self.assertEqual(common.get_element_mass('H'), (1.00782503224, 1))
+        self.assertEqual(common.get_element_mass('C'), (12.0000000, 6))
+        self.assertEqual(common.get_element_mass('C', 13), (13.00335483507, 6))
+        self.assertEqual(common.get_element_mass('O'), (15.99491461957, 8))
+
     def test_get_atom_radius(self):
         """Test determining the covalent radius of an atom"""
         self.assertEqual(common.get_atom_radius('C'), 0.76)
@@ -610,13 +606,27 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_single_bond_length('C', 'C'), 1.54)
         self.assertEqual(common.get_single_bond_length('C', 'O'), 1.43)
         self.assertEqual(common.get_single_bond_length('O', 'C'), 1.43)
-        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.5)
+        self.assertEqual(common.get_single_bond_length('P', 'Si'), 2.22)
         self.assertEqual(common.get_single_bond_length('N', 'N'), 1.45)
         self.assertEqual(common.get_single_bond_length('N', 'N', 1, 1), 1.81)
         self.assertEqual(common.get_single_bond_length('N', 'O', 1, -1), 1.2)
+        self.assertEqual(common.get_single_bond_length('N', 'N', 1, 0), 1.45)
+        self.assertEqual(common.get_single_bond_length('N', 'N', 0, -1), 1.45)
+        self.assertEqual(common.get_single_bond_length('Xx', 'Yy'), 1.75)  # default value for unknown elements
 
     def test_get_bonds_from_dmat(self):
         """test getting bonds from a distance matrix"""
+        dmat_1 = np.array([[0, 5, 2],
+                           [5, 0, 5],
+                           [2, 5, 0]])
+        dmat_bonds_1 = common.get_bonds_from_dmat(dmat=dmat_1, elements=['C', 'C', 'H'])
+        self.assertEqual(dmat_bonds_1, [(0, 2)])
+        dmat_2 = np.array([[0, 1, 2],
+                           [1, 0, 5],
+                           [2, 5, 0]])
+        dmat_bonds_2 = common.get_bonds_from_dmat(dmat=dmat_2, elements=['C', 'C', 'H'])
+        self.assertEqual(dmat_bonds_2, [(0, 1), (0, 2)])
+
         h2_xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1), 'coords': ((0.0, 0.0, 0.371517), (0.0, 0.0, -0.371517))}
         bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(h2_xyz), elements=h2_xyz['symbols'])
         self.assertEqual(bonds, [(0, 1)])
@@ -695,7 +705,7 @@ class TestCommon(unittest.TestCase):
                                     (0.050017, 0.609187, -0.289804), (-1.230175, -0.49518, -0.005872),
                                     (-1.816882, -0.464956, 0.807105), (-1.846181, -0.503768, -0.816157),
                                     (1.943069, -0.169246, -0.067924), (1.737758, -0.876687, 0.671382))}
-        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_1_xyz), elements=ts_n3h5_1_xyz['symbols'])
+        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_1_xyz), elements=ts_n3h5_1_xyz['symbols'], n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(bonds, [(0, 1), (0, 2), (0, 3), (3, 4), (3, 5), (6, 7)]))
 
         # TS N2H3 + NH2 perturbation 2
@@ -704,7 +714,7 @@ class TestCommon(unittest.TestCase):
                                     (1.402417, 0.109387, -0.172204), (-1.230175, -0.43638, -0.005872),
                                     (-1.816882, -0.538456, 0.821805), (-1.713881, -0.636068, -0.874957),
                                     (1.869569, -0.139846, -0.082624), (1.737758, -0.832587, 0.656682))}
-        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_2_xyz), elements=ts_n3h5_2_xyz['symbols'])
+        bonds = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(ts_n3h5_2_xyz), elements=ts_n3h5_2_xyz['symbols'], n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(bonds, [(0, 1), (0, 3), (3, 4), (3, 5), (2, 6), (6, 7)]))
 
         # TS C3 intra H migration 1
@@ -805,9 +815,9 @@ class TestCommon(unittest.TestCase):
              2.076081769677702, 2.9860874132892476, 1.7877716361611289, 1.7487964829584288, 0.0, 3.7110656385670673],
             [3.598392289463991, 2.552810584578915, 3.548417909916891, 4.317904523789208, 3.974590190698698,
              2.0384600329293936, 3.080568847606993, 4.560922031971599, 3.4532709952115606, 3.7110656385670673, 0.0]]
-        bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_1, np.float64), elements=elements)
+        bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_1, np.float64), elements=elements, n_fragments=2)
         self.assertTrue(common.check_that_all_entries_are_in_list(
-            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 5), (1, 6), (2, 7), (2, 8), (2, 9)]))  # No (5, 10) bond.
+            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 5), (1, 6), (2, 7), (2, 8), (2, 9)]))
 
         dmat_2 = [
             [0.0, 1.4123925549714023, 2.5389708109479114, 1.2581822445168058, 0.9941687157160606, 2.5543277703490532,
@@ -834,43 +844,28 @@ class TestCommon(unittest.TestCase):
              0.7523699800467102, 2.5958884959836257, 3.673784860949396, 2.7650434189370765, 2.7359815651907393, 0.0]]
         bonds = common.get_bonds_from_dmat(dmat=np.array(dmat_2, np.float64), elements=elements)
         self.assertTrue(common.check_that_all_entries_are_in_list(
-            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))  # No (1, 5) bond.
+            bonds, [(0, 1), (1, 2), (0, 3), (0, 4), (1, 6), (2, 7), (2, 8), (2, 9), (5, 10)]))
 
-    def test_determine_symmetry(self):
-        """
-        Test the determine_symmetry() function
-        The tests implemented here determine the external symmetries of ethanol (non-symmetric)
-        methane (highly symmetric) and a chiral species.
-        The ``optical_isomers`` parameter should be 1 if the species is non-chiral (1 optical isomer)
-        and 2 if the species is chiral (2 optical isomers).
-        """
-        xyz = """C      -0.97459464    0.29181710    0.10303882
-                 C       0.39565894   -0.35143697    0.10221676
-                 O       0.30253309   -1.63748710   -0.49196889
-                 H      -1.68942501   -0.32359616    0.65926091
-                 H      -0.93861751    1.28685508    0.55523033
-                 H      -1.35943743    0.38135479   -0.91822428
-                 H       0.76858330   -0.46187184    1.12485643
-                 H       1.10301149    0.25256708   -0.47388355
-                 H       1.19485981   -2.02360458   -0.47786539"""
-        symmetry, optical_isomers = common.determine_symmetry(xyz=converter.str_to_xyz(xyz))
-        self.assertEqual(symmetry, 1)
-        self.assertEqual(optical_isomers, 1)
-
-        ch4 = ARCSpecies(label='CH4', smiles='C')
-        symmetry, optical_isomers = common.determine_symmetry(xyz=ch4.get_xyz())
-        self.assertEqual(symmetry, 12)  # There are 4 equivalent C3 axes
-        self.assertEqual(optical_isomers, 1)
-
-        chiral = ARCSpecies(label='chiral', smiles='ClC(F)N')
-        symmetry, optical_isomers = common.determine_symmetry(xyz=chiral.get_xyz())
-        self.assertEqual(symmetry, 1)
-        self.assertEqual(optical_isomers, 2)
-
-        symmetric_chiral = ARCSpecies(label='symmetric_chiral', smiles='CC(Cl)CC(Cl)C')
-        symmetry, optical_isomers = common.determine_symmetry(xyz=symmetric_chiral.get_xyz())
-        self.assertEqual(symmetry, 2)
-        self.assertEqual(optical_isomers, 2)
+        irc_1_xyz = converter.str_to_xyz(""" O                 -0.41278100    1.32451200    1.69341300
+                                             C                 -0.36012400    0.71815900    0.68711000
+                                             C                  0.07168300   -0.73373200    0.45498600
+                                             O                 -0.09882100   -1.07908500   -0.89888400
+                                             O                  0.69058000   -0.12998800   -1.65496000
+                                             H                  0.05586000    0.59945600   -1.74796200
+                                             H                  1.11467600   -0.83984800    0.77895200
+                                             H                 -0.57663000   -1.40626900    1.02593400""")
+        irc_2_xyz = converter.str_to_xyz(""" O                 -0.43783600    1.29437500    1.69860500
+                                             C                 -0.27875600    0.77603900    0.63081800
+                                             C                  0.05866100   -0.70395300    0.45930700
+                                             O                 -0.05939300   -1.06149500   -0.93456800
+                                             O                  0.65685500   -0.22958000   -1.67443200
+                                             H                 -0.35607400    1.32805100   -0.32564200
+                                             H                  1.08243900   -0.89713600    0.79060300
+                                             H                 -0.63911300   -1.34159000    1.00373600""")
+        bonds_1 = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(irc_1_xyz), elements=irc_1_xyz['symbols'])
+        self.assertEqual(bonds_1, [(0, 1), (1, 2), (2, 3), (2, 6), (2, 7), (3, 4), (4, 5)])
+        bonds_2 = common.get_bonds_from_dmat(dmat=converter.xyz_to_dmat(irc_2_xyz), elements=irc_2_xyz['symbols'])
+        self.assertEqual(bonds_2, [(0, 1), (1, 2), (1, 5), (2, 3), (2, 6), (2, 7), (3, 4)])
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
@@ -993,22 +988,141 @@ class TestCommon(unittest.TestCase):
         self.assertFalse(common.is_angle_linear(150.0))
         self.assertTrue(common.is_angle_linear(angle=3.0, tolerance=5.0))
 
+    def test_is_xyz_linear(self):
+        """Test that we can determine the linearity of a molecule from its coordinates"""
+        # All 'symbols' are dummy, as linearity only depends on coordinates
+        xyz1 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((0.000000, 0.000000, 0.000000),
+                           (0.000000, 0.000000, 1.159076),
+                           (0.000000, 0.000000, -1.159076))}  # a trivial case
+
+        xyz2 = {'symbols': tuple('X' for _ in range(9)),
+                'coords': ((-0.06618943, -0.12360663, -0.07631983),
+                           (-0.79539707, 0.86755487, 1.02675668),
+                           (-0.68919931, 0.25421823, -1.34830853),
+                           (0.01546439, -1.54297548, 0.44580391),
+                           (1.94428095, 0.40772394, 1.03719428),
+                           (2.20318015, -0.14715186, -0.64755729),
+                           (1.59252246, 1.51178950, -0.33908352),
+                           (-0.87856890, -2.02453514, 0.38494433),
+                           (-1.34135876, 1.49608206, 0.53295071))}  # a non-linear multi-atom molecule
+
+        xyz3 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((0.0000000000, 0.0000000000, 0.3146069129),
+                           (-1.0906813653, 0.0000000000, -0.1376405244),
+                           (1.0906813653, 0.0000000000, -0.1376405244))}  # NO2, a non-linear 3-atom molecule
+
+        xyz4 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((0.0000000000, 0.0000000000, 0.1413439534),
+                           (-0.8031792912, 0.0000000000, -0.4947038368),
+                           (0.8031792912, 0.0000000000, -0.4947038368))}  # NH2, a non-linear 3-atom molecule
+
+        xyz5 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((-0.5417345330, 0.8208150346, 0.0000000000),
+                           (0.9206183692, 1.6432038228, 0.0000000000),
+                           (-1.2739176462, 1.9692549926, 0.0000000000))}  # HSO, a non-linear 3-atom molecule
+
+        xyz6 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((1.18784533, 0.98526702, 0.00000000),
+                           (0.04124533, 0.98526702, 0.00000000),
+                           (-1.02875467, 0.98526702, 0.00000000))}  # HCN, a linear 3-atom molecule
+
+        xyz7 = {'symbols': ('X', 'X', 'X', 'X'),
+                'coords': ((-4.02394116, 0.56169428, 0.00000000),
+                           (-5.09394116, 0.56169428, 0.00000000),
+                           (-2.82274116, 0.56169428, 0.00000000),
+                           (-1.75274116, 0.56169428, 0.00000000))}  # C2H2, a linear 4-atom molecule
+
+        xyz8 = {'symbols': ('X', 'X', 'X', 'X'),
+                'coords': ((-1.02600933, 2.12845307, 0.00000000),
+                           (-0.77966935, 0.95278385, 0.00000000),
+                           (-1.23666197, 3.17751246, 0.00000000),
+                           (-0.56023545, -0.09447399, 0.00000000))}  # C2H2, just 0.5 degree off from linearity, so NOT linear
+
+        xyz9 = {'symbols': ('X', 'X', 'X'),
+                'coords': ((-1.1998, 0.1610, 0.0275),
+                           (-1.4021, 0.6223, -0.8489),
+                           (-1.48302, 0.80682, -1.19946))}  # just 3 points in space on a straight line (not a physical molecule)
+
+        xyz10 = {'symbols': ('X',),
+                 'coords': ((-1.1998, 0.1610, 0.0275),)}  # mono-atomic species, non-linear
+
+        xyz11 = {'symbols': ('X', 'X', 'X'),
+                 'coords': ((1.06026500, -0.07706800, 0.03372800),
+                            (3.37340700, -0.07706800, 0.03372800),
+                            (2.21683600, -0.07706800, 0.03372800))}  # CO2 at wb97xd/6-311+g(d,p), linear
+
+        xyz12 = {'symbols': tuple('X' for _ in range(6)),
+                 'coords': ((1.05503600, -0.00335000, 0.09823600),
+                            (2.42816800, -0.00335000, 0.09823600),
+                            (-0.14726400, -0.00335000, 0.09823600),
+                            (3.63046800, -0.00335000, 0.09823600),
+                            (-1.21103500, -0.00335000, 0.09823600),
+                            (4.69423900, -0.00335000, 0.09823600))}  # C#CC#C at wb97xd/6-311+g(d,p), linear
+
+        self.assertTrue(common.is_xyz_linear(xyz1))   # a trivial case
+        self.assertTrue(common.is_xyz_linear(xyz6))   # HCN, a linear 3-atom molecule
+        self.assertTrue(common.is_xyz_linear(xyz7))   # C2H2, a linear 4-atom molecule
+        self.assertTrue(common.is_xyz_linear(xyz9))   # just 3 points in space on a straight line (not a physical molecule)
+        self.assertTrue(common.is_xyz_linear(xyz11))  # CO2 at wb97xd/6-311+g(d,p), linear
+        self.assertTrue(common.is_xyz_linear(xyz12))  # C#CC#C at wb97xd/6-311+g(d,p), linear
+        self.assertFalse(common.is_xyz_linear(xyz2))  # a non-linear multi-atom molecule
+        self.assertFalse(common.is_xyz_linear(xyz3))  # NO2, a non-linear 3-atom molecule
+        self.assertFalse(common.is_xyz_linear(xyz4))  # NH2, a non-linear 3-atom molecule
+        self.assertFalse(common.is_xyz_linear(xyz5))  # HSO, a non-linear 3-atom molecule
+        self.assertFalse(common.is_xyz_linear(xyz8))  # C2H2, just 0.5 degree off from linearity, so NOT linear
+        self.assertFalse(common.is_xyz_linear(xyz10)) # mono-atomic species, non-linear
+
     def test_get_angle_in_180_range(self):
         """Test the getting a corresponding angle in the -180 to +180 range"""
         self.assertEqual(common.get_angle_in_180_range(0), 0)
         self.assertEqual(common.get_angle_in_180_range(10), 10)
-        self.assertEqual(common.get_angle_in_180_range(-5.364589, round_to=None), -5.364589)
-        self.assertEqual(common.get_angle_in_180_range(-5.364589), -5.36)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589), -5.364589)
         self.assertEqual(common.get_angle_in_180_range(-120), -120)
-        self.assertEqual(common.get_angle_in_180_range(179.999), 180)
+        self.assertAlmostEqual(common.get_angle_in_180_range(179.999), 180, 2)
         self.assertEqual(common.get_angle_in_180_range(180), -180)
         self.assertEqual(common.get_angle_in_180_range(-180), -180)
         self.assertEqual(common.get_angle_in_180_range(181), -179)
         self.assertEqual(common.get_angle_in_180_range(360), 0)
+        self.assertEqual(common.get_angle_in_180_range(-360), 0)
         self.assertEqual(common.get_angle_in_180_range(362), 2)
         self.assertEqual(common.get_angle_in_180_range(1000), -80)
         self.assertEqual(common.get_angle_in_180_range(-1000), 80)
         self.assertEqual(common.get_angle_in_180_range(247.62), -112.38)
+        self.assertEqual(common.get_angle_in_180_range(0), 0)
+        self.assertEqual(common.get_angle_in_180_range(180), -180)
+        self.assertEqual(common.get_angle_in_180_range(-180), -180)
+        self.assertEqual(common.get_angle_in_180_range(360), 0)
+        self.assertEqual(common.get_angle_in_180_range(270), -90)
+        self.assertEqual(common.get_angle_in_180_range(-270), 90)
+        self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+
+    def test_signed_angular_diff(self):
+        """Test the signed angular difference between two angles"""
+        # simple forward/backward diffs
+        self.assertEqual(common.signed_angular_diff(10, 15), -5)
+        self.assertEqual(common.signed_angular_diff(15, 10), 5)
+        # wrap‑around behavior
+        self.assertEqual(common.signed_angular_diff(350, 10), -20)
+        self.assertEqual(common.signed_angular_diff(10, 350), 20)
+        # edge at 180°
+        self.assertEqual(common.signed_angular_diff(0, 180), -180)
+        self.assertEqual(common.signed_angular_diff(180, 0), -180)
+        # decimal diffs
+        self.assertAlmostEqual(common.signed_angular_diff(1.5, -1.5), 3.0, places=7)
+        self.assertAlmostEqual(common.signed_angular_diff(-1.5, 1.5), -3.0, places=7)
+        # across the ±180 boundary
+        self.assertEqual(common.signed_angular_diff(181, -179), 0)
+        self.assertEqual(common.signed_angular_diff(-179, 181), 0)
+        self.assertEqual(common.signed_angular_diff(-179, 183), -2.0)
+        self.assertEqual(common.signed_angular_diff(-179, 179), 2.0)
+        self.assertEqual(common.signed_angular_diff(179, -179), -2)
+        self.assertEqual(common.signed_angular_diff(-179, 179), 2)
+        self.assertEqual(common.signed_angular_diff(120, -120), -120)
+        self.assertEqual(common.signed_angular_diff(120, 240), -120)
+
 
     def test_get_close_tuple(self):
         """Test getting a close tuple of strings from a list of tuples for a given tuple"""
@@ -1070,140 +1184,6 @@ class TestCommon(unittest.TestCase):
             common.convert_list_index_0_to_1([-9])
         with self.assertRaises(ValueError):
             common.convert_list_index_0_to_1([0], direction=-1)
-
-    def test_rmg_mol_to_dict_repr(self):
-        """Test the rmg_mol_to_dict_repr() function."""
-        mol = Molecule(smiles='CC')
-        for atom in mol.atoms:
-            atom.id = -1
-        representation = common.rmg_mol_to_dict_repr(mol, testing=True)
-        expected_repr = {'atoms': [{'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 0,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}},
-                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0, 5: 1.0, 6: 1.0, 7: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0}}],
-                         'multiplicity': 1, 'props': {},
-                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7]}
-        self.assertEqual(representation, expected_repr)
-
-        mol = Molecule(smiles='NCC')
-        representation = common.rmg_mol_to_dict_repr(mol, testing=True)
-        expected_repr = {'atoms': [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': 0,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0, 3: 1.0, 4: 1.0}},
-                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0, 2: 1.0, 5: 1.0, 6: 1.0}},
-                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0, 7: 1.0, 8: 1.0, 9: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
-                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
-                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
-                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 8,
-                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
-                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 9,
-                                    'props': {'inRing': False}, 'edges': {2: 1.0}}],
-                         'multiplicity': 1, 'props': {},
-                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-                         }
-        self.assertEqual(representation, expected_repr)
-
-    def test_rmg_mol_from_dict_repr(self):
-        """Test the rmg_mol_from_dict_repr() function."""
-        representation = {'atoms':
-                          [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': -32768,
-                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32765: 1.0, -32764: 1.0}},
-                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32767,
-                            'props': {'inRing': False}, 'edges': {-32768: 1.0, -32766: 1.0, -32763: 1.0, -32762: 1.0}},
-                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32766,
-                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32761: 1.0, -32760: 1.0, -32759: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32765,
-                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32764,
-                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32763,
-                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32762,
-                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32761,
-                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32760,
-                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
-                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
-                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32759,
-                            'props': {'inRing': False}, 'edges': {-32766: 1.0}}],
-                          'multiplicity': 1, 'props': {},
-                          'atom_order': [-32768, -32767, -32766, -32765, -32764, -32763, -32762, -32761, -32760, -32759],
-                          }
-        mol = common.rmg_mol_from_dict_repr(representation=representation, is_ts=False)
-        smiles = mol.to_smiles()
-        self.assertEqual(len(smiles), 3)
-        self.assertEqual(smiles.count('C'), 2)
-        self.assertEqual(smiles.count('N'), 1)
-
-        # Test round trip:
-        mol = Molecule(smiles='CC')
-        representation = common.rmg_mol_to_dict_repr(mol)
-        new_mol = common.rmg_mol_from_dict_repr(representation, is_ts=False)
-        self.assertEqual(new_mol.to_smiles(), 'CC')
-
-    def test_generate_resonance_structures(self):
-        """Test the generate_resonance_structures() function."""
-        mol = Molecule(smiles='[N-]=[N+]=O')
-        mol_list = common.generate_resonance_structures(mol)
-        self.assertEqual(len(mol_list), 2)
-        self.assertIsInstance(mol_list[0], Molecule)
-        self.assertIsInstance(mol_list[1], Molecule)
-
-        spc = Species(smiles='[N-]=[N+]=O')
-        result = common.generate_resonance_structures(spc)
-        self.assertIsNone(result)
-        self.assertEqual(len(spc.molecule), 2)
-        self.assertIsInstance(spc.molecule[0], Molecule)
-        self.assertIsInstance(spc.molecule[1], Molecule)
 
     def test_calc_rmsd(self):
         """Test compute the root-mean-square deviation between two matrices."""
@@ -1323,11 +1303,10 @@ class TestCommon(unittest.TestCase):
                                  H                 -2.57835980    2.65394766    0.00000000
                                  O                  2.23814237   -1.56126480    0.00000000
                                  H                  3.19814237   -1.56126480    0.00000000
-                                 H                  1.91768778   -0.65632897    0.00000000""")
+                                 H                  1.91768778   -0.65632897    0.00000000""",
+                         fragments=[[0, 1, 2], [3, 4, 5]])
         visited = common.dfs(mol=spc.mol, start=0)
-        self.assertEqual(visited, [0, 1, 2])
-        visited = common.dfs(mol=spc.mol, start=4)
-        self.assertEqual(visited, [3, 4, 5])
+        self.assertEqual(visited, [0, 1, 2, 3, 4, 5])
 
         mol = Molecule(smiles='CC(CC)C.C')
         visited = common.dfs(mol=mol, start=0)
@@ -1338,19 +1317,18 @@ class TestCommon(unittest.TestCase):
     def test_is_xyz_mol_match(self):
         """test the is_xyz_mol_match function"""
         xyz1 = {'coords': ((0.9177905887, 0.5194617797, 0.0),
-            (1.8140204898, 1.0381941417, 0.0),
-            (-0.4763167868, 0.7509348722, 0.0),
-            (0.999235086, -0.7048575683, 0.0),
-            (-1.4430010939, 0.0274543367, 0.0),
-            (-0.6371484821, -0.7497769134, 0.0),
-            (-2.0093636431, 0.0331190314, -0.8327683174),
-            (-2.0093636431, 0.0331190314, 0.8327683174)),
-            'isotopes': (14, 1, 1, 14, 14, 1, 1, 1),
-            'symbols': ('N', 'H', 'H', 'N', 'N', 'H', 'H', 'H')}
-        mols = converter.molecules_from_xyz(xyz1)
-        mol1 = mols[0] or mols[1]
+                           (1.8140204898, 1.0381941417, 0.0),
+                           (-0.4763167868, 0.7509348722, 0.0),
+                           (0.999235086, -0.7048575683, 0.0),
+                           (-1.4430010939, 0.0274543367, 0.0),
+                           (-0.6371484821, -0.7497769134, 0.0),
+                           (-2.0093636431, 0.0331190314, -0.8327683174),
+                           (-2.0093636431, 0.0331190314, 0.8327683174)),
+                'isotopes': (14, 1, 1, 14, 14, 1, 1, 1),
+                'symbols': ('N', 'H', 'H', 'N', 'N', 'H', 'H', 'H')}
+        mol1 = converter.perceive_molecule_from_xyz(xyz1, n_fragments=2)
         self.assertTrue(common.is_xyz_mol_match(mol1, xyz1))
-        mol2 = Molecule(smiles = "CCCC")
+        mol2 = Molecule(smiles="CCCC")
         self.assertFalse(common.is_xyz_mol_match(mol2, xyz1))
         xyz2 = {'coords': ((-1.917881683438569, -0.2559899676506647, -0.18387537398950518),
             (-0.46613900647877093, -0.5015648201803543, -0.5627969270693719),
@@ -1392,6 +1370,26 @@ class TestCommon(unittest.TestCase):
             A=1e12, n=0.5, Ea=8.2, T=1000, Ea_units='kJ/mol') / 1.18e+13, 1.0, places=2)
         self.assertAlmostEqual(common.calculate_arrhenius_rate_coefficient(
             A=1e12, n=0.5, Ea=8200, T=1000, Ea_units='J/mol') / 1.18e+13, 1.0, places=2)
+        As = [1e12, 2e12]
+        ns = [0.5, 1.0]
+        Eas = [8.2, 16.4]       # in kJ/mol
+        Ts = [300, 600]
+        rates = common.calculate_arrhenius_rate_coefficient(A=As, n=ns, Ea=Eas, T=Ts, Ea_units='kJ/mol')
+        # should return a numpy array of length 2
+        self.assertIsInstance(rates, np.ndarray)
+        self.assertEqual(rates.shape, (2,))
+        expected = [646906742086.741, 44819013802123.64]
+        for i in range(2):
+            self.assertAlmostEqual(rates[i] / expected[i], 1.0, places=2)
+
+        # invalid units should raise
+        with self.assertRaises(ValueError):
+            common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=300, Ea_units='invalid_unit')
+
+        # non-positive temperature should raise
+        for bad_T in (0, -100):
+            with self.assertRaises(ValueError):
+                common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=bad_T, Ea_units='kJ/mol')
 
     @classmethod
     def tearDownClass(cls):

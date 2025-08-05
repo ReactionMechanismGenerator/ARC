@@ -27,8 +27,8 @@ except (ImportError, ModuleNotFoundError):
     HAS_KINBOT = False
 
 if TYPE_CHECKING:
-    from rmgpy.molecule import Molecule
     from arc.level import Level
+    from arc.molecule import Molecule
     from arc.reaction import ARCReaction
     from arc.species import ARCSpecies
 

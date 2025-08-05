@@ -68,9 +68,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/2_restart_rate/N2H3_freq.out
-      geo: arc/testing/restart/2_restart_rate/N2H3_freq.out
-      sp: arc/testing/restart/2_restart_rate/N2H3_opt.out
+      freq: /calcs/Species/N2H3_freq.out
+      geo: /calcs/Species/N2H3_freq.out
+      sp: /calcs/Species/N2H3_opt.out
     restart: ''
     warnings: ''
   N2H4:
@@ -94,9 +94,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/2_restart_rate/N2H4_freq.out
-      geo: arc/testing/restart/2_restart_rate/N2H4_freq.out
-      sp: arc/testing/restart/2_restart_rate/N2H4_opt.out
+      freq: /calcs/Species/N2H4_freq.out
+      geo: /calcs/Species/N2H4_freq.out
+      sp: /calcs/Species/N2H4_opt.out
     restart: ''
     warnings: ''
   NH:
@@ -120,9 +120,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/2_restart_rate/NH_freq.out
-      geo: arc/testing/restart/2_restart_rate/NH_freq.out
-      sp: arc/testing/restart/2_restart_rate/NH_opt.out
+      freq: /calcs/Species/NH_freq.out
+      geo: /calcs/Species/NH_freq.out
+      sp: /calcs/Species/NH_opt.out
     restart: ''
     warnings: ''
   NH2:
@@ -146,9 +146,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/2_restart_rate/NH2_freq.out
-      geo: arc/testing/restart/2_restart_rate/NH2_freq.out
-      sp: arc/testing/restart/2_restart_rate/NH2_opt.out
+      freq: /calcs/Species/NH2_freq.out
+      geo: /calcs/Species/NH2_freq.out
+      sp: /calcs/Species/NH2_opt.out
     restart: ''
     warnings: ''
   TS0:
@@ -172,9 +172,9 @@ output:
       sp: true
     paths:
       composite: ''
-      freq: arc/testing/restart/2_restart_rate/TS_freq.out
-      geo: arc/testing/restart/2_restart_rate/TS_freq.out
-      sp: arc/testing/restart/2_restart_rate/TS_opt.out
+      freq: /calcs/TSs/TS_freq.out
+      geo: /calcs/TSs/TS_freq.out
+      sp: /calcs/TSs/TS_opt.out
     restart: ''
     warnings: ''
 project: arc_rxn_restart
