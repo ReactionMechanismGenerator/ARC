@@ -58,17 +58,18 @@ def get_dihedral(v1: List[float],
                  v2: List[float],
                  v3: List[float],
                  units: str = 'degs',
+                 tol: float = 1e-8,
                  ) -> float:
     """
     Calculate the dihedral angle between three vectors.
     ``v2`` connects between ``v1`` and ``v3``.
-    Inspired by ASE Atoms.get_dihedral().
 
     Args:
          v1 (list): Vector 1.
          v2 (list): Vector 2.
          v3 (list): Vector 3.
          units (str, optional): The desired units, either 'rads' for radians, or 'degs' for degrees.
+         tol (float, optional): The tolerance for zero-length vectors.
 
     Raises:
         VectorsError: If either ``v1`` or ``v2`` have lengths different from three.
@@ -91,15 +92,14 @@ def get_dihedral(v1: List[float],
     # 3) compute normals
     v2_x_v1 = np.cross(v2, v1)
     norm1 = np.linalg.norm(v2_x_v1)
-    if norm1 < 1e-8:
-        # colinear → zero dihedral (but inputs were non-zero so no error)
-        return 0.0
+    if norm1 < tol:
+        return float('nan') # colinear
     v2_x_v1 /= norm1
 
     v3_x_v2 = np.cross(v3, v2)
     norm2 = np.linalg.norm(v3_x_v2)
-    if norm2 < 1e-8:
-        return 0.0
+    if norm2 < tol:
+        return float('nan')
     v3_x_v2 /= norm2
 
     # 4) angle between normals
