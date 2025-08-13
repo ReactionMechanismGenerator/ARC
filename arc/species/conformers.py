@@ -48,21 +48,23 @@ from openbabel import pybel as pyb
 from rdkit import Chem
 from rdkit.Chem.rdchem import EditableMol as RDMol
 
-import rmgpy.molecule.group as gr
-from rmgpy.molecule.converter import to_ob_mol
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
-
+import arc.molecule.group as gr
 from arc.common import (convert_list_index_0_to_1,
                         determine_top_group_indices,
                         get_single_bond_length,
-                        generate_resonance_structures,
-                        logger,
+                        get_logger,
                         )
 from arc.exceptions import ConformerError, InputError
+from arc.molecule.converter import to_ob_mol
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.element import C as C_ELEMENT, H as H_ELEMENT, F as F_ELEMENT, Cl as Cl_ELEMENT, I as I_ELEMENT
+from arc.molecule.resonance import generate_resonance_structures_safely
 import arc.plotter
 from arc.species import converter, vectors
+from arc.species.perceive import perceive_molecule_from_xyz
 
+
+logger = get_logger()
 
 # The number of conformers to generate per range of heavy atoms in the molecule
 # (will be increased if there are chiral centers)
@@ -212,7 +214,7 @@ def generate_conformers(mol_list: Union[List[Molecule], Molecule],
         success = False
         mol_copy = mol_list.copy(deep=True)
         mol_copy.reactive = True
-        new_mol_list = generate_resonance_structures(mol_copy)
+        new_mol_list = generate_resonance_structures_safely(mol_copy)
         try:
             success = converter.order_atoms_in_mol_list(ref_mol=mol_list.copy(deep=True), mol_list=new_mol_list)
         except TypeError:
@@ -691,14 +693,14 @@ def generate_force_field_conformers(label,
     # User guesses
     if xyzs is not None and xyzs:
         if not isinstance(xyzs, list):
-            raise ConformerError('The xyzs argument must be a list, got {0}'.format(type(xyzs)))
+            raise ConformerError(f'The xyzs argument must be a list, got {xyzs}')
         for xyz in xyzs:
             if not isinstance(xyz, dict):
-                raise ConformerError('Each entry in xyzs must be a dictionary, got {0}'.format(type(xyz)))
-            s_mol, b_mol = converter.molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)
+                raise ConformerError(f'Each entry in xyzs must be a dictionary, got {xyz}')
+            mol = perceive_molecule_from_xyz(xyz, charge=charge, multiplicity=multiplicity, n_radicals=None)
             conformers.append({'xyz': xyz,
                                'index': len(conformers),
-                               'FF energy': get_force_field_energies(label, mol=b_mol or s_mol, xyz=xyz,
+                               'FF energy': get_force_field_energies(label, mol=mol, xyz=xyz,
                                                                      optimize=True, force_field=force_field)[1][0],
                                'source': 'User Guess'})
     return conformers
@@ -851,7 +853,11 @@ def determine_number_of_conformers_to_generate(label: str,
     # increase the number of conformers if there are more than two chiral centers
     num_chiral_centers = 0
     if mol is None and xyz is not None:
-        mol = converter.molecules_from_xyz(xyz)[1]
+        mol = perceive_molecule_from_xyz(xyz,
+                                         charge=mol.get_net_charge() if mol is not None else 0,
+                                         multiplicity=mol.multiplicity if mol is not None else None,
+                                         n_radicals=None,
+                                         )
     if mol is not None and xyz is None:
         xyzs = get_force_field_energies(label, mol, num_confs=1, suppress_warning=True)[0]
         xyz = xyzs[0] if len(xyzs) else None
@@ -925,7 +931,7 @@ def determine_torsion_sampling_points(label, torsion_angles, smeared_scan_res=No
 def determine_torsion_symmetry(label, top1, mol_list, torsion_scan):
     """
     Check whether a torsion is symmetric.
-    If a torsion well is "well defined" and not smeared, it could be symmetric.
+    If a torsion well is "well-defined" and not smeared, it could be symmetric.
     Check the groups attached to the rotor pivots to determine whether it is indeed symmetric
     We don't care about the actual rotor symmetry number here, since we plan to just use the first well
     (they're all the same).
@@ -1052,11 +1058,7 @@ def add_missing_symmetric_torsion_values(top1, mol_list, torsion_scan):
 
 def determine_well_width_tolerance(mean_width):
     """
-    Determine the tolerance by which well widths are determined to be nearly equal.
-
-    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs::
-
-        (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)
+    Determine the tolerance by which well widths are determined to be nearly equal using a simple hyperbolic form.
 
     Args:
         mean_width (float): The mean well width in degrees.
@@ -1064,11 +1066,11 @@ def determine_well_width_tolerance(mean_width):
     Returns:
         float: The tolerance.
     """
-    if mean_width > 100:
-        return 0.1
-    tol = -1.695e-10 * mean_width ** 5 + 6.209e-8 * mean_width ** 4 - 8.855e-6 * mean_width ** 3 \
-        + 6.446e-4 * mean_width ** 2 - 2.610e-2 * mean_width + 0.6155
-    return tol
+    if mean_width <= 0:
+        raise ValueError("mean_width must be positive")
+    baseline = 1.0
+    scale = 2.0
+    return baseline + scale / mean_width
 
 
 def get_lowest_confs(label: str,
@@ -1657,7 +1659,7 @@ def check_special_non_rotor_cases(mol, top1, top2):
         bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.
     """
     for top in [top1, top2]:
-        if mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N3t', 'N5tc'] \
+        if mol.atoms[top[0] - 1].atomtype is not None and mol.atoms[top[0] - 1].atomtype.label in ['Ct', 'N5tc'] \
                 and mol.atoms[top[1] - 1].atomtype.label in ['Ct', 'N3t'] and \
                 (len(top) == 2 or (len(top) == 3 and mol.atoms[top[2] - 1].is_hydrogen())):
             return True
@@ -1679,7 +1681,7 @@ def find_internal_rotors(mol):
         if atom1.is_non_hydrogen():
             for atom2, bond in atom1.edges.items():
                 if atom2.is_non_hydrogen() and mol.vertices.index(atom1) < mol.vertices.index(atom2) \
-                        and (bond.is_single() or bond.is_hydrogen_bond()) and not mol.is_bond_in_cycle(bond):
+                        and bond.is_rotatable() and not mol.is_bond_in_cycle(bond):
                     if len(atom1.edges) > 1 and len(atom2.edges) > 1:  # None of the pivotal atoms are terminal.
                         rotor = dict()
                         # pivots:

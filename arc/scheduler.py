@@ -11,10 +11,10 @@ import shutil
 import time
 
 import numpy as np
-from IPython.display import display
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
-from arc import parser, plotter
+import arc.parser.parser as parser
+from arc import plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
 from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
 from arc.common import (extremum_list,
@@ -52,15 +52,16 @@ from arc.species.species import (ARCSpecies,
                                  TSGuess)
 from arc.species.converter import (check_isomorphism,
                                    compare_confs,
-                                   molecules_from_xyz,
                                    xyz_to_coords_list,
                                    xyz_to_str,
                                    )
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.vectors import get_angle, calculate_dihedral_angle
 
 if TYPE_CHECKING:
     from arc.job.adapter import JobAdapter
     from arc.reaction import ARCReaction
+
 
 logger = get_logger()
 
@@ -653,7 +654,7 @@ class Scheduler(object):
                                 self.check_directed_scan_job(label=label, job=job)
                                 if 'cont' in job.directed_scan_type and job.job_status[1]['status'] == 'done':
                                     # This is a continuous restricted optimization, spawn the next job in the scan.
-                                    xyz = parser.parse_xyz_from_file(job.local_path_to_output_file) \
+                                    xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file) \
                                         if not hasattr(job, 'opt_xyz') else job.opt_xyz
                                     self.spawn_directed_scan_jobs(label=label, rotor_index=job.rotor_index, xyz=xyz)
                             if 'brute_force' in job.directed_scan_type:
@@ -1817,7 +1818,7 @@ class Scheduler(object):
                 trshed_points = 0
                 if rotor_dict['directed_scan_type'] == 'ess':
                     # parse the single output file
-                    results = parser.parse_nd_scan_energies(path=rotor_dict['scan_path'])[0]
+                    results = parser.parse_nd_scan_energies(log_file_path=rotor_dict['scan_path'])[0]
                 else:
                     results = {'directed_scan_type': rotor_dict['directed_scan_type'],
                                'scans': rotor_dict['scan'],
@@ -1887,61 +1888,43 @@ class Scheduler(object):
                 # check whether this conformer is isomorphic to the species 2D graph representation
                 # (since this won't be checked in determine_most_stable_conformer, as there's only one)
                 is_isomorphic, spawn_jobs = False, True
+                mol = perceive_molecule_from_xyz(self.species_dict[label].initial_xyz,
+                                                 charge=self.species_dict[label].charge,
+                                                 multiplicity=self.species_dict[label].multiplicity,
+                                                 n_radicals=self.species_dict[label].number_of_radicals,
+                                                 )
                 try:
-                    b_mol = molecules_from_xyz(self.species_dict[label].initial_xyz,
-                                               multiplicity=self.species_dict[label].multiplicity,
-                                               charge=self.species_dict[label].charge)[1]
-                except SanitizationError:
-                    b_mol = None
-                    if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
-                        # we'll optimize the single conformer even if it is not isomorphic with the 2D graph
-                        logger.error(f'The single conformer {label} could not be checked for isomorphism with the 2D '
-                                     f'graph representation {self.species_dict[label].mol.copy(deep=True).to_smiles()}.'
-                                     f' Optimizing this conformer anyway.')
-                        if self.species_dict[label].charge:
-                            logger.warning(f'Isomorphism check cannot be done for charged species {label}')
-                        self.output[label]['conformers'] += 'Single conformer could not be checked for isomorphism; '
-                        self.output[label]['job_types']['conf_opt'] = True
+                    is_isomorphic = check_isomorphism(self.species_dict[label].mol, mol)
+                except ValueError as e:
+                    logger.error(f'Could not determine isomorphism for species {label}. '
+                                 f'Got the following error:\n{e}')
+                    if are_coords_compliant_with_graph(xyz=self.species_dict[label].initial_xyz, mol=mol):
+                        # this is still considered isomorphic
                         self.species_dict[label].conf_is_isomorphic, spawn_jobs = True, True
                     else:
-                        logger.error(f'The only conformer for species {label} could not be checked for isomorphism '
-                                     f'with the 2D graph representation '
-                                     f'{self.species_dict[label].mol.copy(deep=True).to_smiles()}. NOT calculating '
-                                     f'this species. To change this behaviour, pass `allow_nonisomorphic_2d = True`.')
-                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, False
-                if b_mol is None and (self.allow_nonisomorphic_2d or self.species_dict[label].charge):
+                        self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, self.allow_nonisomorphic_2d
+                if is_isomorphic:
+                    logger.info(f'The only conformer for species {label} was found to be isomorphic '
+                                f'with the 2D graph representation {mol.to_smiles()}\n')
+                    self.output[label]['conformers'] += 'single conformer passed isomorphism check; '
                     self.output[label]['job_types']['conf_opt'] = True
-                if b_mol is not None:
-                    try:
-                        is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
-                    except ValueError as e:
-                        logger.error(f'Could not determine isomorphism for species {label}. '
-                                     f'Got the following error:\n{e}')
-                        if are_coords_compliant_with_graph(xyz=self.species_dict[label].initial_xyz, mol=b_mol):
-                            # this is still considered isomorphic
-                            self.species_dict[label].conf_is_isomorphic, spawn_jobs = True, True
-                        else:
-                            self.species_dict[label].conf_is_isomorphic, spawn_jobs = False, self.allow_nonisomorphic_2d
-                    if is_isomorphic:
-                        logger.info(f'The only conformer for species {label} was found to be isomorphic '
-                                    f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
-                        self.output[label]['conformers'] += 'single conformer passed isomorphism check; '
-                        self.output[label]['job_types']['conf_opt'] = True
-                        self.species_dict[label].conf_is_isomorphic = True
+                    self.species_dict[label].conf_is_isomorphic = True
+                else:
+                    logger.error(f'The only conformer for species {label} is not isomorphic '
+                                 f'with the 2D graph representation {mol.to_smiles()}\n')
+                    self.species_dict[label].conf_is_isomorphic = False
+                    if are_coords_compliant_with_graph(xyz=self.species_dict[label].initial_xyz, mol=mol):
+                        logger.info('Using this conformer anyway (it is compliant with the 2D graph)')
+                        spawn_jobs = True
+                    elif self.allow_nonisomorphic_2d:
+                        logger.info('Using this conformer anyway (allow_nonisomorphic_2d was set to True)')
+                        spawn_jobs = True
                     else:
-                        logger.error(f'The only conformer for species {label} is not isomorphic '
-                                     f'with the 2D graph representation {b_mol.copy(deep=True).to_smiles()}\n')
-                        self.species_dict[label].conf_is_isomorphic = False
-                        if are_coords_compliant_with_graph(xyz=self.species_dict[label].initial_xyz, mol=b_mol):
-                            logger.info('Using this conformer anyway (it is compliant with the 2D graph)')
-                            spawn_jobs = True
-                        elif self.allow_nonisomorphic_2d:
-                            logger.info('Using this conformer anyway (allow_nonisomorphic_2d was set to True)')
-                            spawn_jobs = True
-                        else:
-                            logger.info('Not using this conformer (to change this behavior, set allow_nonisomorphic_2d '
-                                        'to True)')
-                            spawn_jobs = False
+                        logger.info('Not using this conformer (to change this behavior, set allow_nonisomorphic_2d '
+                                    'to True)')
+                        spawn_jobs = False
+                if mol is None and (self.allow_nonisomorphic_2d or self.species_dict[label].charge):
+                    self.output[label]['job_types']['conf_opt'] = True
                 if spawn_jobs:
                     if self.species_dict[label].multi_species is None or \
                             all([species.initial_xyz is not None for species in self.species_list
@@ -1983,8 +1966,8 @@ class Scheduler(object):
             bool: Whether the conformer job is being troubleshooted by running a new job.
         """
         if job.job_status[1]['status'] == 'done':
-            xyz = parser.parse_geometry(path=job.local_path_to_output_file)
-            energy = parser.parse_e_elect(path=job.local_path_to_output_file)
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
+            energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
                 self.species_dict[label].ts_guesses[i].energy = energy
                 self.species_dict[label].ts_guesses[i].opt_xyz = xyz
@@ -2035,7 +2018,7 @@ class Scheduler(object):
                 xyzs = self.species_dict[label].conformers
             else:
                 for job in self.job_dict[label]['conf_opt'].values():
-                    xyzs.append(parser.parse_xyz_from_file(path=job.local_path_to_output_file))
+                    xyzs.append(parser.parse_geometry(log_file_path=job.local_path_to_output_file))
             xyzs_in_original_order = xyzs
             energies, xyzs = sort_two_lists_by_the_first(self.species_dict[label].conformer_energies, xyzs)
             plotter.save_conformers_file(project_directory=self.project_directory,
@@ -2052,15 +2035,14 @@ class Scheduler(object):
             # Run isomorphism checks if a 2D representation is available
             if self.species_dict[label].mol is not None:
                 for i, xyz in enumerate(xyzs):
-                    try:
-                        b_mol = molecules_from_xyz(xyz,
-                                                   multiplicity=self.species_dict[label].multiplicity,
-                                                   charge=self.species_dict[label].charge)[1]
-                    except SanitizationError:
-                        b_mol = None
-                    if b_mol is not None:
+                    mol = perceive_molecule_from_xyz(xyz,
+                                                     charge=self.species_dict[label].charge,
+                                                     multiplicity=self.species_dict[label].multiplicity,
+                                                     n_radicals=self.species_dict[label].number_of_radicals,
+                                                     )
+                    if mol is not None:
                         try:
-                            is_isomorphic = check_isomorphism(self.species_dict[label].mol, b_mol)
+                            is_isomorphic = check_isomorphism(self.species_dict[label].mol, mol)
                         except ValueError as e:
                             if self.allow_nonisomorphic_2d or \
                                     are_coords_compliant_with_graph(xyz=xyz, mol=self.species_dict[label].mol):
@@ -2075,8 +2057,8 @@ class Scheduler(object):
                             break
                         if is_isomorphic or are_coords_compliant_with_graph(xyz=xyz, mol=self.species_dict[label].mol):
                             if i == 0:
-                                b_mol_smiles = b_mol.copy(deep=True).to_smiles() \
-                                    if b_mol is not None else '<no 2D structure available>'
+                                b_mol_smiles = mol.to_smiles() \
+                                    if mol is not None else '<no 2D structure available>'
                                 logger.info(f'Most stable conformer for species {label} was found to be isomorphic '
                                             f'with the 2D graph representation {b_mol_smiles}\n')
                                 conformer_xyz = xyz
@@ -2086,9 +2068,11 @@ class Scheduler(object):
                                 self.species_dict[label].conf_is_isomorphic = True
                             else:
                                 if energies[i] is not None:
-                                    mol = molecules_from_xyz(xyzs[0],
-                                                             multiplicity=self.species_dict[label].multiplicity,
-                                                             charge=self.species_dict[label].charge)[1]
+                                    mol = perceive_molecule_from_xyz(xyzs[0],
+                                                                     charge=self.species_dict[label].charge,
+                                                                     multiplicity=self.species_dict[label].multiplicity,
+                                                                     n_radicals=self.species_dict[label].number_of_radicals,
+                                                                     )
                                     smiles_1 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
                                         if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                     smiles_2 = mol.copy(deep=True).to_smiles() \
@@ -2110,8 +2094,8 @@ class Scheduler(object):
                                 self.output[label]['conformers'] += f'most stable conformer ({i}) did not ' \
                                                                     f'pass isomorphism check; '
                                 self.species_dict[label].conf_is_isomorphic = False
-                                smiles_1 = b_mol.copy(deep=True).to_smiles() \
-                                    if b_mol is not None else '<no 2D structure available>'
+                                smiles_1 = mol.copy(deep=True).to_smiles() \
+                                    if mol is not None else '<no 2D structure available>'
                                 smiles_2 = self.species_dict[label].mol.copy(deep=True).to_smiles() \
                                     if self.species_dict[label].mol is not None else '<no 2D structure available>'
                                 logger.warning(f'Most stable conformer for species {label} with structure '
@@ -2122,13 +2106,15 @@ class Scheduler(object):
                     # all conformers for the species failed isomorphism test
                     smiles_list = list()
                     for xyz in xyzs:
-                        try:
-                            b_mol = molecules_from_xyz(xyz,
-                                                       multiplicity=self.species_dict[label].multiplicity,
-                                                       charge=self.species_dict[label].charge)[1]
-                            smiles_list.append(b_mol.copy(deep=True).to_smiles())
-                        except (SanitizationError, AttributeError):
+                        mol = perceive_molecule_from_xyz(xyz,
+                                                         charge=self.species_dict[label].charge,
+                                                         multiplicity=self.species_dict[label].multiplicity,
+                                                         n_radicals=self.species_dict[label].number_of_radicals,
+                                                         )
+                        if mol is None:
                             smiles_list.append('Could not perceive molecule')
+                        else:
+                            smiles_list.append(mol.to_smiles())
                     if self.allow_nonisomorphic_2d or self.species_dict[label].charge:
                         # we'll optimize the most stable conformer even if it is not isomorphic to the 2D graph
                         logger.error(f'No conformer for {label} was found to be isomorphic with the 2D graph '
@@ -2290,7 +2276,7 @@ class Scheduler(object):
         logger.debug(f'parsing composite geo for {job.job_name}')
         freq_ok = False
         if job.job_status[1]['status'] == 'done':
-            self.species_dict[label].final_xyz = parser.parse_xyz_from_file(path=job.local_path_to_output_file)
+            self.species_dict[label].final_xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             self.output[label]['job_types']['composite'] = True
             self.output[label]['job_types']['opt'] = True
             self.output[label]['job_types']['sp'] = True
@@ -2351,10 +2337,10 @@ class Scheduler(object):
         if multi_species:
             for spc in self.species_list:
                 if spc.multi_species == label:
-                    self.species_dict[spc.label].e_elect = parser.parse_e_elect(path=self.multi_species_path_dict[spc.label])
+                    self.species_dict[spc.label].e_elect = parser.parse_e_elect(log_file_path=self.multi_species_path_dict[spc.label])
                     self.save_e_elect(spc.label)
         else:
-            e_elect_value = parser.parse_e_elect(path=job.local_path_to_xyz or job.local_path_to_output_file) \
+            e_elect_value = parser.parse_e_elect(log_file_path=job.local_path_to_xyz or job.local_path_to_output_file) \
                 if label in self.species_dict.keys() else dict()
             self.species_dict[label].e_elect = e_elect_value
             self.save_e_elect(label)
@@ -2383,12 +2369,12 @@ class Scheduler(object):
             multi_species = any(spc.multi_species == label for spc in self.species_list)
             species_labels = [spc.label for spc in self.species_list if spc.multi_species == label]\
                 if multi_species else list()
-            opt_xyz = parser.parse_xyz_from_file(path=job.local_path_to_xyz or job.local_path_to_output_file) \
+            opt_xyz = parser.parse_geometry(log_file_path=job.local_path_to_xyz or job.local_path_to_output_file) \
                 if label in self.species_dict.keys() else dict()
             if multi_species:
                 for spc in self.species_list:
                     if spc.multi_species == label:
-                        multi_species_opt_xyzs[spc.label] = parser.parse_xyz_from_file(path=self.multi_species_path_dict[spc.label])
+                        multi_species_opt_xyzs[spc.label] = parser.parse_geometry(log_file_path=self.multi_species_path_dict[spc.label])
 
             if not job.fine and self.job_types['fine'] \
                     and not job.level.method_type == 'wavefunction' \
@@ -2484,7 +2470,7 @@ class Scheduler(object):
         if job.job_status[1]['status'] == 'done':
             if not os.path.isfile(job.local_path_to_output_file):
                 raise SchedulerError('Called check_freq_job with no output file')
-            vibfreqs = parser.parse_frequencies(path=str(job.local_path_to_output_file), software=job.job_adapter)
+            vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
             if freq_ok:
                 # Copy the frequency file to the species / TS output folder.
@@ -2505,7 +2491,7 @@ class Scheduler(object):
                     if self.species_dict[label].rxn_index in self.rxn_dict.keys():
                         check_ts(reaction=self.rxn_dict[self.species_dict[label].rxn_index],
                                  job=job,
-                                 checks=['freq'],
+                                 checks=['NMD'],
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
@@ -2606,9 +2592,7 @@ class Scheduler(object):
                     before_optimization=False,
                 )
                 if not self.testing:
-                    # Update restart dictionary and save the yaml restart file:
                     self.save_restart_dict()
-                # Set the ts_checks attribute of the TS species:
                 self.species_dict[label].ts_checks['freq'] = True
                 return True
 
@@ -2710,10 +2694,7 @@ class Scheduler(object):
         self.output[label]['paths']['sp'] = sp_path
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
-        zpe_scale_factor = 0.99 if (self.composite_method is not None and 'cbs-qb3' in self.composite_method.method) \
-            else 1.0
-        self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'],
-                                                                zpe_scale_factor=zpe_scale_factor)
+        self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
         if self.species_dict[label].t1 is not None:
             txt = ''
             if self.species_dict[label].t1 > 0.02:
@@ -2772,7 +2753,7 @@ class Scheduler(object):
                                                                   'rxns', label, 'irc_traj.gjf'))
         irc_label = self.add_label_to_unique_species_labels(label=f'IRC_{label}_{index}')
         irc_spc = ARCSpecies(label=irc_label,
-                             xyz=parser.parse_xyz_from_file(job.local_path_to_output_file),
+                             xyz=parser.parse_geometry(log_file_path=job.local_path_to_output_file),
                              irc_label=label,
                              compute_thermo=False,
                              multiplicity=job.species[0].multiplicity,
@@ -2861,8 +2842,8 @@ class Scheduler(object):
         if self.species_dict[label].rotors_dict[job.rotor_index]['dimensions'] == 1:
             # This is a 1D scan.
             # Read energy profile (in kJ/mol), it may be used in the troubleshooting.
-            energies, angles = parser.parse_1d_scan_energies(
-                path=job.local_path_to_output_file,
+            energies, angles = parser.parse_1d_scan_energies_from_specific_angle(
+                log_file_path=job.local_path_to_output_file,
                 initial_angle=calculate_dihedral_angle(
                     coords=self.species_dict[label].get_xyz(),
                     torsion=self.species_dict[label].rotors_dict[job.rotor_index]['torsion']))
@@ -2876,7 +2857,7 @@ class Scheduler(object):
                           f'be read. Invalidating rotor.'
                 logger.error(message)
             elif len(energies) > 5:
-                trajectory = parser.parse_1d_scan_coords(path=job.local_path_to_output_file) \
+                trajectory = parser.parse_1d_scan_coords(log_file_path=job.local_path_to_output_file) \
                     if self.species_dict[label].is_ts else None
                 invalidate, invalidation_reason, message, actions = scan_quality_check(
                     label=label,
@@ -3038,7 +3019,7 @@ class Scheduler(object):
             job (JobAdapter): The rotor scan job object.
         """
         if job.job_status[1]['status'] == 'done':
-            xyz = parser.parse_geometry(path=job.local_path_to_output_file)
+            xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             is_isomorphic = self.species_dict[label].check_xyz_isomorphism(xyz=xyz, verbose=False)
             for rotor_dict in self.species_dict[label].rotors_dict.values():
                 if rotor_dict['pivots'] == job.pivots:

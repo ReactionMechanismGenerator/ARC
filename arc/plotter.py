@@ -8,6 +8,7 @@ import matplotlib
 # Do not warn if the backend has already been set, e.g., when running from an IPython notebook.
 matplotlib.use('Agg', force=False)
 import matplotlib.pyplot as plt
+
 import numpy as np
 import os
 import shutil
@@ -16,15 +17,10 @@ from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Optional, Tuple, Union
 
 import py3Dmol as p3D
-import qcelemental as qcel
 from rdkit import Chem
 
-from rmgpy.data.thermo import ThermoLibrary
-from rmgpy.data.transport import TransportLibrary
-from rmgpy.exceptions import DatabaseError, InvalidAdjacencyListError
-from rmgpy.quantity import ScalarQuantity
-
-from arc.common import (calculate_arrhenius_rate_coefficient,
+from arc.common import (NUMBER_BY_SYMBOL,
+                        calculate_arrhenius_rate_coefficient,
                         extremum_list,
                         get_angle_in_180_range,
                         get_close_tuple,
@@ -32,16 +28,14 @@ from arc.common import (calculate_arrhenius_rate_coefficient,
                         is_notebook,
                         is_str_float,
                         read_yaml_file,
-                        rmg_mol_to_dict_repr,
                         save_yaml_file,
                         sort_two_lists_by_the_first,
                         )
-from arc.exceptions import InputError, SanitizationError
+from arc.exceptions import InputError
 from arc.level import Level
-from arc.parser import parse_trajectory
+from arc.parser.parser import parse_trajectory
 from arc.species.converter import (check_xyz_dict,
                                    get_xyz_radius,
-                                   molecules_from_xyz,
                                    remove_dummies,
                                    rdkit_conf_from_mol,
                                    str_to_xyz,
@@ -49,14 +43,13 @@ from arc.species.converter import (check_xyz_dict,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
-from arc.species.species import ARCSpecies
+from arc.species.perceive import perceive_molecule_from_xyz
+from arc.species.species import ARCSpecies, rmg_mol_to_dict_repr
 
 
-R = 8.31446261815324  # J/(mol*K)
 PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
                 '(cm^3/(mol*s))': r' (cm$^3$/(mol s))',
                 '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
-
 
 logger = get_logger()
 
@@ -108,8 +101,11 @@ def show_sticks(xyz=None, species=None, project_directory=None, show_atom_indice
     """
     xyz = check_xyz_species_for_drawing(xyz, species)
     if species is None:
-        s_mol, b_mol = molecules_from_xyz(xyz)
-        mol = b_mol if b_mol is not None else s_mol
+        mol = perceive_molecule_from_xyz(xyz,
+                                         charge=species.charge if species is not None else 0,
+                                         multiplicity=species.multiplicity if species is not None else None,
+                                         n_radicals=species.number_of_radicals if species is not None else 0,
+                                         )
     else:
         mol = species.mol.copy(deep=True)
     try:
@@ -441,15 +437,15 @@ def draw_thermo_parity_plots(species_list: list,
     labels, comments, h298_arc, h298_rmg, s298_arc, s298_rmg = [], [], [], [], [], []
     for spc in species_list:
         labels.append(spc.label)
-        h298_arc.append(spc.thermo.get_enthalpy(298) * 0.001)  # converted to kJ/mol
-        h298_rmg.append(spc.rmg_thermo['H298'])
-        s298_arc.append(spc.thermo.get_entropy(298))  # in J/mol*K
-        s298_rmg.append(spc.rmg_thermo['S298'])  # in J/mol*K
-        comments.append(spc.rmg_thermo['comment'] if 'comment' in spc.rmg_thermo else '')
-    var_units_h = r"$\left(\frac{J}{mol}\right)$"
-    var_units_s = r"$\left(\frac{J}{mol\cdot{K}}\right)$"
-    label_h = r"$\Delta H ^{298_K} _f}$"
-    label_s = r"$\Delta S ^{298_K} _f}$"
+        h298_arc.append(spc.thermo.H298)
+        h298_rmg.append(spc.rmg_thermo.H298)
+        s298_arc.append(spc.thermo.S298)
+        s298_rmg.append(spc.rmg_thermo.S298)
+        comments.append(spc.rmg_thermo.comment)
+    var_units_h = r"$\mathrm{J\,mol^{-1}}$"
+    var_units_s = r"$\mathrm{J\,mol^{-1}\,K^{-1}}$"
+    label_h = r"$\Delta H^\circ_{f}(298\,\mathrm{K})$"
+    label_s = r"$\Delta S^\circ_{f}(298\,\mathrm{K})$"
     draw_parity_plot(var_arc=h298_arc, var_rmg=h298_rmg, var_label=label_h, var_units=var_units_h, labels=labels, pp=pp)
     draw_parity_plot(var_arc=s298_arc, var_rmg=s298_rmg, var_label=label_s, var_units=var_units_s, labels=labels, pp=pp)
     pp.close()
@@ -473,9 +469,11 @@ def draw_parity_plot(var_arc, var_rmg, labels, var_label, var_units, pp=None):
         labels (list): Species labels corresponding to the data in ``var_arc`` and ``var_rmg``.
         var_label (str): The variable name.
         var_units (str): The variable units.
-        pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.
+        pp (PdfPages, optional): Used for storing the image as a multipage PFD file.
     """
     combined= [x for n in (var_arc, var_rmg) for x in n]
+    if any(x is None for x in combined):
+        return
     min_var = min(combined)
     max_var = max(combined)
     fig, ax = plt.subplots(dpi=120)
@@ -516,7 +514,6 @@ def draw_kinetics_plots(rxn_list: list,
         T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.
         path (str, optional): The path to the project's output folder.
     """
-    plt.style.use('seaborn-talk')
     T_min = T_min or (300, 'K')
     if T_min is None:
         T_min = (300, 'K')
@@ -526,9 +523,7 @@ def draw_kinetics_plots(rxn_list: list,
         T_max = (3000, 'K')
     elif isinstance(T_max, (int, float)):
         T_max = (T_min, 'K')
-    T_min = ScalarQuantity(value=T_min[0], units=T_min[1])
-    T_max = ScalarQuantity(value=T_max[0], units=T_max[1])
-    temperatures = np.linspace(T_min.value_si, T_max.value_si, T_count)
+    temperatures = np.linspace(T_min[0], T_max[0], T_count)
 
     pp = None
     if path is not None:
@@ -756,7 +751,7 @@ def save_irc_traj_animation(irc_f_path, irc_r_path, out_path):
                 f.write(' Number     Number      Type              X           Y           Z\n')
                 f.write(' ---------------------------------------------------------------------\n')
                 for i, symbol in enumerate(xyz['symbols']):
-                    el_num, x, y, z = qcel.periodictable.to_Z(symbol), xs[i], ys[i], zs[i]
+                    el_num, x, y, z = NUMBER_BY_SYMBOL(symbol), xs[i], ys[i], zs[i]
                     f.write(f'    {i + 1:>5}          {el_num}             0        {x} {y} {z}\n')
                 f.write(' ---------------------------------------------------------------------\n')
                 f.write(' GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad\n')
@@ -772,7 +767,7 @@ def save_thermo_lib(species_list: list,
                     lib_long_desc: str,
                     ) -> None:
     """
-    Save an RMG thermo library of all species
+    Save an RMG thermo library of all species.
 
     Args:
         species_list (list): Entries are ARCSpecies objects to be saved in the library.
@@ -780,29 +775,55 @@ def save_thermo_lib(species_list: list,
         name (str): The library's name (or project's name).
         lib_long_desc (str): A multiline string with level of theory description.
     """
-    if species_list:
-        lib_path = os.path.join(path, 'thermo', f'{name}.py')
-        thermo_library = ThermoLibrary(name=name, long_desc=lib_long_desc)
-        for i, spc in enumerate(species_list):
-            if spc.thermo is not None and spc.include_in_thermo_lib:
-                spc.long_thermo_description += f'\nExternal symmetry: {spc.external_symmetry}, ' \
-                                               f'optical isomers: {spc.optical_isomers}\n'
-                spc.long_thermo_description += f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
-                try:
-                    thermo_library.load_entry(index=i,
-                                              label=spc.label,
-                                              molecule=spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list(),
-                                              thermo=spc.thermo,
-                                              shortDesc=spc.thermo.comment,
-                                              longDesc=spc.long_thermo_description)
-                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
-                    logger.error(f'Could not save species {spc.label} in the thermo library, got:')
-                    logger.info(e)
-            else:
-                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
-                               f'library.')
+    thermo_txt = f"""#!/usr/bin/env python
+# encoding: utf-8
 
-        thermo_library.save(lib_path)
+name = "{name}"
+shortDesc = ""
+longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
+"""
+    species_dict = dict()
+    if not len(species_list) or not any(spc.thermo for spc in species_list):
+        logger.warning('No species to save in the thermo library.')
+        return
+
+    for i, spc in enumerate(species_list):
+        if spc.thermo.data and spc.include_in_thermo_lib:
+            if spc.label not in species_dict:
+                adjlist = spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list()
+                species_dict[spc.label] = adjlist
+            spc.long_thermo_description += (
+                f'\nExternal symmetry: {spc.external_symmetry}, '
+                f'optical isomers: {spc.optical_isomers}\n'
+                f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
+            )
+            comment = spc.thermo.comment or ''
+            thermo_txt += f"""entry(
+    index = {i + 1},
+    label = "{spc.label}",
+    molecule = \"\"\"\n{species_dict[spc.label]}\n\"\"\",
+    thermo = {spc.thermo.data},
+    shortDesc = u\"\"\"{comment}\"\"\",
+    longDesc = u\"\"\"\n{spc.long_thermo_description}\n\"\"\",
+)
+
+"""
+        else:
+            logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo library.')
+
+    lib_path = os.path.join(path, 'thermo')
+    if os.path.isdir(lib_path):
+        shutil.rmtree(lib_path, ignore_errors=True)
+    os.makedirs(lib_path, exist_ok=True)
+
+    thermo_file = os.path.join(lib_path, f'{name}.py')
+    with open(thermo_file, 'w') as f:
+        f.write(thermo_txt)
+
+    species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
+    with open(species_dict_path, 'w') as f:
+        for label, adjlist in species_dict.items():
+            f.write(f'{label}\n{adjlist}\n')
 
 
 def save_transport_lib(species_list, path, name, lib_long_desc=''):
@@ -811,41 +832,14 @@ def save_transport_lib(species_list, path, name, lib_long_desc=''):
     `name` is the library's name (or project's name).
     `long_desc` is a multiline string with level of theory description.
     """
-    if species_list:
-        lib_path = os.path.join(path, f'transport', '{name}.py')
-        transport_library = TransportLibrary(name=name, long_desc=lib_long_desc)
-        for i, spc in enumerate(species_list):
-            if spc.transport_data is not None:
-                description = f'\nGeometry:\n{xyz_to_str(spc.final_xyz)}'
-                try:
-                    transport_library.load_entry(index=i,
-                                                 label=spc.label,
-                                                 molecule=spc.adjlist or spc.mol_list[0].copy(deep=True).to_adjacency_list(),
-                                                 transport=spc.transport_data,
-                                                 shortDesc=spc.thermo.comment,
-                                                 longDesc=description)
-                except (InvalidAdjacencyListError, DatabaseError, ValueError, TypeError) as e:
-                    logger.error(f'Could not save species {spc.label} in the transport library, got:')
-                    logger.info(e)
-                logger.info(f'\n\nTransport properties for {spc.label}:')
-                logger.info(f'  Shape index: {spc.transport_data.shapeIndex}')
-                logger.info(f'  Epsilon: {spc.transport_data.epsilon}')
-                logger.info(f'  Sigma: {spc.transport_data.sigma}')
-                logger.info(f'  Dipole moment: {spc.transport_data.dipoleMoment}')
-                logger.info(f'  Polarizability: {spc.transport_data.polarizability}')
-                logger.info(f'  Rotational relaxation collision number: {spc.transport_data.rotrelaxcollnum}')
-                logger.info(f'  Comment: {spc.transport_data.comment}')
-            else:
-                logger.warning(f'Species {spc.label} did not contain any thermo data and was omitted from the thermo '
-                               f'library.')
-
-        transport_library.save(lib_path)
+    # not implemented yet, ARC still cannot calculate transport properties
+    pass
 
 
 def save_kinetics_lib(rxn_list: list,
                       path: str,
                       name: str,
-                      lib_long_desc:str,
+                      lib_long_desc: str,
                       T_min: float = 300,
                       T_max: float = 3000,
                       ) -> None:
@@ -869,7 +863,7 @@ shortDesc = ""
 longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
 """
     species_dict = dict()
-    if len(rxn_list) == 0 or not any([rxn.kinetics for rxn in rxn_list]):
+    if not len(rxn_list) or not any(rxn.kinetics for rxn in rxn_list):
         logger.warning('No reactions to save in the kinetics library.')
     for i, rxn in enumerate(rxn_list):
         if rxn.kinetics is not None:
@@ -880,7 +874,6 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
             logger.warning(f'Reaction {rxn.label} did not contain any kinetic data and was omitted from the '
                            f'kinetics library.')
             continue
-        units = get_rxn_units_and_conversion_factor(rxn)[0]
         rxn.ts_species.make_ts_report()
         if 'rotors' not in rxn.ts_species.long_thermo_description:
             rxn.ts_species.long_thermo_description += '\nNo rotors considered for this TS.'
@@ -892,7 +885,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
         rxn_txt = f"""entry(
     index = {i},
     label = "{rxn.label}",
-    kinetics = Arrhenius(A=({rxn.kinetics['A']:.2e}, '{units}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea']:.2f}, 'kJ/mol'),
+    kinetics = Arrhenius(A=({rxn.kinetics['A'][0]:.2e}, '{rxn.kinetics['A'][1]}'), n={rxn.kinetics['n']:.2f}, Ea=({rxn.kinetics['Ea'][0]:.2f}, '{rxn.kinetics['Ea'][1]}'),
                          T0=(1, 'K'), Tmin=({T_min}, 'K'), Tmax=({T_max}, 'K')),
     longDesc = 
 \"\"\"
@@ -903,19 +896,19 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
 """
         reactions_txt += rxn_txt
 
-    lib_path = os.path.join(path, 'kinetics', '')
-    if os.path.exists(lib_path):
+    lib_path = os.path.join(path, 'kinetics')
+    if os.path.isdir(lib_path):
         shutil.rmtree(lib_path, ignore_errors=True)
-    try:
-        os.makedirs(lib_path)
-    except OSError as e:
-        logger.error(f"Failed to create directory {lib_path}: {e}")
-    with open(os.path.join(lib_path, 'reactions.py'), 'w') as f:
+    os.makedirs(lib_path, exist_ok=True)
+
+    reactions_file = os.path.join(lib_path, 'reactions.py')
+    with open(reactions_file, 'w') as f:
         f.write(reactions_txt)
+
     species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
     with open(species_dict_path, 'w') as f:
         for label, adjlist in species_dict.items():
-            f.write(f'{label}:\n{adjlist}\n\n')
+            f.write(f'{label}\n{adjlist}\n')
 
 
 def save_conformers_file(project_directory: str,
@@ -976,11 +969,8 @@ def save_conformers_file(project_directory: str,
             if xyz is not None:
                 content += xyz_to_str(xyz) + '\n'
                 if not is_ts:
-                    try:
-                        b_mol = molecules_from_xyz(xyz, multiplicity=multiplicity, charge=charge)[1]
-                    except SanitizationError:
-                        b_mol = None
-                    smiles = b_mol.copy(deep=True).to_smiles() if b_mol is not None else 'Could not perceive molecule'
+                    mol = perceive_molecule_from_xyz(xyz, charge=charge, multiplicity=multiplicity, n_radicals=None)
+                    smiles = mol.to_smiles() if mol is not None else 'Could not perceive molecule'
                     content += f'\nSMILES: {smiles}\n'
                 elif ts_methods is not None:
                     content += f'TS guess method: {ts_methods[i]}\n'

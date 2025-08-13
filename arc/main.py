@@ -14,12 +14,8 @@ import os
 import shutil
 import time
 from distutils.spawn import find_executable
-from enum import Enum
 from IPython.display import display
 from typing import Dict, List, Optional, Tuple, Union
-
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
 
 from arc.common import (VERSION,
                         ARC_PATH,
@@ -43,6 +39,8 @@ from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
+from arc.statmech.adapter import StatmechEnum
+from arc.statmech.arkane import check_arkane_bacs
 from arc.utils.scale import determine_scaling_factors
 
 
@@ -51,16 +49,6 @@ logger = get_logger()
 default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
     settings['default_job_settings'], settings['global_ess_settings']
-
-
-class StatmechEnum(str, Enum):
-    """
-    The supported statmech software adapters.
-    The available adapters are a finite set.
-    """
-    arkane = 'arkane'
-    # mesmer = 'mesmer'
-    # mess = 'mess'
 
 
 class ARC(object):
@@ -148,9 +136,6 @@ class ARC(object):
                                         Default: 'Arkane'.
         kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.
                                           Default: 'Arkane'.
-        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation
-                                       format (``True``, default) or classical two-parameter Arrhenius equation format
-                                       (``False``).
         trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         trsh_rotors (bool, optional): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         output (dict, optional): Output dictionary with status and final QM file paths for all species.
@@ -225,8 +210,6 @@ class ARC(object):
         kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.
         fine_only (bool): If ``self.job_types['fine'] and not self.job_types['opt']`` ARC will not run optimization
                           jobs without fine=True
-        three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation
-                             format (``True``) or classical two-parameter Arrhenius equation format (``False``).
         trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.
         trsh_rotors (bool): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.
         ts_adapters (list): Entries represent different TS adapters.
@@ -269,17 +252,16 @@ class ARC(object):
                  output_multi_spc: Optional[dict] = None,
                  project: Optional[str] = None,
                  project_directory: Optional[str] = None,
-                 reactions: Optional[List[Union[ARCReaction, Reaction]]] = None,
+                 reactions: Optional[List[ARCReaction]] = None,
                  running_jobs: Optional[dict] = None,
                  scan_level: Optional[Union[str, dict, Level]] = None,
                  sp_level: Optional[Union[str, dict, Level]] = None,
-                 species: Optional[List[Union[ARCSpecies, Species]]] = None,
+                 species: Optional[List[ARCSpecies]] = None,
                  specific_job_type: str = '',
                  T_min: Optional[Tuple[float, str]] = None,
                  T_max: Optional[Tuple[float, str]] = None,
                  T_count: int = 50,
                  thermo_adapter: str = 'Arkane',
-                 three_params: bool = True,
                  trsh_ess_jobs: bool = True,
                  trsh_rotors: bool = True,
                  ts_adapters: List[str] = None,
@@ -318,7 +300,6 @@ class ARC(object):
         self.compare_to_rmg = compare_to_rmg
         self.compute_thermo = compute_thermo
         self.compute_rates = compute_rates
-        self.three_params = three_params
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
         self.compute_transport = compute_transport
@@ -366,15 +347,7 @@ class ARC(object):
         self.species = species or list()
         converted_species, indices_to_pop = list(), list()
         for i, spc in enumerate(self.species):
-            if isinstance(spc, Species):
-                # RMG Species
-                if not spc.label:
-                    raise InputError(f'Missing label on RMG Species object {spc}')
-                indices_to_pop.append(i)
-                is_ts = spc.label[:2] == 'TS' and all(char.isdigit() for char in spc.label[2:])
-                arc_spc = ARCSpecies(is_ts=is_ts, rmg_species=spc)
-                converted_species.append(arc_spc)
-            elif isinstance(spc, dict):
+            if isinstance(spc, dict):
                 # dict representation for ARCSpecies
                 indices_to_pop.append(i)
                 converted_species.append(ARCSpecies(species_dict=spc))
@@ -411,8 +384,7 @@ class ARC(object):
                 indices_to_pop.append(i)
                 converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
             elif not isinstance(rxn, ARCReaction):
-                raise ValueError(f'A reaction should either be an `ARCReaction` object or an RMG `Reaction` object. '
-                                 f'Got {type(rxn)} for {rxn}')
+                raise ValueError(f'A reaction should either be an `ARCReaction` object.\nGot {type(rxn)} for {rxn}')
         for i in reversed(range(len(self.reactions))):  # pop from the end, so other indices won't change
             if i in indices_to_pop:
                 self.reactions.pop(i)
@@ -548,8 +520,6 @@ class ARC(object):
             restart_dict['T_count'] = self.T_count
         if self.thermo_adapter != 'arkane':
             restart_dict['thermo_adapter'] = self.thermo_adapter
-        if not self.three_params:
-            restart_dict['three_params'] = self.three_params
         if not self.trsh_ess_jobs:
             restart_dict['trsh_ess_jobs'] = self.trsh_ess_jobs
         if not self.trsh_rotors:
@@ -661,8 +631,8 @@ class ARC(object):
                             T_count=self.T_count or 50,
                             lib_long_desc=self.lib_long_desc,
                             compare_to_rmg=self.compare_to_rmg,
-                            three_params=self.three_params,
                             sp_level=self.arkane_level_of_theory,
+                            freq_level=self.freq_level,
                             skip_nmd=self.skip_nmd,
                             )
 
@@ -1183,8 +1153,8 @@ class ARC(object):
         if self.arkane_level_of_theory is None:
             self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
                 else self.sp_level if self.sp_level is not None else None
-        if self.arkane_level_of_theory is not None:
-            self.arkane_level_of_theory.to_arkane_level_of_theory(variant='AEC', raise_error=self.compute_thermo)
+        if self.arkane_level_of_theory is not None and self.bac_type is not None:
+            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
         else:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
 

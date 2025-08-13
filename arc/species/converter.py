@@ -7,34 +7,28 @@ import numpy as np
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
-import qcelemental as qcel
 from ase import Atoms
 from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT
-from rdkit.Chem import SDWriter
+from rdkit.Chem import AllChem, SDWriter
 from rdkit.Chem.rdchem import AtomValenceException
 from scipy.optimize import minimize
 
-from arkane.common import get_element_mass, mass_by_symbol, symbol_by_number
-import rmgpy.constants as constants
-from rmgpy.exceptions import AtomTypeError
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.quantity import ArrayQuantity
-from rmgpy.species import Species
-from rmgpy.statmech import Conformer
-
-from arc.common import (almost_equal_lists,
+from arc.common import (NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, SYMBOL_BY_NUMBER,
+                        almost_equal_lists,
                         calc_rmsd,
+                        distance_matrix,
                         get_atom_radius,
                         get_logger,
-                        generate_resonance_structures,
                         is_str_float,
                         )
-from arc.exceptions import ConverterError, InputError, SanitizationError, SpeciesError
-from arc.species.xyz_to_2d import MolGraph
-from arc.species.xyz_to_smiles import xyz_to_smiles
+import arc.constants as constants
+from arc.exceptions import AtomTypeError, ConverterError, InputError, SanitizationError, SpeciesError
+from arc.molecule.molecule import Atom, Bond, Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
+from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.zmat import (KEY_FROM_LEN,
                               _compare_zmats,
                               get_all_neighbors,
@@ -94,8 +88,8 @@ def str_to_xyz(xyz_str: str,
     if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
         xyz_str = os.path.join(project_directory, xyz_str)
     if os.path.isfile(xyz_str):
-        from arc.parser import parse_xyz_from_file
-        return parse_xyz_from_file(xyz_str)
+        from arc.parser.parser import parse_geometry
+        return parse_geometry(log_file_path=xyz_str)
     xyz_str = xyz_str.replace(',', ' ')
     if len(xyz_str.splitlines()) and len(xyz_str.splitlines()[0]) == 1:
         # this is a zmat
@@ -107,7 +101,7 @@ def str_to_xyz(xyz_str: str,
         for line in xyz_str.splitlines():
             if line.strip():
                 splits = line.split()
-                symbol = symbol_by_number[int(splits[1])]
+                symbol = SYMBOL_BY_NUMBER[int(splits[1])]
                 coord = (float(splits[3]), float(splits[4]), float(splits[5]))
                 xyz_dict['symbols'] += (symbol,)
                 xyz_dict['isotopes'] += (get_most_common_isotope_for_element(symbol),)
@@ -327,7 +321,7 @@ def xyz_to_coords_and_element_numbers(xyz: dict) -> Tuple[list, list]:
         Tuple[list, list]: Coords and atomic numbers.
     """
     coords = xyz_to_coords_list(xyz)
-    z_list = [qcel.periodictable.to_Z(symbol) for symbol in xyz['symbols']]
+    z_list = [NUMBER_BY_SYMBOL[symbol] for symbol in xyz['symbols']]
     return coords, z_list
 
 
@@ -361,8 +355,8 @@ def xyz_to_dmat(xyz_dict: dict) -> Optional[np.array]:
     if xyz_dict is None or isinstance(xyz_dict, dict) and any(not val for val in xyz_dict.values()):
         return None
     xyz_dict = check_xyz_dict(xyz_dict)
-    dmat = qcel.util.misc.distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
-                                          b=np.array(xyz_to_coords_list(xyz_dict)))
+    dmat = distance_matrix(a=np.array(xyz_to_coords_list(xyz_dict)),
+                           b=np.array(xyz_to_coords_list(xyz_dict)))
     return dmat
 
 
@@ -437,7 +431,7 @@ def xyz_from_data(coords, numbers=None, symbols=None, isotopes=None) -> dict:
     if numbers is not None and symbols is not None:
         raise ConverterError('Must set either "numbers" or "symbols". Got both.')
     if numbers is not None:
-        symbols = tuple(symbol_by_number[number] for number in numbers)
+        symbols = tuple(SYMBOL_BY_NUMBER[number] for number in numbers)
     if len(coords) != len(symbols):
         raise ConverterError(f'The length of the coordinates ({len(coords)}) is different than the length of the '
                              f'numbers/symbols ({len(symbols)}).')
@@ -578,7 +572,20 @@ def get_element_mass_from_xyz(xyz: dict) -> List[float]:
     Returns:
         List[float]: The corresponding list of mass in amu.
     """
-    return [get_element_mass(symbol, isotope)[0] for symbol, isotope in zip(xyz['symbols'], xyz['isotopes'])]
+    symbols, isotopes = xyz['symbols'], xyz.get('isotopes', None)
+    masses = list()
+    for i, symbol in enumerate(symbols):
+        isotope_list = MASS_BY_SYMBOL[symbol]
+        if isotopes:
+            isotope_number = isotopes[i]
+            mass = next((m[1] for m in isotope_list if m[0] == isotope_number), None)
+            if mass is None:
+                raise ValueError(f"No mass found for {symbol} isotope {isotope_number}")
+        else:
+            # Use the most abundant isotope if not specified
+            mass = max(isotope_list, key=lambda x: x[2])[1]
+        masses.append(mass)
+    return masses
 
 
 def hartree_to_si(e: float,
@@ -595,62 +602,6 @@ def hartree_to_si(e: float,
         raise ValueError(f'Expected a float, got {e} which is a {type(e)}.')
     factor = 0.001 if kilo else 1
     return e * constants.E_h * constants.Na * factor
-
-
-def rmg_conformer_to_xyz(conformer):
-    """
-    Convert xyz coordinates from an rmgpy.statmech.Conformer object into the ARC dict xyz style.
-
-    Notes:
-        Only the xyz information (symbols and coordinates) will be taken from the Conformer object. Other properties
-        such as electronic energy will not be converted.
-
-        We also assume that we can get the isotope number by rounding the mass
-
-    Args:
-        conformer (Conformer): An rmgpy.statmech.Conformer object containing the desired xyz coordinates
-
-    Raises:
-        TypeError: If conformer is not an rmgpy.statmech.Conformer object
-
-    Returns:
-        dict: The ARC xyz format
-    """
-    if not isinstance(conformer, Conformer):
-        raise TypeError(f'Expected conformer to be an rmgpy.statmech.Conformer object but instead got {conformer}, '
-                        f'which is a {type(conformer)} object.')
-
-    symbols = tuple(symbol_by_number[n] for n in conformer.number.value)
-    isotopes = tuple(int(round(m)) for m in conformer.mass.value)
-    coords = tuple(tuple(coord) for coord in conformer.coordinates.value)
-
-    xyz_dict = {'symbols': symbols, 'isotopes': isotopes, 'coords': coords}
-    return xyz_dict
-
-
-def xyz_to_rmg_conformer(xyz_dict: dict) -> Optional[Conformer]:
-    """
-    Convert the Arc dict xyz style into an rmgpy.statmech.Conformer object containing these coordinates.
-
-    Notes:
-        Only the xyz information will be supplied to the newly created Conformer object
-
-    Args:
-        xyz_dict (dict): The ARC dict xyz style coordinates
-
-    Returns:
-        Optional[Conformer]: An rmgpy.statmech.Conformer object containing the desired xyz coordinates.
-    """
-    if xyz_dict is None:
-        return None
-    xyz_dict = check_xyz_dict(xyz_dict)
-    mass_and_number = (get_element_mass(*args) for args in zip(xyz_dict['symbols'], xyz_dict['isotopes']))
-    mass, number = zip(*mass_and_number)
-    mass = ArrayQuantity(mass, 'amu')
-    number = ArrayQuantity(number, '')
-    coordinates = ArrayQuantity(xyz_dict['coords'], 'angstroms')
-    conformer = Conformer(number=number, mass=mass, coordinates=coordinates)
-    return conformer
 
 
 def standardize_xyz_string(xyz_str, isotope_format=None):
@@ -751,8 +702,7 @@ def check_zmat_dict(zmat: Union[dict, str]) -> dict:
         # add a trivial map
         zmat_dict['map'] = {i: i for i in range(len(zmat_dict['symbols']))}
     if len(zmat_dict['symbols']) != len(zmat_dict['map']):
-        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["isotopes"])} '
-                             f'isotopes:\n{zmat_dict}')
+        raise ConverterError(f'Got {len(zmat_dict["symbols"])} symbols and {len(zmat_dict["map"])} Zmat::\n{zmat_dict}')
     for i, coord in enumerate(zmat_dict['coords']):
         for j, param in enumerate(coord):
             if param is not None:
@@ -831,7 +781,11 @@ def zmat_from_xyz(xyz: Union[dict, str],
         raise InputError(f'xyz must be a dictionary, got {type(xyz)}')
     xyz = remove_dummies(xyz)
     if mol is None and not is_ts:
-        mol = molecules_from_xyz(xyz=xyz)[1]
+        mol = perceive_molecule_from_xyz(xyz=xyz,
+                                         charge=mol.get_net_charge() if mol is not None else 0,
+                                         multiplicity=mol.multiplicity if mol is not None else None,
+                                         n_radicals=None,
+                                         )
     return xyz_to_zmat(xyz,
                        mol=mol,
                        constraints=constraints,
@@ -1091,7 +1045,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
                          indices: List[int],
                          mol: Molecule,
                          index: int = 0,
-                         ) -> float:
+                         ) -> float | None:
     """
     Generates a zmat similarly to modify_coords(),
     but instead of modifying it, only reports on the value of a requested parameter.
@@ -1124,6 +1078,7 @@ def get_zmat_param_value(coords: Dict[str, tuple],
         return zmat["vars"][param]
     elif isinstance(param, list):
         return sum(zmat["vars"][par] for par in param)
+    return None
 
 
 def relocate_zmat_dummy_atoms_to_the_end(zmat_map: dict) -> dict:
@@ -1205,7 +1160,7 @@ def modify_coords(coords: Dict[str, tuple],
     if modification_type == 'groups' and modification_type[0] != 'D':
         raise InputError(f'The "groups" modification type is only supported for dihedrals (D), '
                          f'not for an {modification_type[0]} parameter.')
-    if index < 0 or index > 1:
+    if index not in [0, 1]:
         raise ValueError(f'The index argument must be either 0 or 1, got {index}.')
     if 'map' in list(coords.keys()):
         # a zmat was given, we actually need xyz to recreate a specific zmat for the parameter modification.
@@ -1275,7 +1230,7 @@ def get_most_common_isotope_for_element(element_symbol):
     if element_symbol == 'X':
         # this is a dummy atom (such as in a zmat)
         return None
-    mass_list = mass_by_symbol[element_symbol]
+    mass_list = MASS_BY_SYMBOL[element_symbol]
     if len(mass_list[0]) == 2:
         # isotope contribution is unavailable, just get the first entry
         isotope = mass_list[0][0]
@@ -1349,7 +1304,7 @@ def rmg_mol_from_inchi(inchi: str):
 
 def elementize(atom):
     """
-    Convert the atom type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
+    Convert the atom-type of an RMG ``Atom`` object into its general parent element atom type (e.g., 'S4d' into 'S').
 
     Args:
         atom (Atom): The atom to process.
@@ -1358,94 +1313,6 @@ def elementize(atom):
     atom_type = [at for at in atom_type.generic if at.label != 'R' and at.label != 'R!H' and 'Val' not in at.label]
     if atom_type:
         atom.atomtype = atom_type[0]
-
-
-def molecules_from_xyz(xyz: Optional[Union[dict, str]],
-                       multiplicity: Optional[int] = None,
-                       charge: int = 0,
-                       ) -> Tuple[Optional[Molecule], Optional[Molecule]]:
-    """
-    Creating RMG:Molecule objects from xyz with correct atom labeling.
-    Based on the MolGraph.perceive_smiles method.
-    If `multiplicity` is given, the returned species multiplicity will be set to it.
-
-    Args:
-        xyz (dict): The ARC dict format xyz coordinates of the species.
-        multiplicity (int, optional): The species spin multiplicity.
-        charge (int, optional): The species net charge.
-
-    Returns: Tuple[Optional[Molecule], Optional[Molecule]]
-        - The respective Molecule object with only single bonds.
-        - The respective Molecule object with perceived bond orders.
-    """
-    if xyz is None:
-        return None, None
-    xyz = check_xyz_dict(xyz)
-
-    if len(xyz['symbols']) == 2:
-        for element, bond_length in zip(['O', 'S'], [1.4, 2.1]):
-            if xyz['symbols'] == (element, element) and multiplicity != 1:
-                coords = np.asarray(xyz['coords'], dtype=np.float32)
-                vector = coords[0] - coords[1]
-                if float(np.dot(vector, vector) ** 0.5) < bond_length:
-                    # Special case for O2 and S2 triplet
-                    return Molecule(smiles=f'[{element}][{element}]'), Molecule(smiles=f'[{element}][{element}]')
-
-    # 1. Generate a molecule with no bond order information with atoms ordered as in xyz.
-    mol_graph = MolGraph(symbols=xyz['symbols'], coords=xyz['coords'])
-    inferred_connections = mol_graph.infer_connections()
-    if inferred_connections:
-        mol_s1 = mol_graph.to_rmg_mol()  # An RMG Molecule with single bonds, atom order corresponds to xyz.
-    else:
-        mol_s1 = s_bonds_mol_from_xyz(xyz)  # An RMG Molecule with single bonds, atom order corresponds to xyz.
-    if mol_s1 is None:
-        logger.error(f'Could not create a 2D graph representation from xyz:\n{xyz_to_str(xyz)}')
-        return None, None
-    if multiplicity is not None:
-        mol_s1.multiplicity = multiplicity
-    mol_s1_updated = update_molecule(mol_s1, to_single_bonds=True)
-
-    # 2. Generate a molecule with bond order information using pybel:
-    mol_bo = None
-    pybel_mol = xyz_to_pybel_mol(xyz)
-    if pybel_mol is not None:
-        inchi = pybel_to_inchi(pybel_mol, has_h=bool(len([atom.is_hydrogen() for atom in mol_s1_updated.atoms])))
-        mol_bo = rmg_mol_from_inchi(inchi)  # An RMG Molecule with bond orders, but without preserved atom order.
-
-    # 3. Generate a molecule with bond order information using xyz_to_smiles.
-    if mol_bo is None:
-        try:
-            smiles_list = xyz_to_smiles(xyz=xyz, charge=charge)
-            if smiles_list is not None:
-                mol_bo = Molecule(smiles=smiles_list[0])
-        except:
-            pass
-
-    if mol_bo is not None:
-        if multiplicity is not None:
-            try:
-                set_multiplicity(mol_bo, multiplicity, charge)
-            except SpeciesError as e:
-                logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                               f'following error:\n{e}')
-                return mol_s1_updated, None
-        mol_s1_updated.multiplicity = mol_bo.multiplicity
-        try:
-            order_atoms(ref_mol=mol_s1_updated, mol=mol_bo)
-        except SanitizationError:
-            logger.warning(f'Could not order atoms for {mol_s1_updated.copy(deep=True).to_smiles()}!')
-        try:
-            set_multiplicity(mol_s1_updated, mol_bo.multiplicity, charge, radical_map=mol_bo)
-        except (ConverterError, SpeciesError) as e:
-            logger.warning(f'Cannot infer 2D graph connectivity, failed to set species multiplicity with the '
-                           f'following error:\n{e}')
-
-    for mol in [mol_s1_updated, mol_bo]:
-        if mol is not None and mol.multiplicity == 1:
-            for atom in mol.atoms:
-                atom.radical_electrons = 0
-
-    return mol_s1_updated, mol_bo
 
 
 def set_multiplicity(mol, multiplicity, charge, radical_map=None):
@@ -1588,13 +1455,13 @@ def set_radicals_by_map(mol, radical_map):
         atom.radical_electrons = radical_map.atoms[i].radical_electrons
 
 
-def order_atoms_in_mol_list(ref_mol, mol_list) -> bool:
+def order_atoms_in_mol_list(ref_mol: Molecule, mol_list: List[Molecule] | None) -> bool:
     """
     Order the atoms in all molecules of ``mol_list`` by the atom order in ``ref_mol``.
 
     Args:
         ref_mol (Molecule): The reference Molecule object.
-        mol_list (list): Entries are Molecule objects whose atoms will be reordered according to the reference.
+        mol_list (List[Molecule] | None): Entries are Molecule objects whose atoms will be reordered according to the reference.
 
     Raises:
         TypeError: If ``ref_mol`` or the entries in ``mol_list`` have a wrong type.
@@ -1607,8 +1474,7 @@ def order_atoms_in_mol_list(ref_mol, mol_list) -> bool:
     if mol_list is not None:
         for mol in mol_list:
             if not isinstance(mol, Molecule):
-                raise TypeError(f'expected enrties of mol_list to be Molecule instances, got {mol} '
-                                f'which is a {type(mol)}.')
+                raise TypeError(f'expected entries of mol_list to be Molecule instances, got {mol} which is a {type(mol)}.')
             try:  # TODO: flag as unordered (or solve)
                 order_atoms(ref_mol, mol)
             except SanitizationError as e:
@@ -1634,40 +1500,40 @@ def order_atoms(ref_mol, mol):
         SanitizationError: If atoms could not be re-ordered.
         TypeError: If ``mol`` has a wrong type.
     """
-    if not isinstance(mol, Molecule):
-        raise TypeError(f'expected mol to be a Molecule instance, got {mol} which is a {type(mol)}.')
-    if ref_mol is not None and mol is not None:
-        ref_mol_is_iso_copy = ref_mol.copy(deep=True)
-        mol_is_iso_copy = mol.copy(deep=True)
-        ref_mol_find_iso_copy = ref_mol.copy(deep=True)
-        mol_find_iso_copy = mol.copy(deep=True)
+    if not isinstance(mol, Molecule) or not isinstance(ref_mol, Molecule):
+        raise TypeError(f'Expected ref_mol & mol to be Molecule instances, got {ref_mol} and {mol} '
+                        f'with types {type(ref_mol)} and {type(mol)}.')
+    ref_mol_is_iso_copy = ref_mol.copy(deep=True)
+    mol_is_iso_copy = mol.copy(deep=True)
+    ref_mol_find_iso_copy = ref_mol.copy(deep=True)
+    mol_find_iso_copy = mol.copy(deep=True)
 
-        ref_mol_is_iso_copy = update_molecule(ref_mol_is_iso_copy, to_single_bonds=True)
-        mol_is_iso_copy = update_molecule(mol_is_iso_copy, to_single_bonds=True)
-        ref_mol_find_iso_copy = update_molecule(ref_mol_find_iso_copy, to_single_bonds=True)
-        mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
+    ref_mol_is_iso_copy = update_molecule(ref_mol_is_iso_copy, to_single_bonds=True)
+    mol_is_iso_copy = update_molecule(mol_is_iso_copy, to_single_bonds=True)
+    ref_mol_find_iso_copy = update_molecule(ref_mol_find_iso_copy, to_single_bonds=True)
+    mol_find_iso_copy = update_molecule(mol_find_iso_copy, to_single_bonds=True)
 
-        if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
-            mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
-            if len(mapping):
-                if isinstance(mapping, list):
-                    mapping = mapping[0]
-                index_map = {ref_mol_find_iso_copy.atoms.index(val): mol_find_iso_copy.atoms.index(key)
-                             for key, val in mapping.items()}
-                mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
-            else:
-                # logger.debug('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
-                #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
-                #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
-                raise SanitizationError('Could not map molecules')
+    if mol_is_iso_copy.is_isomorphic(ref_mol_is_iso_copy, save_order=True, strict=False):
+        mapping = mol_find_iso_copy.find_isomorphism(ref_mol_find_iso_copy, save_order=True)
+        if len(mapping):
+            if isinstance(mapping, list):
+                mapping = mapping[0]
+            index_map = {ref_mol_find_iso_copy.atoms.index(val): mol_find_iso_copy.atoms.index(key)
+                         for key, val in mapping.items()}
+            mol.atoms = [mol.atoms[index_map[i]] for i, _ in enumerate(mol.atoms)]
         else:
-            # logger.debug('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+            # logger.debug('Could not map molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
             #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
             #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
-            raise SanitizationError('Could not map non isomorphic molecules')
+            raise SanitizationError('Could not map molecules')
+    else:
+        # logger.debug('Could not map non isomorphic molecules {0}, {1}:\n\n{2}\n\n{3}'.format(
+        #     ref_mol.copy(deep=True).to_smiles(), mol.copy(deep=True).to_smiles(),
+        #     ref_mol.copy(deep=True).to_adjacency_list(), mol.copy(deep=True).to_adjacency_list()))
+        raise SanitizationError('Could not map non isomorphic molecules')
 
 
-def update_molecule(mol, to_single_bonds=False):
+def update_molecule(mol: Molecule, to_single_bonds: bool = False) -> Molecule:
     """
     Updates the molecule, useful for isomorphism comparison.
 
@@ -1683,14 +1549,14 @@ def update_molecule(mol, to_single_bonds=False):
         atoms = mol.atoms
     except AttributeError:
         return None
-    atom_mapping = dict()
+    new_atoms_dict = dict()
     for atom in atoms:
-        new_atom = new_mol.add_atom(Atom(atom.element))
-        atom_mapping[atom] = new_atom
-    for atom1 in atoms:
-        for atom2 in atom1.bonds.keys():
-            bond_order = 1.0 if to_single_bonds else atom1.bonds[atom2].get_order_num()
-            bond = Bond(atom_mapping[atom1], atom_mapping[atom2], bond_order)
+        new_atom = new_mol.add_atom(Atom(element=atom.element))
+        new_atoms_dict[atom] = new_atom
+    for atom_1 in atoms:
+        for atom_2 in atom_1.bonds.keys():
+            bond_order = 1.0 if to_single_bonds else atom_1.bonds[atom_2].get_order_num()
+            bond = Bond(new_atoms_dict[atom_1], new_atoms_dict[atom_2], bond_order)
             new_mol.add_bond(bond)
     try:
         new_mol.update_atomtypes(raise_exception=False)
@@ -1744,8 +1610,7 @@ def to_rdkit_mol(mol, remove_h=False, sanitize=True):
     if not mol_copy.atom_ids_valid():
         mol_copy.assign_atom_ids()
     for i, atom in enumerate(mol_copy.atoms):
-        atom_id_map[atom.id] = i  # keeps the original atom order before sorting
-    # mol_copy.sort_atoms()  # Sort the atoms before converting to ensure output is consistent between different runs
+        atom_id_map[atom.id] = i  # keeps the original atom order
     atoms_copy = mol_copy.vertices
 
     rd_mol = Chem.rdchem.EditableMol(Chem.rdchem.Mol())
@@ -1810,7 +1675,7 @@ def rdkit_conf_from_mol(mol: Molecule,
                              'got\n{0}\nwhich is a {1}'.format(xyz, type(xyz)))
     rd_mol = to_rdkit_mol(mol=mol, remove_h=False)
     try:
-        Chem.AllChem.EmbedMolecule(rd_mol)
+        AllChem.EmbedMolecule(rd_mol)
     except:
         pass
     conf = None
@@ -1856,48 +1721,44 @@ def set_rdkit_dihedrals(conf, rd_mol, torsion, deg_increment=None, deg_abs=None)
     return new_xyz
 
 
-def check_isomorphism(mol1, mol2, filter_structures=True, convert_to_single_bonds=False):
+def check_isomorphism(mol1: 'Molecule',
+                      mol2: 'Molecule',
+                      filter_structures: bool = True,
+                      convert_to_single_bonds: bool = False) -> bool:
     """
-    Convert ``mol1`` and ``mol2`` to RMG Species objects, and generate resonance structures.
-    Then check Species isomorphism.
-    This function first makes copies of the molecules, since isIsomorphic() changes atom orders.
+    Check isomorphism between two molecules, handling resonance structures and bond conversion.
 
     Args:
-        mol1 (Molecule): An RMG Molecule object.
-        mol2 (Molecule): An RMG Molecule object.
-        filter_structures (bool, optional): Whether to apply the filtration algorithm when generating
-                                            resonance structures. ``True`` to apply.
-        convert_to_single_bonds (bool, optional): Whether to convert both molecules to single bonds,
-                                                  avoiding a bond order comparison (only compares connectivity).
-                                                  Resonance structures will not be generated.
+        mol1 (Molecule): First RMG Molecule object
+        mol2 (Molecule): Second RMG Molecule object
+        filter_structures (bool): Apply resonance structure filtration when True
+        convert_to_single_bonds (bool): Convert to single bonds (compares connectivity only) when True
 
-    Returns:
-        bool: Whether one of the molecules in the Species derived from ``mol1``
-              is isomorphic to one of the molecules in the Species derived from ``mol2``. ``True`` if it is.
+    Returns: bool
+        True if any resonance structure of mol1 is isomorphic to any resonance structure of mol2
     """
-
     if mol1 is None or mol2 is None:
-        logger.error('Cannot check isomorphism without the molecule objects.')
+        logger.error('Cannot check isomorphism without molecule objects')
         return False
 
-    mol1.reactive, mol2.reactive = True, True
+    mol1_copy = mol1.copy(deep=True)
+    mol2_copy = mol2.copy(deep=True)
+    mol1_copy.reactive = mol2_copy.reactive = True
+
     if convert_to_single_bonds:
-        mol1_copy = mol1.to_single_bonds(raise_atomtype_exception=False)
-        mol2_copy = mol2.to_single_bonds(raise_atomtype_exception=False)
+        mol1_copy = mol1_copy.to_single_bonds(raise_atomtype_exception=False)
+        mol2_copy = mol2_copy.to_single_bonds(raise_atomtype_exception=False)
+        mol_list_1 = [mol1_copy]
+        mol_list_2 = [mol2_copy]
     else:
-        mol1_copy = mol1.copy(deep=True)
-        mol2_copy = mol2.copy(deep=True)
-    spc1 = Species(molecule=[mol1_copy])
-    spc2 = Species(molecule=[mol2_copy])
+        mol_list_1 = generate_resonance_structures_safely(mol1_copy, filter_structures=filter_structures)
+        mol_list_2 = generate_resonance_structures_safely(mol2_copy, filter_structures=filter_structures)
 
-    if not convert_to_single_bonds:
-        generate_resonance_structures(spc1, filter_structures=filter_structures)
-        generate_resonance_structures(spc2, filter_structures=filter_structures)
-
-    for molecule1 in spc1.molecule:
-        for molecule2 in spc2.molecule:
-            if molecule1.is_isomorphic(molecule2, save_order=True):
-                return True
+    if mol_list_1 and mol_list_2:
+        for m1 in mol_list_1:
+            for m2 in mol_list_2:
+                if m1.is_isomorphic(m2, save_order=True):
+                    return True
     return False
 
 
@@ -2330,19 +2191,10 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
             float: The sum of the squared differences between the constraints and their desired values.
         """
         x, y, z = coord
-        distance_constraint_ = sphere_eq(x, y, z)
-        angle_constraint_ = angle_eq(x, y, z)
-        dihedral_constraint_ = dihedral_eq(x, y, z)
-
-        sphere_error = sphere_eq(*coord)
-        angle_error = angle_eq(*coord)
-        dihedral_error = dihedral_eq(*coord)
-
-        total_error = ((distance_constraint_ / r_value) ** 2 +
-                       (angle_constraint_ / math.radians(a_value)) ** 2 +
-                       (dihedral_constraint_ / math.radians(d_value)) ** 2)
-
-        return total_error
+        d_err = sphere_eq(x, y, z) / r_value
+        a_err = angle_eq(x, y, z) / math.radians(a_value)
+        t_err = dihedral_eq(x, y, z) / math.radians(d_value)
+        return d_err ** 2 + a_err ** 2 + t_err ** 2
 
     result = minimize(objective_func, initial_guess, method=opt_method,
                       options={'maxiter': 1e+4, 'ftol': 1e-10, 'xtol': 1e-10})

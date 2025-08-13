@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  build-and-test:
+    name: CI and Functional Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - name: Checkout ARC
+        uses: actions/checkout@v4
+        with:
+          path: ARC
+
+      - name: Clean Ubuntu Image
+        uses: kfir4444/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Set up micromamba (arc_env)
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: arc_env
+          environment-file: ARC/environment.yml
+          cache-environment: true
+          cache-downloads: true
+          generate-run-shell: true
+
+      - name: Install conda in micromamba base
+        shell: micromamba-shell {0}
+        run: |
+          echo "::group::Install conda in micromamba base"
+          micromamba install -n base -c conda-forge conda
+          echo "::endgroup::"
+
+      - name: Export ARC paths
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PATH=$PATH:$PWD" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$PYTHONPATH:$PWD" >> "$GITHUB_ENV"
+
+      - name: Install Julia 1.10
+        shell: micromamba-shell {0}
+        run: |
+          echo "::group::Install juliaup + Julia 1.10"
+          # 1) Bootstrap juliaup non-interactively (-y)
+          curl -fsSL https://install.julialang.org | sh -s -- -y
+          # 2) Make juliaup visible *now* (CI shells won’t re-source rc files)
+          export PATH="$HOME/.juliaup/bin:$PATH"
+          # 3) Install & select Julia 1.10
+          juliaup add 1.10
+          juliaup default 1.10
+          # 4) Persist for subsequent steps
+          echo "PATH=$HOME/.juliaup/bin:$PATH" >> "$GITHUB_ENV"
+          echo "::endgroup::"
+          julia --version # Check that Julia is installed correctly
+
+      - name: Set RMG-Py + database in PATH and PYTHONPATH
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          # bash devtools/install_rmg.sh
+          echo "RMG_PY_PATH=$(realpath ../RMG-Py)"       >> $GITHUB_ENV
+          echo "RMG_DB_PATH=$(realpath ../RMG-database)" >> $GITHUB_ENV
+          echo "PATH=$(realpath ../RMG-Py):$PATH"        >> $GITHUB_ENV
+          echo "PYTHONPATH=$(realpath ../RMG-Py):$PYTHONPATH" >> $GITHUB_ENV
+
+      - name: Cache RMG-Py source
+        uses: actions/cache@v4
+        with:
+          path: RMG-Py
+          key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
+          restore-keys: ${{ runner.os }}-rmgpy-
+
+      - name: Install all extras - CI
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: make install-ci
+
+      - name: Set TS-GCN and AutoTST in PYTHONPATH
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "PYTHONPATH=$(realpath ../TS-GCN):$(realpath ../AutoTST):$PYTHONPATH" >> $GITHUB_ENV
+
+      - name: Compile ARC molecule
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          make compile
+
+      - name: Run Unit Tests
+        shell: micromamba-shell {0}
+        working-directory: ARC
+        run: |
+          echo "Running Unit Tests..."
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest arc/ --cov --cov-report=xml -ra -vv
+
+      - name: Run Functional Tests
+        shell: micromamba-shell {0}
+        working-directory: ${{ github.workspace }}/ARC
+        run: |
+          echo "Running Functional Tests from $(pwd)..."
+          export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
+          pytest functional/ -ra -vv
+
+      - name: Upload coverage data
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ARC/coverage.xml
+          flags: unittests,functionaltests
+          name: codecov-umbrella
+          verbose: true
+          fail_ci_if_error: false

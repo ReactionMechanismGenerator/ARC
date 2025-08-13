@@ -9,12 +9,11 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
+from arc.common import ARC_PATH, almost_equal_coords, almost_equal_lists, read_yaml_file
 from arc.job.adapters.torch_ani import TorchANIAdapter
 from arc.settings.settings import tani_default_options_dict
 from arc.species import ARCSpecies
 from arc.species.vectors import calculate_distance, calculate_angle, calculate_dihedral_angle
-from arc.utils.wip import work_in_progress
 
 
 class TestTorchANIAdapter(unittest.TestCase):
@@ -128,15 +127,15 @@ class TestTorchANIAdapter(unittest.TestCase):
         """Test the run_force() method."""
         self.job_9.execute()
         self.assertTrue(almost_equal_lists(self.job_9.force,
-                                           [[0.0016908727120608091, 0.009869818575680256, 0.0010390167590230703],
-                                            [0.008561883121728897, 0.013575542718172073, 0.0018425204325467348],
-                                            [0.010151226073503494, 0.0019111409783363342, 0.0008542370051145554],
-                                            [0.0007229172624647617, -0.0034123272635042667, 0.0017430195584893227],
-                                            [0.0009874517563730478, -0.0030386836733669043, -0.002235014922916889],
-                                            [-0.0011509160976856947, -0.00131673039868474, -0.00019995146431028843],
-                                            [-0.003339727409183979, -0.012097489088773727, 0.0027393437922000885],
-                                            [-0.0028020991012454033, -0.011338669806718826, -0.005346616730093956],
-                                            [-0.014821597374975681, 0.005847393535077572, -0.0004365567583590746]],
+                                           [[-0.0019886328373104334, 0.009862622246146202, 0.00035274558467790484],
+                                            [0.0030757635831832886, 0.015856878831982613, 0.0002922193380072713],
+                                            [0.008769822306931019, 0.00551941990852356, -0.00023612973745912313],
+                                            [-0.0005968688055872917, -0.001655201893299818, -1.8383798305876553e-05],
+                                            [0.002049630507826805, -0.002759888768196106, 0.0018403511494398117],
+                                            [0.0018742121756076813, -0.0026522099506109953, -0.002158168703317642],
+                                            [0.0015483916504308581, -0.012209721840918064, 0.003678181441500783],
+                                            [0.0011917471420019865, -0.011990793980658054, -0.004450293257832527],
+                                            [-0.015924058854579926, 2.8890790417790413e-05, 0.0006994777359068394]],
                                            rtol=1e-3, atol=1e-5))
 
     def test_run_opt(self):
@@ -180,13 +179,6 @@ class TestTorchANIAdapter(unittest.TestCase):
         self.assertEqual(len(self.job_7.freqs), self.job_7.species[0].mol.get_num_atoms()*3-5)
         self.assertEqual(len(self.job_6.freqs), self.job_6.species[0].mol.get_num_atoms()*3-5)
 
-    @work_in_progress
-    def test_ts_freqs(self):
-        self.assertIsNone(self.job_ts.freqs)
-        self.job_ts.execute()
-        self.assertLess(min(self.job_ts.freqs), 0)
-        self.assertEqual(sum([freq > 0 for freq in self.job_ts.freqs]), 3*self.job_ts.species[0].mol.get_num_atoms()-6-1) #3N-6 freqs, minus one imaginary freq.
-
     def test_check_settings(self):
         """Test the test_check_settings method"""
         dummy = self.job_1
@@ -208,15 +200,15 @@ class TestTorchANIAdapter(unittest.TestCase):
         content = read_yaml_file(os.path.join(self.job_8.local_path, "input.yml"))
         expected = {'xyz': {'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H'),
                     'isotopes': (12, 12, 16, 1, 1, 1, 1, 1, 1),
-                    'coords': ((-1.0219247317890747, 0.04463710864128214, -0.09392250756371581),
-                               (0.45215334957943165, -0.29310459026320146, -0.02762318136049812),
-                               (1.1946118815163072, 0.9061450016152853, 0.13427251272933854),
-                               (-1.3413296099276413, 0.5590849830805962, 0.8184500099080437),
-                               (-1.2251569876563784, 0.7230760434250652, -0.9290968752227021),
-                               (-1.624455565486164, -0.8593711938803317, -0.21881071555745987), 
-                               (0.6572919629992373, -0.9519409562010626, 0.8214428556138298),
-                               (0.7750285429958658, -0.7857391782795276, -0.9496446043469213),
-                               (2.133781157768429, 0.657212781861891, 0.1733450946053844))},
+                    'coords': ((-0.968451489779915, -0.3337150224545184, 0.03350239944957752),
+                               (0.52721259774405, -0.10829478029321704, -0.026048971873670102),
+                               (0.7860158159329828, 1.2874082796836366, 0.00019222546415534472),
+                               (-1.2034784890545795, -1.4015605684107961, 0.015050841615051904),
+                               (-1.3888333789294118, 0.10506628136016537, 0.944463333416132),
+                               (-1.4659113691154595, 0.15238572671748432, -0.8122751607723838),
+                               (1.0202184525044773, -0.5743383306372001, 0.8323269467013527),
+                               (0.9421016593820751, -0.5263791111623678, -0.9480755993333007),
+                               (1.7511262013157718, 1.3994275251968242, -0.03913601466691071))},
                     'job_type': 'sp',
                     'constraints': [],
                     'model': 'ani2x',
@@ -224,7 +216,11 @@ class TestTorchANIAdapter(unittest.TestCase):
                     'fmax': 0.001,
                     'engine': 'bfgs',
                     'steps': None}
-        self.assertEqual(content, expected)
+        self.assertTrue(almost_equal_coords(content['xyz'], expected['xyz']))
+        for key, value in expected.items():
+            if key != 'xyz':
+                self.assertEqual(content[key], value)
+
         self.job_10.write_input_file(settings = tani_default_options_dict)
         self.assertTrue(os.path.isfile(os.path.join(self.job_10.local_path, "input.yml")))
         content = read_yaml_file(os.path.join(self.job_10.local_path, "input.yml"))
@@ -246,7 +242,10 @@ class TestTorchANIAdapter(unittest.TestCase):
                     'fmax': 0.001,
                     'engine': 'bfgs',
                     'steps': None}
-        self.assertEqual(content, expected)
+        self.assertTrue(almost_equal_coords(content['xyz'], expected['xyz']))
+        for key, value in expected.items():
+            if key != 'xyz':
+                self.assertEqual(content[key], value)
 
 
     @classmethod

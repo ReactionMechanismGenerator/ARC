@@ -68,39 +68,39 @@ class TestCFourAdapter(unittest.TestCase):
         self.job_1.write_input_file()
         with open(os.path.join(self.job_1.local_path, input_filenames[self.job_1.job_adapter]), 'r') as f:
             content_1 = f.read()
-        job_1_expected_input_file = """spc1
+        job_1_expected_input_file = f"""spc1
   O
   C       1      R1
   C       2      R2       1      A1
   C       3      R3       2      A2       1      D1
-  H       3      R4       4      A3       2      D2
-  H       3      R4       4      A4       5      D3
-  H       2      R5       3      A5       4      D4
-  H       2      R6       3      A6       4      D5
-  H       4      R5       3      A7       8      D6
-  H       4      R7       3      A8       9      D7
-  H       4      R7       3      A9      10      D8
-  H       1      R8       2     A10       3      D9
+  H       3      R4       2      A3       1      D2
+  H       3      R4       2      A4       1      D3
+  H       2      R5       1      A5       6      D4
+  H       2      R6       1      A6       7      D5
+  H       4      R5       3      A7       2      D6
+  H       4      R7       3      A8       2      D7
+  H       4      R7       3      A9       2      D8
+  H       1      R8       2     A10      11      D9
 
 A10=107.5288
 A1=109.8271
 A2=111.8117
-A3=109.8824
-A4=109.7735
-A5=110.8681
-A6=111.3741
+A3=109.5737
+A4=109.6858
+A5=107.9325
+A6=108.4861
 A7=110.2883
 A8=110.9984
 A9=110.9906
 D1=180.7705
-D2=238.0985
-D3=243.8696
-D4=299.9619
-D5=60.5677
-D6=204.2811
-D7=240.2540
-D8=239.4949
-D9=299.9574
+D2=302.8492
+D3=58.7520
+D4=214.7896
+D5=242.9170
+D6=180.0149
+D7=60.2689
+D8=299.7638
+D9=341.0522
 R1=1.4213
 R2=1.5220
 R3=1.5180
@@ -110,7 +110,7 @@ R6=1.0948
 R7=1.0947
 R8=0.9724
 
-*CFOUR(CALC=ccsd(t),BASIS=cc-pvtz,CHARGE=0,MULTIPLICITY=1,MEMORY_SIZE=37333334
+*CFOUR(CALC=ccsd(t),BASIS=cc-pvtz,CHARGE=0,MULTIPLICITY=1,MEMORY_SIZE={self.job_1.input_file_memory}
 )
 
 
