@@ -26,7 +26,6 @@ jobs:
         with:
           repository: ReactionMechanismGenerator/RMG-Py
           path: RMG-Py
-          ref: 55464c54d1fa61b531e865682df598d33718597d
           fetch-depth: 1
 
       - name: Checkout RMG‑database
@@ -58,6 +57,14 @@ jobs:
           cache-environment: true
           cache-downloads: true
 
+      # ── Complie ARC ──────────────────────
+      - name: Build ARC in arc_env
+        run: micromamba run -n arc_env make compile -C ARC -j"$(nproc)"
+      
+      # ── Install pyrdl ──────────────────────
+      - name: Install pyrdl
+        run: micromamba run -n arc_env make install-pyrdl -C ARC -j"$(nproc)"
+
       # ── minimal TeX for png‑math in Sphinx ──────────────────────
       - name: System TeX tools
         run: sudo apt-get update -y && sudo apt-get -y install texlive-latex-extra dvipng
@@ -68,10 +75,12 @@ jobs:
         shell: micromamba-shell {0}
 
       # ── build HTML docs ─────────────────────────────────────────
-      - name: Build docs
+      - name: Set env vars & Build docs
         run: |
-          export PYTHONPATH=$GITHUB_WORKSPACE/RMG-Py:$GITHUB_WORKSPACE/ARC:$PYTHONPATH
-          export PATH=$GITHUB_WORKSPACE/ARC:$PATH
+          export RMG_PATH="$GITHUB_WORKSPACE/RMG-Py"
+          export RMG_DB_PATH="$GITHUB_WORKSPACE/RMG-database"
+          export PYTHONPATH="$GITHUB_WORKSPACE/RMG-Py:$GITHUB_WORKSPACE/ARC:$PYTHONPATH"
+          export PATH="$GITHUB_WORKSPACE/ARC:$PATH"
           make -C ARC/docs html
         shell: micromamba-shell {0}
 
