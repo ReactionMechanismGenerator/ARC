@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.utils.scale &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../../_static/doctools.js"></script>
-        <script src="../../../_static/sphinx_highlight.js"></script>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -93,25 +87,25 @@
 <span class="sd">Adapted by Duminda Ranasinghe and Alon Grinberg Dana</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">time</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
-<span class="kn">import</span> <span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span>
                         <span class="n">check_ess_settings</span><span class="p">,</span>
                         <span class="n">get_logger</span><span class="p">,</span>
                         <span class="n">initialize_job_types</span><span class="p">,</span>
                         <span class="n">initialize_log</span><span class="p">,</span>
                         <span class="n">time_lapse</span><span class="p">,</span>
                         <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
-<span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="n">parse_zpe</span>
-<span class="kn">from</span> <span class="nn">arc.scheduler</span> <span class="kn">import</span> <span class="n">Scheduler</span>
-<span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_zpe_correction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.scheduler</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scheduler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
 
 <span class="k">try</span><span class="p">:</span>
-    <span class="kn">from</span> <span class="nn">arc.settings</span> <span class="kn">import</span> <span class="n">global_ess_settings</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">arc.settings</span><span class="w"> </span><span class="kn">import</span> <span class="n">global_ess_settings</span>
 <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
     <span class="n">global_ess_settings</span> <span class="o">=</span> <span class="kc">None</span>
 
@@ -131,7 +125,9 @@
          <span class="s1">&#39;   DOI: 10.1016/j.cpc.2016.09.004</span><span class="se">\n\n</span><span class="s1">&#39;</span>
 
 
-<div class="viewcode-block" id="determine_scaling_factors"><a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.determine_scaling_factors">[docs]</a><span class="k">def</span> <span class="nf">determine_scaling_factors</span><span class="p">(</span><span class="n">levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
+<div class="viewcode-block" id="determine_scaling_factors">
+<a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.determine_scaling_factors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_scaling_factors</span><span class="p">(</span><span class="n">levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
                               <span class="n">ess_settings</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                               <span class="n">init_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                               <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
@@ -197,8 +193,8 @@
 
         <span class="n">zpe_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_list</span><span class="p">:</span>
-            <span class="n">zpe_dict</span><span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">parse_zpe</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;Species&#39;</span><span class="p">,</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
-                                                         <span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="s1">&#39;freq.out&#39;</span><span class="p">))</span> <span class="o">*</span> <span class="mi">1000</span>  <span class="c1"># convert to J/mol</span>
+            <span class="n">zpe_dict</span><span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">parse_zpe_correction</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;output&#39;</span><span class="p">,</span> <span class="s1">&#39;Species&#39;</span><span class="p">,</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
+                                                                    <span class="s1">&#39;geometry&#39;</span><span class="p">,</span> <span class="s1">&#39;freq.out&#39;</span><span class="p">))</span> <span class="o">*</span> <span class="mi">1000</span>  <span class="c1"># convert to J/mol</span>
         <span class="n">zpe_dicts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">zpe_dict</span><span class="p">)</span>
 
         <span class="n">lambda_zpes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">calculate_truhlar_scaling_factors</span><span class="p">(</span><span class="n">zpe_dict</span><span class="o">=</span><span class="n">zpe_dict</span><span class="p">,</span> <span class="n">level</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">level</span><span class="p">)))</span>
@@ -216,7 +212,10 @@
     <span class="k">return</span> <span class="n">harmonic_freq_scaling_factors</span></div>
 
 
-<div class="viewcode-block" id="calculate_truhlar_scaling_factors"><a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.calculate_truhlar_scaling_factors">[docs]</a><span class="k">def</span> <span class="nf">calculate_truhlar_scaling_factors</span><span class="p">(</span><span class="n">zpe_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+
+<div class="viewcode-block" id="calculate_truhlar_scaling_factors">
+<a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.calculate_truhlar_scaling_factors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">calculate_truhlar_scaling_factors</span><span class="p">(</span><span class="n">zpe_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                       <span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -278,7 +277,10 @@
     <span class="k">return</span> <span class="n">lambda_zpe</span></div>
 
 
-<div class="viewcode-block" id="summarize_results"><a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.summarize_results">[docs]</a><span class="k">def</span> <span class="nf">summarize_results</span><span class="p">(</span><span class="n">lambda_zpes</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="summarize_results">
+<a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.summarize_results">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">summarize_results</span><span class="p">(</span><span class="n">lambda_zpes</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                       <span class="n">levels</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">]],</span>
                       <span class="n">zpe_dicts</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                       <span class="n">times</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
@@ -342,7 +344,10 @@
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">overall_time_text</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="get_species_list"><a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.get_species_list">[docs]</a><span class="k">def</span> <span class="nf">get_species_list</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+
+<div class="viewcode-block" id="get_species_list">
+<a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.get_species_list">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_species_list</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generates the standardized species list.</span>
 
@@ -426,7 +431,10 @@
     <span class="k">return</span> <span class="n">species_list</span></div>
 
 
-<div class="viewcode-block" id="rename_level"><a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.rename_level">[docs]</a><span class="k">def</span> <span class="nf">rename_level</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+
+<div class="viewcode-block" id="rename_level">
+<a class="viewcode-back" href="../../../api/scale.html#arc.utils.scale.rename_level">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">rename_level</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Rename the level of theory so it can be used for folder names.</span>
 
@@ -445,6 +453,7 @@
     <span class="n">level</span> <span class="o">=</span> <span class="n">level</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span><span class="p">)</span>
     <span class="n">level</span> <span class="o">=</span> <span class="n">level</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;:&#39;</span><span class="p">,</span> <span class="s1">&#39;..&#39;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">level</span></div>
+
 </pre></div>
 
            </div>

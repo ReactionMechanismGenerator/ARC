@@ -1,24 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Installation instructions &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -37,9 +34,6 @@
           <a href="index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -100,7 +94,7 @@
            <div itemprop="articleBody">
              
   <section id="installation-instructions">
-<span id="installation"></span><h1>Installation instructions<a class="headerlink" href="#installation-instructions" title="Permalink to this heading"></a></h1>
+<span id="installation"></span><h1>Installation instructions<a class="headerlink" href="#installation-instructions" title="Link to this heading"></a></h1>
 <p>ARC can be installed on a server, as well as on your local desktop / laptop, submitting jobs to your server(s).
 The instructions below make this differentiation when relevant (the only difference is that ARC should be “aware”
 of software installed on the same machine, where the communication isn’t done via SSH).</p>
@@ -116,7 +110,7 @@ but modifications are usually required).</p>
 </dd>
 </dl>
 <section id="clone-and-setup-path">
-<span id="path"></span><h2>Clone and setup path<a class="headerlink" href="#clone-and-setup-path" title="Permalink to this heading"></a></h2>
+<span id="path"></span><h2>Clone and setup path<a class="headerlink" href="#clone-and-setup-path" title="Link to this heading"></a></h2>
 <ul>
 <li><p>Download and install the <a class="reference external" href="https://www.anaconda.com/distribution/">Anaconda Python Platform</a> for Python 3.7 or higher if you haven’t already.</p></li>
 <li><p>Get git and appropriate compilers if you don’t have them already by typing <code class="docutils literal notranslate"><span class="pre">sudo</span> <span class="pre">apt</span> <span class="pre">install</span> <span class="pre">git</span> <span class="pre">gcc</span> <span class="pre">g++</span> <span class="pre">make</span></code>
@@ -134,7 +128,7 @@ in a terminal.</p></li>
 </ul>
 </section>
 <section id="install-dependencies">
-<span id="arce"></span><h2>Install dependencies<a class="headerlink" href="#install-dependencies" title="Permalink to this heading"></a></h2>
+<span id="arce"></span><h2>Install dependencies<a class="headerlink" href="#install-dependencies" title="Link to this heading"></a></h2>
 <ul>
 <li><p>Create the Anaconda environment for ARC (after changing the directory to the
 installation folder by, e.g., <code class="docutils literal notranslate"><span class="pre">cd</span> <span class="pre">~/Code/ARC/</span></code>):</p>
@@ -163,7 +157,7 @@ you can assist ARC discover your external repos in <code class="docutils literal
 </ul>
 </section>
 <section id="create-a-arc-folder-optional-but-recommended">
-<h2>Create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder (optional but recommended)<a class="headerlink" href="#create-a-arc-folder-optional-but-recommended" title="Permalink to this heading"></a></h2>
+<h2>Create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder (optional but recommended)<a class="headerlink" href="#create-a-arc-folder-optional-but-recommended" title="Link to this heading"></a></h2>
 <p>Users are encouraged to create a <code class="docutils literal notranslate"><span class="pre">.arc</span></code> folder under their <code class="docutils literal notranslate"><span class="pre">HOME</span></code> folder on the machine running ARC.
 Copy (and modify as appropriate, see below) the following python files
 from the ARC repository into the newly created folder:
@@ -188,7 +182,7 @@ if major changes are made. Such changes will be listed under the Release Notes a
 of the MINOR version number (i.e., ,major.MINOR.patch, e.g., <cite>1.1.5</cite> –&gt; <cite>1.2.0</cite>).</p>
 </section>
 <section id="generating-rsa-ssh-keys-and-defining-servers">
-<h2>Generating RSA SSH keys and defining servers<a class="headerlink" href="#generating-rsa-ssh-keys-and-defining-servers" title="Permalink to this heading"></a></h2>
+<h2>Generating RSA SSH keys and defining servers<a class="headerlink" href="#generating-rsa-ssh-keys-and-defining-servers" title="Link to this heading"></a></h2>
 <p>The first two directives are only required if you’d like ARC to access remote servers
 (ARC could also run “locally” when it’s installed on a server).</p>
 <ul class="simple">
@@ -227,7 +221,7 @@ according to your servers’ definitions.
 </ul>
 </section>
 <section id="associating-software-with-servers">
-<h2>Associating software with servers<a class="headerlink" href="#associating-software-with-servers" title="Permalink to this heading"></a></h2>
+<h2>Associating software with servers<a class="headerlink" href="#associating-software-with-servers" title="Link to this heading"></a></h2>
 <p>ARC keeps track of software location on servers using a Python dictionary associating the different software (keys)
 with the servers they are installed on (values). The server name must be consistent with the respective definition
 in the <code class="docutils literal notranslate"><span class="pre">servers</span></code> dictionary mentioned above. Typically, you would update the <code class="docutils literal notranslate"><span class="pre">global_ess_settings</span></code> dictionary in
@@ -259,7 +253,7 @@ the “radar” to do its thing blindly. The “radar” feature, however, is ve
 <p>You can check what the “radar” detects using the ARC ESS diagnostics notebook.</p>
 </section>
 <section id="cluster-software-definitions">
-<h2>Cluster software definitions<a class="headerlink" href="#cluster-software-definitions" title="Permalink to this heading"></a></h2>
+<h2>Cluster software definitions<a class="headerlink" href="#cluster-software-definitions" title="Link to this heading"></a></h2>
 <p>ARC supports Slurm and Oracle/Sun Grid Engine (OGE / SGE). If you’re using other <a class="reference external" href="https://en.wikipedia.org/wiki/Comparison_of_cluster_software">cluster software</a>, or if your
 server’s definitions are different that ARC’s, you should also modify the following variables in your copy of ARC’s
 <a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/blob/main/arc/settings/settings.py">settings.py</a>:</p>
@@ -280,7 +274,7 @@ server’s definitions are different that ARC’s, you should also modify the fo
 them differently, e.g., <cite>Slurm1</cite> and <cite>Slurm2</cite>, and make sure to pair them accordingly under the <code class="docutils literal notranslate"><span class="pre">servers</span></code> dictionary.</p>
 </section>
 <section id="tests">
-<span id="id5"></span><h2>Tests<a class="headerlink" href="#tests" title="Permalink to this heading"></a></h2>
+<span id="id5"></span><h2>Tests<a class="headerlink" href="#tests" title="Link to this heading"></a></h2>
 <ul>
 <li><p>If you’d like to make sure ARC has access to your servers and recognises your ESS, use the “radar” tool, available
 as an iPython notebook (see <a class="reference internal" href="tools.html#tools"><span class="std std-ref">Standalone tools</span></a>).</p></li>
@@ -304,7 +298,7 @@ it is recommended to first stash your changes (<code class="docutils literal not
 </ul>
 </section>
 <section id="optional-add-arc-aliases-to-your-bashrc-for-convenience">
-<span id="aliases"></span><h2>Optional: Add ARC aliases to your .bashrc (for convenience)<a class="headerlink" href="#optional-add-arc-aliases-to-your-bashrc-for-convenience" title="Permalink to this heading"></a></h2>
+<span id="aliases"></span><h2>Optional: Add ARC aliases to your .bashrc (for convenience)<a class="headerlink" href="#optional-add-arc-aliases-to-your-bashrc-for-convenience" title="Link to this heading"></a></h2>
 <p>Below are optional aliases to make ARC (even) more convenient (make sure to change <cite>~/Path/to/ARC/</cite> accordingly).
 Add these to your <code class="docutils literal notranslate"><span class="pre">.bashrc</span></code> file (edit it by typing, e.g., <code class="docutils literal notranslate"><span class="pre">nano</span> <span class="pre">~/.bashrc</span></code>):</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>export arc_path=$HOME&#39;/Path/to/ARC/&#39;
@@ -317,7 +311,7 @@ alias j=&#39;cd $arc_path/ipython/ &amp;&amp; jupyter notebook&#39;
 </div>
 </section>
 <section id="updating-arc">
-<h2>Updating ARC<a class="headerlink" href="#updating-arc" title="Permalink to this heading"></a></h2>
+<h2>Updating ARC<a class="headerlink" href="#updating-arc" title="Link to this heading"></a></h2>
 <p>ARC is being updated frequently. Make sure to update ARC and enjoy new features and bug fixes.</p>
 <dl class="simple">
 <dt>Note:</dt><dd><p>If you change ARC’s parameters within the repository rather than copies thereof as explained above,

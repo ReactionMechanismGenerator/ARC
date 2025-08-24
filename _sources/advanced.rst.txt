@@ -859,15 +859,7 @@ Alternatively, the user may request to compute the rate coefficients in the clas
 
    k(T) = A \exp \left( -\frac{E_a}{RT} \right)
 
-by setting the ``three_params`` attribute to ``False`` (it is ``True`` by default). For example::
-
-    project: use_classical_arrhenius_eqn_for_rate_calc_demo
-    three_params: False
-
 instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
 all reactions in the same ARC project.
-
-Advanced: to recompute the rate coefficient in the modified three-parameter Arrhenius equation format, simply change
-``three_params`` to ``True`` in the ARC project's restart.yml file, and then restart ARC.
 
 .. include:: links.txt

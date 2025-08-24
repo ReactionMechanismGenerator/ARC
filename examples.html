@@ -1,24 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Examples &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -37,9 +34,6 @@
           <a href="index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -93,11 +87,11 @@
            <div itemprop="articleBody">
              
   <section id="examples">
-<span id="id1"></span><h1>Examples<a class="headerlink" href="#examples" title="Permalink to this heading"></a></h1>
+<span id="id1"></span><h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
 <p>ARC’s examples folder (<a class="reference external" href="https://github.com/ReactionMechanismGenerator/ARC/tree/main/examples">ARC/examples</a>) is an excellent resource for up-to-date sample input files,
 demonstrating different features. Below are examples for common basic tasks performed using ARC.</p>
 <section id="calculating-thermodynamic-properties">
-<h2>Calculating thermodynamic properties<a class="headerlink" href="#calculating-thermodynamic-properties" title="Permalink to this heading"></a></h2>
+<h2>Calculating thermodynamic properties<a class="headerlink" href="#calculating-thermodynamic-properties" title="Link to this heading"></a></h2>
 <p>The example below shows how to set the levels of theory and job types.
 Multiple species are defined using SMILES / an XYZ list / InChI:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">arc_demo_1</span>
@@ -176,9 +170,9 @@ be outputted.</p>
 <p>For detailed discussion on specifying levels of theory (e.g., including auxiliary basis sets and DFT dispersions),
 see see <a class="reference internal" href="advanced.html#levels"><span class="std std-ref">Levels of theory</span></a>.</p>
 <p>The same example as above ran via the API (e.g., in <a class="reference external" href="https://jupyter.org/">Jupyter notebooks</a>) would look like the following:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">arc</span> <span class="kn">import</span> <span class="n">ARC</span>
-<span class="kn">from</span> <span class="nn">arc.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
-<span class="kn">from</span> <span class="nn">IPython.display</span> <span class="kn">import</span> <span class="n">display</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span>
 <span class="o">%</span><span class="n">matplotlib</span> <span class="n">notebook</span>
 
 <span class="n">spc1</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;propane&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;CCC&#39;</span><span class="p">)</span>
@@ -221,7 +215,7 @@ see see <a class="reference internal" href="advanced.html#levels"><span class="s
 </div>
 </section>
 <section id="optimizing-transition-states">
-<h2>Optimizing transition states<a class="headerlink" href="#optimizing-transition-states" title="Permalink to this heading"></a></h2>
+<h2>Optimizing transition states<a class="headerlink" href="#optimizing-transition-states" title="Link to this heading"></a></h2>
 <p>Here’s an example for optimizing a transition state (TS) after generating several guesses, say in GaussView:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">BNdTSs</span>
 

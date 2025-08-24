@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.species.conformers &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../../_static/doctools.js"></script>
-        <script src="../../../_static/sphinx_highlight.js"></script>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -124,33 +118,35 @@
 
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">copy</span>
-<span class="kn">import</span> <span class="nn">logging</span>
-<span class="kn">import</span> <span class="nn">sys</span>
-<span class="kn">import</span> <span class="nn">time</span>
-<span class="kn">from</span> <span class="nn">itertools</span> <span class="kn">import</span> <span class="n">product</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">from</span> <span class="nn">openbabel</span> <span class="kn">import</span> <span class="n">openbabel</span> <span class="k">as</span> <span class="n">ob</span>
-<span class="kn">from</span> <span class="nn">openbabel</span> <span class="kn">import</span> <span class="n">pybel</span> <span class="k">as</span> <span class="n">pyb</span>
-<span class="kn">from</span> <span class="nn">rdkit</span> <span class="kn">import</span> <span class="n">Chem</span>
-<span class="kn">from</span> <span class="nn">rdkit.Chem.rdchem</span> <span class="kn">import</span> <span class="n">EditableMol</span> <span class="k">as</span> <span class="n">RDMol</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">openbabel</span> <span class="k">as</span> <span class="n">ob</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">pybel</span> <span class="k">as</span> <span class="n">pyb</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit.Chem.rdchem</span><span class="w"> </span><span class="kn">import</span> <span class="n">EditableMol</span> <span class="k">as</span> <span class="n">RDMol</span>
 
-<span class="kn">import</span> <span class="nn">rmgpy.molecule.group</span> <span class="k">as</span> <span class="nn">gr</span>
-<span class="kn">from</span> <span class="nn">rmgpy.molecule.converter</span> <span class="kn">import</span> <span class="n">to_ob_mol</span>
-<span class="kn">from</span> <span class="nn">rmgpy.molecule.molecule</span> <span class="kn">import</span> <span class="n">Atom</span><span class="p">,</span> <span class="n">Bond</span><span class="p">,</span> <span class="n">Molecule</span>
-<span class="kn">from</span> <span class="nn">rmgpy.molecule.element</span> <span class="kn">import</span> <span class="n">C</span> <span class="k">as</span> <span class="n">C_ELEMENT</span><span class="p">,</span> <span class="n">H</span> <span class="k">as</span> <span class="n">H_ELEMENT</span><span class="p">,</span> <span class="n">F</span> <span class="k">as</span> <span class="n">F_ELEMENT</span><span class="p">,</span> <span class="n">Cl</span> <span class="k">as</span> <span class="n">Cl_ELEMENT</span><span class="p">,</span> <span class="n">I</span> <span class="k">as</span> <span class="n">I_ELEMENT</span>
-
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">convert_list_index_0_to_1</span><span class="p">,</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">arc.molecule.group</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">gr</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">convert_list_index_0_to_1</span><span class="p">,</span>
                         <span class="n">determine_top_group_indices</span><span class="p">,</span>
                         <span class="n">get_single_bond_length</span><span class="p">,</span>
-                        <span class="n">generate_resonance_structures</span><span class="p">,</span>
-                        <span class="n">logger</span><span class="p">,</span>
+                        <span class="n">get_logger</span><span class="p">,</span>
                         <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">ConformerError</span><span class="p">,</span> <span class="n">InputError</span>
-<span class="kn">import</span> <span class="nn">arc.plotter</span>
-<span class="kn">from</span> <span class="nn">arc.species</span> <span class="kn">import</span> <span class="n">converter</span><span class="p">,</span> <span class="n">vectors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConformerError</span><span class="p">,</span> <span class="n">InputError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.converter</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_ob_mol</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.molecule</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atom</span><span class="p">,</span> <span class="n">Bond</span><span class="p">,</span> <span class="n">Molecule</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.element</span><span class="w"> </span><span class="kn">import</span> <span class="n">C</span> <span class="k">as</span> <span class="n">C_ELEMENT</span><span class="p">,</span> <span class="n">H</span> <span class="k">as</span> <span class="n">H_ELEMENT</span><span class="p">,</span> <span class="n">F</span> <span class="k">as</span> <span class="n">F_ELEMENT</span><span class="p">,</span> <span class="n">Cl</span> <span class="k">as</span> <span class="n">Cl_ELEMENT</span><span class="p">,</span> <span class="n">I</span> <span class="k">as</span> <span class="n">I_ELEMENT</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.molecule.resonance</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_resonance_structures_safely</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">arc.plotter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">converter</span><span class="p">,</span> <span class="n">vectors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.perceive</span><span class="w"> </span><span class="kn">import</span> <span class="n">perceive_molecule_from_xyz</span>
 
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
 <span class="c1"># The number of conformers to generate per range of heavy atoms in the molecule</span>
 <span class="c1"># (will be increased if there are chiral centers)</span>
@@ -215,7 +211,9 @@
                <span class="p">}</span>
 
 
-<div class="viewcode-block" id="cheat_sheet"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.cheat_sheet">[docs]</a><span class="k">def</span> <span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
+<div class="viewcode-block" id="cheat_sheet">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.cheat_sheet">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">cheat_sheet</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the species is in the cheat sheet, and return its correct xyz if it is.</span>
 
@@ -233,7 +231,10 @@
     <span class="k">return</span> <span class="kc">None</span></div>
 
 
-<div class="viewcode-block" id="generate_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformers">[docs]</a><span class="k">def</span> <span class="nf">generate_conformers</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">],</span>
+
+<div class="viewcode-block" id="generate_conformers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_conformers</span><span class="p">(</span><span class="n">mol_list</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Molecule</span><span class="p">],</span> <span class="n">Molecule</span><span class="p">],</span>
                         <span class="n">label</span><span class="p">,</span>
                         <span class="n">xyzs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">torsions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -300,7 +301,7 @@
         <span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="n">mol_copy</span> <span class="o">=</span> <span class="n">mol_list</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">mol_copy</span><span class="o">.</span><span class="n">reactive</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="n">new_mol_list</span> <span class="o">=</span> <span class="n">generate_resonance_structures</span><span class="p">(</span><span class="n">mol_copy</span><span class="p">)</span>
+        <span class="n">new_mol_list</span> <span class="o">=</span> <span class="n">generate_resonance_structures_safely</span><span class="p">(</span><span class="n">mol_copy</span><span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">success</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">order_atoms_in_mol_list</span><span class="p">(</span><span class="n">ref_mol</span><span class="o">=</span><span class="n">mol_list</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">mol_list</span><span class="o">=</span><span class="n">new_mol_list</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
@@ -391,7 +392,10 @@
         <span class="k">return</span> <span class="n">lowest_confs</span><span class="p">,</span> <span class="n">new_conformers</span></div>
 
 
-<div class="viewcode-block" id="deduce_new_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.deduce_new_conformers">[docs]</a><span class="k">def</span> <span class="nf">deduce_new_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">tops</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">smeared_scan_res</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+
+<div class="viewcode-block" id="deduce_new_conformers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.deduce_new_conformers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">deduce_new_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">tops</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">smeared_scan_res</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                           <span class="n">combination_threshold</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span> <span class="n">max_combination_iterations</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
                           <span class="n">diastereomers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">de_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -501,7 +505,10 @@
     <span class="k">return</span> <span class="n">new_conformers</span><span class="p">,</span> <span class="n">symmetries</span></div>
 
 
-<div class="viewcode-block" id="generate_conformer_combinations"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformer_combinations">[docs]</a><span class="k">def</span> <span class="nf">generate_conformer_combinations</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">hypothetical_num_comb</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span>
+
+<div class="viewcode-block" id="generate_conformer_combinations">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_conformer_combinations">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_conformer_combinations</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">hypothetical_num_comb</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span>
                                     <span class="n">multiple_sampling_points</span><span class="p">,</span> <span class="n">combination_threshold</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">len_conformers</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
                                     <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span> <span class="n">max_combination_iterations</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">plot_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                     <span class="n">torsion_angles</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">multiple_sampling_points_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">wells_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -557,7 +564,10 @@
     <span class="k">return</span> <span class="n">new_conformers</span></div>
 
 
-<div class="viewcode-block" id="conformers_combinations_by_lowest_conformer"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.conformers_combinations_by_lowest_conformer">[docs]</a><span class="k">def</span> <span class="nf">conformers_combinations_by_lowest_conformer</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span> <span class="n">multiple_sampling_points</span><span class="p">,</span>
+
+<div class="viewcode-block" id="conformers_combinations_by_lowest_conformer">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.conformers_combinations_by_lowest_conformer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">conformers_combinations_by_lowest_conformer</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span> <span class="n">multiple_sampling_points</span><span class="p">,</span>
                                                 <span class="n">len_conformers</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span> <span class="n">max_combination_iterations</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span>
                                                 <span class="n">torsion_angles</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">multiple_sampling_points_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                                 <span class="n">wells_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">de_threshold</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_path</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">symmetries</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
@@ -669,7 +679,10 @@
     <span class="k">return</span> <span class="n">new_conformers</span></div>
 
 
-<div class="viewcode-block" id="generate_all_combinations"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_all_combinations">[docs]</a><span class="k">def</span> <span class="nf">generate_all_combinations</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span> <span class="n">multiple_sampling_points</span><span class="p">,</span> <span class="n">len_conformers</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+
+<div class="viewcode-block" id="generate_all_combinations">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_all_combinations">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_all_combinations</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">base_xyz</span><span class="p">,</span> <span class="n">multiple_tors</span><span class="p">,</span> <span class="n">multiple_sampling_points</span><span class="p">,</span> <span class="n">len_conformers</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
                               <span class="n">torsions</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate all combinations of torsion wells from a base conformer.</span>
@@ -720,7 +733,10 @@
     <span class="k">return</span> <span class="n">new_conformers</span></div>
 
 
-<div class="viewcode-block" id="generate_force_field_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_force_field_conformers">[docs]</a><span class="k">def</span> <span class="nf">generate_force_field_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span>
+
+<div class="viewcode-block" id="generate_force_field_conformers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_force_field_conformers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_force_field_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span>
                                     <span class="n">mol_list</span><span class="p">,</span>
                                     <span class="n">torsion_num</span><span class="p">,</span>
                                     <span class="n">charge</span><span class="p">,</span>
@@ -779,20 +795,23 @@
     <span class="c1"># User guesses</span>
     <span class="k">if</span> <span class="n">xyzs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">xyzs</span><span class="p">:</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyzs</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">ConformerError</span><span class="p">(</span><span class="s1">&#39;The xyzs argument must be a list, got </span><span class="si">{0}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">xyzs</span><span class="p">)))</span>
+            <span class="k">raise</span> <span class="n">ConformerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The xyzs argument must be a list, got </span><span class="si">{</span><span class="n">xyzs</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="n">xyzs</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="n">ConformerError</span><span class="p">(</span><span class="s1">&#39;Each entry in xyzs must be a dictionary, got </span><span class="si">{0}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">xyz</span><span class="p">)))</span>
-            <span class="n">s_mol</span><span class="p">,</span> <span class="n">b_mol</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">molecules_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="n">multiplicity</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="n">charge</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">ConformerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Each entry in xyzs must be a dictionary, got </span><span class="si">{</span><span class="n">xyz</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">mol</span> <span class="o">=</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="n">charge</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="n">multiplicity</span><span class="p">,</span> <span class="n">n_radicals</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
             <span class="n">conformers</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">&#39;xyz&#39;</span><span class="p">:</span> <span class="n">xyz</span><span class="p">,</span>
                                <span class="s1">&#39;index&#39;</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">conformers</span><span class="p">),</span>
-                               <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="n">get_force_field_energies</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="n">b_mol</span> <span class="ow">or</span> <span class="n">s_mol</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                               <span class="s1">&#39;FF energy&#39;</span><span class="p">:</span> <span class="n">get_force_field_energies</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="o">=</span><span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
                                                                      <span class="n">optimize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="n">force_field</span><span class="p">)[</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span>
                                <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;User Guess&#39;</span><span class="p">})</span>
     <span class="k">return</span> <span class="n">conformers</span></div>
 
 
-<div class="viewcode-block" id="change_dihedrals_and_force_field_it"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.change_dihedrals_and_force_field_it">[docs]</a><span class="k">def</span> <span class="nf">change_dihedrals_and_force_field_it</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">new_dihedrals</span><span class="p">,</span> <span class="n">optimize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">):</span>
+
+<div class="viewcode-block" id="change_dihedrals_and_force_field_it">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.change_dihedrals_and_force_field_it">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">change_dihedrals_and_force_field_it</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">new_dihedrals</span><span class="p">,</span> <span class="n">optimize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Change dihedrals of specified torsions according to the new dihedrals specified, and get FF energies.</span>
 
@@ -856,7 +875,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="determine_rotors"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_rotors">[docs]</a><span class="k">def</span> <span class="nf">determine_rotors</span><span class="p">(</span><span class="n">mol_list</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_rotors">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_rotors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_rotors</span><span class="p">(</span><span class="n">mol_list</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine possible unique rotors in the species to be treated as hindered rotors.</span>
 
@@ -881,7 +903,10 @@
     <span class="k">return</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">tops</span></div>
 
 
-<div class="viewcode-block" id="determine_number_of_conformers_to_generate"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_number_of_conformers_to_generate">[docs]</a><span class="k">def</span> <span class="nf">determine_number_of_conformers_to_generate</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="determine_number_of_conformers_to_generate">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_number_of_conformers_to_generate">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_number_of_conformers_to_generate</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                                <span class="n">heavy_atoms</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                                <span class="n">torsion_num</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                                <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -939,7 +964,11 @@
     <span class="c1"># increase the number of conformers if there are more than two chiral centers</span>
     <span class="n">num_chiral_centers</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">mol</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">molecules_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">mol</span> <span class="o">=</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span>
+                                         <span class="n">charge</span><span class="o">=</span><span class="n">mol</span><span class="o">.</span><span class="n">get_net_charge</span><span class="p">()</span> <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                                         <span class="n">multiplicity</span><span class="o">=</span><span class="n">mol</span><span class="o">.</span><span class="n">multiplicity</span> <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                                         <span class="n">n_radicals</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                                         <span class="p">)</span>
     <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">xyzs</span> <span class="o">=</span> <span class="n">get_force_field_energies</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">num_confs</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">suppress_warning</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">xyz</span> <span class="o">=</span> <span class="n">xyzs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyzs</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
@@ -951,7 +980,10 @@
     <span class="k">return</span> <span class="n">num_confs</span><span class="p">,</span> <span class="n">num_chiral_centers</span></div>
 
 
-<div class="viewcode-block" id="determine_dihedrals"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_dihedrals">[docs]</a><span class="k">def</span> <span class="nf">determine_dihedrals</span><span class="p">(</span><span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_dihedrals">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_dihedrals">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_dihedrals</span><span class="p">(</span><span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    For each conformer in `conformers` determine the respective dihedrals.</span>
 
@@ -975,7 +1007,10 @@
     <span class="k">return</span> <span class="n">conformers</span></div>
 
 
-<div class="viewcode-block" id="determine_torsion_sampling_points"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_torsion_sampling_points">[docs]</a><span class="k">def</span> <span class="nf">determine_torsion_sampling_points</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">torsion_angles</span><span class="p">,</span> <span class="n">smeared_scan_res</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">symmetry</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_torsion_sampling_points">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_torsion_sampling_points">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_torsion_sampling_points</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">torsion_angles</span><span class="p">,</span> <span class="n">smeared_scan_res</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">symmetry</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine how many points to consider in each well of a torsion for conformer combinations.</span>
 
@@ -1010,10 +1045,13 @@
     <span class="k">return</span> <span class="n">sampling_points</span><span class="p">,</span> <span class="n">wells</span></div>
 
 
-<div class="viewcode-block" id="determine_torsion_symmetry"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_torsion_symmetry">[docs]</a><span class="k">def</span> <span class="nf">determine_torsion_symmetry</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">top1</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">torsion_scan</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_torsion_symmetry">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_torsion_symmetry">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_torsion_symmetry</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">top1</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">torsion_scan</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether a torsion is symmetric.</span>
-<span class="sd">    If a torsion well is &quot;well defined&quot; and not smeared, it could be symmetric.</span>
+<span class="sd">    If a torsion well is &quot;well-defined&quot; and not smeared, it could be symmetric.</span>
 <span class="sd">    Check the groups attached to the rotor pivots to determine whether it is indeed symmetric</span>
 <span class="sd">    We don&#39;t care about the actual rotor symmetry number here, since we plan to just use the first well</span>
 <span class="sd">    (they&#39;re all the same).</span>
@@ -1099,7 +1137,10 @@
     <span class="k">return</span> <span class="n">symmetry</span></div>
 
 
-<div class="viewcode-block" id="add_missing_symmetric_torsion_values"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.add_missing_symmetric_torsion_values">[docs]</a><span class="k">def</span> <span class="nf">add_missing_symmetric_torsion_values</span><span class="p">(</span><span class="n">top1</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">torsion_scan</span><span class="p">):</span>
+
+<div class="viewcode-block" id="add_missing_symmetric_torsion_values">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.add_missing_symmetric_torsion_values">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">add_missing_symmetric_torsion_values</span><span class="p">(</span><span class="n">top1</span><span class="p">,</span> <span class="n">mol_list</span><span class="p">,</span> <span class="n">torsion_scan</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Add symmetry to a torsion scan in the rotor for efficient conformer generation.</span>
 
@@ -1138,13 +1179,12 @@
     <span class="k">return</span> <span class="n">torsion_scan</span></div>
 
 
-<div class="viewcode-block" id="determine_well_width_tolerance"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_well_width_tolerance">[docs]</a><span class="k">def</span> <span class="nf">determine_well_width_tolerance</span><span class="p">(</span><span class="n">mean_width</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_well_width_tolerance">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_well_width_tolerance">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_well_width_tolerance</span><span class="p">(</span><span class="n">mean_width</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Determine the tolerance by which well widths are determined to be nearly equal.</span>
-
-<span class="sd">    Fitted to a polynomial trend line for the following data of (mean, tolerance) pairs::</span>
-
-<span class="sd">        (100, 0.11), (60, 0.13), (50, 0.15), (25, 0.25), (5, 0.50), (1, 0.59)</span>
+<span class="sd">    Determine the tolerance by which well widths are determined to be nearly equal using a simple hyperbolic form.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        mean_width (float): The mean well width in degrees.</span>
@@ -1152,14 +1192,17 @@
 <span class="sd">    Returns:</span>
 <span class="sd">        float: The tolerance.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">mean_width</span> <span class="o">&gt;</span> <span class="mi">100</span><span class="p">:</span>
-        <span class="k">return</span> <span class="mf">0.1</span>
-    <span class="n">tol</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.695e-10</span> <span class="o">*</span> <span class="n">mean_width</span> <span class="o">**</span> <span class="mi">5</span> <span class="o">+</span> <span class="mf">6.209e-8</span> <span class="o">*</span> <span class="n">mean_width</span> <span class="o">**</span> <span class="mi">4</span> <span class="o">-</span> <span class="mf">8.855e-6</span> <span class="o">*</span> <span class="n">mean_width</span> <span class="o">**</span> <span class="mi">3</span> \
-        <span class="o">+</span> <span class="mf">6.446e-4</span> <span class="o">*</span> <span class="n">mean_width</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="mf">2.610e-2</span> <span class="o">*</span> <span class="n">mean_width</span> <span class="o">+</span> <span class="mf">0.6155</span>
-    <span class="k">return</span> <span class="n">tol</span></div>
+    <span class="k">if</span> <span class="n">mean_width</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;mean_width must be positive&quot;</span><span class="p">)</span>
+    <span class="n">baseline</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="mf">2.0</span>
+    <span class="k">return</span> <span class="n">baseline</span> <span class="o">+</span> <span class="n">scale</span> <span class="o">/</span> <span class="n">mean_width</span></div>
 
 
-<div class="viewcode-block" id="get_lowest_confs"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_lowest_confs">[docs]</a><span class="k">def</span> <span class="nf">get_lowest_confs</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="get_lowest_confs">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_lowest_confs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_lowest_confs</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                      <span class="n">confs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">list</span><span class="p">],</span>
                      <span class="n">n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
                      <span class="n">e</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span>
@@ -1223,7 +1266,10 @@
     <span class="k">return</span> <span class="n">lowest_confs</span></div>
 
 
-<div class="viewcode-block" id="get_torsion_angles"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_torsion_angles">[docs]</a><span class="k">def</span> <span class="nf">get_torsion_angles</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">mol_list</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tops</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="get_torsion_angles">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_torsion_angles">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_torsion_angles</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">torsions</span><span class="p">,</span> <span class="n">mol_list</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tops</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Populate each torsion pivots with all available angles from the generated conformers.</span>
 
@@ -1255,7 +1301,10 @@
     <span class="k">return</span> <span class="n">torsion_angles</span></div>
 
 
-<div class="viewcode-block" id="get_force_field_energies"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_force_field_energies">[docs]</a><span class="k">def</span> <span class="nf">get_force_field_energies</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="get_force_field_energies">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_force_field_energies">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_force_field_energies</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                              <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
                              <span class="n">num_confs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                              <span class="n">xyz</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1317,7 +1366,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="openbabel_force_field_on_rdkit_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.openbabel_force_field_on_rdkit_conformers">[docs]</a><span class="k">def</span> <span class="nf">openbabel_force_field_on_rdkit_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">rd_mol</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span> <span class="n">optimize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+
+<div class="viewcode-block" id="openbabel_force_field_on_rdkit_conformers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.openbabel_force_field_on_rdkit_conformers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">openbabel_force_field_on_rdkit_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">rd_mol</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;MMFF94s&#39;</span><span class="p">,</span> <span class="n">optimize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Optimize RDKit conformers by OpenBabel using a force field (MMFF94 or MMFF94s are recommended).</span>
 <span class="sd">    This is a fallback method when RDKit fails to generate force field optimized conformers.</span>
@@ -1367,7 +1419,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="mix_rdkit_and_openbabel_force_field"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.mix_rdkit_and_openbabel_force_field">[docs]</a><span class="k">def</span> <span class="nf">mix_rdkit_and_openbabel_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">,</span>
+
+<div class="viewcode-block" id="mix_rdkit_and_openbabel_force_field">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.mix_rdkit_and_openbabel_force_field">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mix_rdkit_and_openbabel_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">,</span>
                                         <span class="n">mol</span><span class="p">,</span>
                                         <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                                         <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -1419,7 +1474,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="openbabel_force_field"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.openbabel_force_field">[docs]</a><span class="k">def</span> <span class="nf">openbabel_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;GAFF&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;diverse&#39;</span><span class="p">):</span>
+
+<div class="viewcode-block" id="openbabel_force_field">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.openbabel_force_field">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">openbabel_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force_field</span><span class="o">=</span><span class="s1">&#39;GAFF&#39;</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;diverse&#39;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Optimize conformers using a force field (GAFF, MMFF94s, MMFF94, UFF, Ghemical).</span>
 
@@ -1516,7 +1574,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="embed_rdkit"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.embed_rdkit">[docs]</a><span class="k">def</span> <span class="nf">embed_rdkit</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="embed_rdkit">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.embed_rdkit">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">embed_rdkit</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">num_confs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate unoptimized conformers in RDKit. If ``xyz`` is not given, random conformers will be generated.</span>
 
@@ -1552,7 +1613,10 @@
     <span class="k">return</span> <span class="n">rd_mol</span></div>
 
 
-<div class="viewcode-block" id="read_rdkit_embedded_conformers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.read_rdkit_embedded_conformers">[docs]</a><span class="k">def</span> <span class="nf">read_rdkit_embedded_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">rd_mol</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rd_index_map</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="read_rdkit_embedded_conformers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.read_rdkit_embedded_conformers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_rdkit_embedded_conformers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">rd_mol</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rd_index_map</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Read coordinates from RDKit conformers.</span>
 
@@ -1579,7 +1643,10 @@
     <span class="k">return</span> <span class="n">xyzs</span></div>
 
 
-<div class="viewcode-block" id="read_rdkit_embedded_conformer_i"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.read_rdkit_embedded_conformer_i">[docs]</a><span class="k">def</span> <span class="nf">read_rdkit_embedded_conformer_i</span><span class="p">(</span><span class="n">rd_mol</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">rd_index_map</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="read_rdkit_embedded_conformer_i">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.read_rdkit_embedded_conformer_i">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_rdkit_embedded_conformer_i</span><span class="p">(</span><span class="n">rd_mol</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">rd_index_map</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Read coordinates from RDKit conformers.</span>
 
@@ -1606,7 +1673,10 @@
     <span class="k">return</span> <span class="n">xyz_dict</span></div>
 
 
-<div class="viewcode-block" id="rdkit_force_field"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.rdkit_force_field">[docs]</a><span class="k">def</span> <span class="nf">rdkit_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="rdkit_force_field">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.rdkit_force_field">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">rdkit_force_field</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="n">rd_mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">RDMol</span><span class="p">],</span>
                       <span class="n">mol</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Molecule</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                       <span class="n">num_confs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1683,7 +1753,10 @@
     <span class="k">return</span> <span class="n">xyzs</span><span class="p">,</span> <span class="n">energies</span></div>
 
 
-<div class="viewcode-block" id="get_wells"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_wells">[docs]</a><span class="k">def</span> <span class="nf">get_wells</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">blank</span><span class="o">=</span><span class="n">WELL_GAP</span><span class="p">):</span>
+
+<div class="viewcode-block" id="get_wells">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_wells">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_wells</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">angles</span><span class="p">,</span> <span class="n">blank</span><span class="o">=</span><span class="n">WELL_GAP</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the distinct wells from a list of angles.</span>
 
@@ -1730,7 +1803,10 @@
     <span class="k">return</span> <span class="n">wells</span></div>
 
 
-<div class="viewcode-block" id="check_special_non_rotor_cases"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.check_special_non_rotor_cases">[docs]</a><span class="k">def</span> <span class="nf">check_special_non_rotor_cases</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">top1</span><span class="p">,</span> <span class="n">top2</span><span class="p">):</span>
+
+<div class="viewcode-block" id="check_special_non_rotor_cases">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.check_special_non_rotor_cases">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_special_non_rotor_cases</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">top1</span><span class="p">,</span> <span class="n">top2</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check whether one of the tops correspond to a special case which does not have a torsional mode.</span>
 <span class="sd">    Checking for ``R-[C,N]#[N,[CH],[C]]`` groups, such as: in cyano groups (`R-C#N``),</span>
@@ -1745,14 +1821,17 @@
 <span class="sd">        bool: ``True`` if this is indeed a special case which should **not** be treated as a torsional mode.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">for</span> <span class="n">top</span> <span class="ow">in</span> <span class="p">[</span><span class="n">top1</span><span class="p">,</span> <span class="n">top2</span><span class="p">]:</span>
-        <span class="k">if</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">top</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">atomtype</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;Ct&#39;</span><span class="p">,</span> <span class="s1">&#39;N3t&#39;</span><span class="p">,</span> <span class="s1">&#39;N5tc&#39;</span><span class="p">]</span> \
+        <span class="k">if</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">top</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">atomtype</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">top</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">atomtype</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;Ct&#39;</span><span class="p">,</span> <span class="s1">&#39;N5tc&#39;</span><span class="p">]</span> \
                 <span class="ow">and</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">top</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">atomtype</span><span class="o">.</span><span class="n">label</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;Ct&#39;</span><span class="p">,</span> <span class="s1">&#39;N3t&#39;</span><span class="p">]</span> <span class="ow">and</span> \
                 <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">top</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">or</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">top</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">[</span><span class="n">top</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">is_hydrogen</span><span class="p">())):</span>
             <span class="k">return</span> <span class="kc">True</span>
     <span class="k">return</span> <span class="kc">False</span></div>
 
 
-<div class="viewcode-block" id="find_internal_rotors"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.find_internal_rotors">[docs]</a><span class="k">def</span> <span class="nf">find_internal_rotors</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
+
+<div class="viewcode-block" id="find_internal_rotors">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.find_internal_rotors">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">find_internal_rotors</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Locates the sets of indices corresponding to every internal rotor (1-indexed).</span>
 
@@ -1767,7 +1846,7 @@
         <span class="k">if</span> <span class="n">atom1</span><span class="o">.</span><span class="n">is_non_hydrogen</span><span class="p">():</span>
             <span class="k">for</span> <span class="n">atom2</span><span class="p">,</span> <span class="n">bond</span> <span class="ow">in</span> <span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                 <span class="k">if</span> <span class="n">atom2</span><span class="o">.</span><span class="n">is_non_hydrogen</span><span class="p">()</span> <span class="ow">and</span> <span class="n">mol</span><span class="o">.</span><span class="n">vertices</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom1</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">mol</span><span class="o">.</span><span class="n">vertices</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)</span> \
-                        <span class="ow">and</span> <span class="p">(</span><span class="n">bond</span><span class="o">.</span><span class="n">is_single</span><span class="p">()</span> <span class="ow">or</span> <span class="n">bond</span><span class="o">.</span><span class="n">is_hydrogen_bond</span><span class="p">())</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">mol</span><span class="o">.</span><span class="n">is_bond_in_cycle</span><span class="p">(</span><span class="n">bond</span><span class="p">):</span>
+                        <span class="ow">and</span> <span class="n">bond</span><span class="o">.</span><span class="n">is_rotatable</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">mol</span><span class="o">.</span><span class="n">is_bond_in_cycle</span><span class="p">(</span><span class="n">bond</span><span class="p">):</span>
                     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">atom2</span><span class="o">.</span><span class="n">edges</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>  <span class="c1"># None of the pivotal atoms are terminal.</span>
                         <span class="n">rotor</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
                         <span class="c1"># pivots:</span>
@@ -1809,7 +1888,10 @@
     <span class="k">return</span> <span class="n">rotors</span></div>
 
 
-<div class="viewcode-block" id="determine_smallest_atom_index_in_scan"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_smallest_atom_index_in_scan">[docs]</a><span class="k">def</span> <span class="nf">determine_smallest_atom_index_in_scan</span><span class="p">(</span><span class="n">atom1</span><span class="p">:</span> <span class="n">Atom</span><span class="p">,</span>
+
+<div class="viewcode-block" id="determine_smallest_atom_index_in_scan">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_smallest_atom_index_in_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_smallest_atom_index_in_scan</span><span class="p">(</span><span class="n">atom1</span><span class="p">:</span> <span class="n">Atom</span><span class="p">,</span>
                                           <span class="n">atom2</span><span class="p">:</span> <span class="n">Atom</span><span class="p">,</span>
                                           <span class="n">mol</span><span class="p">:</span> <span class="n">Molecule</span><span class="p">,</span>
                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
@@ -1845,7 +1927,10 @@
     <span class="k">return</span> <span class="n">smallest_index</span> <span class="o">+</span> <span class="mi">1</span></div>
 
 
-<div class="viewcode-block" id="to_group"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.to_group">[docs]</a><span class="k">def</span> <span class="nf">to_group</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">atom_indices</span><span class="p">):</span>
+
+<div class="viewcode-block" id="to_group">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.to_group">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_group</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">atom_indices</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This method converts a defined part of a Molecule into a Group.</span>
 
@@ -1877,7 +1962,10 @@
     <span class="k">return</span> <span class="n">group</span></div>
 
 
-<div class="viewcode-block" id="update_mol"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.update_mol">[docs]</a><span class="k">def</span> <span class="nf">update_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
+
+<div class="viewcode-block" id="update_mol">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.update_mol">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">update_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Update atom types, multiplicity, and atom charges in the molecule.</span>
 
@@ -1895,7 +1983,10 @@
     <span class="k">return</span> <span class="n">mol</span></div>
 
 
-<div class="viewcode-block" id="generate_monoatomic_conformer"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_monoatomic_conformer">[docs]</a><span class="k">def</span> <span class="nf">generate_monoatomic_conformer</span><span class="p">(</span><span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+
+<div class="viewcode-block" id="generate_monoatomic_conformer">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_monoatomic_conformer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_monoatomic_conformer</span><span class="p">(</span><span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate a conformer for a monoatomic species.</span>
 
@@ -1917,7 +2008,10 @@
     <span class="k">return</span> <span class="n">conf</span></div>
 
 
-<div class="viewcode-block" id="generate_diatomic_conformer"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_diatomic_conformer">[docs]</a><span class="k">def</span> <span class="nf">generate_diatomic_conformer</span><span class="p">(</span><span class="n">symbol_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="generate_diatomic_conformer">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.generate_diatomic_conformer">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">generate_diatomic_conformer</span><span class="p">(</span><span class="n">symbol_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                 <span class="n">symbol_2</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                 <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
@@ -1989,7 +2083,10 @@
     <span class="k">return</span> <span class="n">conf</span></div>
 
 
-<div class="viewcode-block" id="translate_groups"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.translate_groups">[docs]</a><span class="k">def</span> <span class="nf">translate_groups</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">pivot</span><span class="p">):</span>
+
+<div class="viewcode-block" id="translate_groups">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.translate_groups">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">translate_groups</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">pivot</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Exchange between two groups in a molecule. The groups cannot share a ring with the pivotal atom.</span>
 <span class="sd">    The function does not change the atom order, just the coordinates of atoms.</span>
@@ -2049,7 +2146,10 @@
     <span class="k">return</span> <span class="n">new_xyz</span></div>
 
 
-<div class="viewcode-block" id="translate_group"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.translate_group">[docs]</a><span class="k">def</span> <span class="nf">translate_group</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">pivot</span><span class="p">,</span> <span class="n">anchor</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
+
+<div class="viewcode-block" id="translate_group">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.translate_group">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">translate_group</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">pivot</span><span class="p">,</span> <span class="n">anchor</span><span class="p">,</span> <span class="n">vector</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Translate a group (a set of atoms from the pivot towards the anchor and onwards) by changing its</span>
 <span class="sd">    pivot -&gt; anchor vector to the desired new vector. Keep the relative distances between the group&#39;s atoms constant,</span>
@@ -2082,7 +2182,10 @@
     <span class="k">return</span> <span class="n">new_xyz</span></div>
 
 
-<div class="viewcode-block" id="get_number_of_chiral_centers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_number_of_chiral_centers">[docs]</a><span class="k">def</span> <span class="nf">get_number_of_chiral_centers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">conformer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">just_get_the_number</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+
+<div class="viewcode-block" id="get_number_of_chiral_centers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_number_of_chiral_centers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_number_of_chiral_centers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">conformer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">just_get_the_number</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the number of chiral centers by type. Either ``conformer`` or ``xyz`` must be given.</span>
 
@@ -2122,7 +2225,10 @@
     <span class="k">return</span> <span class="n">result</span></div>
 
 
-<div class="viewcode-block" id="get_lowest_diastereomers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_lowest_diastereomers">[docs]</a><span class="k">def</span> <span class="nf">get_lowest_diastereomers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">diastereomers</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="get_lowest_diastereomers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_lowest_diastereomers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_lowest_diastereomers</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">diastereomers</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the 2^(n-1) diastereomers with the lowest energy (where n is the number of chiral centers in the molecule).</span>
 <span class="sd">    We exclude enantiomers (mirror images where ALL chiral centers simultaneously invert).</span>
@@ -2191,7 +2297,10 @@
     <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">pruned_enantiomers_dict</span><span class="o">.</span><span class="n">values</span><span class="p">())</span></div>
 
 
-<div class="viewcode-block" id="prune_enantiomers_dict"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.prune_enantiomers_dict">[docs]</a><span class="k">def</span> <span class="nf">prune_enantiomers_dict</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">enantiomers_dict</span><span class="p">):</span>
+
+<div class="viewcode-block" id="prune_enantiomers_dict">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.prune_enantiomers_dict">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">prune_enantiomers_dict</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">enantiomers_dict</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for screening out enantiomers from the enantiomers_dict, leaving only diastereomers</span>
 <span class="sd">    (so removing all exact mirror images). Note that double bond chiralities &#39;E&#39; and &#39;Z&#39; are not mirror images of each</span>
@@ -2231,7 +2340,10 @@
     <span class="k">return</span> <span class="n">pruned_enantiomers_dict</span></div>
 
 
-<div class="viewcode-block" id="inverse_chirality_symbol"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.inverse_chirality_symbol">[docs]</a><span class="k">def</span> <span class="nf">inverse_chirality_symbol</span><span class="p">(</span><span class="n">symbol</span><span class="p">):</span>
+
+<div class="viewcode-block" id="inverse_chirality_symbol">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.inverse_chirality_symbol">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">inverse_chirality_symbol</span><span class="p">(</span><span class="n">symbol</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Inverses a chirality symbol, e.g., the &#39;R&#39; character to &#39;S&#39;, or &#39;NS&#39; to &#39;NR&#39;.</span>
 <span class="sd">    Note that chiral double bonds (&#39;E&#39; and &#39;Z&#39;) must not be inversed (they are not mirror images of each other).</span>
@@ -2251,7 +2363,10 @@
     <span class="k">return</span> <span class="n">inversion_dict</span><span class="p">[</span><span class="n">symbol</span><span class="p">]</span></div>
 
 
-<div class="viewcode-block" id="chirality_dict_to_tuple"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.chirality_dict_to_tuple">[docs]</a><span class="k">def</span> <span class="nf">chirality_dict_to_tuple</span><span class="p">(</span><span class="n">chirality_dict</span><span class="p">):</span>
+
+<div class="viewcode-block" id="chirality_dict_to_tuple">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.chirality_dict_to_tuple">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">chirality_dict_to_tuple</span><span class="p">(</span><span class="n">chirality_dict</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for using the chirality dictionary of a conformer as a key in the enantiomers_dict</span>
 <span class="sd">    by converting it to a tuple deterministically.</span>
@@ -2288,7 +2403,10 @@
     <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">result</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="determine_chirality"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_chirality">[docs]</a><span class="k">def</span> <span class="nf">determine_chirality</span><span class="p">(</span><span class="n">conformers</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+<div class="viewcode-block" id="determine_chirality">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.determine_chirality">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_chirality</span><span class="p">(</span><span class="n">conformers</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determines the Cahn–Ingold–Prelog (CIP) chirality (R or S) of atoms in the conformer,</span>
 <span class="sd">    as well as the CIP chirality of double bonds (E or Z).</span>
@@ -2340,7 +2458,10 @@
     <span class="k">return</span> <span class="n">conformers</span></div>
 
 
-<div class="viewcode-block" id="identify_chiral_nitrogen_centers"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.identify_chiral_nitrogen_centers">[docs]</a><span class="k">def</span> <span class="nf">identify_chiral_nitrogen_centers</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
+
+<div class="viewcode-block" id="identify_chiral_nitrogen_centers">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.identify_chiral_nitrogen_centers">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">identify_chiral_nitrogen_centers</span><span class="p">(</span><span class="n">mol</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Identify the atom indices corresponding to a chiral nitrogen centers in a molecule (umbrella modes).</span>
 
@@ -2375,7 +2496,10 @@
     <span class="k">return</span> <span class="n">chiral_nitrogen_centers</span></div>
 
 
-<div class="viewcode-block" id="replace_n_with_c_in_mol"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.replace_n_with_c_in_mol">[docs]</a><span class="k">def</span> <span class="nf">replace_n_with_c_in_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">chiral_nitrogen_centers</span><span class="p">):</span>
+
+<div class="viewcode-block" id="replace_n_with_c_in_mol">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.replace_n_with_c_in_mol">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">replace_n_with_c_in_mol</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">chiral_nitrogen_centers</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair</span>
 <span class="sd">    (assuming just one exists) with a hydrogen or a halogen atom, preserving any radical electrons on the nitrogen atom.</span>
@@ -2446,7 +2570,10 @@
     <span class="k">return</span> <span class="n">new_mol</span><span class="p">,</span> <span class="n">inserted_elements</span></div>
 
 
-<div class="viewcode-block" id="replace_n_with_c_in_xyz"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.replace_n_with_c_in_xyz">[docs]</a><span class="k">def</span> <span class="nf">replace_n_with_c_in_xyz</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">chiral_nitrogen_centers</span><span class="p">,</span> <span class="n">elements_to_insert</span><span class="p">):</span>
+
+<div class="viewcode-block" id="replace_n_with_c_in_xyz">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.replace_n_with_c_in_xyz">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">replace_n_with_c_in_xyz</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">mol</span><span class="p">,</span> <span class="n">xyz</span><span class="p">,</span> <span class="n">chiral_nitrogen_centers</span><span class="p">,</span> <span class="n">elements_to_insert</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Replace nitrogen atoms (pre-identified as chiral centers) with carbon atoms, replacing the lone electron pair</span>
 <span class="sd">    (assuming just one exists) with a hydrogen or a halogen atom.</span>
@@ -2490,7 +2617,10 @@
     <span class="k">return</span> <span class="n">new_xyz</span></div>
 
 
-<div class="viewcode-block" id="get_top_element_count"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_top_element_count">[docs]</a><span class="k">def</span> <span class="nf">get_top_element_count</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">top</span><span class="p">):</span>
+
+<div class="viewcode-block" id="get_top_element_count">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.get_top_element_count">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_top_element_count</span><span class="p">(</span><span class="n">mol</span><span class="p">,</span> <span class="n">top</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Returns the element count for the molecule considering only the atom indices in ``top``.</span>
 
@@ -2514,7 +2644,10 @@
     <span class="k">return</span> <span class="n">element_count</span></div>
 
 
-<div class="viewcode-block" id="initialize_log"><a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.initialize_log">[docs]</a><span class="k">def</span> <span class="nf">initialize_log</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">):</span>
+
+<div class="viewcode-block" id="initialize_log">
+<a class="viewcode-back" href="../../../api/conformers.html#arc.species.conformers.initialize_log">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">initialize_log</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Set up a simple logger for stdout printing (not saving into as log file).</span>
 
@@ -2544,6 +2677,7 @@
     <span class="n">ch</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">verbose</span><span class="p">)</span>
     <span class="n">ch</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">formatter</span><span class="p">)</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span></div>
+
 </pre></div>
 
            </div>

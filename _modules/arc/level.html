@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.level &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/jquery.js"></script>
-        <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -90,26 +84,21 @@
 <span class="sd">A module for working with levels of theory.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">annotations</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
-
-<span class="kn">import</span> <span class="nn">arkane.encorr.data</span> <span class="k">as</span> <span class="nn">arkane_data</span>
-<span class="kn">from</span> <span class="nn">arkane.encorr.bac</span> <span class="kn">import</span> <span class="n">BAC</span>
-<span class="kn">from</span> <span class="nn">arkane.modelchem</span> <span class="kn">import</span> <span class="n">METHODS_THAT_REQUIRE_SOFTWARE</span><span class="p">,</span> <span class="n">LevelOfTheory</span><span class="p">,</span> <span class="n">standardize_name</span>
-
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">get_ordered_intersection_of_two_lists</span><span class="p">,</span> <span class="n">read_yaml_file</span>
-<span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">get_ordered_intersection_of_two_lists</span><span class="p">,</span> <span class="n">read_yaml_file</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
-
 <span class="n">levels_ess</span><span class="p">,</span> <span class="n">supported_ess</span> <span class="o">=</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;levels_ess&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;supported_ess&#39;</span><span class="p">]</span>
 
 
-<div class="viewcode-block" id="Level"><a class="viewcode-back" href="../../api/level.html#arc.level.Level">[docs]</a><span class="k">class</span> <span class="nc">Level</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+<div class="viewcode-block" id="Level">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Level</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Uniquely defines the settings used for a quantum calculation level of theory.</span>
 <span class="sd">    Either ``repr`` or ``method`` must be specified.</span>
@@ -136,8 +125,8 @@
 <span class="sd">        compatible_ess (list, optional): Entries are names of compatible ESS. Not in ``LevelOfTheory``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                 <span class="nb">repr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="nb">repr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="s1">&#39;Level&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">basis</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">auxiliary_basis</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -149,7 +138,7 @@
                  <span class="n">compatible_ess</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">solvation_method</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">solvent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">solvation_scheme_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">solvation_scheme_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="s1">&#39;Level&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">args</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">Iterable</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="o">=</span> <span class="nb">repr</span>
@@ -198,18 +187,15 @@
             <span class="c1"># it wasn&#39;t set by the user, try determining it</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">deduce_software</span><span class="p">()</span>
 
-    <span class="k">def</span> <span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">Level</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s1">&#39;Level&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine equality between Level object instances.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Level</span><span class="p">):</span>
             <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">other</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">LevelOfTheory</span><span class="p">):</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">method</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="o">==</span> <span class="n">other</span><span class="o">.</span><span class="n">basis</span><span class="p">:</span>
-                <span class="k">return</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="kc">False</span>
 
-    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a humane-readable string representation of the object.</span>
 
@@ -243,7 +229,9 @@
                         <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39; </span><span class="si">{</span><span class="n">arg</span><span class="si">}</span><span class="s1">&#39;</span>
         <span class="k">return</span> <span class="n">str_</span>
 
-<div class="viewcode-block" id="Level.copy"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.copy">[docs]</a>    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="Level.copy">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.copy">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A method to create a copy of the object.</span>
 
@@ -252,7 +240,10 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">as_dict</span><span class="p">())</span></div>
 
-<div class="viewcode-block" id="Level.simple"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.simple">[docs]</a>    <span class="k">def</span> <span class="nf">simple</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+
+<div class="viewcode-block" id="Level.simple">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.simple">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">simple</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a simple humane-readable string representation of the object.</span>
 
@@ -264,7 +255,10 @@
             <span class="n">str_</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;/</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">basis</span><span class="si">}</span><span class="s1">&#39;</span>
         <span class="k">return</span> <span class="n">str_</span></div>
 
-<div class="viewcode-block" id="Level.as_dict"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+
+<div class="viewcode-block" id="Level.as_dict">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.as_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Returns a minimal dictionary representation from which the object can be reconstructed.</span>
 <span class="sd">        Useful for ARC restart files.</span>
@@ -276,7 +270,10 @@
                 <span class="n">clean_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
         <span class="k">return</span> <span class="n">clean_dict</span></div>
 
-<div class="viewcode-block" id="Level.build"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.build">[docs]</a>    <span class="k">def</span> <span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="Level.build">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.build">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Assign object attributes from a dictionary representation of the object or a simple string (&quot;method/basis&quot;).</span>
 <span class="sd">        Useful for ARC restart files.</span>
@@ -314,7 +311,8 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">splits</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
                 <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span> <span class="p">(</span><span class="n">splits</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">level_dict</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">repr</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
             <span class="c1"># also treats representations of LevelOfTheory.as_dict from a restart file</span>
@@ -337,7 +335,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">repr</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># reset</span>
         <span class="bp">self</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">level_dict</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="Level.lower"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.lower">[docs]</a>    <span class="k">def</span> <span class="nf">lower</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="Level.lower">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.lower">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">lower</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Set arguments to lowercase.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -400,126 +401,12 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span></div>
 
-<div class="viewcode-block" id="Level.to_arkane_level_of_theory"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.to_arkane_level_of_theory">[docs]</a>    <span class="k">def</span> <span class="nf">to_arkane_level_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                                  <span class="n">variant</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                                  <span class="n">bac_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;p&#39;</span><span class="p">,</span>
-                                  <span class="n">comprehensive</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                                  <span class="n">raise_error</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-                                  <span class="n">warn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-                                  <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">LevelOfTheory</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="Level.deduce_method_type">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_method_type">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deduce_method_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Convert ``Level`` to an Arkane ``LevelOfTheory`` instance.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            variant (str, optional): Return a variant of the Arkane ``LevelOfTheory`` that matches an Arkane query.</span>
-<span class="sd">                                     Allowed values are ``&#39;freq&#39;``, ``&#39;AEC&#39;``, ``&#39;BEC&#39;``. Returns ``None`` if no</span>
-<span class="sd">                                     functioning variant was found.</span>
-<span class="sd">            bac_type (str, optional): The BAC type (&#39;p&#39; or &#39;m&#39;) to use when searching for a ``LevelOfTheory`` variant</span>
-<span class="sd">                                      for BAC.</span>
-<span class="sd">            comprehensive (bool, optional): Whether to consider all relevant arguments if not looking for a variant.</span>
-<span class="sd">            raise_error (bool, optional): Whether to raise an error if an AEC variant could not be found.</span>
-<span class="sd">            warn (bool, optional): Whether to output a warning if an AEC variant could not be found.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            Optional[LevelOfTheory]: The respective Arkane ``LevelOfTheory`` object</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">level_aec</span> <span class="o">=</span> <span class="n">read_yaml_file</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ARC_PATH</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">,</span> <span class="s1">&#39;AEC.yml&#39;</span><span class="p">))</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="n">level_aec</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-            <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">variant</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">comprehensive</span><span class="p">:</span>
-                <span class="c1"># only add basis and software if needed</span>
-                <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">}</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span>
-                <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;software&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span>
-                <span class="k">return</span> <span class="n">LevelOfTheory</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="c1"># consider all relevant arguments</span>
-                <span class="n">kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;solvation_scheme_level&#39;</span><span class="p">]</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;method_type&#39;</span><span class="p">]</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;repr&#39;</span><span class="p">]</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;compatible_ess&#39;</span><span class="p">]</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;dispersion&#39;</span><span class="p">]</span>
-                <span class="k">del</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">([</span><span class="n">val</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">values</span><span class="p">()]):</span>
-                    <span class="c1"># only pass keyword arguments to Arkane (not blocks)</span>
-                    <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;keyword&#39;</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">keys</span><span class="p">()]):</span>
-                        <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
-                        <span class="k">for</span> <span class="n">key1</span><span class="p">,</span> <span class="n">val1</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                            <span class="k">if</span> <span class="n">key1</span> <span class="o">==</span> <span class="s1">&#39;keyword&#39;</span><span class="p">:</span>
-                                <span class="k">for</span> <span class="n">val2</span> <span class="ow">in</span> <span class="n">val1</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-                                    <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">val2</span><span class="p">)</span>
-                                <span class="k">break</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="s1">&#39;args&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
-                        <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="p">]</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dispersion</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;f12a&#39;</span><span class="p">,</span> <span class="s1">&#39;f12&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;f12b&#39;</span><span class="p">,</span> <span class="s1">&#39;f12&#39;</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;f12a&#39;</span><span class="p">,</span> <span class="s1">&#39;f12&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;f12b&#39;</span><span class="p">,</span> <span class="s1">&#39;f12&#39;</span><span class="p">)</span>
-                <span class="k">return</span> <span class="n">LevelOfTheory</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># search for a functioning variant</span>
-            <span class="k">if</span> <span class="n">variant</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;freq&#39;</span><span class="p">,</span> <span class="s1">&#39;AEC&#39;</span><span class="p">,</span> <span class="s1">&#39;BAC&#39;</span><span class="p">]:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;variant must be either &quot;freq&quot;, &quot;AEC&quot;, or &quot;BAC&quot;, got &quot;</span><span class="si">{</span><span class="n">variant</span><span class="si">}</span><span class="s1">&quot;.&#39;</span><span class="p">)</span>
-            <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">}</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;basis&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">basis</span>
-            <span class="k">if</span> <span class="n">standardize_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">)</span> <span class="ow">in</span> <span class="n">METHODS_THAT_REQUIRE_SOFTWARE</span><span class="p">:</span>
-                <span class="c1"># add software if mandatory (otherwise, Arkane won&#39;t accept this object initialization)</span>
-                <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;software&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span>
-            <span class="n">var_2</span> <span class="o">=</span> <span class="n">LevelOfTheory</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-            <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;software&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">software</span>  <span class="c1"># add or overwrite software</span>
-            <span class="c1"># start w/ the software argument (var_1) in case there are several entries that only vary by software</span>
-            <span class="k">try</span><span class="p">:</span>
-                <span class="n">var_1</span> <span class="o">=</span> <span class="n">LevelOfTheory</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-            <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-                <span class="n">var_1</span> <span class="o">=</span> <span class="kc">None</span>
-
-            <span class="k">if</span> <span class="n">variant</span> <span class="o">==</span> <span class="s1">&#39;freq&#39;</span><span class="p">:</span>
-                <span class="k">return</span> <span class="n">var_2</span>
-
-            <span class="k">if</span> <span class="n">variant</span> <span class="o">==</span> <span class="s1">&#39;AEC&#39;</span><span class="p">:</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="n">arkane_data</span><span class="o">.</span><span class="n">atom_energies</span><span class="p">[</span><span class="n">var_1</span><span class="p">]</span>
-                    <span class="k">return</span> <span class="n">var_1</span>
-                <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
-                    <span class="k">try</span><span class="p">:</span>
-                        <span class="n">arkane_data</span><span class="o">.</span><span class="n">atom_energies</span><span class="p">[</span><span class="n">var_2</span><span class="p">]</span>
-                        <span class="k">return</span> <span class="n">var_2</span>
-                    <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
-                        <span class="k">if</span> <span class="n">raise_error</span><span class="p">:</span>
-                            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing Arkane atom energy corrections for </span><span class="si">{</span><span class="n">var_1</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
-                                             <span class="sa">f</span><span class="s1">&#39;(If you did not mean to compute thermo, set the compute_thermo &#39;</span>
-                                             <span class="sa">f</span><span class="s1">&#39;argument to False to avoid this error.)&#39;</span><span class="p">)</span>
-                        <span class="k">else</span><span class="p">:</span>
-                            <span class="k">if</span> <span class="n">warn</span><span class="p">:</span>
-                                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing Arkane atom energy corrections for </span><span class="si">{</span><span class="n">var_1</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
-                            <span class="k">return</span> <span class="kc">None</span>
-
-            <span class="k">if</span> <span class="n">variant</span> <span class="o">==</span> <span class="s1">&#39;BAC&#39;</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">bac_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;p&#39;</span><span class="p">,</span> <span class="s1">&#39;m&#39;</span><span class="p">]:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;bac_type must be either &quot;p&quot; or &quot;m&quot;, got &quot;</span><span class="si">{</span><span class="n">bac_type</span><span class="si">}</span><span class="s1">&quot;.&#39;</span><span class="p">)</span>
-                <span class="n">bac</span> <span class="o">=</span> <span class="n">BAC</span><span class="p">(</span><span class="n">level_of_theory</span><span class="o">=</span><span class="n">var_1</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="n">bac_type</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">bac</span><span class="o">.</span><span class="n">bacs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">bac</span> <span class="o">=</span> <span class="n">BAC</span><span class="p">(</span><span class="n">level_of_theory</span><span class="o">=</span><span class="n">var_2</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="n">bac_type</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="n">bac</span><span class="o">.</span><span class="n">bacs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing Arkane BAC for </span><span class="si">{</span><span class="n">var_2</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
-                        <span class="k">return</span> <span class="kc">None</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="k">return</span> <span class="n">var_2</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">return</span> <span class="n">var_1</span></div>
-
-<div class="viewcode-block" id="Level.deduce_method_type"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_method_type">[docs]</a>    <span class="k">def</span> <span class="nf">deduce_method_type</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Determine the type of a model chemistry:</span>
+<span class="sd">        Determine the model chemistry type:</span>
 <span class="sd">        DFT, wavefunction, force field, semi-empirical, or composite</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">wave_function_methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;hf&#39;</span><span class="p">,</span> <span class="s1">&#39;cc&#39;</span><span class="p">,</span> <span class="s1">&#39;ci&#39;</span><span class="p">,</span> <span class="s1">&#39;mp2&#39;</span><span class="p">,</span> <span class="s1">&#39;mp3&#39;</span><span class="p">,</span> <span class="s1">&#39;cp&#39;</span><span class="p">,</span> <span class="s1">&#39;cep&#39;</span><span class="p">,</span> <span class="s1">&#39;nevpt&#39;</span><span class="p">,</span> <span class="s1">&#39;dmrg&#39;</span><span class="p">,</span> <span class="s1">&#39;ri&#39;</span><span class="p">,</span> <span class="s1">&#39;cas&#39;</span><span class="p">,</span> <span class="s1">&#39;ic&#39;</span><span class="p">,</span> <span class="s1">&#39;mr&#39;</span><span class="p">,</span>
@@ -546,7 +433,10 @@
             <span class="c1"># assume DFT</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">method_type</span> <span class="o">=</span> <span class="s1">&#39;dft&#39;</span></div>
 
-<div class="viewcode-block" id="Level.deduce_software"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_software">[docs]</a>    <span class="k">def</span> <span class="nf">deduce_software</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+
+<div class="viewcode-block" id="Level.deduce_software">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.deduce_software">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">deduce_software</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                         <span class="n">job_type</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Deduce the ESS to be used for a given level of theory.</span>
@@ -619,7 +509,10 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">software</span> <span class="o">=</span> <span class="n">get_ordered_intersection_of_two_lists</span><span class="p">(</span><span class="n">preferred_ess_order</span><span class="p">,</span> <span class="n">relevant_software</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> \
                 <span class="k">if</span> <span class="n">relevant_software</span> <span class="k">else</span> <span class="kc">None</span></div>
 
-<div class="viewcode-block" id="Level.determine_compatible_ess"><a class="viewcode-back" href="../../api/level.html#arc.level.Level.determine_compatible_ess">[docs]</a>    <span class="k">def</span> <span class="nf">determine_compatible_ess</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="Level.determine_compatible_ess">
+<a class="viewcode-back" href="../../api/level.html#arc.level.Level.determine_compatible_ess">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">determine_compatible_ess</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine compatible ESS.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -630,32 +523,14 @@
             <span class="n">ess_methods</span> <span class="o">=</span> <span class="p">{</span><span class="n">ess</span><span class="p">:</span> <span class="p">[</span><span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">methods</span><span class="p">]</span> <span class="k">for</span> <span class="n">ess</span><span class="p">,</span> <span class="n">methods</span> <span class="ow">in</span> <span class="n">ess_methods</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
             <span class="k">for</span> <span class="n">ess</span> <span class="ow">in</span> <span class="n">supported_ess</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">ess</span> <span class="ow">in</span> <span class="n">ess_methods</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="ow">in</span> <span class="n">ess_methods</span><span class="p">[</span><span class="n">ess</span><span class="p">]:</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ess</span><span class="p">)</span></div></div>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">compatible_ess</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ess</span><span class="p">)</span></div>
+</div>
 
 
-<div class="viewcode-block" id="get_params_from_arkane_level_of_theory_as_str"><a class="viewcode-back" href="../../api/level.html#arc.level.get_params_from_arkane_level_of_theory_as_str">[docs]</a><span class="k">def</span> <span class="nf">get_params_from_arkane_level_of_theory_as_str</span><span class="p">(</span><span class="n">arkane_level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Get the method, basis set, and software (if any) of an str representation of an Arkane LevelOfTheory object instance.</span>
 
-<span class="sd">    Args:</span>
-<span class="sd">        arkane_level (str): The Arkane level.</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        Dict[str, str]: Keys are &#39;method&#39;, &#39;basis&#39;, &#39;software&#39;.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># LevelOfTheory(method=&#39;b3lyp&#39;,basis=&#39;6311+g(3df,2p)&#39;,software=&#39;gaussian&#39;)</span>
-    <span class="n">level_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                  <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                  <span class="s1">&#39;software&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
-                  <span class="p">}</span>
-    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">level_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">arkane_level</span><span class="p">:</span>
-            <span class="n">splits</span> <span class="o">=</span> <span class="n">arkane_level</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">=&#39;&quot;</span><span class="p">)</span>
-            <span class="n">level_dict</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">splits</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&#39;&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">return</span> <span class="n">level_dict</span></div>
-
-
-<div class="viewcode-block" id="assign_frequency_scale_factor"><a class="viewcode-back" href="../../api/level.html#arc.level.assign_frequency_scale_factor">[docs]</a><span class="k">def</span> <span class="nf">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Level</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<div class="viewcode-block" id="assign_frequency_scale_factor">
+<a class="viewcode-back" href="../../api/level.html#arc.level.assign_frequency_scale_factor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Level</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Assign a frequency scaling factor to a level of theory.</span>
 
@@ -674,6 +549,7 @@
     <span class="k">if</span> <span class="n">level_str</span> <span class="ow">in</span> <span class="n">freq_scale_factors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">freq_scale_factors</span><span class="p">[</span><span class="n">level_str</span><span class="p">]</span>
     <span class="k">return</span> <span class="kc">None</span></div>
+
 </pre></div>
 
            </div>

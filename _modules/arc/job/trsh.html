@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.job.trsh &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../../_static/doctools.js"></script>
-        <script src="../../../_static/sphinx_highlight.js"></script>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -90,17 +84,16 @@
 <span class="sd">The ARC troubleshooting (&quot;trsh&quot;) module</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">math</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
-<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
 
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">check_torsion_change</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">check_torsion_change</span><span class="p">,</span>
                         <span class="n">convert_to_hours</span><span class="p">,</span>
-                        <span class="n">determine_ess</span><span class="p">,</span>
                         <span class="n">estimate_orca_mem_cpu_requirement</span><span class="p">,</span>
                         <span class="n">get_logger</span><span class="p">,</span>
                         <span class="n">get_number_with_ordinal_indicator</span><span class="p">,</span>
@@ -108,22 +101,23 @@
                         <span class="n">is_same_sequence_sublist</span><span class="p">,</span>
                         <span class="n">is_str_float</span>
                         <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SpeciesError</span><span class="p">,</span> <span class="n">TrshError</span>
-<span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
-<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
-<span class="kn">from</span> <span class="nn">arc.job.local</span> <span class="kn">import</span> <span class="n">execute_command</span>
-<span class="kn">from</span> <span class="nn">arc.job.ssh</span> <span class="kn">import</span> <span class="n">SSHClient</span>
-<span class="kn">from</span> <span class="nn">arc.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
-<span class="kn">from</span> <span class="nn">arc.species.conformers</span> <span class="kn">import</span> <span class="n">determine_smallest_atom_index_in_scan</span>
-<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="p">(</span><span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span><span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">determine_rotor_symmetry</span>
-<span class="kn">from</span> <span class="nn">arc.species.vectors</span> <span class="kn">import</span> <span class="n">calculate_dihedral_angle</span><span class="p">,</span> <span class="n">calculate_distance</span>
-<span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="p">(</span><span class="n">parse_1d_scan_coords</span><span class="p">,</span>
-                        <span class="n">parse_normal_mode_displacement</span><span class="p">,</span>
-                        <span class="n">parse_scan_args</span><span class="p">,</span>
-                        <span class="n">parse_scan_conformers</span><span class="p">,</span>
-                        <span class="n">parse_xyz_from_file</span><span class="p">,</span>
-                        <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SpeciesError</span><span class="p">,</span> <span class="n">TrshError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">execute_command</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.conformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_smallest_atom_index_in_scan</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">displace_xyz</span><span class="p">,</span> <span class="n">ics_to_scan_constraints</span><span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_rotor_symmetry</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.vectors</span><span class="w"> </span><span class="kn">import</span> <span class="n">calculate_dihedral_angle</span><span class="p">,</span> <span class="n">calculate_distance</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">parse_1d_scan_coords</span><span class="p">,</span>
+                               <span class="n">parse_geometry</span><span class="p">,</span>
+                               <span class="n">parse_normal_mode_displacement</span><span class="p">,</span>
+                               <span class="n">parse_scan_args</span><span class="p">,</span>
+                               <span class="n">parse_scan_conformers</span><span class="p">,</span>
+                               <span class="n">determine_ess</span>
+                               <span class="p">)</span>
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
@@ -135,7 +129,9 @@
                                 <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;rotor_scan_resolution&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_filenames&#39;</span><span class="p">]</span>
 
 
-<div class="viewcode-block" id="determine_ess_status"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_ess_status">[docs]</a><span class="k">def</span> <span class="nf">determine_ess_status</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<div class="viewcode-block" id="determine_ess_status">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_ess_status">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_ess_status</span><span class="p">(</span><span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">species_label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">job_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">job_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -162,7 +158,7 @@
         <span class="k">return</span> <span class="s1">&#39;errored&#39;</span><span class="p">,</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="n">line</span>
 
     <span class="k">if</span> <span class="n">software</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">software</span> <span class="o">=</span> <span class="n">determine_ess</span><span class="p">(</span><span class="n">log_file</span><span class="o">=</span><span class="n">output_path</span><span class="p">)</span>
+        <span class="n">software</span> <span class="o">=</span> <span class="n">determine_ess</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">output_path</span><span class="p">)</span>
 
     <span class="n">keywords</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
@@ -567,7 +563,10 @@
     <span class="k">return</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="nb">list</span><span class="p">(),</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span></div>
 
 
-<div class="viewcode-block" id="determine_job_log_memory_issues"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_job_log_memory_issues">[docs]</a><span class="k">def</span> <span class="nf">determine_job_log_memory_issues</span><span class="p">(</span><span class="n">job_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="determine_job_log_memory_issues">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.determine_job_log_memory_issues">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">determine_job_log_memory_issues</span><span class="p">(</span><span class="n">job_log</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Determine the reason that caused an ESS job to crash, assign error keywords for troubleshooting.</span>
 
@@ -604,7 +603,10 @@
     <span class="k">return</span> <span class="n">keywords</span><span class="p">,</span> <span class="n">error</span><span class="p">,</span> <span class="n">line</span></div>
 
 
-<div class="viewcode-block" id="trsh_negative_freq"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_negative_freq">[docs]</a><span class="k">def</span> <span class="nf">trsh_negative_freq</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_negative_freq">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_negative_freq">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_negative_freq</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">log_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">neg_freqs_trshed</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">job_types</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
@@ -640,7 +642,7 @@
     <span class="n">factors</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.50</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">]</span>
     <span class="n">factor</span> <span class="o">=</span> <span class="n">factors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">max_times_to_trsh_neg_freq</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">factors</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
-    <span class="n">freqs</span><span class="p">,</span> <span class="n">normal_modes_disp</span> <span class="o">=</span> <span class="n">parse_normal_mode_displacement</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">log_file</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">freqs</span><span class="p">,</span> <span class="n">normal_modes_disp</span> <span class="o">=</span> <span class="n">parse_normal_mode_displacement</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">log_file</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">normal_modes_disp</span><span class="p">):</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot negative frequency for species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">[],</span> <span class="p">[],</span> <span class="n">output_errors</span><span class="p">,</span> <span class="p">[]</span>
@@ -697,7 +699,7 @@
         <span class="c1"># Convert a numpy array to a list, important for saving the neg_freqs_trshed species attribute in the restart</span>
         <span class="n">freqs_list</span> <span class="o">=</span> <span class="n">freqs</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
         <span class="n">current_neg_freqs_trshed</span> <span class="o">=</span> <span class="p">[</span><span class="nb">round</span><span class="p">(</span><span class="n">freqs_list</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">neg_freqs_idx</span><span class="p">]</span>  <span class="c1"># record trshed negative freqs</span>
-        <span class="n">xyz</span> <span class="o">=</span> <span class="n">parse_xyz_from_file</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
+        <span class="n">xyz</span> <span class="o">=</span> <span class="n">parse_geometry</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">neg_freq_idx</span> <span class="ow">in</span> <span class="n">neg_freqs_idx</span><span class="p">:</span>
             <span class="n">xyz_1</span><span class="p">,</span> <span class="n">xyz_2</span> <span class="o">=</span> <span class="n">displace_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">displacement</span><span class="o">=</span><span class="n">normal_modes_disp</span><span class="p">[</span><span class="n">neg_freq_idx</span><span class="p">],</span> <span class="n">amplitude</span><span class="o">=</span><span class="n">factor</span><span class="p">)</span>
             <span class="n">conformers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">xyz_1</span><span class="p">)</span>
@@ -705,7 +707,10 @@
     <span class="k">return</span> <span class="n">current_neg_freqs_trshed</span><span class="p">,</span> <span class="n">conformers</span><span class="p">,</span> <span class="n">output_errors</span><span class="p">,</span> <span class="n">output_warnings</span></div>
 
 
-<div class="viewcode-block" id="trsh_scan_job"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_scan_job">[docs]</a><span class="k">def</span> <span class="nf">trsh_scan_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_scan_job">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_scan_job">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_scan_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                   <span class="n">scan_res</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">],</span>
                   <span class="n">scan</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                   <span class="n">scan_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
@@ -825,7 +830,7 @@
 
         <span class="c1"># Convert to_freeze into an input block str</span>
         <span class="n">to_freeze</span> <span class="o">+=</span> <span class="n">already_frozen</span>
-        <span class="n">software</span> <span class="o">=</span> <span class="n">determine_ess</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
+        <span class="n">software</span> <span class="o">=</span> <span class="n">determine_ess</span><span class="p">(</span><span class="n">log_file_path</span><span class="o">=</span><span class="n">log_file</span><span class="p">)</span>
         <span class="n">scan_trsh</span> <span class="o">=</span> <span class="n">ics_to_scan_constraints</span><span class="p">(</span><span class="n">ics</span><span class="o">=</span><span class="n">to_freeze</span><span class="p">,</span> <span class="n">software</span><span class="o">=</span><span class="n">software</span><span class="p">)</span>
 
     <span class="k">else</span><span class="p">:</span>
@@ -842,7 +847,10 @@
     <span class="k">return</span> <span class="n">scan_trsh</span><span class="p">,</span> <span class="n">scan_res</span></div>
 
 
-<div class="viewcode-block" id="trsh_special_rotor"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_special_rotor">[docs]</a><span class="k">def</span> <span class="nf">trsh_special_rotor</span><span class="p">(</span><span class="n">special_rotor</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_special_rotor">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_special_rotor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_special_rotor</span><span class="p">(</span><span class="n">special_rotor</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">problematic_ic</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">special_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;scan&#39;</span><span class="p">,</span>
                        <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
@@ -909,7 +917,10 @@
     <span class="k">return</span> <span class="n">to_freeze</span></div>
 
 
-<div class="viewcode-block" id="trsh_ess_job"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_ess_job">[docs]</a><span class="k">def</span> <span class="nf">trsh_ess_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_ess_job">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_ess_job">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_ess_job</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                  <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
                  <span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                  <span class="n">job_status</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
@@ -1237,7 +1248,10 @@
             <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="trsh_conformer_isomorphism"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_conformer_isomorphism">[docs]</a><span class="k">def</span> <span class="nf">trsh_conformer_isomorphism</span><span class="p">(</span><span class="n">software</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_conformer_isomorphism">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_conformer_isomorphism">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_conformer_isomorphism</span><span class="p">(</span><span class="n">software</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                <span class="n">ess_trsh_methods</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1276,7 +1290,10 @@
         <span class="k">break</span>
     <span class="k">return</span> <span class="n">level_of_theory</span></div>
 
-<div class="viewcode-block" id="trsh_job_queue"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_queue">[docs]</a><span class="k">def</span> <span class="nf">trsh_job_queue</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_job_queue">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_queue">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_job_queue</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">max_time</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span><span class="p">,</span>
                     <span class="n">attempted_queues</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1427,7 +1444,10 @@
         <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not troubleshoot queue for </span><span class="si">{</span><span class="n">job_name</span><span class="si">}</span><span class="s1"> since the server is </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1"> and not PBS.&#39;</span><span class="p">)</span>
         <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">False</span></div>
 
-<div class="viewcode-block" id="trsh_job_on_server"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_on_server">[docs]</a><span class="k">def</span> <span class="nf">trsh_job_on_server</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="trsh_job_on_server">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_job_on_server">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_job_on_server</span><span class="p">(</span><span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">job_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
                        <span class="n">job_server_status</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
@@ -1506,7 +1526,10 @@
     <span class="k">return</span> <span class="n">node</span><span class="p">,</span> <span class="kc">True</span></div>
 
 
-<div class="viewcode-block" id="scan_quality_check"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.scan_quality_check">[docs]</a><span class="k">def</span> <span class="nf">scan_quality_check</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="scan_quality_check">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.scan_quality_check">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">scan_quality_check</span><span class="p">(</span><span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                        <span class="n">pivots</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">energies</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                        <span class="n">scan_res</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">rotor_scan_resolution</span><span class="p">,</span>
@@ -1567,212 +1590,187 @@
     <span class="n">actions</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
     <span class="n">used_methods</span> <span class="o">=</span> <span class="n">used_methods</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">()</span>
     <span class="n">energies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">energies</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span>
+            <span class="n">energies</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span>
+            <span class="p">(</span><span class="n">energies</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">energies</span><span class="o">.</span><span class="n">item</span><span class="p">()))</span> <span class="ow">or</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">energies</span><span class="p">))):</span>
+        <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="s2">&quot;No valid scan energies parsed.&quot;</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Could not parse scan energies for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+        <span class="n">actions</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
+
     <span class="n">scan_conformers</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="c1"># Check if the conformer based method is valid</span>
     <span class="k">if</span> <span class="n">log_file</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">scan_conformers</span> <span class="o">=</span> <span class="n">parse_scan_conformers</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan quality check using conformer internal coordinates &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;has not been implemented for current ESS. Using PES curve based &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;check for rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">.&#39;</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan quality check using conformer internal coordinates &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;has not been implemented for current ESS. Using PES curve based &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;check for rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
 
-    <span class="c1"># 1. Check based on intermediate conformers</span>
     <span class="k">if</span> <span class="n">scan_conformers</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">species</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">species</span><span class="o">.</span><span class="n">is_ts</span><span class="p">):</span>
         <span class="n">bonds</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;R&#39;</span><span class="p">]</span>
         <span class="n">angles</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;A&#39;</span><span class="p">]</span>
         <span class="n">non_scan_rotor</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[(</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;D&#39;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;scan&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="kc">False</span><span class="p">)]</span>
         <span class="n">scan_rotor</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;scan&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="kc">True</span><span class="p">]</span>
 
-        <span class="c1"># 1.1 Find significant changes of internal coordinates</span>
         <span class="n">expected_step_num</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">360</span> <span class="o">/</span> <span class="n">scan_res</span><span class="p">)</span>
-        <span class="c1"># 5 below refers to type, atoms, scan, redundant and initial guess</span>
-        <span class="n">actual_step_num</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">5</span>
+        <span class="n">actual_step_num</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">5</span>  <span class="c1"># 5 for meta columns</span>
         <span class="n">step_num</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">expected_step_num</span><span class="p">,</span> <span class="n">actual_step_num</span><span class="p">)</span>
         <span class="n">changed_ic_dict</span> <span class="o">=</span> <span class="p">{}</span>
+
         <span class="k">for</span> <span class="n">index_1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">step_num</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">index_1</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="c1"># Compare the &#39;adjacent&#39; conformers</span>
                 <span class="n">index_2</span> <span class="o">=</span> <span class="n">index_1</span> <span class="o">-</span> <span class="mi">1</span>
-                <span class="n">delta</span> <span class="o">=</span> <span class="n">scan_res</span>  <span class="c1"># scan[index_1] - scan[index_2] = scan_res</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="n">scan_res</span>
             <span class="k">elif</span> <span class="n">step_num</span> <span class="o">==</span> <span class="n">expected_step_num</span><span class="p">:</span>
-                <span class="c1"># Compare the first and the last conformer</span>
                 <span class="n">index_2</span> <span class="o">=</span> <span class="n">step_num</span>
                 <span class="n">delta</span> <span class="o">=</span> <span class="mi">0</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="c1"># When the scan is not finished as desired</span>
                 <span class="k">continue</span>
-            <span class="c1"># Identify changes by type</span>
-            <span class="n">bond_change</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">index_1</span><span class="p">]</span> <span class="o">-</span> <span class="n">bonds</span><span class="p">[</span><span class="n">index_2</span><span class="p">])</span> <span class="o">/</span>
-                           <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">index_1</span><span class="p">]</span> <span class="o">+</span> <span class="n">bonds</span><span class="p">[</span><span class="n">index_2</span><span class="p">]))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;bond&#39;</span><span class="p">]</span>
-            <span class="n">angle_change</span> <span class="o">=</span> <span class="p">(</span><span class="n">angles</span><span class="p">[</span><span class="n">index_1</span><span class="p">]</span> <span class="o">-</span> <span class="n">angles</span><span class="p">[</span><span class="n">index_2</span><span class="p">])</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;angle&#39;</span><span class="p">]</span>
+
+            <span class="n">col1</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;conformer_</span><span class="si">{</span><span class="n">index_1</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="n">col2</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;conformer_</span><span class="si">{</span><span class="n">index_2</span><span class="si">}</span><span class="s1">&#39;</span>
+
+            <span class="c1"># Only check if both columns exist (robust to incomplete scans)</span>
+            <span class="k">if</span> <span class="n">col1</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bonds</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="n">col2</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bonds</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">bond_change</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">col1</span><span class="p">]</span> <span class="o">-</span> <span class="n">bonds</span><span class="p">[</span><span class="n">col2</span><span class="p">])</span> <span class="o">/</span>
+                           <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">col1</span><span class="p">]</span> <span class="o">+</span> <span class="n">bonds</span><span class="p">[</span><span class="n">col2</span><span class="p">]))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;bond&#39;</span><span class="p">]</span>
+            <span class="n">angle_change</span> <span class="o">=</span> <span class="p">(</span><span class="n">angles</span><span class="p">[</span><span class="n">col1</span><span class="p">]</span> <span class="o">-</span> <span class="n">angles</span><span class="p">[</span><span class="n">col2</span><span class="p">])</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;angle&#39;</span><span class="p">]</span>
             <span class="n">non_scan_rotor_change</span> <span class="o">=</span> <span class="n">check_torsion_change</span><span class="p">(</span><span class="n">torsions</span><span class="o">=</span><span class="n">non_scan_rotor</span><span class="p">,</span>
-                                                         <span class="n">index_1</span><span class="o">=</span><span class="n">index_1</span><span class="p">,</span>
-                                                         <span class="n">index_2</span><span class="o">=</span><span class="n">index_2</span><span class="p">,</span>
+                                                         <span class="n">index_1</span><span class="o">=</span><span class="n">col1</span><span class="p">,</span>
+                                                         <span class="n">index_2</span><span class="o">=</span><span class="n">col2</span><span class="p">,</span>
                                                          <span class="n">threshold</span><span class="o">=</span><span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;dihedral&#39;</span><span class="p">])</span>
             <span class="n">scan_rotor_change</span> <span class="o">=</span> <span class="n">check_torsion_change</span><span class="p">(</span><span class="n">torsions</span><span class="o">=</span><span class="n">scan_rotor</span><span class="p">,</span>
-                                                     <span class="n">index_1</span><span class="o">=</span><span class="n">index_1</span><span class="p">,</span>
-                                                     <span class="n">index_2</span><span class="o">=</span><span class="n">index_2</span><span class="p">,</span>
+                                                     <span class="n">index_1</span><span class="o">=</span><span class="n">col1</span><span class="p">,</span>
+                                                     <span class="n">index_2</span><span class="o">=</span><span class="n">col2</span><span class="p">,</span>
                                                      <span class="n">threshold</span><span class="o">=</span><span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;dihedral&#39;</span><span class="p">],</span>
                                                      <span class="n">delta</span><span class="o">=</span><span class="n">delta</span><span class="p">)</span>
-            <span class="c1"># Summarize changes</span>
             <span class="n">change_sum</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">bond_change</span><span class="p">,</span>
                                     <span class="n">angle_change</span><span class="p">,</span>
                                     <span class="n">non_scan_rotor_change</span><span class="p">,</span>
                                     <span class="n">scan_rotor_change</span><span class="p">])</span>
             <span class="n">changed_ics</span> <span class="o">=</span> <span class="n">change_sum</span><span class="p">[</span><span class="n">change_sum</span> <span class="o">==</span> <span class="kc">True</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
-            <span class="c1"># Save changes in the format of {conformer index: problematic ics}</span>
             <span class="k">if</span> <span class="n">changed_ics</span><span class="p">:</span>
                 <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
                 <span class="n">changed_ic_dict</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">index_1</span><span class="p">:</span> <span class="n">changed_ics</span><span class="p">})</span>
 
-        <span class="c1"># 1.2 Check broken bond and any lowest conformation</span>
-        <span class="c1"># Exclude those with broken bonds (different species)</span>
-        <span class="c1"># Better to just freeze the broken bond when bond changing first happens</span>
         <span class="k">for</span> <span class="n">conf_index</span><span class="p">,</span> <span class="n">ics</span> <span class="ow">in</span> <span class="n">changed_ic_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="c1"># R(X,Y) refers to bonds in ics</span>
             <span class="n">broken_bonds</span> <span class="o">=</span> <span class="p">[</span><span class="n">ic</span> <span class="k">for</span> <span class="n">ic</span> <span class="ow">in</span> <span class="n">ics</span> <span class="k">if</span> <span class="s1">&#39;R&#39;</span> <span class="ow">in</span> <span class="n">ic</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">broken_bonds</span> <span class="ow">and</span> <span class="n">conf_index</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="c1"># Find the bond that changes the most, to avoid accompanied changes, like C-O transforms</span>
-                <span class="c1"># to C=O, which we don&#39;t want to freeze. If other bonds need to be frozen as well,</span>
-                <span class="c1"># it can be done in the following troubleshooting.</span>
-                <span class="n">bonds</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">broken_bonds</span><span class="p">,</span> <span class="p">:]</span>
-                <span class="n">bond_change</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">conf_index</span><span class="p">]</span> <span class="o">-</span> <span class="n">bonds</span><span class="p">[</span><span class="n">conf_index</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])</span> <span class="o">/</span>
-                               <span class="p">(</span><span class="n">bonds</span><span class="p">[</span><span class="n">conf_index</span><span class="p">]</span> <span class="o">+</span> <span class="n">bonds</span><span class="p">[</span><span class="n">conf_index</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span>
-                <span class="n">broken_bond_label</span> <span class="o">=</span> <span class="n">bond_change</span><span class="o">.</span><span class="n">sort_values</span><span class="p">()</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># the largest change</span>
-                <span class="c1"># Freeze the bonds, no further freezing other ics to prevent over-constraining</span>
-                <span class="n">broken_bonds</span> <span class="o">=</span> <span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;atoms&#39;</span><span class="p">][</span><span class="n">broken_bond_label</span><span class="p">]]</span>
+                <span class="n">bonds_sub</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">broken_bonds</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">col1</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;conformer_</span><span class="si">{</span><span class="n">conf_index</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="n">col2</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;conformer_</span><span class="si">{</span><span class="n">conf_index</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s1">&#39;</span>
+                <span class="k">if</span> <span class="n">col1</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bonds_sub</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="n">col2</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bonds_sub</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">bond_change</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">bonds_sub</span><span class="p">[</span><span class="n">col1</span><span class="p">]</span> <span class="o">-</span> <span class="n">bonds_sub</span><span class="p">[</span><span class="n">col2</span><span class="p">])</span> <span class="o">/</span>
+                               <span class="p">(</span><span class="n">bonds_sub</span><span class="p">[</span><span class="n">col1</span><span class="p">]</span> <span class="o">+</span> <span class="n">bonds_sub</span><span class="p">[</span><span class="n">col2</span><span class="p">]))</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span>
+                <span class="n">broken_bond_label</span> <span class="o">=</span> <span class="n">bond_change</span><span class="o">.</span><span class="n">sort_values</span><span class="p">()</span><span class="o">.</span><span class="n">index</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">broken_bonds_atoms</span> <span class="o">=</span> <span class="n">scan_conformers</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">broken_bond_label</span><span class="p">,</span> <span class="s1">&#39;atoms&#39;</span><span class="p">]</span>
                 <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Bond (</span><span class="si">{</span><span class="n">broken_bonds</span><span class="si">}</span><span class="s1">) broke during the scan.&#39;</span>
-                <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has broken bonds: &#39;</span> \
-                          <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">broken_bonds</span><span class="si">}</span><span class="s1">. ARC will attempt to troubleshoot this rotor scan.&#39;</span>
+                <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Bond (</span><span class="si">{</span><span class="n">broken_bonds_atoms</span><span class="si">}</span><span class="s1">) broke during the scan.&#39;</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has broken bonds: &#39;</span>
+                           <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">broken_bonds_atoms</span><span class="si">}</span><span class="s1">. ARC will attempt to troubleshoot this rotor scan.&#39;</span><span class="p">)</span>
                 <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-                <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="n">broken_bonds</span><span class="p">}</span>
+                <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">broken_bonds_atoms</span><span class="p">]}</span>
                 <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
-        <span class="c1"># If no bond broke, ideally all conformers should be isomorphic.</span>
-        <span class="c1"># Switch to the lowest conformer</span>
         <span class="n">energy_diff</span> <span class="o">=</span> <span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
-        <span class="c1"># Use tighter threshold to find lower conformer</span>
         <span class="k">if</span> <span class="n">energy_diff</span> <span class="o">&gt;=</span> <span class="mf">0.5</span> <span class="ow">or</span> <span class="n">energy_diff</span> <span class="o">&gt;</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span> \
                 <span class="ow">and</span> <span class="p">(</span><span class="n">species</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">species</span><span class="o">.</span><span class="n">is_ts</span><span class="p">):</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Another conformer for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> exists which is &#39;</span> \
-                                  <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">energy_diff</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol lower.&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is not oriented correctly around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">, &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;searching for a better conformation...&#39;</span>
+            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Another conformer for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> exists which is &#39;</span>
+                                   <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">energy_diff</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol lower.&#39;</span><span class="p">)</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is not oriented correctly around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">, &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;searching for a better conformation...&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-            <span class="c1"># Find the dihedrals in degrees of the lowest conformer:</span>
-            <span class="n">min_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
+            <span class="n">min_index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span>
             <span class="n">conf_xyzs</span> <span class="o">=</span> <span class="n">parse_1d_scan_coords</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">conf_xyzs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">min_index</span><span class="p">:</span>
                 <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;change conformer&#39;</span><span class="p">:</span> <span class="n">conf_xyzs</span><span class="p">[</span><span class="n">min_index</span><span class="p">]}</span>
                 <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
-        <span class="c1"># 1.3 Check consistency</span>
         <span class="k">if</span> <span class="mi">0</span> <span class="ow">in</span> <span class="n">changed_ic_dict</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">changed_ic_dict</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="c1"># A smooth scan with different initial and final conformer.</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
             <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="s1">&#39;Inconsistent initial and final conformers&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has inconsistent initial &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;and final conformers.</span><span class="se">\n</span><span class="s1">Internal coordinates </span><span class="si">{</span><span class="n">changed_ic_dict</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1"> are different. &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;ARC will attempt to troubleshoot this rotor scan.&#39;</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has inconsistent initial &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;and final conformers.</span><span class="se">\n</span><span class="s1">Internal coordinates </span><span class="si">{</span><span class="n">changed_ic_dict</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1"> are different. &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;ARC will attempt to troubleshoot this rotor scan.&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-            <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;atoms&#39;</span><span class="p">][</span><span class="n">ic_label</span><span class="p">]</span>
+            <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">scan_conformers</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ic_label</span><span class="p">,</span> <span class="s1">&#39;atoms&#39;</span><span class="p">]</span>
                                   <span class="k">for</span> <span class="n">ic_label</span> <span class="ow">in</span> <span class="n">changed_ic_dict</span><span class="p">[</span><span class="mi">0</span><span class="p">]]}</span>
             <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
         <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">changed_ic_dict</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># Not a smooth scan.</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
             <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="s1">&#39;Significant difference observed between consecutive conformers&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent between &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;two consecutive conformers.</span><span class="se">\n</span><span class="s1">Inconsistent consecutive conformers and problematic &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;internal coordinates:&#39;</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent between &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;two consecutive conformers.</span><span class="se">\n</span><span class="s1">Inconsistent consecutive conformers and problematic &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;internal coordinates:&#39;</span><span class="p">)</span>
             <span class="n">changed_ic_label</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">ics</span> <span class="ow">in</span> <span class="n">changed_ic_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="k">if</span> <span class="n">index</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>  <span class="c1"># Do not include the initial/final differences which may include more ics</span>
+                <span class="k">if</span> <span class="n">index</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">message</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">conformer #</span><span class="si">{</span><span class="n">index</span><span class="si">:</span><span class="s1">&gt;3d</span><span class="si">}</span><span class="s1"> / #</span><span class="si">{</span><span class="n">index</span><span class="o">+</span><span class="mi">1</span><span class="si">:</span><span class="s1">&gt;3d</span><span class="si">}</span><span class="s1">        &#39;</span>
                     <span class="n">message</span> <span class="o">+=</span> <span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ics</span><span class="p">)</span>
                 <span class="n">changed_ic_label</span> <span class="o">+=</span> <span class="n">ics</span>
             <span class="n">message</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">ARC will attempt to troubleshoot this rotor scan.&#39;</span>
-            <span class="c1"># list(set()) is used to remove duplicate labels</span>
             <span class="n">changed_ic_label</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">changed_ic_label</span><span class="p">))</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-            <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">scan_conformers</span><span class="p">[</span><span class="s1">&#39;atoms&#39;</span><span class="p">][</span><span class="n">ic_label</span><span class="p">]</span>
+            <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">scan_conformers</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ic_label</span><span class="p">,</span> <span class="s1">&#39;atoms&#39;</span><span class="p">]</span>
                                   <span class="k">for</span> <span class="n">ic_label</span> <span class="ow">in</span> <span class="n">changed_ic_label</span><span class="p">]}</span>
             <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
     <span class="k">else</span><span class="p">:</span>
-        <span class="c1"># 2. Check rotor scan quality according to the PES curve</span>
-        <span class="c1"># 2.1. Check consistency between initial and final points</span>
         <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">energies</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">inconsistency_az</span><span class="p">:</span>
-            <span class="c1"># initial and final points differ by more than `inconsistency_az` kJ/mol.</span>
-            <span class="c1"># seems like this rotor broke the conformer. Invalidate</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;initial and final points are inconsistent by more than </span><span class="si">{</span><span class="n">inconsistency_az</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent by more &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;than </span><span class="si">{</span><span class="n">inconsistency_az</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol between initial and final positions. &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;Initial energy = </span><span class="si">{</span><span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">, final energy = </span><span class="si">{</span><span class="n">energies</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">. ARC will &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;attempt to troubleshoot this rotor scan.&#39;</span>
+            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;initial and final points are inconsistent by more than </span><span class="si">{</span><span class="n">inconsistency_az</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol&#39;</span><span class="p">)</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent by more &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;than </span><span class="si">{</span><span class="n">inconsistency_az</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol between initial and final positions. &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;Initial energy = </span><span class="si">{</span><span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">, final energy = </span><span class="si">{</span><span class="n">energies</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1">. ARC will &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;attempt to troubleshoot this rotor scan.&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
             <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;inc_res&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="s1">&#39;all&#39;</span><span class="p">}</span>
             <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
-        <span class="c1"># 2.2. Check consistency between consecutive points</span>
         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
             <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">energies</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">-</span> <span class="n">energies</span><span class="p">[</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">inconsistency_ab</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">energies</span><span class="p">):</span>
-                <span class="c1"># Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.</span>
-                <span class="c1"># This is a serious inconsistency. Invalidate</span>
                 <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Two consecutive points are inconsistent by more than &#39;</span> \
-                                      <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">inconsistency_ab</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol&#39;</span>
-                <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent by &#39;</span> \
-                          <span class="sa">f</span><span class="s1">&#39;more than </span><span class="si">{</span><span class="n">inconsistency_ab</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol between &#39;</span> \
-                          <span class="sa">f</span><span class="s1">&#39;two consecutive points. ARC will attempt to troubleshoot this rotor scan.&#39;</span>
+                <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Two consecutive points are inconsistent by more than &#39;</span>
+                                       <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">inconsistency_ab</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol&#39;</span><span class="p">)</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> is inconsistent by &#39;</span>
+                           <span class="sa">f</span><span class="s1">&#39;more than </span><span class="si">{</span><span class="n">inconsistency_ab</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol between &#39;</span>
+                           <span class="sa">f</span><span class="s1">&#39;two consecutive points. ARC will attempt to troubleshoot this rotor scan.&#39;</span><span class="p">)</span>
                 <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-                <span class="c1"># Propose a method</span>
-                <span class="c1"># Try increasing resolution firstly, and try increasing res. and freezing all</span>
-                <span class="c1"># torsions jointly, afterwards.</span>
-                <span class="c1"># TODO: If we figure out that solely increasing res. is not effective,</span>
-                <span class="c1"># we can simplify the process to actions = {&#39;inc_res&#39;: None, &#39;freeze&#39;: &#39;all&#39;}</span>
                 <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="s1">&#39;scan_res&#39;</span> <span class="ow">in</span> <span class="n">used_method</span> <span class="k">for</span> <span class="n">used_method</span> <span class="ow">in</span> <span class="n">used_methods</span><span class="p">]):</span>
-                    <span class="c1"># Check if increasing scan resolution is ever applied</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">([</span><span class="n">used_method</span><span class="p">[</span><span class="s1">&#39;scan_trsh&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;&#39;</span> <span class="k">for</span> <span class="n">used_method</span> <span class="ow">in</span> <span class="n">used_methods</span><span class="p">]):</span>
-                        <span class="c1"># Case where freezing torisions has not been applied</span>
                         <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;inc_res&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s1">&#39;freeze&#39;</span><span class="p">:</span> <span class="s1">&#39;all&#39;</span><span class="p">}</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="c1"># Since all torsions are frozen, there&#39;s not much we can do except increasing</span>
-                        <span class="c1"># scan resolution. But it is not that effective either. So stop and do nothing.</span>
                         <span class="k">pass</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># Case where neither increasing scan resolution nor freezing</span>
-                    <span class="c1"># torisions has been applied</span>
                     <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;inc_res&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">}</span>
                 <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
-        <span class="c1"># 2.3 Check energy and change conformation if needed:</span>
         <span class="n">energy_diff</span> <span class="o">=</span> <span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">energy_diff</span> <span class="o">&gt;=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="n">energy_diff</span> <span class="o">&gt;</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span> \
                 <span class="ow">and</span> <span class="p">(</span><span class="n">species</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">species</span><span class="o">.</span><span class="n">is_ts</span><span class="p">):</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
             <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Another conformer for </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> exists which is </span><span class="si">{</span><span class="n">energy_diff</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol lower.&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is not oriented correctly around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">. &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;Another conformer exists which is </span><span class="si">{</span><span class="n">energy_diff</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol lower. &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;searching for a better conformation...&#39;</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> is not oriented correctly around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1">. &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;Another conformer exists which is </span><span class="si">{</span><span class="n">energy_diff</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol lower. &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;searching for a better conformation...&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
-            <span class="c1"># Find the lowest conformer, and use the new conformer for further jobs.</span>
-            <span class="c1"># Since at this point, the scan has passed previous checks, the possibility</span>
-            <span class="c1"># to switch to a non-isomorphic conformer is low.</span>
-            <span class="n">min_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span>
+            <span class="n">min_index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span>
             <span class="n">conf_xyzs</span> <span class="o">=</span> <span class="n">parse_1d_scan_coords</span><span class="p">(</span><span class="n">log_file</span><span class="p">)</span>
             <span class="n">actions</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;change conformer&#39;</span><span class="p">:</span> <span class="n">conf_xyzs</span><span class="p">[</span><span class="n">min_index</span><span class="p">]}</span>
             <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
 
-    <span class="c1"># 3. Check the barrier height</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">energies</span><span class="p">))</span> <span class="o">&gt;</span> <span class="n">maximum_barrier</span><span class="p">:</span>
-        <span class="c1"># The barrier for the internal rotation is higher than `maximum_barrier`</span>
         <span class="n">num_wells</span> <span class="o">=</span> <span class="n">determine_rotor_symmetry</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
                                              <span class="n">pivots</span><span class="o">=</span><span class="n">pivots</span><span class="p">,</span>
                                              <span class="n">rotor_path</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
@@ -1782,11 +1780,11 @@
                                              <span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">num_wells</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
             <span class="n">invalidate</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;The rotor scan has a barrier of </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> &#39;</span> \
-                                  <span class="sa">f</span><span class="s1">&#39;kJ/mol, which is higher than the maximal barrier for rotation &#39;</span> \
-                                  <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">maximum_barrier</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol)&#39;</span>
-            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has a barrier &#39;</span> \
-                      <span class="sa">f</span><span class="s1">&#39;larger than </span><span class="si">{</span><span class="n">maximum_barrier</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol. Invalidating rotor.&#39;</span>
+            <span class="n">invalidation_reason</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The rotor scan has a barrier of </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">energies</span><span class="p">)</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> &#39;</span>
+                                   <span class="sa">f</span><span class="s1">&#39;kJ/mol, which is higher than the maximal barrier for rotation &#39;</span>
+                                   <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="n">maximum_barrier</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol)&#39;</span><span class="p">)</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Rotor scan of </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1"> between pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s1"> has a barrier &#39;</span>
+                       <span class="sa">f</span><span class="s1">&#39;larger than </span><span class="si">{</span><span class="n">maximum_barrier</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> kJ/mol. Invalidating rotor.&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span>
         <span class="k">else</span><span class="p">:</span>
@@ -1798,15 +1796,12 @@
                            <span class="sa">f</span><span class="s1">&#39;this species at the higher wells will not be taken into account. NOT invalidating this &#39;</span>
                            <span class="sa">f</span><span class="s1">&#39;torsional mode.&#39;</span><span class="p">)</span>
 
-    <span class="c1"># 4. Check requested atom constraints are preserved (particularly useful for TSs)</span>
     <span class="k">if</span> <span class="n">preserve_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">success</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="n">pivots</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">atoms</span> <span class="ow">in</span> <span class="n">preserve_params</span><span class="p">:</span>
             <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">xyz</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">trajectory</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="c1"># check that the distance between this atom pair is preserved relative to the previous entry</span>
-                    <span class="c1"># in the trajectory, as well as relative to the original value (final_xyz).</span>
                     <span class="n">current_distance</span> <span class="o">=</span> <span class="n">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
                     <span class="n">previous_distance</span> <span class="o">=</span> <span class="n">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">trajectory</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
                     <span class="n">original_distance</span> <span class="o">=</span> <span class="n">calculate_distance</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">original_xyz</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -1818,10 +1813,10 @@
                             <span class="n">original_distance</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;bond&#39;</span><span class="p">]):</span>
                         <span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
                         <span class="n">pivots</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
-                        <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;The rotor breaks the TS around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s2">: In trajectory </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">, the distance &quot;</span> \
-                                  <span class="sa">f</span><span class="s2">&quot;between pivots is </span><span class="si">{</span><span class="n">current_distance</span><span class="si">}</span><span class="s2"> Angstroms, which is &quot;</span> \
-                                  <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">current_distance</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">previous_distance</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> of the previous frame, and &quot;</span> \
-                                  <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">current_distance</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">original_distance</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> of the original geometry.&quot;</span>
+                        <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The rotor breaks the TS around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s2">: In trajectory </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">, the distance &quot;</span>
+                                   <span class="sa">f</span><span class="s2">&quot;between pivots is </span><span class="si">{</span><span class="n">current_distance</span><span class="si">}</span><span class="s2"> Angstroms, which is &quot;</span>
+                                   <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">current_distance</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">previous_distance</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> of the previous frame, and &quot;</span>
+                                   <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">current_distance</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">original_distance</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> of the original geometry.&quot;</span><span class="p">)</span>
                         <span class="k">break</span>
 
                     <span class="k">if</span> <span class="n">species</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1833,8 +1828,6 @@
                             <span class="n">determine_smallest_atom_index_in_scan</span><span class="p">(</span><span class="n">atom1</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atoms</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
                                                                   <span class="n">atom2</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atoms</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
                                                                   <span class="n">mol</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">mol</span><span class="p">))</span>
-                        <span class="c1"># check that a dihedral angle with this atom pair as its pivots is preserved relative to the</span>
-                        <span class="c1"># previous entry in the trajectory, as well as relative to the original value (final_xyz).</span>
                         <span class="n">current_dihedral</span> <span class="o">=</span> <span class="n">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span> <span class="n">torsion</span><span class="o">=</span><span class="n">scan</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
                         <span class="n">previous_dihedral</span> <span class="o">=</span> <span class="n">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">trajectory</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span> <span class="n">torsion</span><span class="o">=</span><span class="n">scan</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
                         <span class="n">original_dihedral</span> <span class="o">=</span> <span class="n">calculate_dihedral_angle</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">original_xyz</span><span class="p">,</span> <span class="n">torsion</span><span class="o">=</span><span class="n">scan</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -1842,11 +1835,11 @@
                                 <span class="ow">or</span> <span class="nb">abs</span><span class="p">(</span><span class="n">current_dihedral</span> <span class="o">-</span> <span class="n">original_dihedral</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">preserve_params_in_scan</span><span class="p">[</span><span class="s1">&#39;dihedral&#39;</span><span class="p">]:</span>
                             <span class="n">success</span> <span class="o">=</span> <span class="kc">False</span>
                             <span class="n">pivots</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">atoms</span><span class="p">)</span>
-                            <span class="n">message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;The rotor breaks the TS around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s2">: In trajectory </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">, the &quot;</span> \
-                                      <span class="sa">f</span><span class="s2">&quot;dihedral angle is </span><span class="si">{</span><span class="n">current_dihedral</span><span class="si">}</span><span class="s2"> degrees, a &quot;</span> \
-                                      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">abs</span><span class="p">(</span><span class="n">current_dihedral</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">previous_dihedral</span><span class="p">)</span><span class="si">}</span><span class="s2"> change relative to the previous &quot;</span> \
-                                      <span class="sa">f</span><span class="s2">&quot;frame, and a </span><span class="si">{</span><span class="nb">abs</span><span class="p">(</span><span class="n">current_dihedral</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">original_dihedral</span><span class="p">)</span><span class="si">}</span><span class="s2"> change relative to &quot;</span> \
-                                      <span class="sa">f</span><span class="s2">&quot;the original geometry.&quot;</span>
+                            <span class="n">message</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The rotor breaks the TS around pivots </span><span class="si">{</span><span class="n">pivots</span><span class="si">}</span><span class="s2">: In trajectory </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">, the &quot;</span>
+                                       <span class="sa">f</span><span class="s2">&quot;dihedral angle is </span><span class="si">{</span><span class="n">current_dihedral</span><span class="si">}</span><span class="s2"> degrees, a &quot;</span>
+                                       <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">abs</span><span class="p">(</span><span class="n">current_dihedral</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">previous_dihedral</span><span class="p">)</span><span class="si">}</span><span class="s2"> change relative to the previous &quot;</span>
+                                       <span class="sa">f</span><span class="s2">&quot;frame, and a </span><span class="si">{</span><span class="nb">abs</span><span class="p">(</span><span class="n">current_dihedral</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">original_dihedral</span><span class="p">)</span><span class="si">}</span><span class="s2"> change relative to &quot;</span>
+                                       <span class="sa">f</span><span class="s2">&quot;the original geometry.&quot;</span><span class="p">)</span>
                             <span class="k">break</span>
 
         <span class="k">if</span> <span class="n">species</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1862,7 +1855,10 @@
 
     <span class="k">return</span> <span class="n">invalidate</span><span class="p">,</span> <span class="n">invalidation_reason</span><span class="p">,</span> <span class="n">message</span><span class="p">,</span> <span class="n">actions</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_checkfile"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_checkfile">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_checkfile</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_checkfile">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_checkfile">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_checkfile</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires removal of checkfile</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1876,7 +1872,10 @@
 
     <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_intaccuracy"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_intaccuracy">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_intaccuracy</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_intaccuracy">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_intaccuracy">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_intaccuracy</span><span class="p">(</span><span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of 2 electron integral accuracy</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1890,7 +1889,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_cartesian"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_cartesian">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_cartesian</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">job_type</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_cartesian">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_cartesian">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_cartesian</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">job_type</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of cartesian coordinate</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1906,7 +1908,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_scf"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_scf">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_scf</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_scf">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_scf">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_scf</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of scf</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1946,7 +1951,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_unconverged"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_unconverged">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_unconverged</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">,</span> <span class="n">fine</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_unconverged">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_unconverged">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_unconverged</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">,</span> <span class="n">fine</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of scf</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1958,7 +1966,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">fine</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_nosymm"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_nosymm">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_nosymm</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_nosymm">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_nosymm">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_nosymm</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of nosymm</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -1972,7 +1983,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_opt_maxcycles"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_opt_maxcycles">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_opt_maxcycles">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_opt_maxcycles">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_opt_maxcycles</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of opt(maxcycle=200)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -2007,7 +2021,10 @@
     
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_inaccurate_quadrature"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_inaccurate_quadrature">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_inaccurate_quadrature">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_inaccurate_quadrature">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_inaccurate_quadrature</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if the job requires change of inaccurate quadrature</span>
 <span class="sd">    </span>
@@ -2051,7 +2068,10 @@
     
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_l123"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_l123">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_l123</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_l123">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_l123">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_l123</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When a job fails with l123.exe error, there are two possible solutions based upon the error message:</span>
 <span class="sd">    1. If Delta-X issue, will need to adjust the maxcycle of IRC job. If fails, then change algorithm to LQA.</span>
@@ -2077,7 +2097,10 @@
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<div class="viewcode-block" id="trsh_keyword_neg_eigen"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_neg_eigen">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_neg_eigen</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="trsh_keyword_neg_eigen">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_neg_eigen">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_neg_eigen</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Gaussian will check the number of negative frequency after finishing the TS optimization. </span>
 <span class="sd">    If there is more than one negative frequency, Gaussian will stop the calculation.</span>
@@ -2089,7 +2112,8 @@
     
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
 
-<span class="k">def</span> <span class="nf">prioritize_opt_methods</span><span class="p">(</span><span class="n">opt_methods</span><span class="p">):</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">prioritize_opt_methods</span><span class="p">(</span><span class="n">opt_methods</span><span class="p">):</span>
 
     <span class="n">preferred_order</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;GEDIIS&#39;</span><span class="p">,</span> <span class="s1">&#39;GDIIS&#39;</span><span class="p">,</span> <span class="s1">&#39;RFO&#39;</span><span class="p">]</span>
     <span class="n">selected_method</span> <span class="o">=</span> <span class="kc">None</span>
@@ -2103,7 +2127,9 @@
 
     <span class="k">return</span> <span class="n">filtered_methods</span>
 
-<div class="viewcode-block" id="trsh_keyword_no_qc"><a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_no_qc">[docs]</a><span class="k">def</span> <span class="nf">trsh_keyword_no_qc</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
+<div class="viewcode-block" id="trsh_keyword_no_qc">
+<a class="viewcode-back" href="../../../api/trsh.html#arc.job.trsh.trsh_keyword_no_qc">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">trsh_keyword_no_qc</span><span class="p">(</span><span class="n">job_status</span><span class="p">,</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    When a job fails with no qc, there are two possible solutions based upon the error message:</span>
 <span class="sd">    1. If SCF fails, then try to change the algorithm to LQA.</span>
@@ -2116,6 +2142,7 @@
 
 
     <span class="k">return</span> <span class="n">ess_trsh_methods</span><span class="p">,</span> <span class="n">trsh_keyword</span><span class="p">,</span> <span class="n">couldnt_trsh</span></div>
+
 </pre></div>
 
            </div>

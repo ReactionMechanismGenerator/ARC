@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.job.ssh &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
-        <script src="../../../_static/jquery.js"></script>
-        <script src="../../../_static/underscore.js"></script>
-        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../../_static/doctools.js"></script>
-        <script src="../../../_static/sphinx_highlight.js"></script>
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -94,17 +88,16 @@
 <span class="sd">    * delete scratch files of a failed job: ssh nodeXX; rm scratch/dhdhdhd/job_number</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">datetime</span>
-<span class="kn">import</span> <span class="nn">logging</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">time</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">import</span> <span class="nn">paramiko</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">paramiko</span>
 
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">get_logger</span>
-<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">ServerError</span>
-<span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">ServerError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
@@ -115,7 +108,9 @@
     <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;servers&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_command&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;submit_filenames&#39;</span><span class="p">]</span>
 
 
-<div class="viewcode-block" id="check_connections"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_connections">[docs]</a><span class="k">def</span> <span class="nf">check_connections</span><span class="p">(</span><span class="n">function</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<div class="viewcode-block" id="check_connections">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_connections">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_connections</span><span class="p">(</span><span class="n">function</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A decorator designned for ``SSHClient``to check SSH connections before</span>
 <span class="sd">    calling a method. It first checks if ``self._ssh`` is available in a</span>
@@ -124,7 +119,7 @@
 <span class="sd">    decorator will reconnect the SSH channel, to avoid connection related</span>
 <span class="sd">    error when executing the method.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decorator</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
         <span class="bp">self</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># not sure if some status may cause False</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
@@ -141,7 +136,10 @@
     <span class="k">return</span> <span class="n">decorator</span></div>
 
 
-<div class="viewcode-block" id="SSHClient"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient">[docs]</a><span class="k">class</span> <span class="nc">SSHClient</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+<div class="viewcode-block" id="SSHClient">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SSHClient</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    This is a class for communicating with remote servers via SSH.</span>
 
@@ -156,7 +154,7 @@
 <span class="sd">        _ssh (paramiko.SSHClient): A high-level representation of a session with an SSH server.</span>
 <span class="sd">        _sftp (paramiko.sftp_client.SFTPClient): SFTP client used to perform remote file operations.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">server</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">server</span> <span class="o">==</span> <span class="s1">&#39;&#39;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;A server name must be specified&#39;</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">server</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">servers</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
@@ -167,17 +165,17 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;key&#39;</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sftp</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;paramiko&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;paramiko&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logger</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;SSHClient&#39;</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">&#39;SSHClient&#39;</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
         <span class="k">return</span> <span class="bp">self</span>
 
-    <span class="k">def</span> <span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">exc_traceback</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_value</span><span class="p">,</span> <span class="n">exc_traceback</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
 
     <span class="nd">@check_connections</span>
-    <span class="k">def</span> <span class="nf">_send_command_to_server</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_send_command_to_server</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                 <span class="n">command</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">],</span>
                                 <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                                 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">list</span><span class="p">]:</span>
@@ -217,7 +215,9 @@
         <span class="n">stderr</span> <span class="o">=</span> <span class="n">stderr</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">stdout</span><span class="p">,</span> <span class="n">stderr</span>
 
-<div class="viewcode-block" id="SSHClient.upload_file"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.upload_file">[docs]</a>    <span class="k">def</span> <span class="nf">upload_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+<div class="viewcode-block" id="SSHClient.upload_file">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.upload_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">upload_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                     <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                     <span class="n">file_string</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
@@ -257,7 +257,10 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not upload file </span><span class="si">{</span><span class="n">local_file_path</span><span class="si">}</span><span class="s1"> to </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">!&#39;</span><span class="p">)</span>
             <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not write file </span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">. &#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="SSHClient.download_file"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.download_file">[docs]</a>    <span class="k">def</span> <span class="nf">download_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+
+<div class="viewcode-block" id="SSHClient.download_file">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.download_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">download_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                       <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="n">local_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -285,8 +288,9 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Got an IOError when trying to download file &#39;</span>
                            <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">remote_file_path</span><span class="si">}</span><span class="s1"> from </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
+
     <span class="nd">@check_connections</span>
-    <span class="k">def</span> <span class="nf">read_remote_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">read_remote_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Read a remote file.</span>
 
@@ -300,7 +304,9 @@
             <span class="n">content</span> <span class="o">=</span> <span class="n">f_remote</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">content</span>
 
-<div class="viewcode-block" id="SSHClient.check_job_status"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.check_job_status">[docs]</a>    <span class="k">def</span> <span class="nf">check_job_status</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<div class="viewcode-block" id="SSHClient.check_job_status">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.check_job_status">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_job_status</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check job&#39;s status.</span>
 
@@ -322,7 +328,10 @@
             <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;errored: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">&#39;</span>
         <span class="k">return</span> <span class="n">check_job_status_in_stdout</span><span class="p">(</span><span class="n">job_id</span><span class="o">=</span><span class="n">job_id</span><span class="p">,</span> <span class="n">stdout</span><span class="o">=</span><span class="n">stdout</span><span class="p">,</span> <span class="n">server</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="SSHClient.delete_job"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.delete_job">[docs]</a>    <span class="k">def</span> <span class="nf">delete_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+<div class="viewcode-block" id="SSHClient.delete_job">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.delete_job">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">job_id</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Deletes a running job.</span>
 
@@ -332,7 +341,10 @@
         <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">delete_command</span><span class="p">[</span><span class="n">servers</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="p">][</span><span class="s1">&#39;cluster_soft&#39;</span><span class="p">]]</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="SSHClient.delete_jobs"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.delete_jobs">[docs]</a>    <span class="k">def</span> <span class="nf">delete_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+
+<div class="viewcode-block" id="SSHClient.delete_jobs">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.delete_jobs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_jobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                     <span class="n">jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -350,7 +362,10 @@
                 <span class="bp">self</span><span class="o">.</span><span class="n">delete_job</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span>
                 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;deleted job </span><span class="si">{</span><span class="n">job_id</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="SSHClient.check_running_jobs_ids"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.check_running_jobs_ids">[docs]</a>    <span class="k">def</span> <span class="nf">check_running_jobs_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+
+<div class="viewcode-block" id="SSHClient.check_running_jobs_ids">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.check_running_jobs_ids">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_running_jobs_ids</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check all jobs submitted by the user on a server.</span>
 
@@ -372,7 +387,10 @@
                 <span class="n">running_job_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">job_id</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">running_job_ids</span></div>
 
-<div class="viewcode-block" id="SSHClient.submit_job"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.submit_job">[docs]</a>    <span class="k">def</span> <span class="nf">submit_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="SSHClient.submit_job">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.submit_job">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">submit_job</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                    <span class="n">recursion</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -421,7 +439,10 @@
         <span class="n">job_status</span> <span class="o">=</span> <span class="s1">&#39;running&#39;</span> <span class="k">if</span> <span class="n">job_id</span> <span class="k">else</span> <span class="n">job_status</span>
         <span class="k">return</span> <span class="n">job_status</span><span class="p">,</span> <span class="n">job_id</span></div>
 
-<div class="viewcode-block" id="SSHClient.connect"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.connect">[docs]</a>    <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+<div class="viewcode-block" id="SSHClient.connect">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.connect">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A modulator function for _connect(). Connect to the server.</span>
 
@@ -448,7 +469,8 @@
             <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>
         <span class="k">raise</span> <span class="n">ServerError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not connect to server </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">server</span><span class="si">}</span><span class="s1"> even after </span><span class="si">{</span><span class="n">times_tried</span><span class="si">}</span><span class="s1"> trials.&#39;</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">_connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">paramiko</span><span class="o">.</span><span class="n">sftp_client</span><span class="o">.</span><span class="n">SFTPClient</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">]:</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">paramiko</span><span class="o">.</span><span class="n">sftp_client</span><span class="o">.</span><span class="n">SFTPClient</span><span class="p">,</span> <span class="n">paramiko</span><span class="o">.</span><span class="n">SSHClient</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Connect via paramiko, and open an SSH session as well as a SFTP session.</span>
 
@@ -471,7 +493,9 @@
         <span class="n">sftp</span> <span class="o">=</span> <span class="n">ssh</span><span class="o">.</span><span class="n">open_sftp</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">sftp</span><span class="p">,</span> <span class="n">ssh</span>
 
-<div class="viewcode-block" id="SSHClient.close"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<div class="viewcode-block" id="SSHClient.close">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.close">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Close the connection to paramiko SSHClient and SFTPClient</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -480,8 +504,9 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_ssh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
 
+
     <span class="nd">@check_connections</span>
-    <span class="k">def</span> <span class="nf">get_last_modified_time</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_last_modified_time</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                                <span class="n">remote_file_path_1</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                <span class="n">remote_file_path_2</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="p">]:</span>
@@ -508,7 +533,9 @@
                 <span class="k">return</span> <span class="kc">None</span>
         <span class="k">return</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="n">timestamp</span><span class="p">)</span> <span class="k">if</span> <span class="n">timestamp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
 
-<div class="viewcode-block" id="SSHClient.list_dir"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.list_dir">[docs]</a>    <span class="k">def</span> <span class="nf">list_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<div class="viewcode-block" id="SSHClient.list_dir">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.list_dir">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        List directory contents.</span>
 
@@ -518,7 +545,10 @@
         <span class="n">command</span> <span class="o">=</span> <span class="s1">&#39;ls -alF&#39;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="SSHClient.find_package"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.find_package">[docs]</a>    <span class="k">def</span> <span class="nf">find_package</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">package_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+
+<div class="viewcode-block" id="SSHClient.find_package">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.find_package">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">find_package</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">package_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Find the path to the package.</span>
 
@@ -528,7 +558,10 @@
         <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;. ~/.bashrc; which </span><span class="si">{</span><span class="n">package_name</span><span class="si">}</span><span class="s1">&#39;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span></div>
 
-<div class="viewcode-block" id="SSHClient.list_available_nodes"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.list_available_nodes">[docs]</a>    <span class="k">def</span> <span class="nf">list_available_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+
+<div class="viewcode-block" id="SSHClient.list_available_nodes">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.list_available_nodes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">list_available_nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        List available nodes on the server.</span>
 
@@ -555,7 +588,10 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Listing available nodes is not yet implemented for </span><span class="si">{</span><span class="n">cluster_soft</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">nodes</span></div>
 
-<div class="viewcode-block" id="SSHClient.change_mode"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.change_mode">[docs]</a>    <span class="k">def</span> <span class="nf">change_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+
+<div class="viewcode-block" id="SSHClient.change_mode">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.SSHClient.change_mode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">change_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                     <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">file_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">recursive</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
@@ -577,7 +613,8 @@
         <span class="n">command</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;chmod</span><span class="si">{</span><span class="n">recursive</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">file_name</span><span class="si">}</span><span class="s1">&#39;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_send_command_to_server</span><span class="p">(</span><span class="n">command</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">)</span></div>
 
-    <span class="k">def</span> <span class="nf">_check_file_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_file_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                            <span class="n">remote_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -594,7 +631,7 @@
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
 
-    <span class="k">def</span> <span class="nf">_check_dir_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_dir_exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                           <span class="n">remote_dir_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -611,7 +648,7 @@
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">stdout</span><span class="p">):</span>
             <span class="k">return</span> <span class="kc">True</span>
 
-    <span class="k">def</span> <span class="nf">_create_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">remote_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Create a new directory on the server.</span>
 
@@ -625,7 +662,10 @@
                 <span class="sa">f</span><span class="s1">&#39;Cannot create dir for the given path (</span><span class="si">{</span><span class="n">remote_path</span><span class="si">}</span><span class="s1">).</span><span class="se">\n</span><span class="s1">Got: </span><span class="si">{</span><span class="n">stderr</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="check_job_status_in_stdout"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_job_status_in_stdout">[docs]</a><span class="k">def</span> <span class="nf">check_job_status_in_stdout</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+
+<div class="viewcode-block" id="check_job_status_in_stdout">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.check_job_status_in_stdout">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_job_status_in_stdout</span><span class="p">(</span><span class="n">job_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
                                <span class="n">stdout</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
                                <span class="n">server</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -671,7 +711,10 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Unknown cluster software </span><span class="si">{</span><span class="n">servers</span><span class="p">[</span><span class="n">server</span><span class="p">][</span><span class="s2">&quot;cluster_soft&quot;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="delete_all_arc_jobs"><a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.delete_all_arc_jobs">[docs]</a><span class="k">def</span> <span class="nf">delete_all_arc_jobs</span><span class="p">(</span><span class="n">server_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="delete_all_arc_jobs">
+<a class="viewcode-back" href="../../../api/ssh.html#arc.job.ssh.delete_all_arc_jobs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_all_arc_jobs</span><span class="p">(</span><span class="n">server_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                         <span class="n">jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -691,6 +734,7 @@
             <span class="n">ssh</span><span class="o">.</span><span class="n">delete_jobs</span><span class="p">(</span><span class="n">jobs</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">server_list</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">done.&#39;</span><span class="p">)</span></div>
+
 </pre></div>
 
            </div>

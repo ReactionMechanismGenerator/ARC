@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.plotter &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/jquery.js"></script>
-        <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -90,29 +84,25 @@
 <span class="sd">A module for plotting and saving output files such as RMG libraries.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">matplotlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib</span>
 <span class="c1"># Force matplotlib to not use any Xwindows backend.</span>
 <span class="c1"># This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.</span>
 <span class="c1"># Do not warn if the backend has already been set, e.g., when running from an IPython notebook.</span>
 <span class="n">matplotlib</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s1">&#39;Agg&#39;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">shutil</span>
-<span class="kn">from</span> <span class="nn">matplotlib.backends.backend_pdf</span> <span class="kn">import</span> <span class="n">PdfPages</span>
-<span class="kn">from</span> <span class="nn">mpl_toolkits.mplot3d</span> <span class="kn">import</span> <span class="n">Axes3D</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
 
-<span class="kn">import</span> <span class="nn">py3Dmol</span> <span class="k">as</span> <span class="nn">p3D</span>
-<span class="kn">import</span> <span class="nn">qcelemental</span> <span class="k">as</span> <span class="nn">qcel</span>
-<span class="kn">from</span> <span class="nn">rdkit</span> <span class="kn">import</span> <span class="n">Chem</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">matplotlib.backends.backend_pdf</span><span class="w"> </span><span class="kn">import</span> <span class="n">PdfPages</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mpl_toolkits.mplot3d</span><span class="w"> </span><span class="kn">import</span> <span class="n">Axes3D</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">from</span> <span class="nn">rmgpy.data.thermo</span> <span class="kn">import</span> <span class="n">ThermoLibrary</span>
-<span class="kn">from</span> <span class="nn">rmgpy.data.transport</span> <span class="kn">import</span> <span class="n">TransportLibrary</span>
-<span class="kn">from</span> <span class="nn">rmgpy.exceptions</span> <span class="kn">import</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="n">InvalidAdjacencyListError</span>
-<span class="kn">from</span> <span class="nn">rmgpy.quantity</span> <span class="kn">import</span> <span class="n">ScalarQuantity</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">py3Dmol</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">p3D</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span>
 
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">calculate_arrhenius_rate_coefficient</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">NUMBER_BY_SYMBOL</span><span class="p">,</span>
+                        <span class="n">calculate_arrhenius_rate_coefficient</span><span class="p">,</span>
                         <span class="n">extremum_list</span><span class="p">,</span>
                         <span class="n">get_angle_in_180_range</span><span class="p">,</span>
                         <span class="n">get_close_tuple</span><span class="p">,</span>
@@ -120,16 +110,14 @@
                         <span class="n">is_notebook</span><span class="p">,</span>
                         <span class="n">is_str_float</span><span class="p">,</span>
                         <span class="n">read_yaml_file</span><span class="p">,</span>
-                        <span class="n">rmg_mol_to_dict_repr</span><span class="p">,</span>
                         <span class="n">save_yaml_file</span><span class="p">,</span>
                         <span class="n">sort_two_lists_by_the_first</span><span class="p">,</span>
                         <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SanitizationError</span>
-<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span>
-<span class="kn">from</span> <span class="nn">arc.parser</span> <span class="kn">import</span> <span class="n">parse_trajectory</span>
-<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="p">(</span><span class="n">check_xyz_dict</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.parser.parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse_trajectory</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">check_xyz_dict</span><span class="p">,</span>
                                    <span class="n">get_xyz_radius</span><span class="p">,</span>
-                                   <span class="n">molecules_from_xyz</span><span class="p">,</span>
                                    <span class="n">remove_dummies</span><span class="p">,</span>
                                    <span class="n">rdkit_conf_from_mol</span><span class="p">,</span>
                                    <span class="n">str_to_xyz</span><span class="p">,</span>
@@ -137,21 +125,22 @@
                                    <span class="n">xyz_to_str</span><span class="p">,</span>
                                    <span class="n">xyz_to_x_y_z</span><span class="p">,</span>
                                    <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.perceive</span><span class="w"> </span><span class="kn">import</span> <span class="n">perceive_molecule_from_xyz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span><span class="p">,</span> <span class="n">rmg_mol_to_dict_repr</span>
 
 
-<span class="n">R</span> <span class="o">=</span> <span class="mf">8.31446261815324</span>  <span class="c1"># J/(mol*K)</span>
 <span class="n">PRETTY_UNITS</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;(s^-1)&#39;</span><span class="p">:</span> <span class="sa">r</span><span class="s1">&#39; (s$^-1$)&#39;</span><span class="p">,</span>
                 <span class="s1">&#39;(cm^3/(mol*s))&#39;</span><span class="p">:</span> <span class="sa">r</span><span class="s1">&#39; (cm$^3$/(mol s))&#39;</span><span class="p">,</span>
                 <span class="s1">&#39;(cm^6/(mol^2*s))&#39;</span><span class="p">:</span> <span class="sa">r</span><span class="s1">&#39; (cm$^6$/(mol$^2$ s))&#39;</span><span class="p">}</span>
-
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
 
 
 <span class="c1"># *** Drawings species ***</span>
 
-<div class="viewcode-block" id="draw_structure"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_structure">[docs]</a><span class="k">def</span> <span class="nf">draw_structure</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;show_sticks&#39;</span><span class="p">,</span> <span class="n">show_atom_indices</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<div class="viewcode-block" id="draw_structure">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_structure">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_structure</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;show_sticks&#39;</span><span class="p">,</span> <span class="n">show_atom_indices</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for drawing a molecular structure using either show_sticks or draw_3d.</span>
 
@@ -179,7 +168,10 @@
         <span class="n">plot_3d_mol_as_scatter</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="n">project_directory</span><span class="p">,</span> <span class="n">plot_h</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">show_plot</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="show_sticks"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.show_sticks">[docs]</a><span class="k">def</span> <span class="nf">show_sticks</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">show_atom_indices</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+<div class="viewcode-block" id="show_sticks">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.show_sticks">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">show_sticks</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">show_atom_indices</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws the molecule in a &quot;sticks&quot; style according to the supplied xyz coordinates.</span>
 <span class="sd">    Returns whether successful of not. If successful, saves the image using draw_3d.</span>
@@ -196,8 +188,11 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">xyz</span> <span class="o">=</span> <span class="n">check_xyz_species_for_drawing</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">species</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">s_mol</span><span class="p">,</span> <span class="n">b_mol</span> <span class="o">=</span> <span class="n">molecules_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
-        <span class="n">mol</span> <span class="o">=</span> <span class="n">b_mol</span> <span class="k">if</span> <span class="n">b_mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">s_mol</span>
+        <span class="n">mol</span> <span class="o">=</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span>
+                                         <span class="n">charge</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">charge</span> <span class="k">if</span> <span class="n">species</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                                         <span class="n">multiplicity</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">multiplicity</span> <span class="k">if</span> <span class="n">species</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                                         <span class="n">n_radicals</span><span class="o">=</span><span class="n">species</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="k">if</span> <span class="n">species</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                                         <span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">mol</span> <span class="o">=</span> <span class="n">species</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
@@ -226,7 +221,10 @@
     <span class="k">return</span> <span class="kc">True</span></div>
 
 
-<div class="viewcode-block" id="draw_3d"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_3d">[docs]</a><span class="k">def</span> <span class="nf">draw_3d</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">save_only</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+<div class="viewcode-block" id="draw_3d">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_3d">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_3d</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">save_only</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws the molecule in a &quot;3D-balls&quot; style.</span>
 <span class="sd">    Saves an image if a species and ``project_directory`` are provided.</span>
@@ -241,6 +239,7 @@
     <span class="c1"># (it keeps zooming) in forever</span>
     <span class="c1"># for now it is disabled</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s1">&#39;not drawing 3D!&#39;</span><span class="p">)</span></div>
+
     <span class="c1"># ase_atoms = list()</span>
     <span class="c1"># for symbol, coord in zip(xyz[&#39;symbols&#39;], xyz[&#39;coords&#39;]):</span>
     <span class="c1">#     ase_atoms.append(Atom(symbol=symbol, position=coord))</span>
@@ -255,7 +254,9 @@
     <span class="c1">#     ase_write(filename=os.path.join(geo_path, &#39;geometry.png&#39;), images=ase_mol, scale=100)</span>
 
 
-<div class="viewcode-block" id="plot_3d_mol_as_scatter"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_3d_mol_as_scatter">[docs]</a><span class="k">def</span> <span class="nf">plot_3d_mol_as_scatter</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_h</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">show_plot</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<div class="viewcode-block" id="plot_3d_mol_as_scatter">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_3d_mol_as_scatter">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_3d_mol_as_scatter</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_h</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">show_plot</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws the molecule as scattered balls in space according to the supplied xyz coordinates.</span>
 
@@ -311,7 +312,10 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="check_xyz_species_for_drawing"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.check_xyz_species_for_drawing">[docs]</a><span class="k">def</span> <span class="nf">check_xyz_species_for_drawing</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="check_xyz_species_for_drawing">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.check_xyz_species_for_drawing">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_xyz_species_for_drawing</span><span class="p">(</span><span class="n">xyz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    A helper function for checking the coordinates before drawing them.</span>
 <span class="sd">    Either ``xyz`` or ``species`` must be given. If both are given, ``xyz`` gets precedence.</span>
@@ -340,7 +344,10 @@
     <span class="k">return</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">remove_dummies</span><span class="p">(</span><span class="n">xyz</span><span class="p">))</span></div>
 
 
-<div class="viewcode-block" id="plot_ts_guesses_by_e_and_method"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_ts_guesses_by_e_and_method">[docs]</a><span class="k">def</span> <span class="nf">plot_ts_guesses_by_e_and_method</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span>
+
+<div class="viewcode-block" id="plot_ts_guesses_by_e_and_method">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_ts_guesses_by_e_and_method">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_ts_guesses_by_e_and_method</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span>
                                     <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                     <span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -391,7 +398,10 @@
                     <span class="nb">format</span><span class="o">=</span><span class="s1">&#39;png&#39;</span><span class="p">,</span> <span class="n">transparent</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pad_inches</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">metadata</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="auto_label"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.auto_label">[docs]</a><span class="k">def</span> <span class="nf">auto_label</span><span class="p">(</span><span class="n">rects</span><span class="p">,</span> <span class="n">ts_results</span><span class="p">,</span> <span class="n">ax</span><span class="p">):</span>
+
+<div class="viewcode-block" id="auto_label">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.auto_label">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">auto_label</span><span class="p">(</span><span class="n">rects</span><span class="p">,</span> <span class="n">ts_results</span><span class="p">,</span> <span class="n">ax</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Attach a text label above each bar in ``rects``, displaying its height.&quot;&quot;&quot;</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">rect</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">rects</span><span class="p">):</span>
         <span class="n">height</span> <span class="o">=</span> <span class="n">rect</span><span class="o">.</span><span class="n">get_height</span><span class="p">()</span>
@@ -409,9 +419,12 @@
                     <span class="n">ha</span><span class="o">=</span><span class="s1">&#39;center&#39;</span><span class="p">,</span> <span class="n">va</span><span class="o">=</span><span class="s1">&#39;bottom&#39;</span><span class="p">)</span></div>
 
 
+
 <span class="c1"># *** Logging output ***</span>
 
-<div class="viewcode-block" id="log_thermo"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_thermo">[docs]</a><span class="k">def</span> <span class="nf">log_thermo</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+<div class="viewcode-block" id="log_thermo">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_thermo">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">log_thermo</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Logging thermodata from an Arkane output file.</span>
 
@@ -438,7 +451,10 @@
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="log_kinetics"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_kinetics">[docs]</a><span class="k">def</span> <span class="nf">log_kinetics</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+
+<div class="viewcode-block" id="log_kinetics">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_kinetics">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">log_kinetics</span><span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Logging kinetics from an Arkane output file.</span>
 
@@ -465,7 +481,10 @@
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="log_bde_report"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_bde_report">[docs]</a><span class="k">def</span> <span class="nf">log_bde_report</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">bde_report</span><span class="p">,</span> <span class="n">spc_dict</span><span class="p">):</span>
+
+<div class="viewcode-block" id="log_bde_report">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.log_bde_report">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">log_bde_report</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">bde_report</span><span class="p">,</span> <span class="n">spc_dict</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Prettify the report for bond dissociation energies. Log and save to file.</span>
 
@@ -508,9 +527,12 @@
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span></div>
 
 
+
 <span class="c1"># *** Parity and kinetic plots ***</span>
 
-<div class="viewcode-block" id="draw_thermo_parity_plots"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_thermo_parity_plots">[docs]</a><span class="k">def</span> <span class="nf">draw_thermo_parity_plots</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+<div class="viewcode-block" id="draw_thermo_parity_plots">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_thermo_parity_plots">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_thermo_parity_plots</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                              <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draws parity plots of calculated thermo and RMG&#39;s estimates.</span>
@@ -529,15 +551,15 @@
     <span class="n">labels</span><span class="p">,</span> <span class="n">comments</span><span class="p">,</span> <span class="n">h298_arc</span><span class="p">,</span> <span class="n">h298_rmg</span><span class="p">,</span> <span class="n">s298_arc</span><span class="p">,</span> <span class="n">s298_rmg</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_list</span><span class="p">:</span>
         <span class="n">labels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">)</span>
-        <span class="n">h298_arc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">get_enthalpy</span><span class="p">(</span><span class="mi">298</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.001</span><span class="p">)</span>  <span class="c1"># converted to kJ/mol</span>
-        <span class="n">h298_rmg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="p">[</span><span class="s1">&#39;H298&#39;</span><span class="p">])</span>
-        <span class="n">s298_arc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">get_entropy</span><span class="p">(</span><span class="mi">298</span><span class="p">))</span>  <span class="c1"># in J/mol*K</span>
-        <span class="n">s298_rmg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="p">[</span><span class="s1">&#39;S298&#39;</span><span class="p">])</span>  <span class="c1"># in J/mol*K</span>
-        <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="p">[</span><span class="s1">&#39;comment&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;comment&#39;</span> <span class="ow">in</span> <span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
-    <span class="n">var_units_h</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\left(\frac</span><span class="si">{J}{mol}</span><span class="s2">\right)$&quot;</span>
-    <span class="n">var_units_s</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\left(\frac</span><span class="si">{J}</span><span class="s2">{mol\cdot</span><span class="si">{K}</span><span class="s2">}\right)$&quot;</span>
-    <span class="n">label_h</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\Delta H ^</span><span class="si">{298_K}</span><span class="s2"> _f}$&quot;</span>
-    <span class="n">label_s</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\Delta S ^</span><span class="si">{298_K}</span><span class="s2"> _f}$&quot;</span>
+        <span class="n">h298_arc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">H298</span><span class="p">)</span>
+        <span class="n">h298_rmg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="o">.</span><span class="n">H298</span><span class="p">)</span>
+        <span class="n">s298_arc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">S298</span><span class="p">)</span>
+        <span class="n">s298_rmg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="o">.</span><span class="n">S298</span><span class="p">)</span>
+        <span class="n">comments</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">rmg_thermo</span><span class="o">.</span><span class="n">comment</span><span class="p">)</span>
+    <span class="n">var_units_h</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\mathrm{J\,mol^{-1}}$&quot;</span>
+    <span class="n">var_units_s</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\mathrm{J\,mol^{-1}\,K^{-1}}$&quot;</span>
+    <span class="n">label_h</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\Delta H^\circ_</span><span class="si">{f}</span><span class="s2">(298\,\mathrm</span><span class="si">{K}</span><span class="s2">)$&quot;</span>
+    <span class="n">label_s</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;$\Delta S^\circ_</span><span class="si">{f}</span><span class="s2">(298\,\mathrm</span><span class="si">{K}</span><span class="s2">)$&quot;</span>
     <span class="n">draw_parity_plot</span><span class="p">(</span><span class="n">var_arc</span><span class="o">=</span><span class="n">h298_arc</span><span class="p">,</span> <span class="n">var_rmg</span><span class="o">=</span><span class="n">h298_rmg</span><span class="p">,</span> <span class="n">var_label</span><span class="o">=</span><span class="n">label_h</span><span class="p">,</span> <span class="n">var_units</span><span class="o">=</span><span class="n">var_units_h</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span> <span class="n">pp</span><span class="o">=</span><span class="n">pp</span><span class="p">)</span>
     <span class="n">draw_parity_plot</span><span class="p">(</span><span class="n">var_arc</span><span class="o">=</span><span class="n">s298_arc</span><span class="p">,</span> <span class="n">var_rmg</span><span class="o">=</span><span class="n">s298_rmg</span><span class="p">,</span> <span class="n">var_label</span><span class="o">=</span><span class="n">label_s</span><span class="p">,</span> <span class="n">var_units</span><span class="o">=</span><span class="n">var_units_s</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">labels</span><span class="p">,</span> <span class="n">pp</span><span class="o">=</span><span class="n">pp</span><span class="p">)</span>
     <span class="n">pp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
@@ -551,7 +573,10 @@
             <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">thermo_sources</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="draw_parity_plot"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_parity_plot">[docs]</a><span class="k">def</span> <span class="nf">draw_parity_plot</span><span class="p">(</span><span class="n">var_arc</span><span class="p">,</span> <span class="n">var_rmg</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">var_label</span><span class="p">,</span> <span class="n">var_units</span><span class="p">,</span> <span class="n">pp</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="draw_parity_plot">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_parity_plot">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_parity_plot</span><span class="p">(</span><span class="n">var_arc</span><span class="p">,</span> <span class="n">var_rmg</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">var_label</span><span class="p">,</span> <span class="n">var_units</span><span class="p">,</span> <span class="n">pp</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draw a parity plot.</span>
 
@@ -561,9 +586,11 @@
 <span class="sd">        labels (list): Species labels corresponding to the data in ``var_arc`` and ``var_rmg``.</span>
 <span class="sd">        var_label (str): The variable name.</span>
 <span class="sd">        var_units (str): The variable units.</span>
-<span class="sd">        pp (PdfPages, optional): Used for storing the image as a multi-page PFD file.</span>
+<span class="sd">        pp (PdfPages, optional): Used for storing the image as a multipage PFD file.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">combined</span><span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="p">(</span><span class="n">var_arc</span><span class="p">,</span> <span class="n">var_rmg</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">n</span><span class="p">]</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">x</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">combined</span><span class="p">):</span>
+        <span class="k">return</span>
     <span class="n">min_var</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">combined</span><span class="p">)</span>
     <span class="n">max_var</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">combined</span><span class="p">)</span>
     <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">dpi</span><span class="o">=</span><span class="mi">120</span><span class="p">)</span>
@@ -586,7 +613,10 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="draw_kinetics_plots"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_kinetics_plots">[docs]</a><span class="k">def</span> <span class="nf">draw_kinetics_plots</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="draw_kinetics_plots">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.draw_kinetics_plots">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_kinetics_plots</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                         <span class="n">T_min</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="n">T_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                         <span class="n">T_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
@@ -604,7 +634,6 @@
 <span class="sd">        T_count (int, optional): The number of temperature points between ``T_min`` and ``T_max``.</span>
 <span class="sd">        path (str, optional): The path to the project&#39;s output folder.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">plt</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s1">&#39;seaborn-talk&#39;</span><span class="p">)</span>
     <span class="n">T_min</span> <span class="o">=</span> <span class="n">T_min</span> <span class="ow">or</span> <span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">T_min</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">T_min</span> <span class="o">=</span> <span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
@@ -614,9 +643,7 @@
         <span class="n">T_max</span> <span class="o">=</span> <span class="p">(</span><span class="mi">3000</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">T_max</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
         <span class="n">T_max</span> <span class="o">=</span> <span class="p">(</span><span class="n">T_min</span><span class="p">,</span> <span class="s1">&#39;K&#39;</span><span class="p">)</span>
-    <span class="n">T_min</span> <span class="o">=</span> <span class="n">ScalarQuantity</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">T_min</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">units</span><span class="o">=</span><span class="n">T_min</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">T_max</span> <span class="o">=</span> <span class="n">ScalarQuantity</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">T_max</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">units</span><span class="o">=</span><span class="n">T_max</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">temperatures</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">T_min</span><span class="o">.</span><span class="n">value_si</span><span class="p">,</span> <span class="n">T_max</span><span class="o">.</span><span class="n">value_si</span><span class="p">,</span> <span class="n">T_count</span><span class="p">)</span>
+    <span class="n">temperatures</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">T_min</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">T_max</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">T_count</span><span class="p">)</span>
 
     <span class="n">pp</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -653,7 +680,8 @@
         <span class="n">pp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
 
 
-<span class="k">def</span> <span class="nf">_draw_kinetics_plots</span><span class="p">(</span><span class="n">rxn_label</span><span class="p">,</span> <span class="n">arc_k</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">rmg_rxns</span><span class="p">,</span> <span class="n">units</span><span class="p">,</span> <span class="n">pp</span><span class="p">,</span> <span class="n">max_rmg_rxns</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_draw_kinetics_plots</span><span class="p">(</span><span class="n">rxn_label</span><span class="p">,</span> <span class="n">arc_k</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">rmg_rxns</span><span class="p">,</span> <span class="n">units</span><span class="p">,</span> <span class="n">pp</span><span class="p">,</span> <span class="n">max_rmg_rxns</span><span class="o">=</span><span class="mi">5</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Draw the kinetics plots.</span>
 
@@ -705,7 +733,9 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span>
 
 
-<div class="viewcode-block" id="get_text_positions"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_text_positions">[docs]</a><span class="k">def</span> <span class="nf">get_text_positions</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="n">txt_width</span><span class="p">,</span> <span class="n">txt_height</span><span class="p">):</span>
+<div class="viewcode-block" id="get_text_positions">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_text_positions">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_text_positions</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="n">txt_width</span><span class="p">,</span> <span class="n">txt_height</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the positions of plot annotations to avoid overlapping.</span>
 <span class="sd">    Source: `stackoverflow &lt;https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations&gt;`_.</span>
@@ -730,7 +760,10 @@
     <span class="k">return</span> <span class="n">text_positions</span></div>
 
 
-<div class="viewcode-block" id="text_plotter"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.text_plotter">[docs]</a><span class="k">def</span> <span class="nf">text_plotter</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">text_positions</span><span class="p">,</span> <span class="n">axis</span><span class="p">,</span> <span class="n">txt_width</span><span class="p">,</span> <span class="n">txt_height</span><span class="p">):</span>
+
+<div class="viewcode-block" id="text_plotter">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.text_plotter">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">text_plotter</span><span class="p">(</span><span class="n">x_data</span><span class="p">,</span> <span class="n">y_data</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">text_positions</span><span class="p">,</span> <span class="n">axis</span><span class="p">,</span> <span class="n">txt_width</span><span class="p">,</span> <span class="n">txt_height</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Annotate a plot and add an arrow.</span>
 <span class="sd">    Source: `stackoverflow &lt;https://stackoverflow.com/questions/8850142/matplotlib-overlapping-annotations&gt;`_.</span>
@@ -743,9 +776,12 @@
                        <span class="n">zorder</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">length_includes_head</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
+
 <span class="c1"># *** Files (libraries, xyz, conformers) ***</span>
 
-<div class="viewcode-block" id="save_geo"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_geo">[docs]</a><span class="k">def</span> <span class="nf">save_geo</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<div class="viewcode-block" id="save_geo">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_geo">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_geo</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="n">xyz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
              <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -819,7 +855,10 @@
             <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">gv</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_irc_traj_animation"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_irc_traj_animation">[docs]</a><span class="k">def</span> <span class="nf">save_irc_traj_animation</span><span class="p">(</span><span class="n">irc_f_path</span><span class="p">,</span> <span class="n">irc_r_path</span><span class="p">,</span> <span class="n">out_path</span><span class="p">):</span>
+
+<div class="viewcode-block" id="save_irc_traj_animation">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_irc_traj_animation">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_irc_traj_animation</span><span class="p">(</span><span class="n">irc_f_path</span><span class="p">,</span> <span class="n">irc_r_path</span><span class="p">,</span> <span class="n">out_path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save an IRC trajectory animation file showing the entire reaction coordinate.</span>
 
@@ -844,7 +883,7 @@
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39; Number     Number      Type              X           Y           Z</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39; ---------------------------------------------------------------------</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">symbol</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;symbols&#39;</span><span class="p">]):</span>
-                    <span class="n">el_num</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="n">qcel</span><span class="o">.</span><span class="n">periodictable</span><span class="o">.</span><span class="n">to_Z</span><span class="p">(</span><span class="n">symbol</span><span class="p">),</span> <span class="n">xs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">ys</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">el_num</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="n">NUMBER_BY_SYMBOL</span><span class="p">(</span><span class="n">symbol</span><span class="p">),</span> <span class="n">xs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">ys</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                     <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;    </span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">:</span><span class="s1">&gt;5</span><span class="si">}</span><span class="s1">          </span><span class="si">{</span><span class="n">el_num</span><span class="si">}</span><span class="s1">             0        </span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">y</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">z</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39; ---------------------------------------------------------------------</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39; GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
@@ -854,13 +893,16 @@
             <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s1">&#39; Normal termination of Gaussian 16</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_thermo_lib"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_thermo_lib">[docs]</a><span class="k">def</span> <span class="nf">save_thermo_lib</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="save_thermo_lib">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_thermo_lib">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_thermo_lib</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                     <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="n">lib_long_desc</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Save an RMG thermo library of all species</span>
+<span class="sd">    Save an RMG thermo library of all species.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        species_list (list): Entries are ARCSpecies objects to be saved in the library.</span>
@@ -868,72 +910,77 @@
 <span class="sd">        name (str): The library&#39;s name (or project&#39;s name).</span>
 <span class="sd">        lib_long_desc (str): A multiline string with level of theory description.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">species_list</span><span class="p">:</span>
-        <span class="n">lib_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;thermo&#39;</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">.py&#39;</span><span class="p">)</span>
-        <span class="n">thermo_library</span> <span class="o">=</span> <span class="n">ThermoLibrary</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">long_desc</span><span class="o">=</span><span class="n">lib_long_desc</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spc</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">species_list</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">thermo</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">spc</span><span class="o">.</span><span class="n">include_in_thermo_lib</span><span class="p">:</span>
-                <span class="n">spc</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">External symmetry: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">external_symmetry</span><span class="si">}</span><span class="s1">, &#39;</span> \
-                                               <span class="sa">f</span><span class="s1">&#39;optical isomers: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">optical_isomers</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
-                <span class="n">spc</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Geometry:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz_to_str</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">final_xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="n">thermo_library</span><span class="o">.</span><span class="n">load_entry</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">i</span><span class="p">,</span>
-                                              <span class="n">label</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
-                                              <span class="n">molecule</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">adjlist</span> <span class="ow">or</span> <span class="n">spc</span><span class="o">.</span><span class="n">mol_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_adjacency_list</span><span class="p">(),</span>
-                                              <span class="n">thermo</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="p">,</span>
-                                              <span class="n">shortDesc</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">comment</span><span class="p">,</span>
-                                              <span class="n">longDesc</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">long_thermo_description</span><span class="p">)</span>
-                <span class="k">except</span> <span class="p">(</span><span class="n">InvalidAdjacencyListError</span><span class="p">,</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not save species </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> in the thermo library, got:&#39;</span><span class="p">)</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> did not contain any thermo data and was omitted from the thermo &#39;</span>
-                               <span class="sa">f</span><span class="s1">&#39;library.&#39;</span><span class="p">)</span>
+    <span class="n">thermo_txt</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;#!/usr/bin/env python</span>
+<span class="s2"># encoding: utf-8</span>
 
-        <span class="n">thermo_library</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">lib_path</span><span class="p">)</span></div>
+<span class="s2">name = &quot;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="s2">shortDesc = &quot;&quot;</span>
+<span class="s2">longDesc = </span><span class="se">\&quot;\&quot;\&quot;\n</span><span class="si">{</span><span class="n">lib_long_desc</span><span class="si">}</span><span class="se">\n\&quot;\&quot;\&quot;\n</span>
+<span class="s2">&quot;&quot;&quot;</span>
+    <span class="n">species_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">species_list</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_list</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;No species to save in the thermo library.&#39;</span><span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spc</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">species_list</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">data</span> <span class="ow">and</span> <span class="n">spc</span><span class="o">.</span><span class="n">include_in_thermo_lib</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">species_dict</span><span class="p">:</span>
+                <span class="n">adjlist</span> <span class="o">=</span> <span class="n">spc</span><span class="o">.</span><span class="n">adjlist</span> <span class="ow">or</span> <span class="n">spc</span><span class="o">.</span><span class="n">mol_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_adjacency_list</span><span class="p">()</span>
+                <span class="n">species_dict</span><span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">adjlist</span>
+            <span class="n">spc</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">External symmetry: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">external_symmetry</span><span class="si">}</span><span class="s1">, &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;optical isomers: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">optical_isomers</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Geometry:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz_to_str</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">final_xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
+            <span class="p">)</span>
+            <span class="n">comment</span> <span class="o">=</span> <span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">comment</span> <span class="ow">or</span> <span class="s1">&#39;&#39;</span>
+            <span class="n">thermo_txt</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;entry(</span>
+<span class="s2">    index = </span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">,</span>
+<span class="s2">    label = &quot;</span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;,</span>
+<span class="s2">    molecule = </span><span class="se">\&quot;\&quot;\&quot;\n</span><span class="si">{</span><span class="n">species_dict</span><span class="p">[</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">]</span><span class="si">}</span><span class="se">\n\&quot;\&quot;\&quot;</span><span class="s2">,</span>
+<span class="s2">    thermo = </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">data</span><span class="si">}</span><span class="s2">,</span>
+<span class="s2">    shortDesc = u</span><span class="se">\&quot;\&quot;\&quot;</span><span class="si">{</span><span class="n">comment</span><span class="si">}</span><span class="se">\&quot;\&quot;\&quot;</span><span class="s2">,</span>
+<span class="s2">    longDesc = u</span><span class="se">\&quot;\&quot;\&quot;\n</span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">long_thermo_description</span><span class="si">}</span><span class="se">\n\&quot;\&quot;\&quot;</span><span class="s2">,</span>
+<span class="s2">)</span>
+
+<span class="s2">&quot;&quot;&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> did not contain any thermo data and was omitted from the thermo library.&#39;</span><span class="p">)</span>
+
+    <span class="n">lib_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;thermo&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">lib_path</span><span class="p">):</span>
+        <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">thermo_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">.py&#39;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">thermo_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">thermo_txt</span><span class="p">)</span>
+
+    <span class="n">species_dict_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="s1">&#39;species_dictionary.txt&#39;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">species_dict_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">adjlist</span> <span class="ow">in</span> <span class="n">species_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">adjlist</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_transport_lib"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_transport_lib">[docs]</a><span class="k">def</span> <span class="nf">save_transport_lib</span><span class="p">(</span><span class="n">species_list</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">lib_long_desc</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">):</span>
+
+<div class="viewcode-block" id="save_transport_lib">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_transport_lib">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_transport_lib</span><span class="p">(</span><span class="n">species_list</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">lib_long_desc</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save an RMG transport library of all species in `species_list` in the supplied `path`.</span>
 <span class="sd">    `name` is the library&#39;s name (or project&#39;s name).</span>
 <span class="sd">    `long_desc` is a multiline string with level of theory description.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">species_list</span><span class="p">:</span>
-        <span class="n">lib_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;transport&#39;</span><span class="p">,</span> <span class="s1">&#39;</span><span class="si">{name}</span><span class="s1">.py&#39;</span><span class="p">)</span>
-        <span class="n">transport_library</span> <span class="o">=</span> <span class="n">TransportLibrary</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">long_desc</span><span class="o">=</span><span class="n">lib_long_desc</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spc</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">species_list</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">description</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">Geometry:</span><span class="se">\n</span><span class="si">{</span><span class="n">xyz_to_str</span><span class="p">(</span><span class="n">spc</span><span class="o">.</span><span class="n">final_xyz</span><span class="p">)</span><span class="si">}</span><span class="s1">&#39;</span>
-                <span class="k">try</span><span class="p">:</span>
-                    <span class="n">transport_library</span><span class="o">.</span><span class="n">load_entry</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="n">i</span><span class="p">,</span>
-                                                 <span class="n">label</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">,</span>
-                                                 <span class="n">molecule</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">adjlist</span> <span class="ow">or</span> <span class="n">spc</span><span class="o">.</span><span class="n">mol_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_adjacency_list</span><span class="p">(),</span>
-                                                 <span class="n">transport</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="p">,</span>
-                                                 <span class="n">shortDesc</span><span class="o">=</span><span class="n">spc</span><span class="o">.</span><span class="n">thermo</span><span class="o">.</span><span class="n">comment</span><span class="p">,</span>
-                                                 <span class="n">longDesc</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
-                <span class="k">except</span> <span class="p">(</span><span class="n">InvalidAdjacencyListError</span><span class="p">,</span> <span class="n">DatabaseError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not save species </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> in the transport library, got:&#39;</span><span class="p">)</span>
-                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n\n</span><span class="s1">Transport properties for </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1">:&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Shape index: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">shapeIndex</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Epsilon: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">epsilon</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Sigma: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">sigma</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Dipole moment: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">dipoleMoment</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Polarizability: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">polarizability</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Rotational relaxation collision number: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">rotrelaxcollnum</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;  Comment: </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">transport_data</span><span class="o">.</span><span class="n">comment</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species </span><span class="si">{</span><span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> did not contain any thermo data and was omitted from the thermo &#39;</span>
-                               <span class="sa">f</span><span class="s1">&#39;library.&#39;</span><span class="p">)</span>
-
-        <span class="n">transport_library</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">lib_path</span><span class="p">)</span></div>
+    <span class="c1"># not implemented yet, ARC still cannot calculate transport properties</span>
+    <span class="k">pass</span></div>
 
 
-<div class="viewcode-block" id="save_kinetics_lib"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_kinetics_lib">[docs]</a><span class="k">def</span> <span class="nf">save_kinetics_lib</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
+
+<div class="viewcode-block" id="save_kinetics_lib">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_kinetics_lib">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_kinetics_lib</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span>
                       <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-                      <span class="n">lib_long_desc</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span>
+                      <span class="n">lib_long_desc</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                       <span class="n">T_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">300</span><span class="p">,</span>
                       <span class="n">T_max</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">3000</span><span class="p">,</span>
                       <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -957,7 +1004,7 @@
 <span class="s2">longDesc = </span><span class="se">\&quot;\&quot;\&quot;\n</span><span class="si">{</span><span class="n">lib_long_desc</span><span class="si">}</span><span class="se">\n\&quot;\&quot;\&quot;\n</span>
 <span class="s2">&quot;&quot;&quot;</span>
     <span class="n">species_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
-    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">([</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span> <span class="k">for</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="n">rxn_list</span><span class="p">]):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span> <span class="k">for</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="n">rxn_list</span><span class="p">):</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;No reactions to save in the kinetics library.&#39;</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">rxn_list</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -968,7 +1015,6 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Reaction </span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> did not contain any kinetic data and was omitted from the &#39;</span>
                            <span class="sa">f</span><span class="s1">&#39;kinetics library.&#39;</span><span class="p">)</span>
             <span class="k">continue</span>
-        <span class="n">units</span> <span class="o">=</span> <span class="n">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">make_ts_report</span><span class="p">()</span>
         <span class="k">if</span> <span class="s1">&#39;rotors&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span><span class="p">:</span>
             <span class="n">rxn</span><span class="o">.</span><span class="n">ts_species</span><span class="o">.</span><span class="n">long_thermo_description</span> <span class="o">+=</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">No rotors considered for this TS.&#39;</span>
@@ -980,7 +1026,7 @@
         <span class="n">rxn_txt</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;entry(</span>
 <span class="s2">    index = </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">,</span>
 <span class="s2">    label = &quot;</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;,</span>
-<span class="s2">    kinetics = Arrhenius(A=(</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">, &#39;</span><span class="si">{</span><span class="n">units</span><span class="si">}</span><span class="s2">&#39;), n=</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, Ea=(</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;Ea&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, &#39;kJ/mol&#39;),</span>
+<span class="s2">    kinetics = Arrhenius(A=(</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">, &#39;</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;), n=</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;n&#39;</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, Ea=(</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;Ea&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">, &#39;</span><span class="si">{</span><span class="n">rxn</span><span class="o">.</span><span class="n">kinetics</span><span class="p">[</span><span class="s1">&#39;Ea&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;),</span>
 <span class="s2">                         T0=(1, &#39;K&#39;), Tmin=(</span><span class="si">{</span><span class="n">T_min</span><span class="si">}</span><span class="s2">, &#39;K&#39;), Tmax=(</span><span class="si">{</span><span class="n">T_max</span><span class="si">}</span><span class="s2">, &#39;K&#39;)),</span>
 <span class="s2">    longDesc = </span>
 <span class="se">\&quot;\&quot;\&quot;</span>
@@ -991,22 +1037,25 @@
 <span class="s2">&quot;&quot;&quot;</span>
         <span class="n">reactions_txt</span> <span class="o">+=</span> <span class="n">rxn_txt</span>
 
-    <span class="n">lib_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;kinetics&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">lib_path</span><span class="p">):</span>
+    <span class="n">lib_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s1">&#39;kinetics&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">lib_path</span><span class="p">):</span>
         <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">lib_path</span><span class="p">)</span>
-    <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to create directory </span><span class="si">{</span><span class="n">lib_path</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="s1">&#39;reactions.py&#39;</span><span class="p">),</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">reactions_file</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="s1">&#39;reactions.py&#39;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">reactions_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">reactions_txt</span><span class="p">)</span>
+
     <span class="n">species_dict_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lib_path</span><span class="p">,</span> <span class="s1">&#39;species_dictionary.txt&#39;</span><span class="p">)</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">species_dict_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">adjlist</span> <span class="ow">in</span> <span class="n">species_dict</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s1">:</span><span class="se">\n</span><span class="si">{</span><span class="n">adjlist</span><span class="si">}</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="n">adjlist</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_conformers_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_conformers_file">[docs]</a><span class="k">def</span> <span class="nf">save_conformers_file</span><span class="p">(</span><span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+
+<div class="viewcode-block" id="save_conformers_file">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_conformers_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_conformers_file</span><span class="p">(</span><span class="n">project_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                          <span class="n">xyzs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">],</span>
                          <span class="n">level_of_theory</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Level</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
@@ -1064,11 +1113,8 @@
             <span class="k">if</span> <span class="n">xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">content</span> <span class="o">+=</span> <span class="n">xyz_to_str</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
                 <span class="k">if</span> <span class="ow">not</span> <span class="n">is_ts</span><span class="p">:</span>
-                    <span class="k">try</span><span class="p">:</span>
-                        <span class="n">b_mol</span> <span class="o">=</span> <span class="n">molecules_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="n">multiplicity</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="n">charge</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="k">except</span> <span class="n">SanitizationError</span><span class="p">:</span>
-                        <span class="n">b_mol</span> <span class="o">=</span> <span class="kc">None</span>
-                    <span class="n">smiles</span> <span class="o">=</span> <span class="n">b_mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_smiles</span><span class="p">()</span> <span class="k">if</span> <span class="n">b_mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;Could not perceive molecule&#39;</span>
+                    <span class="n">mol</span> <span class="o">=</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="n">charge</span><span class="p">,</span> <span class="n">multiplicity</span><span class="o">=</span><span class="n">multiplicity</span><span class="p">,</span> <span class="n">n_radicals</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+                    <span class="n">smiles</span> <span class="o">=</span> <span class="n">mol</span><span class="o">.</span><span class="n">to_smiles</span><span class="p">()</span> <span class="k">if</span> <span class="n">mol</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;Could not perceive molecule&#39;</span>
                     <span class="n">content</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">SMILES: </span><span class="si">{</span><span class="n">smiles</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
                 <span class="k">elif</span> <span class="n">ts_methods</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">content</span> <span class="o">+=</span> <span class="sa">f</span><span class="s1">&#39;TS guess method: </span><span class="si">{</span><span class="n">ts_methods</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="se">\n</span><span class="s1">&#39;</span>
@@ -1090,7 +1136,10 @@
         <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="augment_arkane_yml_file_with_mol_repr"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.augment_arkane_yml_file_with_mol_repr">[docs]</a><span class="k">def</span> <span class="nf">augment_arkane_yml_file_with_mol_repr</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span>
+
+<div class="viewcode-block" id="augment_arkane_yml_file_with_mol_repr">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.augment_arkane_yml_file_with_mol_repr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">augment_arkane_yml_file_with_mol_repr</span><span class="p">(</span><span class="n">species</span><span class="p">:</span> <span class="n">ARCSpecies</span><span class="p">,</span>
                                           <span class="n">output_directory</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1107,9 +1156,12 @@
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">yml_path</span><span class="p">,</span> <span class="n">content</span><span class="p">)</span></div>
 
 
+
 <span class="c1"># *** Torsions ***</span>
 
-<div class="viewcode-block" id="plot_torsion_angles"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_torsion_angles">[docs]</a><span class="k">def</span> <span class="nf">plot_torsion_angles</span><span class="p">(</span><span class="n">torsion_angles</span><span class="p">,</span>
+<div class="viewcode-block" id="plot_torsion_angles">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_torsion_angles">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_torsion_angles</span><span class="p">(</span><span class="n">torsion_angles</span><span class="p">,</span>
                         <span class="n">torsions_sampling_points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">wells_dict</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">e_conformers</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -1238,7 +1290,10 @@
     <span class="k">return</span> <span class="n">num_comb</span></div>
 
 
-<div class="viewcode-block" id="plot_1d_rotor_scan"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_1d_rotor_scan">[docs]</a><span class="k">def</span> <span class="nf">plot_1d_rotor_scan</span><span class="p">(</span><span class="n">angles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+
+<div class="viewcode-block" id="plot_1d_rotor_scan">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_1d_rotor_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_1d_rotor_scan</span><span class="p">(</span><span class="n">angles</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">energies</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">results</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -1331,7 +1386,10 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="plot_2d_rotor_scan"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_rotor_scan">[docs]</a><span class="k">def</span> <span class="nf">plot_2d_rotor_scan</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+
+<div class="viewcode-block" id="plot_2d_rotor_scan">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_rotor_scan">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_2d_rotor_scan</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                        <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                        <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                        <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Blues&#39;</span><span class="p">,</span>
@@ -1477,7 +1535,10 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="plot_2d_scan_bond_dihedral"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_scan_bond_dihedral">[docs]</a><span class="k">def</span> <span class="nf">plot_2d_scan_bond_dihedral</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+
+<div class="viewcode-block" id="plot_2d_scan_bond_dihedral">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.plot_2d_scan_bond_dihedral">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_2d_scan_bond_dihedral</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                <span class="n">path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                                <span class="n">cmap</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Blues&#39;</span><span class="p">,</span>
@@ -1600,7 +1661,10 @@
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="o">=</span><span class="n">fig</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_rotor_text_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_rotor_text_file">[docs]</a><span class="k">def</span> <span class="nf">save_rotor_text_file</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+
+<div class="viewcode-block" id="save_rotor_text_file">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_rotor_text_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_rotor_text_file</span><span class="p">(</span><span class="n">angles</span><span class="p">,</span> <span class="n">energies</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save a text file summarizing a rotor scan, useful for brute force scans.</span>
 
@@ -1626,7 +1690,10 @@
             <span class="n">f</span><span class="o">.</span><span class="n">writelines</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="save_nd_rotor_yaml"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_nd_rotor_yaml">[docs]</a><span class="k">def</span> <span class="nf">save_nd_rotor_yaml</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+
+<div class="viewcode-block" id="save_nd_rotor_yaml">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.save_nd_rotor_yaml">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">save_nd_rotor_yaml</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save a text file summarizing a rotor scan, useful for brute force scans.</span>
 
@@ -1646,7 +1713,10 @@
     <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">modified_results</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="clean_scan_results"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.clean_scan_results">[docs]</a><span class="k">def</span> <span class="nf">clean_scan_results</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+
+<div class="viewcode-block" id="clean_scan_results">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.clean_scan_results">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">clean_scan_results</span><span class="p">(</span><span class="n">results</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Filter noise of high energy points if the value distribution is such that removing the top 10% points</span>
 <span class="sd">    results in values which are significantly lower. Useful for scanning methods which occasionally give</span>
@@ -1673,7 +1743,10 @@
     <span class="k">return</span> <span class="n">results_</span></div>
 
 
-<div class="viewcode-block" id="make_multi_species_output_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.make_multi_species_output_file">[docs]</a><span class="k">def</span> <span class="nf">make_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+
+<div class="viewcode-block" id="make_multi_species_output_file">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.make_multi_species_output_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
                                    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                    <span class="n">software</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;gaussian&#39;</span>
@@ -1727,7 +1800,10 @@
         <span class="k">return</span> <span class="n">output_file_path_dict</span></div>
 
 
-<div class="viewcode-block" id="delete_multi_species_output_file"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.delete_multi_species_output_file">[docs]</a><span class="k">def</span> <span class="nf">delete_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
+
+<div class="viewcode-block" id="delete_multi_species_output_file">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.delete_multi_species_output_file">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">delete_multi_species_output_file</span><span class="p">(</span><span class="n">species_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="s1">&#39;ARCSpecies&#39;</span><span class="p">],</span>
                                      <span class="n">label</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                      <span class="n">multi_species_path_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
                                      <span class="p">):</span>
@@ -1744,7 +1820,10 @@
         <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">multi_species_path_dict</span><span class="p">[</span><span class="n">spc_label</span><span class="p">])</span></div>
 
 
-<div class="viewcode-block" id="get_rxn_units_and_conversion_factor"><a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_rxn_units_and_conversion_factor">[docs]</a><span class="k">def</span> <span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="s1">&#39;ARCReaction&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
+
+<div class="viewcode-block" id="get_rxn_units_and_conversion_factor">
+<a class="viewcode-back" href="../../api/plotter.html#arc.plotter.get_rxn_units_and_conversion_factor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_rxn_units_and_conversion_factor</span><span class="p">(</span><span class="n">rxn</span><span class="p">:</span> <span class="s1">&#39;ARCReaction&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>  <span class="c1"># todo: add tests</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the units and conversion factor for the reaction rate coefficient.</span>
 
@@ -1764,6 +1843,7 @@
     <span class="k">elif</span> <span class="n">reaction_order</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
         <span class="n">units</span> <span class="o">=</span> <span class="s1">&#39;(cm^6/(mol^2*s))&#39;</span>
     <span class="k">return</span> <span class="n">units</span><span class="p">,</span> <span class="n">conversion_factors</span><span class="p">[</span><span class="n">reaction_order</span><span class="p">]</span></div>
+
 </pre></div>
 
            </div>

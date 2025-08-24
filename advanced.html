@@ -1,24 +1,21 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Advanced Features &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
-        <script src="_static/jquery.js"></script>
-        <script src="_static/underscore.js"></script>
-        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="_static/doctools.js"></script>
-        <script src="_static/sphinx_highlight.js"></script>
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -37,9 +34,6 @@
           <a href="index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -114,9 +108,9 @@
            <div itemprop="articleBody">
              
   <section id="advanced-features">
-<span id="advanced"></span><h1>Advanced Features<a class="headerlink" href="#advanced-features" title="Permalink to this heading"></a></h1>
+<span id="advanced"></span><h1>Advanced Features<a class="headerlink" href="#advanced-features" title="Link to this heading"></a></h1>
 <section id="flexible-coordinates-xyz-input">
-<span id="flexxyz"></span><h2>Flexible coordinates (xyz) input<a class="headerlink" href="#flexible-coordinates-xyz-input" title="Permalink to this heading"></a></h2>
+<span id="flexxyz"></span><h2>Flexible coordinates (xyz) input<a class="headerlink" href="#flexible-coordinates-xyz-input" title="Link to this heading"></a></h2>
 <p>The xyz attribute of an <a class="reference internal" href="api/species.html#species"><span class="std std-ref">ARCSpecies</span></a> object (whether a TS or not) is extremely flexible.
 It could be a multiline string containing the coordinates, or a list of several such multiline strings.
 It could also contain valid file paths to ESS input files, output files,
@@ -124,7 +118,7 @@ It could also contain valid file paths to ESS input files, output files,
 See <a class="reference internal" href="examples.html#examples"><span class="std std-ref">the examples</span></a>.</p>
 </section>
 <section id="specify-a-specific-job-type-to-execute">
-<h2>Specify a specific job type to execute<a class="headerlink" href="#specify-a-specific-job-type-to-execute" title="Permalink to this heading"></a></h2>
+<h2>Specify a specific job type to execute<a class="headerlink" href="#specify-a-specific-job-type-to-execute" title="Link to this heading"></a></h2>
 <p>To run ARC with a particular job type <strong>only</strong>, set <code class="docutils literal notranslate"><span class="pre">specific_job_type</span></code> to the job type you want.
 Currently, ARC supports the following job types: <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code>, <code class="docutils literal notranslate"><span class="pre">conf_sp</span></code>, <code class="docutils literal notranslate"><span class="pre">opt</span></code>, <code class="docutils literal notranslate"><span class="pre">fine</span></code>, <code class="docutils literal notranslate"><span class="pre">freq</span></code>,
 <code class="docutils literal notranslate"><span class="pre">sp</span></code>, <code class="docutils literal notranslate"><span class="pre">rotors</span></code>, <code class="docutils literal notranslate"><span class="pre">onedmin</span></code>, <code class="docutils literal notranslate"><span class="pre">orbitals</span></code>, <code class="docutils literal notranslate"><span class="pre">bde</span></code>, <code class="docutils literal notranslate"><span class="pre">irc</span></code>.</p>
@@ -149,7 +143,7 @@ dismiss the given <code class="docutils literal notranslate"><span class="pre">j
 </div>
 </section>
 <section id="levels-of-theory">
-<span id="levels"></span><h2>Levels of theory<a class="headerlink" href="#levels-of-theory" title="Permalink to this heading"></a></h2>
+<span id="levels"></span><h2>Levels of theory<a class="headerlink" href="#levels-of-theory" title="Link to this heading"></a></h2>
 <p>ARC’s <a class="reference internal" href="api/level.html#level"><span class="std std-ref">Level</span></a> class is meant to allow detailed and comprehensive specification of
 a level of theory. ARC allows users to specify a level of theory per job type, with some shortcuts
 as described below. Job types for which levels of theory may be specified (otherwise ARC will assume
@@ -279,7 +273,7 @@ dictionary format with <code class="docutils literal notranslate"><span class="p
 <p>will append <code class="docutils literal notranslate"><span class="pre">iop(99/33=1)</span></code> to the respective Gaussian job input file.</p>
 </section>
 <section id="adaptive-levels-of-theory">
-<h2>Adaptive levels of theory<a class="headerlink" href="#adaptive-levels-of-theory" title="Permalink to this heading"></a></h2>
+<h2>Adaptive levels of theory<a class="headerlink" href="#adaptive-levels-of-theory" title="Link to this heading"></a></h2>
 <p>ARC allows users to adapt the level of theory to the size of the molecule.
 To do so, pass the <code class="docutils literal notranslate"><span class="pre">adaptive_levels</span></code> attribute, which is a dictionary of
 levels of theory for ranges of the number of heavy (non-hydrogen) atoms in the
@@ -302,7 +296,7 @@ there aren’t any gaps in the heavy atom ranges. For example:</p>
 (defined separately e.g., via <code class="docutils literal notranslate"><span class="pre">opt_level</span></code>, or using ARC’s defaults.</p>
 </section>
 <section id="control-job-memory-allocation">
-<h2>Control job memory allocation<a class="headerlink" href="#control-job-memory-allocation" title="Permalink to this heading"></a></h2>
+<h2>Control job memory allocation<a class="headerlink" href="#control-job-memory-allocation" title="Link to this heading"></a></h2>
 <p>To specify the amount of memory for all jobs in an ARC project,
 set <code class="docutils literal notranslate"><span class="pre">job_memory</span></code> with a positive integer value (units are GB).</p>
 <p>Note that the total memory per node can be modified by setting the value of <code class="docutils literal notranslate"><span class="pre">memory</span></code>
@@ -314,7 +308,7 @@ In case a job crashes due to insufficient memory, ARC will try to resubmit that 
 a higher memory allocation up to the specified maximal node <code class="docutils literal notranslate"><span class="pre">memory</span></code>.</p>
 </section>
 <section id="using-a-fine-dft-grid-for-optimization">
-<h2>Using a fine DFT grid for optimization<a class="headerlink" href="#using-a-fine-dft-grid-for-optimization" title="Permalink to this heading"></a></h2>
+<h2>Using a fine DFT grid for optimization<a class="headerlink" href="#using-a-fine-dft-grid-for-optimization" title="Link to this heading"></a></h2>
 <p>This option is turned on by default. If you’d like to turn it off,
 set <code class="docutils literal notranslate"><span class="pre">fine</span></code> in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>If turned on, ARC will spawn another DFT optimization job after the first one converges,
@@ -342,7 +336,7 @@ describing the importance of the DFT grid.</p>
 </div>
 </section>
 <section id="rotor-scans">
-<h2>Rotor scans<a class="headerlink" href="#rotor-scans" title="Permalink to this heading"></a></h2>
+<h2>Rotor scans<a class="headerlink" href="#rotor-scans" title="Link to this heading"></a></h2>
 <p>This option is turned on by default. If you’d like to turn it off,
 set <code class="docutils literal notranslate"><span class="pre">rotors</span></code> in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
 <p>ARC will perform 1D (one dimensional) rotor scans for all possible unique internal rotors in the species,</p>
@@ -355,7 +349,7 @@ between the initial anf final points.
 All of the above settings can be modified in the settings.py file.</p>
 </section>
 <section id="nd-rotor-scans">
-<h2>ND Rotor scans<a class="headerlink" href="#nd-rotor-scans" title="Permalink to this heading"></a></h2>
+<h2>ND Rotor scans<a class="headerlink" href="#nd-rotor-scans" title="Link to this heading"></a></h2>
 <p>ARC also supports ND (N dimensional, N &gt;= 1) rotor scans. There are seven different ND types to execute:</p>
 <ul class="simple">
 <li><p>A1. Generate all geometries in advance (brute force), and calculate single point energies (nested or diagonalized).</p></li>
@@ -427,7 +421,7 @@ individual jobs being submit to your server queue system.</p></li>
 </ul>
 </section>
 <section id="electronic-structure-software-settings">
-<h2>Electronic Structure Software Settings<a class="headerlink" href="#electronic-structure-software-settings" title="Permalink to this heading"></a></h2>
+<h2>Electronic Structure Software Settings<a class="headerlink" href="#electronic-structure-software-settings" title="Link to this heading"></a></h2>
 <p>ARC currently supports the following electronic structure software (ESS):</p>
 <blockquote>
 <div><ul class="simple">
@@ -462,7 +456,7 @@ individual jobs being submit to your server queue system.</p></li>
 </div>
 </section>
 <section id="troubleshooting">
-<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permalink to this heading"></a></h2>
+<h2>Troubleshooting<a class="headerlink" href="#troubleshooting" title="Link to this heading"></a></h2>
 <p>ARC has fairly good auto-troubleshooting methods.</p>
 <p>However, at times a user might know in advance that a particular additional keyword
 is required for the calculation. In such cases, simply pass the relevant keyword
@@ -478,7 +472,7 @@ in the <code class="docutils literal notranslate"><span class="pre">initial_trsh
 </div>
 </section>
 <section id="ess-check-files">
-<h2>ESS check files<a class="headerlink" href="#ess-check-files" title="Permalink to this heading"></a></h2>
+<h2>ESS check files<a class="headerlink" href="#ess-check-files" title="Link to this heading"></a></h2>
 <p>ARC copies check files from previous <a class="reference external" href="http://gaussian.com/">Gaussian</a> and <a class="reference external" href="http://www.petachem.com/products.html">TeraChem</a> jobs,
 and uses them when spawning additional jobs for the same species.
 When ARC terminates, it will attempt to delete all downloaded checkfiles (remote copies remain).
@@ -486,7 +480,7 @@ To change this behaviour and keep the check files, set the <code class="docutils
 (it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default).</p>
 </section>
 <section id="frequency-scaling-factors">
-<h2>Frequency scaling factors<a class="headerlink" href="#frequency-scaling-factors" title="Permalink to this heading"></a></h2>
+<h2>Frequency scaling factors<a class="headerlink" href="#frequency-scaling-factors" title="Link to this heading"></a></h2>
 <p>ARC will look for appropriate available frequency scaling factors in <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html">Arkane</a>
 for the respective <code class="docutils literal notranslate"><span class="pre">freq_level</span></code>. If a frequency scaling factor isn’t available, ARC will attempt
 to determine it using <a class="reference external" href="https://dx.doi.org/10.1021/ct100326h">Truhlar’s method</a>. This involves spawning fine optimizations and frequency
@@ -495,7 +489,7 @@ factor using the <code class="docutils literal notranslate"><span class="pre">fr
 <code class="docutils literal notranslate"><span class="pre">calc_freq_factor</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default).</p>
 </section>
 <section id="isomorphism-checks">
-<h2>Isomorphism checks<a class="headerlink" href="#isomorphism-checks" title="Permalink to this heading"></a></h2>
+<h2>Isomorphism checks<a class="headerlink" href="#isomorphism-checks" title="Link to this heading"></a></h2>
 <p>When a species is defined using a 2D graph (i.e., SMILES, AdjList, or InChI), an isomorphism check
 is performed on the optimized geometry (all conformers and final optimization).
 If the molecule perceived from the 3D coordinate is not isomorphic
@@ -505,7 +499,7 @@ issues with charged species and triplets are known). To continue spawning jobs f
 project, pass <code class="docutils literal notranslate"><span class="pre">True</span></code> to the <code class="docutils literal notranslate"><span class="pre">allow_nonisomorphic_2d</span></code> argument (it is <code class="docutils literal notranslate"><span class="pre">False</span></code> by default).</p>
 </section>
 <section id="using-a-non-default-project-directory">
-<span id="directory"></span><h2>Using a non-default project directory<a class="headerlink" href="#using-a-non-default-project-directory" title="Permalink to this heading"></a></h2>
+<span id="directory"></span><h2>Using a non-default project directory<a class="headerlink" href="#using-a-non-default-project-directory" title="Link to this heading"></a></h2>
 <p>If ARC is run from the terminal with an input/restart file
 then the folder in which that file is located becomes the Project’s folder.
 If ARC is run using the API, a folder with the Project’s name is created under <code class="docutils literal notranslate"><span class="pre">ARC/Projects/</span></code>.
@@ -514,7 +508,7 @@ folder path using the <code class="docutils literal notranslate"><span class="pr
 (and all parent folders, if necessary).</p>
 </section>
 <section id="visualizing-molecular-orbitals-mos">
-<h2>Visualizing molecular orbitals (MOs)<a class="headerlink" href="#visualizing-molecular-orbitals-mos" title="Permalink to this heading"></a></h2>
+<h2>Visualizing molecular orbitals (MOs)<a class="headerlink" href="#visualizing-molecular-orbitals-mos" title="Link to this heading"></a></h2>
 <p>There are various ways to visualize MOs.
 One way is to open a <a class="reference external" href="http://gaussian.com/">Gaussian</a> output file
 using <a class="reference external" href="https://gaussian.com/gaussview6/">GaussView</a>.</p>
@@ -529,7 +523,7 @@ Open the resulting FCheck file using <a class="reference external" href="http://
 to post process and save images.</p>
 </section>
 <section id="consider-a-specific-diastereomer">
-<h2>Consider a specific diastereomer<a class="headerlink" href="#consider-a-specific-diastereomer" title="Permalink to this heading"></a></h2>
+<h2>Consider a specific diastereomer<a class="headerlink" href="#consider-a-specific-diastereomer" title="Link to this heading"></a></h2>
 <p>ARC’s conformer generation module will consider by default all non-enantiomeric (non-mirror) diastereomers,
 using chiral (tetrahedral) carbon atoms, chiral inversion modes in nitrogen atoms, and cis/trans double bonds.
 To consider a specific diastereomer, pass the 3D xyz coordinates when defining the species, and set the
@@ -561,7 +555,7 @@ will cause ARC to only consider the R-Z diastereomer of the following hypothetic
 but just be an arbitrary conformer with the required chiralities to be preserved.</p>
 </section>
 <section id="don-t-generate-conformers-for-specific-species">
-<h2>Don’t generate conformers for specific species<a class="headerlink" href="#don-t-generate-conformers-for-specific-species" title="Permalink to this heading"></a></h2>
+<h2>Don’t generate conformers for specific species<a class="headerlink" href="#don-t-generate-conformers-for-specific-species" title="Link to this heading"></a></h2>
 <p>The <code class="docutils literal notranslate"><span class="pre">conf_opt</span></code> entry in the <code class="docutils literal notranslate"><span class="pre">job_types</span></code> dictionary is a global flag,
 affecting conformer generation of all species in the project.</p>
 <p>If you’d like to avoid generating conformers just for selected species,
@@ -614,12 +608,12 @@ ARC will not attempt to generate conformers, and will simply use the user guess.
 coordinates, ARC <strong>will</strong> generate conformers for it.</p>
 </section>
 <section id="writing-an-arc-input-file-using-the-api">
-<h2>Writing an ARC input file using the API<a class="headerlink" href="#writing-an-arc-input-file-using-the-api" title="Permalink to this heading"></a></h2>
+<h2>Writing an ARC input file using the API<a class="headerlink" href="#writing-an-arc-input-file-using-the-api" title="Link to this heading"></a></h2>
 <p>Writing in YAML isn’t very intuitive for many, especially without a good editor.
 You could use ARC’s API to define your objects, and then dump it all in a YAML file
 which could be read as an input in ARC:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="n">save_yaml_file</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_yaml_file</span>
 
 <span class="n">input_dict</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
 
@@ -757,7 +751,7 @@ which could be read as an input in ARC:</p>
 </div>
 </section>
 <section id="calculating-bdes-bond-dissociation-energies">
-<h2>Calculating BDEs (bond dissociation energies)<a class="headerlink" href="#calculating-bdes-bond-dissociation-energies" title="Permalink to this heading"></a></h2>
+<h2>Calculating BDEs (bond dissociation energies)<a class="headerlink" href="#calculating-bdes-bond-dissociation-energies" title="Link to this heading"></a></h2>
 <p>To direct ARC to calculate BDEs for a species, set the <code class="docutils literal notranslate"><span class="pre">bde</span></code> job type to <code class="docutils literal notranslate"><span class="pre">True</span></code>,
 and set the requested atom indices (1-indexed) in the species <code class="docutils literal notranslate"><span class="pre">.bdes</span></code> argument
 as a list of tuples representing indices of bonded atoms (via a single bond)
@@ -830,7 +824,7 @@ must be spawned (and successfully terminated for all species and fragments).</p>
 file under the <code class="docutils literal notranslate"><span class="pre">output</span></code> directory in the project’s folder. Units are kJ/mol.</p>
 </section>
 <section id="disable-comparisons-with-the-rmg-database">
-<h2>Disable comparisons with the RMG database<a class="headerlink" href="#disable-comparisons-with-the-rmg-database" title="Permalink to this heading"></a></h2>
+<h2>Disable comparisons with the RMG database<a class="headerlink" href="#disable-comparisons-with-the-rmg-database" title="Link to this heading"></a></h2>
 <p>By default, at the end of an ARC job, ARC will try to compare the calculated
 thermochemistry and kinetics to estimates from the RMG database to assist the human reality-check.
 The comparison is saved as a parity plot in the output directory.</p>
@@ -848,7 +842,7 @@ simply pass the following argument to ARC:</p>
 <p>With this option specified, ARC will not load the RMG database, and parity plots will not be generated.</p>
 </section>
 <section id="use-solvent-corrections">
-<h2>Use solvent corrections<a class="headerlink" href="#use-solvent-corrections" title="Permalink to this heading"></a></h2>
+<h2>Use solvent corrections<a class="headerlink" href="#use-solvent-corrections" title="Link to this heading"></a></h2>
 <p>This feature is currently only implemented for jobs spawned using Gaussian.
 The <code class="docutils literal notranslate"><span class="pre">solvation</span></code> argument of a level of theory, if not <code class="docutils literal notranslate"><span class="pre">None</span></code>, requests that a calculation
 be performed in the presence of a solvent by placing the solute (the species) in a cavity within
@@ -870,7 +864,7 @@ the solvent reaction field. This argument is a dictionary, with the following ke
 <p>See <a class="reference external" href="https://gaussian.com/scrf/">https://gaussian.com/scrf/</a> for more details.</p>
 </section>
 <section id="batch-delete-arc-jobs">
-<h2>Batch delete ARC jobs<a class="headerlink" href="#batch-delete-arc-jobs" title="Permalink to this heading"></a></h2>
+<h2>Batch delete ARC jobs<a class="headerlink" href="#batch-delete-arc-jobs" title="Link to this heading"></a></h2>
 <p>DANGER ZONE: Make sure you understand what you’re doing before running this script! Data of running jobs will be lost.</p>
 <p>ARC has a feature that deletes all ARC-spawned jobs from selected servers and projects.
 To delete all ARC jobs, type in a terminal in the ARC code folder after activating <code class="docutils literal notranslate"><span class="pre">arc_env</span></code>:</p>
@@ -895,7 +889,7 @@ one can supply an ARC job ID, and ALL jobs related to the project of the given j
 All flags can be combined with the optional <code class="docutils literal notranslate"><span class="pre">-s</span></code> flag.</p>
 </section>
 <section id="choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting">
-<h2>Choose modified/classical Arrhenius equation form for rate coefficient fitting<a class="headerlink" href="#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting" title="Permalink to this heading"></a></h2>
+<h2>Choose modified/classical Arrhenius equation form for rate coefficient fitting<a class="headerlink" href="#choose-modified-classical-arrhenius-equation-form-for-rate-coefficient-fitting" title="Link to this heading"></a></h2>
 <p>ARC uses statistical mechanics software packages (e.g., Arkane) to compute rate coefficients for chemical reactions from
 the results of quantum chemistry calculations. By default, ARC instructs the statmech programs to compute rate
 coefficients in the modified three-parameter Arrhenius equation format:</p>
@@ -904,15 +898,8 @@ coefficients in the modified three-parameter Arrhenius equation format:</p>
 </div><p>Alternatively, the user may request to compute the rate coefficients in the classical two-parameter Arrhenius format:</p>
 <div class="math">
 <p><img src="_images/math/65c258feec6808325490782dac7df28d797a63c8.png" alt="k(T) = A \exp \left( -\frac{E_a}{RT} \right)"/></p>
-</div><p>by setting the <code class="docutils literal notranslate"><span class="pre">three_params</span></code> attribute to <code class="docutils literal notranslate"><span class="pre">False</span></code> (it is <code class="docutils literal notranslate"><span class="pre">True</span></code> by default). For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">project</span><span class="p">:</span> <span class="n">use_classical_arrhenius_eqn_for_rate_calc_demo</span>
-<span class="n">three_params</span><span class="p">:</span> <span class="kc">False</span>
-</pre></div>
-</div>
-<p>instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
+</div><p>instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
 all reactions in the same ARC project.</p>
-<p>Advanced: to recompute the rate coefficient in the modified three-parameter Arrhenius equation format, simply change
-<code class="docutils literal notranslate"><span class="pre">three_params</span></code> to <code class="docutils literal notranslate"><span class="pre">True</span></code> in the ARC project’s restart.yml file, and then restart ARC.</p>
 </section>
 </section>
 

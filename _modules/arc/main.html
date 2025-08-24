@@ -1,23 +1,20 @@
+
+
 <!DOCTYPE html>
-<html class="writer-html5" lang="en">
+<html class="writer-html5" lang="en" data-content_root="../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>arc.main &mdash; ARC 1.1.0 Documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
 
   
-  <!--[if lt IE 9]>
-    <script src="../../_static/js/html5shiv.min.js"></script>
-  <![endif]-->
-  
-        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
-        <script src="../../_static/jquery.js"></script>
-        <script src="../../_static/underscore.js"></script>
-        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
-        <script src="../../_static/doctools.js"></script>
-        <script src="../../_static/sphinx_highlight.js"></script>
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=fc837d61"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" /> 
@@ -34,9 +31,6 @@
           <a href="../../index.html" class="icon icon-home">
             ARC
           </a>
-              <div class="version">
-                1.1
-              </div>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
@@ -96,20 +90,16 @@
 <span class="sd">Where ``spc0``, ``spc1``, and ``spc2`` in the above example are :ref:`ARCSpecies &lt;species&gt;` objects.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span> <span class="nn">datetime</span>
-<span class="kn">import</span> <span class="nn">logging</span>
-<span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">shutil</span>
-<span class="kn">import</span> <span class="nn">time</span>
-<span class="kn">from</span> <span class="nn">distutils.spawn</span> <span class="kn">import</span> <span class="n">find_executable</span>
-<span class="kn">from</span> <span class="nn">enum</span> <span class="kn">import</span> <span class="n">Enum</span>
-<span class="kn">from</span> <span class="nn">IPython.display</span> <span class="kn">import</span> <span class="n">display</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">distutils.spawn</span><span class="w"> </span><span class="kn">import</span> <span class="n">find_executable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">IPython.display</span><span class="w"> </span><span class="kn">import</span> <span class="n">display</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
-<span class="kn">from</span> <span class="nn">rmgpy.reaction</span> <span class="kn">import</span> <span class="n">Reaction</span>
-<span class="kn">from</span> <span class="nn">rmgpy.species</span> <span class="kn">import</span> <span class="n">Species</span>
-
-<span class="kn">from</span> <span class="nn">arc.common</span> <span class="kn">import</span> <span class="p">(</span><span class="n">VERSION</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">VERSION</span><span class="p">,</span>
                         <span class="n">ARC_PATH</span><span class="p">,</span>
                         <span class="n">check_ess_settings</span><span class="p">,</span>
                         <span class="n">delete_check_files</span><span class="p">,</span>
@@ -121,17 +111,19 @@
                         <span class="n">save_yaml_file</span><span class="p">,</span>
                         <span class="n">time_lapse</span><span class="p">,</span>
                         <span class="p">)</span>
-<span class="kn">from</span> <span class="nn">arc.exceptions</span> <span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span><span class="p">,</span> <span class="n">SpeciesError</span>
-<span class="kn">from</span> <span class="nn">arc.imports</span> <span class="kn">import</span> <span class="n">settings</span>
-<span class="kn">from</span> <span class="nn">arc.level</span> <span class="kn">import</span> <span class="n">Level</span><span class="p">,</span> <span class="n">assign_frequency_scale_factor</span>
-<span class="kn">from</span> <span class="nn">arc.job.factory</span> <span class="kn">import</span> <span class="n">_registered_job_adapters</span>
-<span class="kn">from</span> <span class="nn">arc.job.ssh</span> <span class="kn">import</span> <span class="n">SSHClient</span>
-<span class="kn">from</span> <span class="nn">arc.processor</span> <span class="kn">import</span> <span class="n">process_arc_project</span>
-<span class="kn">from</span> <span class="nn">arc.reaction</span> <span class="kn">import</span> <span class="n">ARCReaction</span>
-<span class="kn">from</span> <span class="nn">arc.scheduler</span> <span class="kn">import</span> <span class="n">Scheduler</span>
-<span class="kn">from</span> <span class="nn">arc.species.converter</span> <span class="kn">import</span> <span class="n">str_to_xyz</span>
-<span class="kn">from</span> <span class="nn">arc.species.species</span> <span class="kn">import</span> <span class="n">ARCSpecies</span>
-<span class="kn">from</span> <span class="nn">arc.utils.scale</span> <span class="kn">import</span> <span class="n">determine_scaling_factors</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">InputError</span><span class="p">,</span> <span class="n">SettingsError</span><span class="p">,</span> <span class="n">SpeciesError</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span><span class="p">,</span> <span class="n">assign_frequency_scale_factor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">_registered_job_adapters</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.processor</span><span class="w"> </span><span class="kn">import</span> <span class="n">process_arc_project</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.scheduler</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scheduler</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="n">str_to_xyz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.species</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCSpecies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.adapter</span><span class="w"> </span><span class="kn">import</span> <span class="n">StatmechEnum</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.arkane</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_arkane_bacs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.utils.scale</span><span class="w"> </span><span class="kn">import</span> <span class="n">determine_scaling_factors</span>
 
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">()</span>
@@ -141,17 +133,9 @@
     <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;default_job_settings&#39;</span><span class="p">],</span> <span class="n">settings</span><span class="p">[</span><span class="s1">&#39;global_ess_settings&#39;</span><span class="p">]</span>
 
 
-<div class="viewcode-block" id="StatmechEnum"><a class="viewcode-back" href="../../api/main.html#arc.main.StatmechEnum">[docs]</a><span class="k">class</span> <span class="nc">StatmechEnum</span><span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Enum</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    The supported statmech software adapters.</span>
-<span class="sd">    The available adapters are a finite set.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">arkane</span> <span class="o">=</span> <span class="s1">&#39;arkane&#39;</span></div>
-    <span class="c1"># mesmer = &#39;mesmer&#39;</span>
-    <span class="c1"># mess = &#39;mess&#39;</span>
-
-
-<div class="viewcode-block" id="ARC"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC">[docs]</a><span class="k">class</span> <span class="nc">ARC</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+<div class="viewcode-block" id="ARC">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ARC</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    The main ARC class.</span>
 
@@ -236,9 +220,6 @@
 <span class="sd">                                        Default: &#39;Arkane&#39;.</span>
 <span class="sd">        kinetics_adapter (str, optional): The statmech software to use for kinetic rate coefficient calculations.</span>
 <span class="sd">                                          Default: &#39;Arkane&#39;.</span>
-<span class="sd">        three_params (bool, optional): Compute rate coefficients using the modified three-parameter Arrhenius equation</span>
-<span class="sd">                                       format (``True``, default) or classical two-parameter Arrhenius equation format</span>
-<span class="sd">                                       (``False``).</span>
 <span class="sd">        trsh_ess_jobs (bool, optional): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        trsh_rotors (bool, optional): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.</span>
 <span class="sd">        output (dict, optional): Output dictionary with status and final QM file paths for all species.</span>
@@ -313,8 +294,6 @@
 <span class="sd">        kinetics_adapter (str): The statmech software to use for kinetic rate coefficient calculations.</span>
 <span class="sd">        fine_only (bool): If ``self.job_types[&#39;fine&#39;] and not self.job_types[&#39;opt&#39;]`` ARC will not run optimization</span>
 <span class="sd">                          jobs without fine=True</span>
-<span class="sd">        three_params (bool): Compute rate coefficients using the modified three-parameter Arrhenius equation</span>
-<span class="sd">                             format (``True``) or classical two-parameter Arrhenius equation format (``False``).</span>
 <span class="sd">        trsh_ess_jobs (bool): Whether to attempt troubleshooting failed ESS jobs. Default is ``True``.</span>
 <span class="sd">        trsh_rotors (bool): Whether to attempt troubleshooting failed rotor scan jobs. Default is ``True``.</span>
 <span class="sd">        ts_adapters (list): Entries represent different TS adapters.</span>
@@ -323,7 +302,7 @@
 
 <span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
                  <span class="n">adaptive_levels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">allow_nonisomorphic_2d</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="n">arkane_level_of_theory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -357,17 +336,16 @@
                  <span class="n">output_multi_spc</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">project</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">project_directory</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">reactions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">ARCReaction</span><span class="p">,</span> <span class="n">Reaction</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">reactions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">ARCReaction</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">running_jobs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">scan_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">sp_level</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">Level</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">,</span> <span class="n">Species</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                 <span class="n">species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">ARCSpecies</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">specific_job_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                  <span class="n">T_min</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">T_max</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">T_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
                  <span class="n">thermo_adapter</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Arkane&#39;</span><span class="p">,</span>
-                 <span class="n">three_params</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">trsh_ess_jobs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">trsh_rotors</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
                  <span class="n">ts_adapters</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -406,7 +384,6 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">compare_to_rmg</span> <span class="o">=</span> <span class="n">compare_to_rmg</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span> <span class="o">=</span> <span class="n">compute_thermo</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">compute_rates</span> <span class="o">=</span> <span class="n">compute_rates</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">three_params</span> <span class="o">=</span> <span class="n">three_params</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span> <span class="o">=</span> <span class="n">trsh_ess_jobs</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trsh_rotors</span> <span class="o">=</span> <span class="n">trsh_rotors</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">compute_transport</span> <span class="o">=</span> <span class="n">compute_transport</span>
@@ -454,15 +431,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">species</span> <span class="o">=</span> <span class="n">species</span> <span class="ow">or</span> <span class="nb">list</span><span class="p">()</span>
         <span class="n">converted_species</span><span class="p">,</span> <span class="n">indices_to_pop</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(),</span> <span class="nb">list</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spc</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">):</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spc</span><span class="p">,</span> <span class="n">Species</span><span class="p">):</span>
-                <span class="c1"># RMG Species</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Missing label on RMG Species object </span><span class="si">{</span><span class="n">spc</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
-                <span class="n">indices_to_pop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
-                <span class="n">is_ts</span> <span class="o">=</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;TS&#39;</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">char</span><span class="o">.</span><span class="n">isdigit</span><span class="p">()</span> <span class="k">for</span> <span class="n">char</span> <span class="ow">in</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span>
-                <span class="n">arc_spc</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">is_ts</span><span class="o">=</span><span class="n">is_ts</span><span class="p">,</span> <span class="n">rmg_species</span><span class="o">=</span><span class="n">spc</span><span class="p">)</span>
-                <span class="n">converted_species</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arc_spc</span><span class="p">)</span>
-            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spc</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spc</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
                 <span class="c1"># dict representation for ARCSpecies</span>
                 <span class="n">indices_to_pop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
                 <span class="n">converted_species</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ARCSpecies</span><span class="p">(</span><span class="n">species_dict</span><span class="o">=</span><span class="n">spc</span><span class="p">))</span>
@@ -499,8 +468,7 @@
                 <span class="n">indices_to_pop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
                 <span class="n">converted_reactions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ARCReaction</span><span class="p">(</span><span class="n">reaction_dict</span><span class="o">=</span><span class="n">rxn</span><span class="p">,</span> <span class="n">species_list</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="p">))</span>
             <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rxn</span><span class="p">,</span> <span class="n">ARCReaction</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;A reaction should either be an `ARCReaction` object or an RMG `Reaction` object. &#39;</span>
-                                 <span class="sa">f</span><span class="s1">&#39;Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">rxn</span><span class="p">)</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">rxn</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;A reaction should either be an `ARCReaction` object.</span><span class="se">\n</span><span class="s1">Got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">rxn</span><span class="p">)</span><span class="si">}</span><span class="s1"> for </span><span class="si">{</span><span class="n">rxn</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reactions</span><span class="p">))):</span>  <span class="c1"># pop from the end, so other indices won&#39;t change</span>
             <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices_to_pop</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
@@ -541,7 +509,9 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">restart_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">backup_restart</span><span class="p">()</span>
 
-<div class="viewcode-block" id="ARC.as_dict"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.as_dict">[docs]</a>    <span class="k">def</span> <span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<div class="viewcode-block" id="ARC.as_dict">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.as_dict">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        A helper function for dumping this object as a dictionary in a YAML file for restarting ARC.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -636,8 +606,6 @@
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;T_count&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">T_count</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">thermo_adapter</span> <span class="o">!=</span> <span class="s1">&#39;arkane&#39;</span><span class="p">:</span>
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;thermo_adapter&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">thermo_adapter</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">three_params</span><span class="p">:</span>
-            <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;three_params&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">three_params</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span><span class="p">:</span>
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;trsh_ess_jobs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trsh_ess_jobs</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">trsh_rotors</span><span class="p">:</span>
@@ -653,7 +621,10 @@
             <span class="n">restart_dict</span><span class="p">[</span><span class="s1">&#39;skip_nmd&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span>
         <span class="k">return</span> <span class="n">restart_dict</span></div>
 
-<div class="viewcode-block" id="ARC.write_input_file"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.write_input_file">[docs]</a>    <span class="k">def</span> <span class="nf">write_input_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.write_input_file">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.write_input_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_input_file</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Save the current attributes as an ARC input file.</span>
 
@@ -668,7 +639,10 @@
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="se">\n\n</span><span class="s1">Writing input file to </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">restart_dict</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.execute"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.execute">[docs]</a>    <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+
+<div class="viewcode-block" id="ARC.execute">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.execute">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Execute ARC.</span>
 
@@ -749,8 +723,8 @@
                             <span class="n">T_count</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">T_count</span> <span class="ow">or</span> <span class="mi">50</span><span class="p">,</span>
                             <span class="n">lib_long_desc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lib_long_desc</span><span class="p">,</span>
                             <span class="n">compare_to_rmg</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compare_to_rmg</span><span class="p">,</span>
-                            <span class="n">three_params</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">three_params</span><span class="p">,</span>
                             <span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span>
+                            <span class="n">freq_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span><span class="p">,</span>
                             <span class="n">skip_nmd</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">,</span>
                             <span class="p">)</span>
 
@@ -758,7 +732,10 @@
         <span class="n">log_footer</span><span class="p">(</span><span class="n">execution_time</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">status_dict</span></div>
 
-<div class="viewcode-block" id="ARC.save_project_info_file"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.save_project_info_file">[docs]</a>    <span class="k">def</span> <span class="nf">save_project_info_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.save_project_info_file">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.save_project_info_file">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_project_info_file</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Save a project info file.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -829,7 +806,10 @@
             <span class="n">content</span><span class="p">[</span><span class="s1">&#39;reactions&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rxn_dict</span><span class="p">)</span>
         <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">content</span><span class="o">=</span><span class="n">content</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.summary"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+
+<div class="viewcode-block" id="ARC.summary">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.summary">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Report status and data of all species / reactions.</span>
 
@@ -858,7 +838,10 @@
                 <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">status_dict</span></div>
 
-<div class="viewcode-block" id="ARC.determine_ess_settings"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.determine_ess_settings">[docs]</a>    <span class="k">def</span> <span class="nf">determine_ess_settings</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">diagnostics</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.determine_ess_settings">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.determine_ess_settings">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">determine_ess_settings</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">diagnostics</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine where each ESS is available, locally (in running on a server) and/or on remote servers.</span>
 <span class="sd">        if `diagnostics` is True, this method will not raise errors, and will print its findings.</span>
@@ -978,7 +961,10 @@
         <span class="k">elif</span> <span class="n">diagnostics</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;ESS diagnostics completed (elapsed time: </span><span class="si">{</span><span class="n">time_lapse</span><span class="p">(</span><span class="n">t0</span><span class="p">)</span><span class="si">}</span><span class="s1">)&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.check_project_name"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_project_name">[docs]</a>    <span class="k">def</span> <span class="nf">check_project_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.check_project_name">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_project_name">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_project_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check the validity of the project name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -987,7 +973,10 @@
                 <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;A project name (used to naming folders) must contain only valid characters. &#39;</span>
                                  <span class="sa">f</span><span class="s1">&#39;Got &quot;</span><span class="si">{</span><span class="n">char</span><span class="si">}</span><span class="s1">&quot; in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.check_freq_scaling_factor"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_freq_scaling_factor">[docs]</a>    <span class="k">def</span> <span class="nf">check_freq_scaling_factor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.check_freq_scaling_factor">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_freq_scaling_factor">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_freq_scaling_factor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that the harmonic frequencies scaling factor is known,</span>
 <span class="sd">        otherwise, and if ``calc_freq_factor`` is set to ``True``, spawn a calculation for it using Truhlar&#39;s method.</span>
@@ -1011,7 +1000,10 @@
                         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Not calculating it, assuming a frequencies scaling factor of 1.&#39;</span><span class="p">)</span>
                         <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="mi">1</span></div>
 
-<div class="viewcode-block" id="ARC.delete_leftovers"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.delete_leftovers">[docs]</a>    <span class="k">def</span> <span class="nf">delete_leftovers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.delete_leftovers">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.delete_leftovers">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">delete_leftovers</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Delete leftover files, e.g., files created by the Symmetry program.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1022,7 +1014,10 @@
                     <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">file_</span><span class="p">))</span>
             <span class="k">break</span></div>
 
-<div class="viewcode-block" id="ARC.determine_unique_species_labels"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.determine_unique_species_labels">[docs]</a>    <span class="k">def</span> <span class="nf">determine_unique_species_labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.determine_unique_species_labels">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.determine_unique_species_labels">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">determine_unique_species_labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Determine unique species labels.</span>
 
@@ -1035,7 +1030,10 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Species label </span><span class="si">{</span><span class="n">species</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> is not unique&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.add_hydrogen_for_bde"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.add_hydrogen_for_bde">[docs]</a>    <span class="k">def</span> <span class="nf">add_hydrogen_for_bde</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.add_hydrogen_for_bde">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.add_hydrogen_for_bde">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_hydrogen_for_bde</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Make sure ARC has a hydrogen species labeled as &#39;H&#39; for the final processing of bde jobs (if not, create one).</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1053,7 +1051,10 @@
                 <span class="n">h</span> <span class="o">=</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">label</span><span class="o">=</span><span class="s1">&#39;H&#39;</span><span class="p">,</span> <span class="n">smiles</span><span class="o">=</span><span class="s1">&#39;[H]&#39;</span><span class="p">,</span> <span class="n">compute_thermo</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">e0_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">species</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">h</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.set_levels_of_theory"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.set_levels_of_theory">[docs]</a>    <span class="k">def</span> <span class="nf">set_levels_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.set_levels_of_theory">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.set_levels_of_theory">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_levels_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Set all levels of theory by job type to be :ref:`Level &lt;level&gt;` types.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1221,7 +1222,10 @@
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Not using a fine DFT grid for geometry optimization jobs&#39;</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.process_level_of_theory"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.process_level_of_theory">[docs]</a>    <span class="k">def</span> <span class="nf">process_level_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.process_level_of_theory">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.process_level_of_theory">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">process_level_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Process the ``level_of_theory`` argument, and populate respective job level of theory arguments as needed.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1264,19 +1268,25 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">level_of_theory</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>  <span class="c1"># Reset the level_of_theory argument to avoid conflicts upon restarting ARC.</span></div>
 
-<div class="viewcode-block" id="ARC.check_arkane_level_of_theory"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_arkane_level_of_theory">[docs]</a>    <span class="k">def</span> <span class="nf">check_arkane_level_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.check_arkane_level_of_theory">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_arkane_level_of_theory">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_arkane_level_of_theory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Check that the level of theory has AEC in Arkane.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
                 <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="o">.</span><span class="n">to_arkane_level_of_theory</span><span class="p">(</span><span class="n">variant</span><span class="o">=</span><span class="s1">&#39;AEC&#39;</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check_arkane_bacs</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Could not determine a level of theory to be used for Arkane!&#39;</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="ARC.backup_restart"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.backup_restart">[docs]</a>    <span class="k">def</span> <span class="nf">backup_restart</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.backup_restart">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.backup_restart">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">backup_restart</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Make a backup copy of the restart file if it exists (but don&#39;t save an updated one just yet)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1288,7 +1298,10 @@
             <span class="n">shutil</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;restart.yml&#39;</span><span class="p">),</span>
                         <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span> <span class="s1">&#39;log_and_restart_archive&#39;</span><span class="p">,</span> <span class="n">restart_backup_name</span><span class="p">))</span></div>
 
-<div class="viewcode-block" id="ARC.standardize_output_paths"><a class="viewcode-back" href="../../api/main.html#arc.main.ARC.standardize_output_paths">[docs]</a>    <span class="k">def</span> <span class="nf">standardize_output_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ARC.standardize_output_paths">
+<a class="viewcode-back" href="../../api/main.html#arc.main.ARC.standardize_output_paths">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">standardize_output_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Standardize the paths in the output dictionary.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -1309,10 +1322,14 @@
                                         <span class="n">string</span><span class="o">=</span><span class="n">val</span><span class="p">,</span> <span class="n">project_directory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">)</span>
             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;output dictionary successfully parsed:</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span></div></div>
+            <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span></div>
+</div>
 
 
-<div class="viewcode-block" id="process_adaptive_levels"><a class="viewcode-back" href="../../api/main.html#arc.main.process_adaptive_levels">[docs]</a><span class="k">def</span> <span class="nf">process_adaptive_levels</span><span class="p">(</span><span class="n">adaptive_levels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+
+<div class="viewcode-block" id="process_adaptive_levels">
+<a class="viewcode-back" href="../../api/main.html#arc.main.process_adaptive_levels">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">process_adaptive_levels</span><span class="p">(</span><span class="n">adaptive_levels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Process the ``adaptive_levels`` argument.</span>
 
@@ -1353,6 +1370,7 @@
     <span class="k">if</span> <span class="n">atom_ranges</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;inf&#39;</span><span class="p">:</span>
         <span class="k">raise</span> <span class="n">InputError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The last atom range must be &quot;inf&quot;, got </span><span class="si">{</span><span class="n">atom_ranges</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s1"> in </span><span class="si">{</span><span class="n">atom_ranges</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">processed</span></div>
+
 </pre></div>
 
            </div>
