@@ -7,10 +7,10 @@ import ast
 import os
 import re
 
-from rmgpy.molecule import Bond, Group, Molecule
-
-from arc.common import clean_text, generate_resonance_structures, get_logger
+from arc.common import clean_text, get_logger
 from arc.imports import settings
+from arc.molecule import Bond, Group, Molecule
+from arc.molecule.resonance import generate_resonance_structures_safely
 
 if TYPE_CHECKING:
     from arc.species import ARCSpecies
@@ -465,21 +465,32 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
     """
     product_dicts = list()
     family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
-    products = family.generate_products(reactants=rxn.get_reactants_and_products(arc=True, return_copies=True)[0])
+    products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
         for group_labels, product_lists in products.items():
             for product_list in product_lists:
-                if isomorphic_products(rxn=rxn, products=product_list[0]):
-                    product_dicts.append({'family': family_label,
-                                          'group_labels': group_labels,
-                                          'products': product_list[0],
-                                          'r_label_map': {val: key for key, val in product_list[1].items() if val},
-                                          'p_label_map': {atom.label: j + sum(len(p.atoms) for p in product_list[0][:i])
-                                                          for i, product in enumerate(product_list[0])
-                                                          for j, atom in enumerate(product.atoms) if atom.label},
-                                          'own_reverse': family.own_reverse,
-                                          'discovered_in_reverse': reverse,
-                                          })
+                template_mols, r_label_dict = product_list[0], product_list[1]
+                if not isomorphic_products(rxn=rxn, products=template_mols):
+                    continue
+                r_label_map = {val: key for key, val in r_label_dict.items() if val}
+                offsets = [0]
+                for mol in template_mols:
+                    offsets.append(offsets[-1] + len(mol.atoms))
+                p_label_map: Dict[str, int] = dict()
+                for i, mol in enumerate(template_mols):
+                    base = offsets[i]
+                    for j, atom in enumerate(mol.atoms):
+                        if atom.label:
+                            p_label_map[atom.label] = base + j
+                product_dicts.append({
+                    'family': family_label,
+                    'group_labels': group_labels,
+                    'products': template_mols,
+                    'r_label_map': r_label_map,
+                    'p_label_map': p_label_map,
+                    'own_reverse': family.own_reverse,
+                    'discovered_in_reverse': reverse,
+                })
     return product_dicts
 
 
@@ -498,7 +509,7 @@ def filter_products_by_reaction(rxn: 'ARCReaction',
         List[dict]: The filtered list of product dictionaries.
     """
     filtered_product_dicts, r_label_maps = list(), list()
-    r_species, p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)
+    _, p_species = rxn.get_reactants_and_products(return_copies=True)
     for product_dict in product_dicts:
         if len(product_dict['products']) != len(p_species):
             continue
@@ -524,7 +535,7 @@ def check_product_isomorphism(products: List['Molecule'],
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    prods_a = [generate_resonance_structures(mol.copy(deep=True)) or [mol.copy(deep=True)] for mol in products]
+    prods_a = [generate_resonance_structures_safely(mol) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
     if len(prods_a) == 1:
         prod_a = prods_a[0]
@@ -849,5 +860,5 @@ def isomorphic_products(rxn: 'ARCReaction',
     Returns:
         bool: Whether the products are isomorphic to the species.
     """
-    p_species = rxn.get_reactants_and_products(arc=True, return_copies=True)[1]
+    p_species = rxn.get_reactants_and_products(return_copies=True)[1]
     return check_product_isomorphism(products, p_species)

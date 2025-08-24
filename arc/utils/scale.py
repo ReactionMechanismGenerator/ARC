@@ -18,7 +18,7 @@ from arc.common import (ARC_PATH,
                         time_lapse,
                         )
 from arc.level import Level
-from arc.parser import parse_zpe
+from arc.parser.parser import parse_zpe_correction
 from arc.scheduler import Scheduler
 from arc.species.species import ARCSpecies
 
@@ -109,8 +109,8 @@ def determine_scaling_factors(levels: List[Union[Level, dict, str]],
 
         zpe_dict = dict()
         for spc in species_list:
-            zpe_dict[spc.label] = parse_zpe(os.path.join(project_directory, 'output', 'Species', spc.label,
-                                                         'geometry', 'freq.out')) * 1000  # convert to J/mol
+            zpe_dict[spc.label] = parse_zpe_correction(os.path.join(project_directory, 'output', 'Species', spc.label,
+                                                                    'geometry', 'freq.out')) * 1000  # convert to J/mol
         zpe_dicts.append(zpe_dict)
 
         lambda_zpes.append(calculate_truhlar_scaling_factors(zpe_dict=zpe_dict, level=str(level)))

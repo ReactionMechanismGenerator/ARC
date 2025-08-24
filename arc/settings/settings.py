@@ -294,92 +294,78 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 # ARC families folder path
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
-# default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_DB_PATH = \
-    None, None, None, None, None, None, None
+# Default environment names for sister repos
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None
+
 home = os.getenv("HOME") or os.path.expanduser("~")
 
-tani_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                             'tani_env', 'bin', 'python')
-tani_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_5 = os.path.join(home, '.conda', 'envs', 'tani_env', 'bin', 'python')
-tani_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tani_env', 'bin', 'python')
-for tani_pypath in [tani_pypath_1, tani_pypath_2, tani_pypath_3, tani_pypath_4, tani_pypath_5, tani_pypath_6]:
-    if os.path.isfile(tani_pypath):
-        TANI_PYTHON = tani_pypath
+# Helper function to find executables in common paths
+def find_executable(env_name, executable_name='python'):
+    candidate_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))), env_name, 'bin', executable_name),
+        os.path.join(home, 'mambaforge', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, 'anaconda3', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, 'miniconda3', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, '.conda', 'envs', env_name, 'bin', executable_name),
+        os.path.join('/Local/ce_dana', 'anaconda3', 'envs', env_name, 'bin', executable_name),
+    ]
+    for path in candidate_paths:
+        if os.path.isfile(path):
+            return path
+    return None
 
-ob_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                           'ob_env', 'bin', 'python')
-ob_pypath_2 = os.path.join(home, 'mambaforge', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_3 = os.path.join(home, 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_4 = os.path.join(home, 'miniconda3', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_5 = os.path.join(home, '.conda', 'envs', 'ob_env', 'bin', 'python')
-ob_pypath_6 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ob_env', 'bin', 'python')
-for ob_pypath in [ob_pypath_1, ob_pypath_2, ob_pypath_3, ob_pypath_4, ob_pypath_5, ob_pypath_6]:
-    if os.path.isfile(ob_pypath):
-        OB_PYTHON = ob_pypath
-        break
+TANI_PYTHON = find_executable('tani_env')
+OB_PYTHON = find_executable('ob_env')
+TS_GCN_PYTHON = find_executable('ts_gcn')
+AUTOTST_PYTHON = find_executable('tst_env')
+ARC_PYTHON = find_executable('arc_env')
+RMG_PYTHON = find_executable('rmg_env')
+XTB = find_executable('xtb_env', 'xtb')
 
-gcn_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'ts_gcn', 'bin', 'python')
-gcn_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_4 = os.path.join(home, '.conda', 'envs', 'ts_gcn', 'bin', 'python')
-gcn_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'ts_gcn', 'bin', 'python')
-for gcn_pypath in [gcn_pypath_1, gcn_pypath_2, gcn_pypath_3, gcn_pypath_4, gcn_pypath_5]:
-    if os.path.isfile(gcn_pypath):
-        TS_GCN_PYTHON = gcn_pypath
-        break
+# Set RMG_DB_PATH with fallback methods
+rmg_db_candidates, rmg_candidates = list(), list()
 
-autotst_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                                'tst_env', 'bin', 'python')
-autotst_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_4 = os.path.join(home, '.conda', 'envs', 'tst_env', 'bin', 'python')
-autotst_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'tst_env', 'bin', 'python')
-for autotst_pypath in [autotst_pypath_1, autotst_pypath_2, autotst_pypath_3, autotst_pypath_4, autotst_pypath_5]:
-    if os.path.isfile(autotst_pypath):
-        AUTOTST_PYTHON = autotst_pypath
-        break
+# Use exported RMG_PATH & RMG_DB_PATH if available
+exported_rmg_path, exported_rmg_db_path = os.getenv("RMG_PATH"), os.getenv("RMG_DB_PATH")
+if exported_rmg_path:
+    rmg_candidates.append(exported_rmg_path)
+if exported_rmg_db_path:
+    rmg_db_candidates.append(exported_rmg_db_path)
 
-paths = list()
-paths.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                          'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, 'miniconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join(home, '.conda', 'envs', 'xtb_env', 'bin', 'xtb'))
-paths.append(os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'xtb_env', 'bin', 'xtb'))
-for xtb_path in paths:
-    if os.path.isfile(xtb_path):
-        XTB = xtb_path
-        break
+gw = os.getenv("GITHUB_WORKSPACE")  # e.g., /home/runner/work/ARC/ARC
+if gw:
+    rmg_candidates.append(os.path.join(gw, 'RMG-Py'))
+    rmg_db_candidates.append(os.path.join(gw, 'RMG-database'))
 
-arc_pypath_1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                            'arc_env', 'bin', 'python')
-arc_pypath_2 = os.path.join(home, 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_3 = os.path.join(home, 'miniconda3', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_4 = os.path.join(home, '.conda', 'envs', 'arc_env', 'bin', 'python')
-arc_pypath_5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'arc_env', 'bin', 'python')
-for arc_pypath in [arc_pypath_1, arc_pypath_2, arc_pypath_3, arc_pypath_4, arc_pypath_5]:
-    if os.path.isfile(arc_pypath):
-        ARC_PYTHON = arc_pypath
-        break
-
-rmg_db_path_1 = None
 for python_path in sys.path:
     if 'RMG-database' in python_path:
-        rmg_db_path_1 = python_path
-        break
-rmg_db_path_2 = None
-for python_path in sys.path:
+        rmg_db_candidates.append(python_path)
     if 'RMG-Py' in python_path:
-        rmg_db_path_2 = os.path.join(os.path.dirname(python_path), 'RMG-database')
+        rmg_db_candidates.append(os.path.join(os.path.dirname(python_path), 'RMG-database'))
+
+for p in sys.path:
+    if 'RMG-Py' in p:
+        rmg_candidates.append(p)
+        rmg_db_candidates.append(os.path.join(os.path.dirname(p), 'RMG-database'))
+    if 'RMG-database' in p:
+        rmg_db_candidates.append(p)
+
+rmg_candidates.extend([
+    os.path.join(home, 'Code', 'RMG-Py'),
+    os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-Py')
+])
+rmg_db_candidates.extend([
+    os.path.join(home, 'Code', 'RMG-database'),
+    os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
+])
+
+# Finalize RMG_PATH and RMG_DB_PATH
+for path in rmg_candidates:
+    if path and os.path.isdir(path):
+        RMG_PATH = path
         break
-rmg_db_path_3 = os.path.join(home, 'Code', 'RMG-database')
-rmg_db_path_4 = os.path.join(home, 'runner', 'work', 'ARC', 'ARC', 'RMG-database')
-for rmg_db_path in [rmg_db_path_1, rmg_db_path_2, rmg_db_path_3, rmg_db_path_4]:
-    if rmg_db_path is not None and os.path.isdir(rmg_db_path):
-        RMG_DB_PATH = rmg_db_path
+for path in rmg_db_candidates:
+    if path and os.path.isdir(path):
+        RMG_DB_PATH = path
         break

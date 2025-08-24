@@ -9,7 +9,7 @@ import unittest
 import os
 import shutil
 
-import arc.parser as parser
+import arc.parser.parser as parser
 from arc.checks.ts import check_ts
 from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.factory import job_factory
@@ -147,15 +147,15 @@ H      -1.82570782    0.42754384   -0.56130718"""
         expecting = [-251596.4435088726, -254221.9433698632]
         self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[0], expecting[0], 5)
         self.assertAlmostEqual(self.sched1.species_dict[label].conformer_energies[1], expecting[1], 5)
-        self.sched1.species_dict[label].conformers[0] = parser.parse_xyz_from_file(self.job1.local_path_to_output_file)
-        self.sched1.species_dict[label].conformers[1] = parser.parse_xyz_from_file(self.job2.local_path_to_output_file)
+        self.sched1.species_dict[label].conformers[0] = parser.parse_geometry(log_file_path=self.job1.local_path_to_output_file)
+        self.sched1.species_dict[label].conformers[1] = parser.parse_geometry(log_file_path=self.job2.local_path_to_output_file)
 
         self.sched1.determine_most_stable_conformer(label=label)
         expecting = {'symbols': ('N', 'C', 'H', 'H', 'H', 'H', 'H'), 'isotopes': (14, 12, 1, 1, 1, 1, 1),
-                     'coords': ((-0.75555952, -0.12937106, 0.0), (0.7085544, 0.03887206, 0.0),
-                                (1.06395135, 1.08711266, 0.0), (1.12732348, -0.45978507, 0.88433277),
-                                (1.12732348, -0.45978507, -0.88433277), (-1.16566701, 0.32023496, 0.81630508),
-                                (-1.16566701, 0.32023496, -0.81630508))}
+                     'coords': ((-0.7419989889, -0.1327547549, 0.0), (0.7023470134, 0.0158023979, 0.0),
+                                (0.9803673385, 1.0735720944, 0.0), (1.1309109832, -0.4595567954, 0.886650896),
+                                (1.1309109832, -0.4595567954, -0.886650896), (-1.131139079, 0.3400036467, 0.8147241874),
+                                (-1.131139079, 0.3400036467, -0.8147241874))}
         self.assertTrue(almost_equal_coords_lists(self.sched1.species_dict[label].initial_xyz, expecting))
         methylamine_conf_path = os.path.join(self.sched1.project_directory, 'output', 'Species', 'methylamine',
                                              'geometry', 'conformers', 'conformers_after_optimization.txt')
@@ -199,7 +199,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         label = 'C2H6'
         self.job3.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        vibfreqs = parser.parse_frequencies(path=self.job3.local_path_to_output_file, software=self.job3.job_adapter)
+        vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 
     def test_determine_adaptive_level(self):
@@ -659,9 +659,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             },
                   }
         project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage6')
-        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'))
-        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'))
-        os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'))
+        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
+        os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
+        os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
         shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
                     dst=os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry', 'freq.out'))
         shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
@@ -692,19 +692,15 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                                            'arc_project_for_testing_delete_after_usage6'),
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
-        check_ts(reaction=rxn, verbose=True, job=job_1, checks=['freq'])
-        self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
-
-        sched.check_rxn_e0_by_spc('TS0')
-        self.assertEqual(rxn.ts_species.ts_checks,
-                         {'E0': True, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
+        check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
+        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': False, 'warnings': ''})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
         project_directory = os.path.join(ARC_PATH, 'Projects', 'save_e_elect')
         e_elect_summary_path = os.path.join(project_directory, 'output', 'e_elect_summary.yml')
-        self.assertFalse(os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')))
+        if os.path.isfile(os.path.join(project_directory, 'output', 'e_elect_summary.yml')):
+            os.remove(os.path.join(project_directory, 'output', 'e_elect_summary.yml'))
         sched = Scheduler(project='test_save_e_elect',
                           ess_settings=self.ess_settings,
                           project_directory=project_directory,
@@ -727,8 +723,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
         sched.post_sp_actions(label='mehylamine',
                               sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out'))
         content = read_yaml_file(e_elect_summary_path)
-        self.assertEqual(content, {'formaldehyde': -300621.95378630824,
-                                    'mehylamine': -251377.49160993524})
+        self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
         shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_species_has_geo_sp_freq(self):

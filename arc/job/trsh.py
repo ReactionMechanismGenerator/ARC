@@ -12,7 +12,6 @@ import re
 
 from arc.common import (check_torsion_change,
                         convert_to_hours,
-                        determine_ess,
                         estimate_orca_mem_cpu_requirement,
                         get_logger,
                         get_number_with_ordinal_indicator,
@@ -30,12 +29,13 @@ from arc.species.conformers import determine_smallest_atom_index_in_scan
 from arc.species.converter import (displace_xyz, ics_to_scan_constraints)
 from arc.species.species import determine_rotor_symmetry
 from arc.species.vectors import calculate_dihedral_angle, calculate_distance
-from arc.parser import (parse_1d_scan_coords,
-                        parse_normal_mode_displacement,
-                        parse_scan_args,
-                        parse_scan_conformers,
-                        parse_xyz_from_file,
-                        )
+from arc.parser.parser import (parse_1d_scan_coords,
+                               parse_geometry,
+                               parse_normal_mode_displacement,
+                               parse_scan_args,
+                               parse_scan_conformers,
+                               determine_ess
+                               )
 
 
 logger = get_logger()
@@ -74,7 +74,7 @@ def determine_ess_status(output_path: str,
         return 'errored', keywords, error, line
 
     if software is None:
-        software = determine_ess(log_file=output_path)
+        software = determine_ess(log_file_path=output_path)
 
     keywords, error, = list(), ''
     with open(output_path, 'r') as f:
@@ -552,7 +552,7 @@ def trsh_negative_freq(label: str,
     factors = [0.25, 0.50, 0.75, 1.0, 1.5, 2.5]
     factor = factors[0]
     max_times_to_trsh_neg_freq = len(factors) + 1
-    freqs, normal_modes_disp = parse_normal_mode_displacement(path=log_file, raise_error=False)
+    freqs, normal_modes_disp = parse_normal_mode_displacement(log_file_path=log_file, raise_error=False)
     if not len(normal_modes_disp):
         logger.error(f'Could not troubleshoot negative frequency for species {label}.')
         return [], [], output_errors, []
@@ -609,7 +609,7 @@ def trsh_negative_freq(label: str,
         # Convert a numpy array to a list, important for saving the neg_freqs_trshed species attribute in the restart
         freqs_list = freqs.tolist()
         current_neg_freqs_trshed = [round(freqs_list[i], 2) for i in neg_freqs_idx]  # record trshed negative freqs
-        xyz = parse_xyz_from_file(log_file)
+        xyz = parse_geometry(log_file)
         for neg_freq_idx in neg_freqs_idx:
             xyz_1, xyz_2 = displace_xyz(xyz=xyz, displacement=normal_modes_disp[neg_freq_idx], amplitude=factor)
             conformers.append(xyz_1)
@@ -737,7 +737,7 @@ def trsh_scan_job(label: str,
 
         # Convert to_freeze into an input block str
         to_freeze += already_frozen
-        software = determine_ess(log_file)
+        software = determine_ess(log_file_path=log_file)
         scan_trsh = ics_to_scan_constraints(ics=to_freeze, software=software)
 
     else:
@@ -1479,212 +1479,187 @@ def scan_quality_check(label: str,
     actions = dict()
     used_methods = used_methods or list()
     energies = np.array(energies, np.float64)
+
+    if (energies.size == 0 or
+            energies.ndim == 0 or
+            (energies.size == 1 and np.isnan(energies.item())) or
+            np.all(np.isnan(energies))):
+        invalidate = True
+        invalidation_reason = "No valid scan energies parsed."
+        message = f"Could not parse scan energies for {label} between pivots {pivots}."
+        logger.error(message)
+        actions = {}
+        return invalidate, invalidation_reason, message, actions
+
     scan_conformers = None
 
-    # Check if the conformer based method is valid
     if log_file:
         try:
             scan_conformers = parse_scan_conformers(log_file)
         except NotImplementedError:
-            message = f'Rotor scan quality check using conformer internal coordinates ' \
-                      f'has not been implemented for current ESS. Using PES curve based ' \
-                      f'check for rotor scan of {label} between pivots {pivots}.'
+            message = (f'Rotor scan quality check using conformer internal coordinates '
+                       f'has not been implemented for current ESS. Using PES curve based '
+                       f'check for rotor scan of {label} between pivots {pivots}.')
             logger.warning(message)
 
-    # 1. Check based on intermediate conformers
     if scan_conformers is not None and (species is None or not species.is_ts):
         bonds = scan_conformers[scan_conformers['type'] == 'R']
         angles = scan_conformers[scan_conformers['type'] == 'A']
         non_scan_rotor = scan_conformers[(scan_conformers['type'] == 'D') & (scan_conformers['scan'] == False)]
         scan_rotor = scan_conformers[scan_conformers['scan'] == True]
 
-        # 1.1 Find significant changes of internal coordinates
         expected_step_num = int(360 / scan_res)
-        # 5 below refers to type, atoms, scan, redundant and initial guess
-        actual_step_num = scan_conformers.shape[1] - 5
+        actual_step_num = scan_conformers.shape[1] - 5  # 5 for meta columns
         step_num = min(expected_step_num, actual_step_num)
         changed_ic_dict = {}
+
         for index_1 in range(step_num + 1):
             if index_1 != 0:
-                # Compare the 'adjacent' conformers
                 index_2 = index_1 - 1
-                delta = scan_res  # scan[index_1] - scan[index_2] = scan_res
+                delta = scan_res
             elif step_num == expected_step_num:
-                # Compare the first and the last conformer
                 index_2 = step_num
                 delta = 0
             else:
-                # When the scan is not finished as desired
                 continue
-            # Identify changes by type
-            bond_change = (2 * (bonds[index_1] - bonds[index_2]) /
-                           (bonds[index_1] + bonds[index_2])).abs() > preserve_params_in_scan['bond']
-            angle_change = (angles[index_1] - angles[index_2]).abs() > preserve_params_in_scan['angle']
+
+            col1 = f'conformer_{index_1}'
+            col2 = f'conformer_{index_2}'
+
+            # Only check if both columns exist (robust to incomplete scans)
+            if col1 not in bonds.columns or col2 not in bonds.columns:
+                continue
+
+            bond_change = (2 * (bonds[col1] - bonds[col2]) /
+                           (bonds[col1] + bonds[col2])).abs() > preserve_params_in_scan['bond']
+            angle_change = (angles[col1] - angles[col2]).abs() > preserve_params_in_scan['angle']
             non_scan_rotor_change = check_torsion_change(torsions=non_scan_rotor,
-                                                         index_1=index_1,
-                                                         index_2=index_2,
+                                                         index_1=col1,
+                                                         index_2=col2,
                                                          threshold=preserve_params_in_scan['dihedral'])
             scan_rotor_change = check_torsion_change(torsions=scan_rotor,
-                                                     index_1=index_1,
-                                                     index_2=index_2,
+                                                     index_1=col1,
+                                                     index_2=col2,
                                                      threshold=preserve_params_in_scan['dihedral'],
                                                      delta=delta)
-            # Summarize changes
             change_sum = pd.concat([bond_change,
                                     angle_change,
                                     non_scan_rotor_change,
                                     scan_rotor_change])
             changed_ics = change_sum[change_sum == True].index.to_list()
-            # Save changes in the format of {conformer index: problematic ics}
             if changed_ics:
                 invalidate = True
                 changed_ic_dict.update({index_1: changed_ics})
 
-        # 1.2 Check broken bond and any lowest conformation
-        # Exclude those with broken bonds (different species)
-        # Better to just freeze the broken bond when bond changing first happens
         for conf_index, ics in changed_ic_dict.items():
-            # R(X,Y) refers to bonds in ics
             broken_bonds = [ic for ic in ics if 'R' in ic]
             if broken_bonds and conf_index != 0:
-                # Find the bond that changes the most, to avoid accompanied changes, like C-O transforms
-                # to C=O, which we don't want to freeze. If other bonds need to be frozen as well,
-                # it can be done in the following troubleshooting.
-                bonds = scan_conformers.loc[broken_bonds, :]
-                bond_change = (2 * (bonds[conf_index] - bonds[conf_index - 1]) /
-                               (bonds[conf_index] + bonds[conf_index - 1])).abs()
-                broken_bond_label = bond_change.sort_values().index[-1]  # the largest change
-                # Freeze the bonds, no further freezing other ics to prevent over-constraining
-                broken_bonds = [scan_conformers['atoms'][broken_bond_label]]
+                bonds_sub = scan_conformers.loc[broken_bonds, :]
+                col1 = f'conformer_{conf_index}'
+                col2 = f'conformer_{conf_index - 1}'
+                if col1 not in bonds_sub.columns or col2 not in bonds_sub.columns:
+                    continue
+                bond_change = (2 * (bonds_sub[col1] - bonds_sub[col2]) /
+                               (bonds_sub[col1] + bonds_sub[col2])).abs()
+                broken_bond_label = bond_change.sort_values().index[-1]
+                broken_bonds_atoms = scan_conformers.at[broken_bond_label, 'atoms']
                 invalidate = True
-                invalidation_reason = f'Bond ({broken_bonds}) broke during the scan.'
-                message = f'Rotor scan of {label} between pivots {pivots} has broken bonds: ' \
-                          f'{broken_bonds}. ARC will attempt to troubleshoot this rotor scan.'
+                invalidation_reason = f'Bond ({broken_bonds_atoms}) broke during the scan.'
+                message = (f'Rotor scan of {label} between pivots {pivots} has broken bonds: '
+                           f'{broken_bonds_atoms}. ARC will attempt to troubleshoot this rotor scan.')
                 logger.error(message)
-                actions = {'freeze': broken_bonds}
+                actions = {'freeze': [broken_bonds_atoms]}
                 return invalidate, invalidation_reason, message, actions
 
-        # If no bond broke, ideally all conformers should be isomorphic.
-        # Switch to the lowest conformer
         energy_diff = energies[0] - np.min(energies)
-        # Use tighter threshold to find lower conformer
         if energy_diff >= 0.5 or energy_diff > 0.5 * (max(energies) - min(energies)) \
                 and (species is None or not species.is_ts):
             invalidate = True
-            invalidation_reason = f'Another conformer for {label} exists which is ' \
-                                  f'{energy_diff:.2f} kJ/mol lower.'
-            message = f'Species {label} is not oriented correctly around pivots {pivots}, ' \
-                      f'searching for a better conformation...'
+            invalidation_reason = (f'Another conformer for {label} exists which is '
+                                   f'{energy_diff:.2f} kJ/mol lower.')
+            message = (f'Species {label} is not oriented correctly around pivots {pivots}, '
+                       f'searching for a better conformation...')
             logger.info(message)
-            # Find the dihedrals in degrees of the lowest conformer:
-            min_index = np.argmin(energies)
+            min_index = int(np.argmin(energies))
             conf_xyzs = parse_1d_scan_coords(log_file)
             if len(conf_xyzs) > min_index:
                 actions = {'change conformer': conf_xyzs[min_index]}
                 return invalidate, invalidation_reason, message, actions
 
-        # 1.3 Check consistency
         if 0 in changed_ic_dict.keys() and len(changed_ic_dict) == 1:
-            # A smooth scan with different initial and final conformer.
             invalidate = True
             invalidation_reason = 'Inconsistent initial and final conformers'
-            message = f'Rotor scan of {label} between pivots {pivots} has inconsistent initial ' \
-                      f'and final conformers.\nInternal coordinates {changed_ic_dict[0]} are different. ' \
-                      f'ARC will attempt to troubleshoot this rotor scan.'
+            message = (f'Rotor scan of {label} between pivots {pivots} has inconsistent initial '
+                       f'and final conformers.\nInternal coordinates {changed_ic_dict[0]} are different. '
+                       f'ARC will attempt to troubleshoot this rotor scan.')
             logger.error(message)
-            actions = {'freeze': [scan_conformers['atoms'][ic_label]
+            actions = {'freeze': [scan_conformers.at[ic_label, 'atoms']
                                   for ic_label in changed_ic_dict[0]]}
             return invalidate, invalidation_reason, message, actions
         elif len(changed_ic_dict) > 0:
-            # Not a smooth scan.
             invalidate = True
             invalidation_reason = 'Significant difference observed between consecutive conformers'
-            message = f'Rotor scan of {label} between pivots {pivots} is inconsistent between ' \
-                      f'two consecutive conformers.\nInconsistent consecutive conformers and problematic ' \
-                      f'internal coordinates:'
+            message = (f'Rotor scan of {label} between pivots {pivots} is inconsistent between '
+                       f'two consecutive conformers.\nInconsistent consecutive conformers and problematic '
+                       f'internal coordinates:')
             changed_ic_label = []
             for index, ics in changed_ic_dict.items():
-                if index > 0:  # Do not include the initial/final differences which may include more ics
+                if index > 0:
                     message += f'\nconformer #{index:>3d} / #{index+1:>3d}        '
                     message += ', '.join(ics)
                 changed_ic_label += ics
             message += '\nARC will attempt to troubleshoot this rotor scan.'
-            # list(set()) is used to remove duplicate labels
             changed_ic_label = list(set(changed_ic_label))
             logger.error(message)
-            actions = {'freeze': [scan_conformers['atoms'][ic_label]
+            actions = {'freeze': [scan_conformers.at[ic_label, 'atoms']
                                   for ic_label in changed_ic_label]}
             return invalidate, invalidation_reason, message, actions
 
     else:
-        # 2. Check rotor scan quality according to the PES curve
-        # 2.1. Check consistency between initial and final points
         if abs(energies[-1] - energies[0]) > inconsistency_az:
-            # initial and final points differ by more than `inconsistency_az` kJ/mol.
-            # seems like this rotor broke the conformer. Invalidate
             invalidate = True
-            invalidation_reason = f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol'
-            message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by more ' \
-                      f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. ' \
-                      f'Initial energy = {energies[0]:.2f}, final energy = {energies[-1]:.2f}. ARC will ' \
-                      f'attempt to troubleshoot this rotor scan.'
+            invalidation_reason = (f'initial and final points are inconsistent by more than {inconsistency_az:.2f} kJ/mol')
+            message = (f'Rotor scan of {label} between pivots {pivots} is inconsistent by more '
+                       f'than {inconsistency_az:.2f} kJ/mol between initial and final positions. '
+                       f'Initial energy = {energies[0]:.2f}, final energy = {energies[-1]:.2f}. ARC will '
+                       f'attempt to troubleshoot this rotor scan.')
             logger.error(message)
             actions = {'inc_res': None, 'freeze': 'all'}
             return invalidate, invalidation_reason, message, actions
 
-        # 2.2. Check consistency between consecutive points
         for j in range(len(energies) - 1):
             if abs(energies[j] - energies[j + 1]) > inconsistency_ab * np.max(energies):
-                # Two consecutive points on the scan differ by more than `inconsistency_ab` kJ/mol.
-                # This is a serious inconsistency. Invalidate
                 invalidate = True
-                invalidation_reason = f'Two consecutive points are inconsistent by more than ' \
-                                      f'{inconsistency_ab * max(energies):.2f} kJ/mol'
-                message = f'Rotor scan of {label} between pivots {pivots} is inconsistent by ' \
-                          f'more than {inconsistency_ab * max(energies):.2f} kJ/mol between ' \
-                          f'two consecutive points. ARC will attempt to troubleshoot this rotor scan.'
+                invalidation_reason = (f'Two consecutive points are inconsistent by more than '
+                                       f'{inconsistency_ab * max(energies):.2f} kJ/mol')
+                message = (f'Rotor scan of {label} between pivots {pivots} is inconsistent by '
+                           f'more than {inconsistency_ab * max(energies):.2f} kJ/mol between '
+                           f'two consecutive points. ARC will attempt to troubleshoot this rotor scan.')
                 logger.error(message)
-                # Propose a method
-                # Try increasing resolution firstly, and try increasing res. and freezing all
-                # torsions jointly, afterwards.
-                # TODO: If we figure out that solely increasing res. is not effective,
-                # we can simplify the process to actions = {'inc_res': None, 'freeze': 'all'}
                 if any(['scan_res' in used_method for used_method in used_methods]):
-                    # Check if increasing scan resolution is ever applied
                     if not any([used_method['scan_trsh'] != '' for used_method in used_methods]):
-                        # Case where freezing torisions has not been applied
                         actions = {'inc_res': None, 'freeze': 'all'}
                     else:
-                        # Since all torsions are frozen, there's not much we can do except increasing
-                        # scan resolution. But it is not that effective either. So stop and do nothing.
                         pass
                 else:
-                    # Case where neither increasing scan resolution nor freezing
-                    # torisions has been applied
                     actions = {'inc_res': None}
                 return invalidate, invalidation_reason, message, actions
 
-        # 2.3 Check energy and change conformation if needed:
         energy_diff = energies[0] - np.min(energies)
         if energy_diff >= 2 or energy_diff > 0.5 * (max(energies) - min(energies)) \
                 and (species is None or not species.is_ts):
             invalidate = True
             invalidation_reason = f'Another conformer for {label} exists which is {energy_diff:.2f} kJ/mol lower.'
-            message = f'Species {label} is not oriented correctly around pivots {pivots}. ' \
-                      f'Another conformer exists which is {energy_diff:.2f} kJ/mol lower. ' \
-                      f'searching for a better conformation...'
+            message = (f'Species {label} is not oriented correctly around pivots {pivots}. '
+                       f'Another conformer exists which is {energy_diff:.2f} kJ/mol lower. '
+                       f'searching for a better conformation...')
             logger.info(message)
-            # Find the lowest conformer, and use the new conformer for further jobs.
-            # Since at this point, the scan has passed previous checks, the possibility
-            # to switch to a non-isomorphic conformer is low.
-            min_index = np.argmin(energies)
+            min_index = int(np.argmin(energies))
             conf_xyzs = parse_1d_scan_coords(log_file)
             actions = {'change conformer': conf_xyzs[min_index]}
             return invalidate, invalidation_reason, message, actions
 
-    # 3. Check the barrier height
     if (np.max(energies) - np.min(energies)) > maximum_barrier:
-        # The barrier for the internal rotation is higher than `maximum_barrier`
         num_wells = determine_rotor_symmetry(label=label,
                                              pivots=pivots,
                                              rotor_path='',
@@ -1694,11 +1669,11 @@ def scan_quality_check(label: str,
                                              )[-1]
         if num_wells == 1:
             invalidate = True
-            invalidation_reason = f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} ' \
-                                  f'kJ/mol, which is higher than the maximal barrier for rotation ' \
-                                  f'({maximum_barrier:.2f} kJ/mol)'
-            message = f'Rotor scan of {label} between pivots {pivots} has a barrier ' \
-                      f'larger than {maximum_barrier:.2f} kJ/mol. Invalidating rotor.'
+            invalidation_reason = (f'The rotor scan has a barrier of {np.max(energies) - np.min(energies):.2f} '
+                                   f'kJ/mol, which is higher than the maximal barrier for rotation '
+                                   f'({maximum_barrier:.2f} kJ/mol)')
+            message = (f'Rotor scan of {label} between pivots {pivots} has a barrier '
+                       f'larger than {maximum_barrier:.2f} kJ/mol. Invalidating rotor.')
             logger.warning(message)
             return invalidate, invalidation_reason, message, actions
         else:
@@ -1710,15 +1685,12 @@ def scan_quality_check(label: str,
                            f'this species at the higher wells will not be taken into account. NOT invalidating this '
                            f'torsional mode.')
 
-    # 4. Check requested atom constraints are preserved (particularly useful for TSs)
     if preserve_params is not None:
         success = True
         pivots = list()
         for atoms in preserve_params:
             for i, xyz in enumerate(trajectory):
                 if i != 0:
-                    # check that the distance between this atom pair is preserved relative to the previous entry
-                    # in the trajectory, as well as relative to the original value (final_xyz).
                     current_distance = calculate_distance(coords=xyz, atoms=atoms, index=1)
                     previous_distance = calculate_distance(coords=trajectory[i - 1], atoms=atoms, index=1)
                     original_distance = calculate_distance(coords=original_xyz, atoms=atoms, index=1)
@@ -1730,10 +1702,10 @@ def scan_quality_check(label: str,
                             original_distance * (1.0 + preserve_params_in_scan['bond']):
                         success = False
                         pivots.append(atoms)
-                        message = f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the distance " \
-                                  f"between pivots is {current_distance} Angstroms, which is " \
-                                  f"{current_distance / previous_distance:.2f} of the previous frame, and " \
-                                  f"{current_distance / original_distance:.2f} of the original geometry."
+                        message = (f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the distance "
+                                   f"between pivots is {current_distance} Angstroms, which is "
+                                   f"{current_distance / previous_distance:.2f} of the previous frame, and "
+                                   f"{current_distance / original_distance:.2f} of the original geometry.")
                         break
 
                     if species.mol is not None:
@@ -1745,8 +1717,6 @@ def scan_quality_check(label: str,
                             determine_smallest_atom_index_in_scan(atom1=species.mol.atoms.index(atoms[1]),
                                                                   atom2=species.mol.atoms.index(atoms[0]),
                                                                   mol=species.mol))
-                        # check that a dihedral angle with this atom pair as its pivots is preserved relative to the
-                        # previous entry in the trajectory, as well as relative to the original value (final_xyz).
                         current_dihedral = calculate_dihedral_angle(coords=xyz, torsion=scan, index=1)
                         previous_dihedral = calculate_dihedral_angle(coords=trajectory[i - 1], torsion=scan, index=1)
                         original_dihedral = calculate_dihedral_angle(coords=original_xyz, torsion=scan, index=1)
@@ -1754,11 +1724,11 @@ def scan_quality_check(label: str,
                                 or abs(current_dihedral - original_dihedral) < preserve_params_in_scan['dihedral']:
                             success = False
                             pivots.append(atoms)
-                            message = f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the " \
-                                      f"dihedral angle is {current_dihedral} degrees, a " \
-                                      f"{abs(current_dihedral - previous_dihedral)} change relative to the previous " \
-                                      f"frame, and a {abs(current_dihedral - original_dihedral)} change relative to " \
-                                      f"the original geometry."
+                            message = (f"The rotor breaks the TS around pivots {pivots}: In trajectory {i}, the "
+                                       f"dihedral angle is {current_dihedral} degrees, a "
+                                       f"{abs(current_dihedral - previous_dihedral)} change relative to the previous "
+                                       f"frame, and a {abs(current_dihedral - original_dihedral)} change relative to "
+                                       f"the original geometry.")
                             break
 
         if species.mol is None:

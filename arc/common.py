@@ -20,26 +20,18 @@ import time
 import warnings
 import yaml
 from collections import deque
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import qcelemental as qcel
 
-from arkane.ess import ess_factory, GaussianLog, MolproLog, OrcaLog, QChemLog, TeraChemLog
-from rmgpy.exceptions import AtomTypeError, ILPSolutionError, ResonanceError
-from rmgpy.molecule.atomtype import ATOMTYPES
-from rmgpy.molecule.element import get_element
-from rmgpy.molecule.molecule import Atom, Bond, Molecule
-from rmgpy.qm.qmdata import QMData
-from rmgpy.qm.symmetry import PointGroupCalculator
-
+# don't import any ARC module other than exceptions and imports, to avoid circular imports
 from arc.exceptions import InputError, SettingsError
-from arc.imports import home, settings
+from arc.imports import settings
 
 
 if TYPE_CHECKING:
-    from rmgpy.species import Species
+    from arc.molecule.molecule import Molecule
 
 
 logger = logging.getLogger('arc')
@@ -118,31 +110,6 @@ def initialize_job_types(job_types: Optional[dict] = None,
     job_types_report = [job_type for job_type, val in job_types.items() if val]
     logger.info(f'\nConsidering the following job types: {job_types_report}\n')
     return job_types
-
-
-def determine_ess(log_file: str) -> str:
-    """
-    Determine the ESS to which the log file belongs.
-
-    Args:
-        log_file (str): The ESS log file path.
-
-    Returns: str
-        The ESS log class from Arkane.
-    """
-    log = ess_factory(log_file, check_for_errors=False)
-    if isinstance(log, GaussianLog):
-        return 'gaussian'
-    if isinstance(log, MolproLog):
-        return 'molpro'
-    if isinstance(log, OrcaLog):
-        return 'orca'
-    if isinstance(log, QChemLog):
-        return 'qchem'
-    if isinstance(log, TeraChemLog):
-        return 'terachem'
-    raise InputError(f'Could not identify the log file in {log_file} as belonging to '
-                     f'Gaussian, Molpro, Orca, QChem, or TeraChem.')
 
 
 def check_ess_settings(ess_settings: Optional[dict] = None) -> dict:
@@ -544,27 +511,104 @@ def get_number_with_ordinal_indicator(number: int) -> str:
     """
     return f'{number}{get_ordinal_indicator(number)}'
 
+def read_element_dicts() -> Tuple[dict, dict, dict, dict]:
+    """
+    Read the element dictionaries from the elements.yml data file.
 
-def get_atom_radius(symbol: str) -> float:
+    Returns: Tuple[dict, dict, dict]
+        - A dictionary of element symbol by name.
+        - A dictionary of element number by symbol.
+        - A dictionary of element mass by symbol, including isotope and occurrence frequency.
+        - A dictionary of covalent radii by element symbol.
+    """
+    elements_path = os.path.join(ARC_PATH, 'data', 'elements.yml')
+    contents = read_yaml_file(elements_path)
+    symbol_by_number = contents['symbol_by_number']
+    number_by_symbol = {value: key for key, value in symbol_by_number.items()}
+    mass_by_symbol = contents['mass_by_symbol']
+    covalent_radii = contents['covalent_radii']
+    covalent_radii = {element['symbol']: element['radius'] for element in covalent_radii}
+    return symbol_by_number, number_by_symbol, mass_by_symbol, covalent_radii
+
+
+SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
+
+
+def get_atom_radius(symbol: str) -> Optional[float]:
     """
     Get the atom covalent radius of an atom in Angstroms.
 
     Args:
         symbol (str): The atomic symbol.
 
-    Raises:
-        TypeError: If ``symbol`` is of wrong type.
-
     Returns: float
         The atomic covalent radius (None if not found).
     """
     if not isinstance(symbol, str):
         raise TypeError(f'The symbol argument must be string, got {symbol} which is a {type(symbol)}')
-    try:
-        r = qcel.covalentradii.get(symbol, units='angstrom')
-    except qcel.exceptions.NotAnElementError:
-        r = None
+    if symbol == 'C':
+        symbol = 'C_sp3'
+    r = COVALENT_RADII.get(symbol, None)
     return r
+
+
+def get_element_mass(input_element: Union[int, str],
+                     isotope: Optional[int] = None,
+                     ) -> Tuple[float, int]:
+    """
+    Returns the mass and z number of the requested isotope for a given element.
+    Data taken from NIST, https://physics.nist.gov/cgi-bin/Compositions/stand_alone.pl (accessed October 2018)
+
+    Args:
+        input_element (int, str): The atomic number or symbol of the element.
+        isotope (int, optional): The isotope number.
+
+    Returns: Tuple[float, int]
+        - The mass of the element in amu.
+        - The atomic number of the element.
+    """
+    symbol = None
+    number = None
+
+    if isinstance(input_element, int):
+        symbol = SYMBOL_BY_NUMBER[input_element]
+        number = input_element
+    elif isinstance(input_element, str):
+        symbol = input_element
+        try:
+            number = NUMBER_BY_SYMBOL[symbol]
+        except KeyError:
+            symbol = input_element.capitalize()
+            number = NUMBER_BY_SYMBOL[symbol]
+
+    if symbol is None or number is None:
+        raise ValueError('Could not identify element {0}'.format(input_element))
+
+    mass_list = MASS_BY_SYMBOL[symbol]
+
+    if isotope is not None:
+        # a specific isotope is required
+        for iso_mass in mass_list:
+            if iso_mass[0] == isotope:
+                mass = iso_mass[1]
+                break
+        else:
+            raise ValueError("Could not find requested isotope {0} for element {1}".format(isotope, symbol))
+    else:
+        # no specific isotope is required
+        if len(mass_list[0]) == 2:
+            # isotope weight is unavailable, use the first entry
+            mass = mass_list[0][1]
+            logging.warning('Assuming isotope {0} is representative of element {1}'.format(mass_list[0][0], symbol))
+        else:
+            # use the most common isotope
+            max_weight = mass_list[0][2]
+            mass = mass_list[0][1]
+            for iso_mass in mass_list:
+                if iso_mass[2] > max_weight:
+                    max_weight = iso_mass[2]
+                    mass = iso_mass[1]
+    return mass, number
 
 
 # A bond length dictionary of single bonds in Angstrom.
@@ -572,18 +616,20 @@ def get_atom_radius(symbol: str) -> float:
 # https://courses.lumenlearning.com/suny-potsdam-organicchemistry/chapter/1-3-basics-of-bonding/
 # 'N-O' is taken from NH2OH, 'N+_N+' and 'N+_O-' are taken from N2O4.
 # 'H_H' was artificially modified from 0.74 to 1.0 since it collides quickly at 0.55.
-SINGLE_BOND_LENGTH = {'Br_Br': 2.29, 'Br_Cr': 1.94, 'Br_H': 1.41,
-                      'C_C': 1.54, 'C_Cl': 1.77, 'C_F': 1.35, 'C_H': 1.09, 'C_I': 2.13,
-                      'C_N': 1.47, 'C_O': 1.43, 'C_P': 1.87, 'C_S': 1.81, 'C_Si': 1.86,
-                      'Cl_Cl': 1.99, 'Cl_H': 1.27, 'Cl_N': 1.75, 'Cl_Si': 2.03, 'Cl_P': 2.03, 'Cl_S': 2.07,
-                      'F_F': 1.42, 'F_H': 0.92, 'F_P': 1.57, 'F_S': 1.56, 'F_Si': 1.56, 'F_Xe': 1.90,
-                      'H_H': 1.0, 'H_I': 1.61, 'H_N': 1.04, 'H_O': 0.96, 'H_P': 1.42, 'H_S': 1.34, 'H_Si': 1.48,
+
+SINGLE_BOND_LENGTH = {'C_C': 1.54, 'C_N': 1.47, 'C_P': 1.87, 'C_O': 1.43, 'C_S': 1.81, 'C_Si': 1.94,
+                      'C_H': 1.09, 'C_F': 1.35, 'C_Cl': 1.77, 'C_Br': 1.91, 'C_I': 2.13,
+                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_P': 1.75, 'N_O': 1.44, 'N+1_O-1': 1.2, 'N_S': 1.7, 'N_Si': 1.87,
+                      'N_H': 1.04, 'N_F': 1.28, 'N_Cl': 1.75, 'N_Br': 1.84, 'N_I': 2.03,
+                      'P_P': 2.21, 'P_O': 1.63, 'P_S': 2.06, 'P_Si': 2.22, 'P_H': 1.42, 'P_F': 1.57, 'P_Cl': 2.03, 'P_Br': 2.19, 'P_I': 2.38,
+                      'O_O': 1.48, 'O_S': 1.67, 'O_Si': 1.66, 'O_H': 0.96, 'O_F': 1.24, 'O_Cl': 1.65, 'O_Br': 1.80, 'O_I': 2.00,
+                      'S_S': 2.05, 'S_Si': 2.18, 'S_H': 1.34, 'S_F': 1.55, 'S_Cl': 2.07, 'S_Br': 2.15, 'S_I': 2.34,
+                      'Si_Si': 2.35, 'Si_H': 1.48, 'Si_F': 1.75, 'Si_Cl': 2.03, 'Si_Br': 2.31, 'Si_I': 2.50,
+                      'H_H': 0.60, 'H_F': 0.92, 'H_Cl': 1.27, 'H_Br': 1.41, 'H_I': 1.63,
+                      'F_F': 1.42, 'F_Cl': 1.57, 'F_Br': 1.72, 'F_I': 1.91,
+                      'Cl_Cl': 1.99, 'Cl_Br': 2.13, 'Cl_I': 2.32,
+                      'Br_Br': 2.29, 'Br_I': 2.47,
                       'I_I': 2.66,
-                      'N_N': 1.45, 'N+1_N+1': 1.81, 'N_O': 1.44, 'N+1_O-1': 1.2,
-                      'O_O': 1.48, 'O_P': 1.63, 'O_S': 1.58, 'O_Si': 1.66,
-                      'P_P': 2.21,
-                      'S_S': 2.05,
-                      'Si_Si': 2.35,
                       }
 
 
@@ -612,98 +658,174 @@ def get_single_bond_length(symbol_1: str,
         return SINGLE_BOND_LENGTH[bond1]
     if bond2 in SINGLE_BOND_LENGTH.keys():
         return SINGLE_BOND_LENGTH[bond2]
-    return 2.5
+    return 1.75
 
 
-def get_bonds_from_dmat(dmat: np.ndarray,
-                        elements: Union[Tuple[str, ...], List[str]],
-                        charges: Optional[List[int]] = None,
-                        tolerance: float = 1.2,
-                        bond_lone_hydrogens: bool = True,
-                        ) -> List[Tuple[int, int]]:
+def get_bonds_from_dmat(
+    dmat: np.ndarray,
+    elements: Union[Tuple[str, ...], List[str]],
+    charges: Optional[List[int]] = None,
+    tolerance: float = 1.2,
+    bond_lone_hydrogens: bool = True,
+    n_fragments: int = 1,
+) -> List[Tuple[int, int]]:
     """
-    Guess the connectivity of a molecule from its distance matrix representation.
+    Guess the connectivity of a molecule from its distance matrix.
 
     Args:
         dmat (np.ndarray): An NxN matrix of atom distances in Angstrom.
         elements (List[str]): The corresponding element list in the same atomic order.
         charges (List[int], optional): A corresponding list of formal atomic charges.
-        tolerance (float, optional): A factor by which the single bond length threshold is multiplied for the check.
-        bond_lone_hydrogens (bool, optional): Whether to assign a bond to hydrogen atoms which were not identified
-                                              as bonded. If so, the closest atom will be considered.
+        tolerance (float, optional): Factor by which the single‐bond length threshold is multiplied.
+        bond_lone_hydrogens (bool, optional): Whether to bond unassigned H atoms.
+        n_fragments (int, optional): Desired number of disconnected fragments. Defaults to 1.
 
     Returns:
-        List[Tuple[int, int]]:
-            A list of tuple entries, each represents a bond and contains sorted atom indices.
+        List[Tuple[int, int]]: Sorted list of bonded atom index pairs.
     """
-    if len(elements) != dmat.shape[0] or len(elements) != dmat.shape[1] or len(dmat.shape) != 2:
-        raise ValueError(f'The dimensions of the DMat {dmat.shape} must be equal to the number of elements {len(elements)}')
-    bonds, bonded_hydrogens = list(), list()
-    charges = charges or [0] * len(elements)
-    # Heavy atoms
-    for i, e_1 in enumerate(elements):
-        for j, e_2 in enumerate(elements):
-            if i > j and e_1 != 'H' and e_2 != 'H' and dmat[i, j] < tolerance * \
-                    get_single_bond_length(symbol_1=e_1,
-                                           symbol_2=e_2,
-                                           charge_1=charges[i],
-                                           charge_2=charges[j]):
-                bonds.append(tuple(sorted([i, j])))
-    # Hydrogen atoms except for H--H bonds, make sure each H has only one bond (the closest heavy atom).
-    for i, e_1 in enumerate(elements):
-        if e_1 == 'H':
-            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
-            if i != j and (elements[j] != 'H'):
-                bonds.append(tuple(sorted([i, j])))
-                bonded_hydrogens.append(i)
-    # Lone hydrogens, also important for the H2 molecule.
+    n = dmat.shape[0]
+    if len(elements) != n or dmat.shape != (n, n):
+        raise ValueError(f"DMat shape {dmat.shape} must match number of elements {len(elements)}")
+    charges = charges or [0] * n
+
+    bonds = set()
+    heavy_idx = [i for i, e in enumerate(elements) if e != 'H']
+
+    # 1) heavy–heavy bonds by threshold
+    for i in range(n):
+        for j in range(i + 1, n):
+            if elements[i] == 'H' or elements[j] == 'H':
+                continue
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if dmat[i, j] <= tolerance * bl:
+                bonds.add((i, j))
+
+    # helper to recompute fragments
+    def _fragments():
+        seen, frags, adj = set(), [], {k: set() for k in range(n)}
+        for a, b in bonds:
+            adj[a].add(b); adj[b].add(a)
+        for atom in range(n):
+            if atom in seen:
+                continue
+            stack, comp = [atom], set()
+            while stack:
+                x = stack.pop()
+                if x in comp:
+                    continue
+                comp.add(x); seen.add(x)
+                for nb in adj[x]:
+                    if nb not in comp:
+                        stack.append(nb)
+            frags.append(comp)
+        return frags
+
+    # 2) if targeting a single heavy fragment, bridge heavy sub‐graphs
+    if n_fragments == 1:
+        frags = _fragments()
+        heavy_frags = [f for f in frags if any(elements[i] != 'H' for i in f)]
+        while len(heavy_frags) > 1:
+            best_pair, best_dist = None, float('inf')
+            for A in heavy_frags:
+                for B in heavy_frags:
+                    if A is B:
+                        continue
+                    for i in A:
+                        if elements[i] == 'H':
+                            continue
+                        for j in B:
+                            if elements[j] == 'H':
+                                continue
+                            if dmat[i, j] < best_dist:
+                                best_dist = dmat[i, j]
+                                best_pair = (min(i, j), max(i, j))
+            if best_pair is None:
+                break
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+                heavy_frags = [f for f in frags if any(elements[k] != 'H' for k in f)]
+            else:
+                break
+
+    # 3) hydrogen bonds
     if bond_lone_hydrogens:
-        for i, e_1 in enumerate(elements):
-            j = get_extremum_index(lst=dmat[i], return_min=True, skip_values=[0])
-            bond = tuple(sorted([i, j]))
-            if i != j and e_1 == 'H' and i not in bonded_hydrogens and j not in bonded_hydrogens and bond not in bonds:
-                bonds.append(bond)
-    return bonds
+        if n_fragments == 1:
+            # every H → its absolute nearest neighbor (heavy or H)
+            for i, sym in enumerate(elements):
+                if sym != 'H':
+                    continue
+                if n < 2:
+                    continue
+                # gather distances to all other atoms
+                dists = [(dmat[i, j], j) for j in range(n) if j != i]
+                if not dists:
+                    continue
+                _, j_min = min(dists, key=lambda x: x[0])
+                bonds.add((min(i, j_min), max(i, j_min)))
+        else:
+            # multi‐fragment: only H→heavy within threshold
+            bonded_h = set()
+            for i, sym in enumerate(elements):
+                if sym != 'H':
+                    continue
+                cands = []
+                for j in heavy_idx:
+                    bl = get_single_bond_length('H', elements[j], charges[i], charges[j])
+                    if dmat[i, j] <= tolerance * bl:
+                        cands.append((dmat[i, j], j))
+                if cands:
+                    _, j_min = min(cands, key=lambda x: x[0])
+                    bonds.add((min(i, j_min), max(i, j_min)))
+                    bonded_h.add(i)
+            # H–H for any leftover unbonded H
+            hh_bl = get_single_bond_length('H', 'H', 0, 0)
+            hh_thresh = tolerance * hh_bl
+            unbonded_h = [i for i, e in enumerate(elements) if e == 'H' and i not in bonded_h]
+            used = set()
+            for i in unbonded_h:
+                if i in used:
+                    continue
+                others = [j for j in unbonded_h if j != i and j not in used]
+                if not others:
+                    continue
+                j_min = min(others, key=lambda j: dmat[i, j])
+                if dmat[i, j_min] <= hh_thresh:
+                    bonds.add((min(i, j_min), max(i, j_min)))
+                    used.update({i, j_min})
+
+        # 4) final bridging if still too many fragments, but only within single‐bond limits
+        frags = _fragments()
+        while len(frags) > n_fragments:
+            best_pair, best_dist = None, float('inf')
+            for A in frags:
+                for B in frags:
+                    if A is B:
+                        continue
+                    for i in A:
+                        for j in B:
+                            # skip H–heavy links when n_fragments>1
+                            if n_fragments > 1 and (elements[i] == 'H' or elements[j] == 'H'):
+                                continue
+                            d = dmat[i, j]
+                            if d < best_dist:
+                                best_dist, best_pair = d, (min(i, j), max(i, j))
+            if best_pair is None:
+                break
+
+            i, j = best_pair
+            bl = get_single_bond_length(elements[i], elements[j], charges[i], charges[j])
+            if best_dist <= tolerance * bl:
+                bonds.add(best_pair)
+                frags = _fragments()
+            else:
+                break
+    return sorted(bonds)
 
 
-def determine_symmetry(xyz: dict) -> Tuple[int, int]:
-    """
-    Determine external symmetry and chirality (optical isomers) of the species.
-
-    Args:
-        xyz (dict): The 3D coordinates.
-
-    Returns: Tuple[int, int]
-        - The external symmetry number.
-        - ``1`` if no chiral centers are present, ``2`` if chiral centers are present.
-    """
-    atom_numbers = list()
-    for symbol in xyz['symbols']:
-        atom_numbers.append(get_element(symbol).number)
-    # Coords is an N x 3 numpy.ndarray of atomic coordinates in the same order as `atom_numbers`.
-    coords = np.array(xyz['coords'], np.float64)
-    unique_id = '0'  # Just some name that the SYMMETRY code gives to one of its jobs.
-    scr_dir = os.path.join(home, 'tmp', 'symmetry_scratch')  # Scratch directory that the SYMMETRY code writes its files in.
-    if not os.path.exists(scr_dir):
-        os.makedirs(scr_dir)
-    symmetry = optical_isomers = 1
-    qmdata = QMData(
-        groundStateDegeneracy=1,  # Only needed to check if valid QMData.
-        numberOfAtoms=len(atom_numbers),
-        atomicNumbers=atom_numbers,
-        atomCoords=(coords, 'angstrom'),
-        energy=(0.0, 'kcal/mol')  # Dummy
-    )
-    symmetry_settings = type('', (), dict(symmetryPath='symmetry', scratchDirectory=scr_dir))()
-    pgc = PointGroupCalculator(symmetry_settings, unique_id, qmdata)
-    pg = pgc.calculate()
-    if pg is not None:
-        symmetry = pg.symmetry_number
-        optical_isomers = 2 if pg.chiral else optical_isomers
-    return symmetry, optical_isomers
-
-
-def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]:
+def determine_top_group_indices(mol: 'Molecule', atom1: 'Atom', atom2: 'Atom', index: int = 1) -> Tuple[list, bool]:
     """
     Determine the indices of a "top group" in a molecule.
     The top is defined as all atoms connected to atom2, including atom2, excluding the direction of atom1.
@@ -713,7 +835,7 @@ def determine_top_group_indices(mol, atom1, atom2, index=1) -> Tuple[list, bool]
         mol (Molecule): The Molecule object to explore.
         atom1 (Atom): The pivotal atom in mol.
         atom2 (Atom): The beginning of the top relative to atom1 in mol.
-        index (bool, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
+        index (int, optional): Whether to return 1-index or 0-index conventions. 1 for 1-index.
 
     Returns: Tuple[list, bool]
         - The indices of the atoms in the top (either 0-index or 1-index, as requested).
@@ -945,8 +1067,8 @@ def almost_equal_lists(iter1: Union[list, tuple, np.ndarray],
 
 def almost_equal_coords(xyz1: dict,
                         xyz2: dict,
-                        rtol: float = 1e-05,
-                        atol: float = 1e-08,
+                        rtol: float = 1e-03,
+                        atol: float = 1e-04,
                         ) -> bool:
     """
     A helper function for checking whether two xyz's are almost equal. Also checks equal symbols.
@@ -975,8 +1097,8 @@ def almost_equal_coords(xyz1: dict,
 
 def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
                               xyz2: Union[List[dict], dict],
-                              rtol: float = 1e-05,
-                              atol: float = 1e-08,
+                              rtol: float = 1e-03,
+                              atol: float = 1e-04,
                               ) -> bool:
     """
     A helper function for checking two lists of xyzs has at least one entry in each that is almost equal.
@@ -1002,6 +1124,54 @@ def almost_equal_coords_lists(xyz1: Union[List[dict], dict],
             if almost_equal_coords(xyz1_entry, xyz2_entry, rtol=rtol, atol=atol):
                 return True
     return False
+
+
+def is_equal_family_product_dicts(dicts1: List[dict],
+                                  dicts2: List[dict],
+                                  ) -> bool:
+    """
+    Compare two lists of family‐product dictionaries for equality.
+    Returns True if they have the same length and, for each corresponding entry:
+      - 'family', 'group_labels', 'own_reverse', 'discovered_in_reverse' are equal
+      - 'products' lists contain Molecules with the same SMILES in the same order
+      - 'r_label_map' and 'p_label_map' dicts are equal
+
+    Args:
+        dicts1: First list of product‐dicts from determine_possible_reaction_products_from_family.
+        dicts2: Second list of product‐dicts to compare against.
+
+    Returns:
+        bool: True if all entries match, False otherwise.
+    """
+    if len(dicts1) != len(dicts2):
+        return False
+
+    for d1, d2 in zip(dicts1, dicts2):
+        # compare scalar fields
+        if d1.get('family') != d2.get('family'):
+            return False
+        if d1.get('group_labels') != d2.get('group_labels'):
+            return False
+        if d1.get('own_reverse') != d2.get('own_reverse'):
+            return False
+        if d1.get('discovered_in_reverse') != d2.get('discovered_in_reverse'):
+            return False
+
+        # compare products by SMILES
+        prods1 = d1.get('products', [])
+        prods2 = d2.get('products', [])
+        smiles1 = [m.smiles for m in prods1]
+        smiles2 = [m.smiles for m in prods2]
+        if smiles1 != smiles2:
+            return False
+
+        # compare label maps
+        if d1.get('r_label_map', {}) != d2.get('r_label_map', {}):
+            return False
+        if d1.get('p_label_map', {}) != d2.get('p_label_map', {}):
+            return False
+
+    return True
 
 
 def is_notebook() -> bool:
@@ -1222,6 +1392,28 @@ def is_same_sequence_sublist(child_list: list, parent_list: list) -> bool:
     return False
 
 
+def distance_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """
+    Compute the Euclidean distance matrix between rows of two arrays.
+
+    This function is equivalent to `scipy.spatial.distance.cdist(a, b, 'Euclidean')`
+    but implemented using pure NumPy for zero dependencies.
+
+    Args:
+        a (np.ndarray): First array of shape (m, d)
+        b (np.ndarray): Second array of shape (n, d)
+
+    Returns:
+        np.ndarray: Distance matrix of shape (m, n) where element (i, j) is the
+                    Euclidean distance between a[i] and b[j]
+    """
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(f"Inner dimensions must match. Got {a.shape[1]}D and {b.shape[1]}D")
+    diff = a[:, np.newaxis, :] - b[np.newaxis, :, :]
+    sq_diff = diff ** 2
+    return np.sqrt(np.sum(sq_diff, axis=-1))
+
+
 def get_ordered_intersection_of_two_lists(l1: list,
                                           l2: list,
                                           order_by_first_list: Optional[bool] = True,
@@ -1277,10 +1469,45 @@ def is_angle_linear(angle: float,
     Returns:
         bool: Whether the angle is close to 180 or 0 degrees, ``True`` if it is.
     """
-    if 180 - tolerance < angle <= 180 or 0 <= angle < tolerance:
-        return True
-    return False
+    return (180 - tolerance < angle <= 180) or (0 <= angle < tolerance)
 
+
+def is_xyz_linear(xyz: Optional[dict]) -> Optional[bool]:
+    """
+    Determine whether the xyz coords represents a linear molecule.
+
+    Args:
+        xyz (dict): The xyz coordinates in dict format.
+
+    Returns:
+        bool: Whether the molecule is linear, ``True`` if it is.
+    """
+    if not xyz or 'coords' not in xyz or 'symbols' not in xyz:
+        return None
+    coordinates = np.array(xyz['coords'])
+    n_atoms = len(coordinates)
+    if n_atoms == 1:
+        return False
+    if n_atoms == 2:
+        return True
+
+    for i in range(1, n_atoms - 1):
+        v1 = coordinates[i - 1] - coordinates[i]
+        v2 = coordinates[i + 1] - coordinates[i]
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        if norm1 == 0 or norm2 == 0:
+            continue
+        cos_angle = np.dot(v1, v2) / (norm1 * norm2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        angle = math.degrees(np.arccos(cos_angle))
+        if not is_angle_linear(angle, tolerance=0.1):
+            return False
+    return True
+
+
+FULL_CIRCLE = 360.0
+HALF_CIRCLE = 180.0
 
 def get_angle_in_180_range(angle: float,
                            round_to: Optional[int] = 2,
@@ -1296,13 +1523,40 @@ def get_angle_in_180_range(angle: float,
     Returns:
         float: The corresponding angle in the -180 to +180 degree range.
     """
-    angle = float(angle)
-    while not (-180 <= angle < 180):
-        factor = 360 if angle < -180 else -360
-        angle += factor
-    if round_to is not None:
-        return round(angle, round_to)
-    return angle
+    return (angle + HALF_CIRCLE) % FULL_CIRCLE - HALF_CIRCLE
+
+
+def signed_angular_diff(phi_1: float, phi_2: float) -> float:
+    r"""
+    Compute the signed minimal angular difference between two angles (in degrees).
+
+    This returns the value of (phi1 - phi2), wrapped into the interval (-180, 180],
+    so that the result represents the smallest signed rotation from phi_2 to phi_1:
+      - A positive value means phi1 is ahead of phi2 in the counter-clockwise (CCW) direction.
+      - A negative value means phi1 trails phi2 (i.e., clockwise rotation).
+
+    Args:
+        phi_1 (float): First angle in degrees.
+        phi_2 (float): Second angle in degrees to subtract from phi1.
+
+    Returns:
+        float: The signed minimal difference in the range (-180, 180].
+
+    Examples:
+        >>> signed_angular_diff(10, 15)
+        -5.0
+        >>> signed_angular_diff(15, 10)
+        5.0
+        >>> signed_angular_diff(350, 10)
+        -20.0
+        >>> signed_angular_diff(10, 350)
+        20.0
+        >>> signed_angular_diff(-170, 170)
+        20.0
+        >>> signed_angular_diff(170, -170)
+        -20.0
+    """
+    return get_angle_in_180_range(phi_1 - phi_2)
 
 
 def get_close_tuple(key_1: Tuple[Union[float, str], ...],
@@ -1426,120 +1680,6 @@ def convert_list_index_0_to_1(_list: Union[list, tuple], direction: int = 1) -> 
     return new_list
 
 
-def rmg_mol_to_dict_repr(mol: Molecule,
-                         reset_atom_ids: bool = False,
-                         testing: bool = False,
-                         ) -> dict:
-    """
-    Generate a dict representation of an RMG ``Molecule`` object instance.
-
-    Args:
-        mol (Molecule): The RMG ``Molecule`` object instance.
-        reset_atom_ids (bool, optional): Whether to reset the atom IDs in the .mol Molecule attribute.
-                                         Useful when copying the object to avoid duplicate atom IDs between
-                                         different object instances.
-        testing (bool, optional): Whether this is called during a test, in which case atom IDs should be deterministic.
-
-    Returns:
-        dict: The corresponding dict representation.
-    """
-    mol = mol.copy(deep=True)
-    if testing:
-        counter = 0
-        for atom in mol.atoms:
-            atom.id = counter
-            counter += 1
-    elif len(mol.atoms) > 1 and mol.atoms[0].id == mol.atoms[1].id or reset_atom_ids:
-        mol.assign_atom_ids()
-    return {'atoms': [{'element': {'number': atom.element.number,
-                                   'isotope': atom.element.isotope,
-                                   },
-                       'radical_electrons': atom.radical_electrons,
-                       'charge': atom.charge,
-                       'label': atom.label,
-                       'lone_pairs': atom.lone_pairs,
-                       'id': atom.id,
-                       'props': atom.props,
-                       'atomtype': atom.atomtype.label,
-                       'edges': {atom_2.id: bond.order
-                                 for atom_2, bond in atom.edges.items()},
-                       } for atom in mol.atoms],
-            'multiplicity': mol.multiplicity,
-            'props': mol.props,
-            'atom_order': [atom.id for atom in mol.atoms]
-            }
-
-
-def rmg_mol_from_dict_repr(representation: dict,
-                           is_ts: bool = False,
-                           ) -> Optional[Molecule]:
-    """
-    Generate a dict representation of an RMG ``Molecule`` object instance.
-
-    Args:
-        representation (dict): A dict representation of an RMG ``Molecule`` object instance.
-        is_ts (bool, optional): Whether the ``Molecule`` represents a TS.
-
-    Returns:
-        ``Molecule``: The corresponding RMG ``Molecule`` object instance.
-
-    """
-    mol = Molecule(multiplicity=representation['multiplicity'],
-                   props=representation['props'])
-    atoms = {atom_dict['id']: Atom(element=get_element(value=atom_dict['element']['number'],
-                                                       isotope=atom_dict['element']['isotope']),
-                                   radical_electrons=atom_dict['radical_electrons'],
-                                   charge=atom_dict['charge'],
-                                   lone_pairs=atom_dict['lone_pairs'],
-                                   id=atom_dict['id'],
-                                   props=atom_dict['props'],
-                                   ) for atom_dict in representation['atoms']}
-    for atom_dict in representation['atoms']:
-        atoms[atom_dict['id']].atomtype = ATOMTYPES[atom_dict['atomtype']]
-    mol.atoms = list(atoms[atom_id] for atom_id in representation['atom_order'])
-    for i, atom_1 in enumerate(atoms.values()):
-        for atom_2_id, bond_order in representation['atoms'][i]['edges'].items():
-            bond = Bond(atom_1, atoms[atom_2_id], bond_order)
-            mol.add_bond(bond)
-    mol.update_atomtypes(raise_exception=False)
-    mol.update_multiplicity()
-    if not is_ts:
-        mol.identify_ring_membership()
-        mol.update_connectivity_values()
-    return mol
-
-
-def generate_resonance_structures(object_: Union['Species', Molecule],
-                                  keep_isomorphic: bool = False,
-                                  filter_structures: bool = True,
-                                  save_order: bool = True,
-                                  ) -> Optional[List[Molecule]]:
-    """
-    Safely generate resonance structures for either an RMG Molecule or an RMG Species object instances.
-
-    Args:
-        object_ (Species, Molecule): The object to generate resonance structures for.
-        keep_isomorphic (bool, optional): Whether to keep isomorphic isomers.
-        filter_structures (bool, optional): Whether to filter resonance structures.
-        save_order (bool, optional): Whether to make sure atom order is preserved.
-
-    Returns:
-        Optional[List[Molecule]]: If a ``Molecule`` object instance was given, the function returns a list of resonance
-                                  structures (each is a ``Molecule`` object instance). If a ``Species`` object instance
-                                  is given, the resonance structures are stored within the given object
-                                  (in a .molecule attribute), and the function returns ``None``.
-    """
-    result = None
-    try:
-        result = object_.generate_resonance_structures(keep_isomorphic=keep_isomorphic,
-                                                       filter_structures=filter_structures,
-                                                       save_order=save_order,
-                                                       )
-    except (AtomTypeError, ILPSolutionError, ResonanceError, TypeError, ValueError):
-        pass
-    return result
-
-
 def calc_rmsd(x: Union[list, np.array],
               y: Union[list, np.array],
               ) -> float:
@@ -1595,7 +1735,7 @@ def safe_copy_file(source: str,
             break
 
 
-def dfs(mol: Molecule,
+def dfs(mol: 'Molecule',
         start: int,
         sort_result: bool = True,
         ) -> List[int]:
@@ -1648,7 +1788,7 @@ def sort_atoms_in_descending_label_order(mol: 'Molecule') -> None:
 def is_xyz_mol_match(mol: 'Molecule',
                      xyz: dict) -> bool:
     """
-    A helper function that matches rmgpy.molecule.molecule.Molecule object to an xyz,
+    A helper function that matches RMG's Molecule object to an xyz,
     used in _scissors to match xyz and the cut products.
     This function only checks the molecular formula.
 
@@ -1687,20 +1827,40 @@ def convert_to_hours(time_str:str) -> float:
     return h + m / 60 + s / 3600
 
 
-def calculate_arrhenius_rate_coefficient(A: float, n: float, Ea: float, T: float, Ea_units: str = 'kJ/mol') -> float:
+def calculate_arrhenius_rate_coefficient(A: Union[int, float, Sequence[float], np.ndarray],
+                                         n: Union[int, float, Sequence[float], np.ndarray],
+                                         Ea: Union[int, float, Sequence[float], np.ndarray],
+                                         T: Union[int, float, Sequence[float], np.ndarray],
+                                         Ea_units: str = 'kJ/mol',
+                                         ) -> np.ndarray:
     """
-    Calculate the Arrhenius rate coefficient.
+    Calculate the Arrhenius rate coefficient k(T) = A * T^n * exp(-Ea/(R T)).
+
+    Supports scalar or array inputs for A, n, Ea, and T (returns a numpy array).
+    rate is returned in the same units as A.
 
     Args:
-        A (float): Pre-exponential factor in cm^3, mol, s units.
-        n (float): Temperature exponent.
-        Ea (float): Activation energy in J/mol.
-        T (float): Temperature in Kelvin.
-        Ea_units (str): Units of the rate coefficient.
+        A: Pre-exponential factor (float or array-like).
+        n: Temperature exponent (float or array-like).
+        Ea: Activation energy (float or array-like).
+        T: Temperature in K (float or array-like). Must be > 0.
+        Ea_units: Units of Ea; must be a key in EA_UNIT_CONVERSION.
 
     Returns:
-        float: The rate coefficient at the specified temperature.
+        np.ndarray: k(T) with same shape as the broadcast result of A, n, Ea, T.
     """
+    if not isinstance(n, (list, tuple, np.ndarray)) or len(n) == 1:
+        if isinstance(A, (list, tuple, np.ndarray)) and len(A) == 2:
+            A = A[0]
+        if isinstance(Ea, (list, tuple, np.ndarray)) and len(Ea) == 2:
+            Ea = Ea[0]
     if Ea_units not in EA_UNIT_CONVERSION:
-        raise ValueError(f"Unsupported Ea units: {Ea_units}")
-    return A * (T ** n) * math.exp(-1 * (Ea * EA_UNIT_CONVERSION[Ea_units]) / (R * T))
+        raise ValueError(f"Unsupported Ea units: {Ea_units!r}. Must be within: {EA_UNIT_CONVERSION}.")
+    A_arr  = np.asarray(A, dtype=float)
+    n_arr  = np.asarray(n, dtype=float)
+    Ea_arr = np.asarray(Ea, dtype=float) * EA_UNIT_CONVERSION[Ea_units]
+    T_arr  = np.asarray(T, dtype=float)
+    if np.any(T_arr <= 0):
+        raise ValueError("All temperature values must be positive")
+    exp_arg = -Ea_arr / (R * T_arr)
+    return A_arr * np.power(T_arr, n_arr) * np.exp(exp_arg)

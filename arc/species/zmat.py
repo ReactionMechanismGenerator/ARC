@@ -30,16 +30,16 @@ import math
 import numpy as np
 import operator
 import re
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from copy import deepcopy
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
-from rmgpy.molecule.molecule import Molecule
-
-from arc.common import get_logger, is_angle_linear, key_by_val, determine_top_group_indices
-from arc.exceptions import ZMatError
+from arc.common import get_logger, is_angle_linear, key_by_val
+from arc.exceptions import ZMatError, VectorsError
+from arc.molecule.molecule import Molecule
 from arc.species.vectors import calculate_param, get_vector_length
 
 if TYPE_CHECKING:
-    from rmgpy.molecule.molecule import Atom
+    from arc.molecule.molecule import Atom
 
 
 logger = get_logger()
@@ -132,7 +132,6 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
             fragments=fragments,
         )
         skipped_atoms.extend(skipped)
-
     while len(skipped_atoms):
         num_of_skipped_atoms = len(skipped_atoms)
         indices_to_pop = list()
@@ -154,15 +153,14 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
         if num_of_skipped_atoms == len(skipped_atoms):
             # No atoms were popped from the skipped atoms list when iterating through all skipped atoms.
             raise ZMatError(f"Could not generate the zmat, skipped atoms could not be assigned, there's probably "
-                            f"a constraint lock. The partial zmat is:\n{zmat}\n\nskipped atoms are:\n{skipped_atoms}.")
-
+                            f"a constraint lock. The partial zmat is:\n{zmat}\n\nskipped atoms are:\n{skipped_atoms}.\n"
+                            f"constraints were:\n{constraints}")
     if consolidate and not constraints:
         try:
             zmat = consolidate_zmat(zmat, mol, consolidation_tols)
         except (KeyError, ZMatError) as e:
             logger.error(f'Could not consolidate zmat, got:\n{e.__class__}: {str(e)}')
             logger.error(f'Generating zmat without consolidation.')
-
     zmat['symbols'] = tuple(zmat['symbols'])
     zmat['coords'] = tuple(zmat['coords'])
     return zmat
@@ -279,8 +277,7 @@ def determine_r_atoms(zmat: Dict[str, Union[dict, tuple]],
         elif len(one):
             r_atoms.append(one[0])
         if len(set(r_atoms)) != 2:
-            if not trivial_assignment:
-                raise ZMatError(f'Could not come up with two unique r_atoms from connectivity (r_atoms = {r_atoms}).')
+            trivial_assignment = True
     else:
         trivial_assignment = True
         r_atoms = list()
@@ -370,14 +367,16 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
             if atom in list(zmat['map'].values()):
                 zmat_index = key_by_val(zmat['map'], atom)
                 if atom != atom_index and zmat_index not in a_atoms and not is_dummy(zmat, zmat_index):
-                    # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
-                    # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-                    #
-                    #                     D (atom_index, r_atoms[0])
-                    #                    /
-                    #    E -- A -- B -- C  (r_atoms[1])
-                    #   /
-                    #  F          (B is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                    r"""
+                    Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
+                    dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+                    
+                                        D (atom_index, r_atoms[0])
+                                       /
+                       E -- A -- B -- C  (r_atoms[1])
+                      /
+                     F          (B is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                    """
                     i = 0
                     atom_b, atom_c = atom, zmat['map'][r_atoms[1]]
                     while i < len(list(connectivity.keys())):
@@ -389,14 +388,7 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                             # Atom B might be in a linear chain, determine the A -- B -- C angle.
                             b_neighbors = connectivity[atom_b]
                             atom_a = b_neighbors[0] if b_neighbors[0] != atom_c else b_neighbors[1]
-                            angle = calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                            if is_angle_linear(angle, tolerance=TOL_180):
-                                # A -- B -- C is linear, change indices and test angle E -- A -- B instead.
-                                atom_c = atom_b
-                                atom_b = atom_a
-                            elif key_by_val(zmat['map'], atom_b) not in a_atoms:
-                                # A -- B -- C is not linear, use atom B.
-                                zmat_index = key_by_val(zmat['map'], atom_b)
+                            zmat_index = key_by_val(zmat['map'], atom_b)
                         elif num_of_neighbors > 2:
                             # Atom B does not necessarily lead to a linear A -- B -- C chain, no need to intervene.
                             zmat_index = key_by_val(zmat['map'], atom_b)
@@ -405,22 +397,23 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     a_atoms.append(zmat_index)
                     break
         if len(set(a_atoms)) != 3:
-            if not trivial_assignment:
-                raise ZMatError(f'Could not come up with three unique a_atoms from connectivity (a_atoms = {a_atoms}).')
+            trivial_assignment = True
     else:
         trivial_assignment = True
         a_atoms = list()
     if trivial_assignment and isinstance(a_atoms, list) and len(a_atoms) != 3:
         a_atoms = [atom for atom in r_atoms]
         for i in reversed(range(n)):
-            # Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
-            # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-            #
-            #                     D (atom_index, r_atoms[0])
-            #                    /
-            #    E -- A -- B -- C  (r_atoms[1])
-            #   /
-            #  F          (B is the atom considered here)
+            r"""
+            Check whether this atom (B) is part of a linear chain. If it is, try to correctly determine
+            dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+            
+                                D (atom_index, r_atoms[0])
+                               /
+               E -- A -- B -- C  (r_atoms[1])
+              /
+             F          (B is the atom considered here)
+            """
             zmat_index = i
             if i not in a_atoms and i in list(zmat['map'].keys()) and not is_dummy(zmat, i):
                 zmat_index, j = i, n - 1
@@ -430,15 +423,9 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
                     if j != i and atom_a not in [atom_b, atom_c] \
                             and (j in list(zmat['map'].keys()) and not is_dummy(zmat, j)
                                  or j not in list(zmat['map'].keys())):
-                        angle = calculate_param(coords=coords, atoms=[atom_a, atom_b, atom_c])
-                        if is_angle_linear(angle, tolerance=TOL_180):
-                            # A -- B -- C is linear, change indices and test angle E -- A -- B.
-                            atom_b = atom_a
-                        elif zmat_index not in a_atoms:
-                            # A -- B -- C is not linear, use atom B.
-                            zmat_index = key_by_val(zmat['map'], atom_b)
-                            a_atoms.append(zmat_index)
-                            break
+                        zmat_index = key_by_val(zmat['map'], atom_b)
+                        a_atoms.append(zmat_index)
+                        break
                     j -= 1  # Don't loop forever.
             if len(a_atoms) == 3:
                 break
@@ -447,6 +434,12 @@ def determine_a_atoms(zmat: Dict[str, Union[dict, tuple]],
     if a_atoms is not None and any([a_atom not in list(zmat['map'].keys()) for a_atom in a_atoms[1:]]):
         raise ZMatError(f'The reference A atom in {a_atoms} for the index atom {atom_index} has not been '
                         f'added to the zmat yet. Added atoms are (zmat index: xyz index): {zmat["map"]}.')
+    if a_atoms is not None and len(set(a_atoms)) != 3:
+        # fallback to adding an atom that is not in a_atoms and not in the zmat already
+        for i in reversed(range(len(coords))):
+            if i not in a_atoms and i in list(zmat['map'].keys()) and not is_dummy(zmat, i):
+                a_atoms.append(i)
+                break
     if a_atoms is not None and len(set(a_atoms)) != 3:
         raise ZMatError(f'Could not come up with three unique a_atoms (a_atoms = {a_atoms}).')
     return a_atoms
@@ -561,7 +554,10 @@ def determine_d_atoms_without_connectivity(zmat: dict,
     d_atoms = [atom for atom in a_atoms]
     for i in reversed(range(n)):
         if i not in d_atoms and i in list(zmat['map'].keys()) and (i >= len(zmat['symbols']) or not is_dummy(zmat, i)):
-            angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+            try:
+                angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+            except VectorsError:
+                continue
             if not is_angle_linear(angle, tolerance=TOL_180):
                 d_atoms.append(i)
                 break
@@ -569,7 +565,10 @@ def determine_d_atoms_without_connectivity(zmat: dict,
         # Try again and consider dummies.
         for i in reversed(range(n)):
             if i not in d_atoms and i in list(zmat['map'].keys()):
-                angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                try:
+                    angle = calculate_param(coords=coords, atoms=[zmat['map'][z_index] for z_index in d_atoms[1:] + [i]])
+                except VectorsError:
+                    continue
                 if not is_angle_linear(angle, tolerance=TOL_180):
                     d_atoms.append(i)
                     break
@@ -605,21 +604,31 @@ def determine_d_atoms_from_connectivity(zmat: dict,
         list: The d_atoms.
     """
     d_atoms = [atom for atom in a_atoms]
-    for atom in connectivity[zmat['map'][d_atoms[-1]]] + connectivity[zmat['map'][d_atoms[-2]]] \
-            + connectivity[atom_index]:
+    # We need two *integer* z-matrix indices to drive the neighbor search.
+    # If for some reason one of them is a dummy key ("X..."), skip the connectivity‐based logic.
+    int_refs = [i for i in d_atoms if isinstance(i, int)]
+    if len(int_refs) < 2:
+        return d_atoms
+    # pick the last two integer refs
+    ref_last, ref_penult = int_refs[-1], int_refs[-2]
+    for atom in (connectivity[zmat['map'][ref_last]] +
+                 connectivity[zmat['map'][ref_penult]] +
+                 connectivity[atom_index]):
         if atom != atom_index and atom in list(zmat['map'].values()) \
                 and (not is_dummy(zmat, key_by_val(zmat['map'], atom)) or (not dummy and allow_a_to_be_dummy)):
             # Atom A is allowed to be a dummy atom only if the atom represented by n is not.
             zmat_index = None
             if atom not in list([zmat['map'][d_atom] for d_atom in d_atoms[1:]]):
-                # Check whether this atom (A) is part of a linear chain. If it is, try to correctly determine
-                # dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
-                #
-                #             X       D (atom_index)
-                #              \     /
-                #    E -- A -- B -- C  (r_atoms[1])
-                #   /
-                #  F     (A is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                r"""
+                Check whether this atom (A) is part of a linear chain. If it is, try to correctly determine
+                dihedrals in this molecule w/o this atom, otherwise it's meaningless, and the zmat looses info.
+                
+                            X       D (atom_index)
+                             \     /
+                   E -- A -- B -- C  (r_atoms[1])
+                  /
+                 F     (A is the atom considered here, corresponding to 'atom' / 'zmat_index')
+                """
                 i = 0
                 atom_a, atom_b, atom_c = atom, zmat['map'][d_atoms[2]], zmat['map'][d_atoms[1]]
                 while i < len(list(connectivity.keys())):
@@ -723,13 +732,18 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
           - The xyz coordinates updated with dummy atoms.
           - A 0- or 1-length list with the skipped atom index.
     """
+    num_initial_atoms = len(xyz['symbols'])
     coords = xyz['coords']
     skipped_atoms = list()
     specific_last_d_atom = None
     r_constraint, r_constraint_type = check_atom_r_constraints(atom_index, constraints)
     a_constraint, a_constraint_type = check_atom_a_constraints(atom_index, constraints)
     d_constraint, d_constraint_type = check_atom_d_constraints(atom_index, constraints)
-    if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1:
+    if sum([constraint is not None for constraint in [r_constraint, a_constraint, d_constraint]]) > 1 \
+            and not (r_constraint is not None and a_constraint is not None
+                and r_constraint == tuple(a_constraint[:2])) \
+            and not (a_constraint is not None and d_constraint is not None
+                and a_constraint == tuple(d_constraint[:3])):
         raise ZMatError(f'A single atom cannot be constrained by more than one constraint type, got:\n'
                         f'R {r_constraint_type}: {r_constraint}\n'
                         f'A {a_constraint_type}: {a_constraint}\n'
@@ -743,7 +757,7 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
 
         # If an '_atom' constraint was specified, only consider this atom if n is the last atom to consider.
         if (r_constraint_type == 'R_atom' or a_constraint_type == 'A_atom' or d_constraint_type == 'D_atom') \
-                and n != len([symbol for symbol in xyz['symbols'] if 'X' not in symbol]) - 1:
+                and n != num_initial_atoms - 1:
             logger.debug(f'Skipping atom index {atom_index} when creating a zmat due to a specified _atom constraint.')
             skipped_atoms.append(atom_index)
             return zmat, xyz, skipped_atoms
@@ -778,7 +792,6 @@ def _add_nth_atom_to_zmat(zmat: Dict[str, Union[dict, tuple]],
             trivial_assignment=any('_atom' in constraint_key for constraint_key in constraints.keys()),
             fragments=fragments,
         )
-
         # Calculate the angle, add a dummy atom if needed.
         added_dummy = False
         if a_atoms is not None and all([not re.match(r'X\d', str(zmat['map'][atom])) for atom in a_atoms[1:]]):
@@ -844,6 +857,8 @@ def update_zmat_with_new_atom(zmat: dict,
         dict: The updated zmat.
     """
     zmat['symbols'].append(xyz['symbols'][atom_index])
+    if atom_index in zmat['map'].values():
+        raise ZMatError(f'Cannot assign atom {atom_index} to key {n}, it is already in the zmat map: {zmat["map"]}')
     zmat['map'][n] = atom_index
     if r_atoms is None:
         r_str = None
@@ -1065,18 +1080,20 @@ def _add_nth_atom_to_coords(zmat: dict,
         b_index = [indices for indices in get_atom_indices_from_zmat_parameter(r_key) if indices[0] == i][0][1]
         b_z = coords[b_index][2]
         c_y = bc_length * math.sin(alpha)
-        # We differentiate between two cases for c_z:
-        # Either atom A is at the origin (case 1), or atom B is at the origin (case 2).
-        # One of them has to be at the origin (0, 0, 0), since we're adding the 3rd atom (so either A or B were 1st).
-        #
-        #  y
-        #  ^                    C                         C
-        #  |           (1)       \        or     (2)     /
-        #  L__ > z           A -- B                    B -- A
-        #
-        # In case 1, we need to deduct len(B-C) from the z coordinate of atom B,
-        # but in case 2 we need to take the positive value of len(B-C).
-        # The above is also true if alpha(A-B-C) is > 90 degrees.
+        r"""
+        We differentiate between two cases for c_z:
+        Either atom A is at the origin (case 1), or atom B is at the origin (case 2).
+        One of them has to be at the origin (0, 0, 0), since we're adding the 3rd atom (so either A or B were 1st).
+        
+         y
+         ^                    C                         C
+         |           (1)       \        or     (2)     /
+         L__ > z           A -- B                    B -- A
+        
+        In case 1, we need to deduct len(B-C) from the z coordinate of atom B,
+        but in case 2 we need to take the positive value of len(B-C).
+        The above is also true if alpha(A-B-C) is > 90 degrees.
+        """
         c_z = b_z - bc_length * math.cos(alpha) if b_z else bc_length * math.cos(alpha)
         coords.append((0.0, c_y, c_z))
     elif i not in coords_to_skip:
@@ -1377,181 +1394,265 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
     atom_order = list()
     if mol is not None:
         for fragment in fragments:
-            atom_order.extend(get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict))
+            sequence = get_atom_order_from_mol(mol=mol, fragment=fragment, constraints_dict=constraints_dict, xyz=xyz)
+            for i in sequence:
+                if i not in atom_order:
+                    atom_order.append(i)
     elif xyz is not None:
         for fragment in fragments:
-            atom_order.extend(get_atom_order_from_xyz(xyz, fragment=fragment))
+            sequence = get_atom_order_from_xyz(xyz, fragment=fragment)
+            for i in sequence:
+                if i not in atom_order:
+                    atom_order.append(i)
+    return atom_order
+
+
+def _accumulated_atom_order(fragments: List[List[int]],
+                            order_fn: Callable[[List[int]], List[int]]
+                            ) -> List[int]:
+    """
+    Apply a cumulative offset to each fragment’s local atom‐order.
+
+    fragments: list of fragments (each is a list of atom‐indices)
+    order_fn:  callable that takes one fragment and returns its local ordering
+    """
+    atom_order: List[int] = list()
+    offset = 0
+    for frag in fragments:
+        local = order_fn(frag)
+        atom_order.extend(i + offset for i in local)
+        offset += len(frag)
     return atom_order
 
 
 def get_atom_order_from_mol(mol: Molecule,
                             fragment: List[int] = None,
                             constraints_dict: Optional[Dict[str, List[tuple]]] = None,
+                            xyz: Optional[dict] = None,
                             ) -> List[int]:
     """
-    Get the order in which atoms should be added to the zmat from the 2D graph representation of the molecule.
+    Determine Z-matrix atom order based on molecular connectivity and an optional single constraint.
+
+    Uses a BFS on the heavy-atom graph to establish a base ordering, then partitions
+    unconstrained atoms from constrained (moving) atoms/groups so that unconstrained
+    heavies come first, then unconstrained hydrogens, then constrained anchors/move atoms
+    (or their entire groups).
 
     Args:
-        mol (Molecule): The Molecule object.
-        fragment (List[int], optional): Entries are 0-indexed atom indices to consider in the molecule.
-                                        Only atoms within the fragment are considered.
-        constraints_dict (dict, optional): A dictionary of atom constraints.
-                                           The function will try to find an atom order in which all constrained atoms
-                                           are after the atoms they are constraint to.
+        mol (Molecule): The Molecule object containing ``atoms`` and ``edges``.
+        fragment (List[int], optional): Optional list of 0-based atom indices to include; defaults to all atoms.
+        constraints_dict: Optional dict with a single constraint type:
+            'R_atom': [(move_idx, anchor_idx)]
+            'R_group': [(move_idx, anchor_idx)]
+            'A_atom': [(move_idx, ref1, ref2)]
+            'A_group': [(move_idx, ref1, ref2)]
+            'D_atom': [(move_idx, ref1, ref2, ref3)]
+            'D_group': [(move_idx, ref1, ref2, ref3)]
+            'D_groups': [(pivot2, pivot3, ref?, ref?)]
+        xyz (dict, optional): Optional 3D coordinates dict, used for checking linear motifs to avoid starting with them.
 
     Returns:
-        List[int]: The atom order, 0-indexed.
+        A list of atom indices in Z-matrix order, where any unconstrained
+        heavy atoms come first, then unconstrained hydrogens, then the
+        constrained anchor(s) and moving atom(s) or their groups, so that
+        modifying the specified internal coordinate translates/rotates only
+        the intended atoms.
     """
-    fragment = fragment or list(range(len(mol.atoms)))
-    atoms_to_explore, constraints, constraint_atoms, unsuccessful, top_d = list(), list(), list(), list(), list()
-    constraints_dict = constraints_dict or dict()
-    number_of_heavy_atoms = len([atom for atom in mol.atoms if atom.is_non_hydrogen()])
-
-    for constraint_type, constraint_list in constraints_dict.items():
-        constraints.extend(constraint_list)  # A list of all constraint tuples.
-        for constraint in constraint_list:
-            # A list of the atoms being constraint to other atoms.
-            constraint_atoms.append(constraint[0])  # Only the first atom in the constraint tuple is really constrained.
-        if constraint_type == 'D_group':
-            for constraint_indices in constraint_list:
-                if len(top_d):
-                    raise ZMatError(f'zmats can only handle one D_group constraint at a time, got:\n{constraints_dict}')
-                # Determine the "top" of the *relevant branch* of this torsion
-                # since the first atom (number 0) is the constrained one being changed,
-                # this top is defined from the second atom in the torsion (number 1) to it.
-                top_d = determine_top_group_indices(mol=mol,
-                                                    atom1=mol.atoms[constraint_indices[1]],
-                                                    atom2=mol.atoms[constraint_indices[0]],
-                                                    index=0)[0]
-
-    for i in range(len(mol.atoms)):
-        # Iterate through the atoms until a successful atom_order is reached.
-        atom_order, start = list(), None
-        # Try determining a starting point as a heavy atom connected to no more than one heavy atom neighbor.
-        for atom1 in mol.atoms:
-            # Find a tail, e.g.: CH3-C-...
-            atom1_index = mol.atoms.index(atom1)
-            if atom1.is_non_hydrogen() \
-                    and sum([atom2.is_non_hydrogen() for atom2 in list(atom1.edges.keys())]) <= 1 \
-                    and atom1_index not in constraint_atoms \
-                    and atom1_index not in unsuccessful \
-                    and atom1_index not in top_d \
-                    and atom1_index in fragment:
-                start = atom1_index
-                break
-        else:
-            # If a tail could not be found (e.g., cyclohexane), just start from the first non-constrained heavy atom.
-            for atom1 in mol.atoms:
-                atom1_index = mol.atoms.index(atom1)
-                if atom1.is_non_hydrogen() \
-                        and mol.atoms.index(atom1) not in constraint_atoms \
-                        and atom1_index not in unsuccessful \
-                        and atom1_index not in top_d \
-                        and atom1_index in fragment:
-                    start = atom1_index
-                    break
-            else:
-                # Try hydrogens (an atom might be constraint to H, in which case H should come before that atom).
-                for atom1 in mol.atoms:
-                    atom1_index = mol.atoms.index(atom1)
-                    if atom1.is_hydrogen() \
-                            and atom1_index not in constraint_atoms \
-                            and atom1_index not in unsuccessful \
-                            and atom1_index not in top_d \
-                            and atom1_index in fragment:
-                        start = atom1_index
-                        break
-        if start is None:
-            if i == len(mol.atoms) - 1:
-                raise ZMatError('Could not determine a starting atom for the zmat')
-            continue
-        atoms_to_explore = [start]
-
-        if number_of_heavy_atoms == 2:
-            # To have meaningful dihedrals for H's, add one H from each heavy atom before adding the heavy atoms.
-            heavy_atoms = [atom for atom in mol.atoms if atom.is_non_hydrogen()]
-            hydrogens_0 = [atom for atom in heavy_atoms[0].edges.keys() if atom.is_hydrogen()]
-            hydrogens_1 = [atom for atom in heavy_atoms[1].edges.keys() if atom.is_hydrogen()]
-            if len(hydrogens_0) and len(hydrogens_1):
-                if not constraint_atoms:
-                    hydrogen_0, hydrogen_1 = hydrogens_0[0], hydrogens_1[0]
-                    for atom_index in [mol.atoms.index(heavy_atoms[0]), mol.atoms.index(heavy_atoms[1]),
-                                       mol.atoms.index(hydrogen_0), mol.atoms.index(hydrogen_1)]:
-                        if atom_index in fragment:
-                            atom_order.append(atom_index)
-                else:
-                    for constraint in constraints:
-                        for atom_index in constraint[::-1]:
-                            if atom_index in fragment and atom_index not in atom_order:
-                                atom_order.append(atom_index)
-                    for atom1 in mol.atoms:
-                        atom1_index = mol.atoms.index(atom1)
-                        if atom1_index not in atom_order and atom1_index in fragment:
-                            atom_order.append(atom1_index)
-                atoms_to_explore = list()
-
-        unexplored = list()  # Atoms purposely not added to atom_order due to a D_group constraint.
-        while len(atoms_to_explore):
-            # Add all heavy atoms, consider branching and rings.
-            atom1_index = atoms_to_explore[0]
-            atoms_to_explore.pop(0)
-            atom1 = mol.atoms[atom1_index]
-            if atom1_index not in top_d and atom1_index in fragment and atom1_index not in atom_order:
-                atom_order.append(atom1_index)
-            else:
-                unexplored.append(atom1_index)
-            for atom2 in list(atom1.edges.keys()):
-                index2 = mol.atoms.index(atom2)
-                if index2 not in atom_order and index2 not in atoms_to_explore and index2 not in unexplored \
-                        and atom2.is_non_hydrogen():
-                    atoms_to_explore.append(index2)
-
-        for atom1 in mol.atoms:
-            # Add all hydrogen atoms.
-            if atom1.is_hydrogen():
-                index = mol.atoms.index(atom1)
-                if index not in atom_order and index not in top_d and index in fragment:
-                    atom_order.append(index)
-
-        # Now add top_d.
-        for top_d_atom in top_d:
-            if top_d_atom not in atom_order and top_d_atom in fragment:
-                atom_order.append(top_d_atom)
-
-        if len(atom_order) != len(fragment):
-            continue
-
-        if not len(constraints):
-            break
-
-        success = True
-
-        for constraint in constraints:
-            # Loop through all constraint tuples, verify that the atoms are ordered in accordance with them.
-            if any([c in fragment for c in constraint]):
-                # Consider this constraint.
-                constraint_atom_order = [atom_order.index(constraint_atom) for constraint_atom in constraint
-                                         if constraint_atom in fragment]
-                diff = [constraint_atom_order[j+1] - constraint_atom_order[j]
-                        for j in range(len(constraint_atom_order) - 1)]
-                if any(entry > 0 for entry in diff):
-                    # Diff should only have negative entries.
-                    unsuccessful.append(start)
-                    success = False
-
-        if success:
-            # The atom order list answers all constraints criteria.
-            break
-
+    # 1) Normalize inputs
+    fragment = set(fragment or range(len(mol.atoms)))
+    constraints = constraints_dict or {}
+    # only handle first constraint if multiple present
+    if not constraints:
+        active = None
     else:
-        # The outer for loop exhausted all possibilities and was unsuccessful.
-        raise ZMatError(f'Could not derive an atom order from connectivity that answers all '
-                        f'constraint criteria:\n{constraints_dict}')
+        key, tpl_list = next(iter(constraints.items()))
+        active = (key, tpl_list[0])
 
-    if len(set(atom_order)) < len(atom_order):
-        raise ZMatError(f'Could not determine a unique atom order!\n({atom_order})')
+    # 2) Identify constrained set
+    constrained_set = set()
+    if active:
+        key, tpl = active
+        # add basic indices
+        constrained_set.update(tpl)
+        # for group types, BFS collect additional move-group
+        if key in ('R_group', 'A_group', 'D_group'):
+            root, anchor = tpl[0], tpl[1]
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == anchor):
+                        seen.add(j)
+                        queue.append(j)
+            constrained_set |= seen
+        elif key == 'D_groups':
+            # tpl has 4 indices: (move?, pivot2, pivot3, ref?)
+            # BFS from pivot2 and pivot3
+            for root in tpl[:2]:
+                seen = {root}
+                queue = [root]
+                while queue:
+                    i = queue.pop(0)
+                    for nbr in mol.atoms[i].edges:
+                        j = mol.atoms.index(nbr)
+                        if j in fragment and j not in seen:
+                            seen.add(j)
+                            queue.append(j)
+                constrained_set |= seen
 
+    # 3) Base BFS ordering on heavy-atom graph
+    # find start: a heavy with <=1 heavy neighbor not in constrained_set if possible
+    # Avoid atoms that are A in a linear A–B–C motif
+
+    def find_start(avoid_linear: bool = True) -> Optional[int]:
+        """Find a suitable start atom in the fragment."""
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if (
+                i in fragment and
+                not atom.is_hydrogen() and
+                i not in constrained_set and
+                (not avoid_linear or not is_atom_in_linear_angle(i=i, xyz=xyz, mol=mol)) and
+                sum(nb.is_non_hydrogen() for nb in atom.edges) <= 1
+            ):
+                return i
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if (
+                i in fragment and
+                not atom.is_hydrogen() and
+                i not in constrained_set and
+                (not avoid_linear or not is_atom_in_linear_angle(i=i, xyz=xyz, mol=mol))
+            ):
+                return i
+        for atom in mol.atoms:
+            i = mol.atoms.index(atom)
+            if i in fragment and not atom.is_hydrogen():
+                return i
+        return next(iter(fragment))
+
+    # Attempt to find a non-linear start; fall back if needed
+    start = find_start(avoid_linear=True)
+
+    visited = set()
+    base_heavies = list()
+    queue = [start]
+    while queue:
+        i = queue.pop(0)
+        if i in visited or i not in fragment:
+            continue
+        visited.add(i)
+        if not mol.atoms[i].is_hydrogen():
+            base_heavies.append(i)
+            # enqueue heavy neighbors
+            for nbr in mol.atoms[i].edges:
+                j = mol.atoms.index(nbr)
+                if j not in visited and not mol.atoms[j].is_hydrogen() and j in fragment:
+                    queue.append(j)
+    # 4) Collect hydrogens in fragment
+    base_hydrogens = [i for i in range(len(mol.atoms))
+                      if i in fragment and mol.atoms[i].is_hydrogen()]
+
+    # 5) Partition: unconstrained heavy atoms and hydrogens
+    heavy_uncon = [i for i in base_heavies if i not in constrained_set]
+    h_uncon = [i for i in base_hydrogens if i not in constrained_set]
+
+    # 6) Build tail ordering for the active constraint
+    tail = []
+    if active:
+        key, tpl = active
+        if key == 'R_atom':
+            # anchor then moving atom
+            tail = [tpl[1], tpl[0]]
+        elif key == 'A_atom':
+            # reverse tuple order: ref2, ref1, move
+            tail = [tpl[2], tpl[1], tpl[0]]
+        elif key == 'D_atom':
+            # reverse 4-tuple: ref3, ref2, ref1, move
+            tail = [tpl[3], tpl[2], tpl[1], tpl[0]]
+        elif key == 'R_group':
+            # BFS group from move atom excluding anchor
+            root, anchor = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == anchor):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [anchor, root] + [x for x in group if x != root]
+        elif key == 'A_group':
+            root, ref1, ref2 = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j in (ref1, ref2)):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [ref2, ref1, root] + [x for x in group if x != root]
+        elif key == 'D_group':
+            root, ref1, ref2, ref3 = tpl
+            seen = {root}
+            queue = [root]
+            while queue:
+                i = queue.pop(0)
+                for nbr in mol.atoms[i].edges:
+                    j = mol.atoms.index(nbr)
+                    if j in fragment and j not in seen and not (i == root and j == ref1):
+                        seen.add(j)
+                        queue.append(j)
+            group = [root] + [x for x in seen if x != root]
+            tail = [ref3, ref2, ref1, root] + [x for x in group if x != root]
+        elif key == 'D_groups':
+            # tpl: (move?, pivot2, pivot3, ref?)
+            pivot2, pivot3, ref1, ref2 = tpl[:4]
+            # BFS from pivot2 and pivot3
+            seen_all = set()
+            for root in (pivot2, pivot3):
+                seen = {root}
+                queue = [root]
+                while queue:
+                    i = queue.pop(0)
+                    for nbr in mol.atoms[i].edges:
+                        j = mol.atoms.index(nbr)
+                        if j in fragment and j not in seen:
+                            seen.add(j)
+                            queue.append(j)
+                seen_all |= seen
+            tail = [ref2, ref1, pivot3, pivot2] + [x for x in seen_all if x not in (pivot2, pivot3)]
+    # 7) Final atom_order: unconstrained heavies, unconstrained H's, then tail
+    atom_order = heavy_uncon + h_uncon + tail
     return atom_order
+
+
+def is_atom_in_linear_angle(i: int, xyz: Optional[dict], mol: Molecule, tol: float = 0.9) -> bool:
+    """
+    Check if atom i is involved in a linear A–B–C motif (i.e., angle ~180),
+    whether as A, B, or C.
+    """
+    if not xyz:
+        return False
+    for b in range(len(mol.atoms)):
+        b_neighbors = [mol.atoms.index(atom) for atom in mol.atoms[b].edges]
+        for a in b_neighbors:
+            for c in b_neighbors:
+                if a >= c:
+                    continue  # avoid redundant pairs and self-pairs
+                if i not in (a, b, c):
+                    continue
+                angle = calculate_param(coords=xyz['coords'], atoms=[a, b, c])
+                if is_angle_linear(angle, tolerance=tol):
+                    return True
+    return False
 
 
 def get_atom_order_from_xyz(xyz: Dict[str, tuple],
@@ -1985,13 +2086,12 @@ def up_param(param: str,
     Increase the indices represented by a zmat parameter.
 
     Args:
-        param (str): The zmat parameter.
-        increment (int, optional): The increment to increase by.
-        increment_list (list, optional): Entries are individual indices to use when incrementing the ``param`` indices.
+        param (str): The zmat parameter, e.g., 'D_4_2_1_0'.
+        increment (int, optional): Uniform value to add to each index.
+        increment_list (list, optional): Individual increments per index.
 
     Raises:
-        ZMatError: If neither ``increment`` nor ``increment_list`` were specified,
-                   or if the increase resulted in a negative number.
+        ZMatError: If no increment was provided or resulting index is negative.
 
     Returns: str
         The new parameter with increased indices.
@@ -1999,83 +2099,229 @@ def up_param(param: str,
     if increment is None and increment_list is None:
         raise ZMatError('Either increment or increment_list must be specified.')
     indices = get_atom_indices_from_zmat_parameter(param)[0]
-    if increment is not None:
-        new_indices = [0 if not index and increment < 0 else index + increment for index in indices]
-    else:
+    if increment_list:
         if len(increment_list) != len(indices):
-            raise ZMatError(f'The number of increments in {increment_list} ({len(increment_list)} is different than '
-                            f'the number of indices to increment {indices} ({len(indices)})')
-        new_indices = [index + inc for index, inc in zip(indices, increment_list)]
-    if any(index < 0 for index in new_indices):
-        raise ZMatError(f'Got a negative zmat index when bumping {param} by {increment}')
-    new_indices = [str(index) for index in new_indices]
-    new_param = '_'.join([param.split('_')[0]] + new_indices)
-    return new_param
+            raise ZMatError(f'Increment list length ({len(increment_list)}) does not match index count ({len(indices)})')
+        new_indices = [i + inc for i, inc in zip(indices, increment_list)]
+    else:
+        new_indices = [i + increment for i in indices]
+    if any(i < 0 for i in new_indices):
+        raise ZMatError(f'Negative index in param "{param}" after increment.')
+    tag = param.split('_')[0]
+    return '_'.join([tag] + [str(i) for i in new_indices])
 
 
-def remove_1st_atom(zmat: dict) -> dict:
+def remove_zmat_atom_0(zmat: dict) -> dict:
     """
-    Remove the first atom of a zmat.
-    Note: The first atom in 'symbols' with map key 0 is removed,
-    it is not necessarily the first atom in the corresponding xyz with map value 0.
+    Remove atom 0 from a Z-matrix complete structure, dropping all references to it
+    and renumbering the remaining atoms, parameters, and map accordingly.
+    """
+    if len(zmat['symbols']) <= 1:
+        return {'symbols': (), 'coords': (), 'vars': {}, 'map': {}}
+    if len(zmat['symbols']) == 2:
+        return {'symbols': (zmat['symbols'][1],), 'coords': ((None, None, None),), 'vars': {}, 'map': {0: 0}}
+    orig_map0 = zmat['map'][0]
+    dropped_idx = int(orig_map0[1:]) if isinstance(orig_map0, str) and orig_map0.startswith('X') else orig_map0
+    purged = purge_references_to_atom_0(zmat)
+    dropped = drop_symbol_and_coords_row_0(purged)
+    renumbered = renumber_params(dropped, delta=-1)
+    rebuilt = {**renumbered, 'map': rebuild_map(renumbered['map'], dropped_idx)}
+    return rebuilt
+
+
+def purge_references_to_atom_0(zmat: dict) -> dict:
+    """
+    Replace any Z-matrix parameter referencing atom 0 with valid alternatives.
+    Ensures only atoms with index < current are used as references (Z-matrix rule).
+    Leaves map untouched. Atom 0 is still present and must be removed later.
+    """
+    z0 = deepcopy(zmat)
+    xyz_coords, _ = zmat_to_coords(zmat=z0, keep_dummy=True)
+    new_vars, new_coords = dict(), list()
+
+    def safe_calc_param(atoms):
+        try:
+            return calculate_param(coords=xyz_coords, atoms=atoms)
+        except (ValueError, IndexError, VectorsError):
+            return None
+
+    all_param_names_used = set()
+
+    for i, row in enumerate(z0['coords']):
+        new_row = list()
+        for p in row:
+            if not isinstance(p, str):
+                new_row.append(p)
+                continue
+
+            all_param_names_used.add(p)
+
+            if '_0' not in p:
+                new_row.append(p)
+                continue
+
+            groups = get_atom_indices_from_zmat_parameter(p)
+            flat = [idx for group in groups for idx in group]
+
+            if 0 not in flat:
+                new_row.append(p)
+                continue
+
+            # Replace 0 with a valid reference
+            used = set(flat) - {0}
+            candidate = 1
+            while candidate in used or candidate >= i:
+                candidate += 1
+                if candidate >= i:
+                    p = None
+                    break
+            else:
+                updated = [candidate if x == 0 else x for x in flat]
+                updated[0] = i  # ensure proper first index
+                tag = p.split("_")[0]
+                new_p = "_".join([tag] + [str(idx) for idx in updated])
+
+                try:
+                    xyz_indices = [zmat['map'][j] for j in updated]
+                except KeyError:
+                    param_value = None
+                else:
+                    param_value = safe_calc_param(xyz_indices)
+
+                if param_value is not None:
+                    new_vars[new_p] = param_value
+                    p = new_p
+                else:
+                    p = None
+
+            new_row.append(p)
+
+        new_coords.append(tuple(new_row))
+
+    # Add original vars that are still used
+    for k, v in z0['vars'].items():
+        if k in all_param_names_used and k not in new_vars:
+            new_vars[k] = v
+
+    return {'symbols': z0['symbols'],
+            'coords': tuple(new_coords),
+            'vars': new_vars,
+            'map': z0['map']}
+
+
+def drop_symbol_and_coords_row_0(zmat: dict) -> dict:
+    """
+    Remove the 0th atom from the Z-matrix:
+    - Removes the first symbol and coordinate row
+    - Clears DOFs for the new atoms 0–2 (Z-matrix rules)
+    - Removes unused variables from `vars`
+    - Leaves map untouched (to be rebuilt later)
+    - Does NOT decrement atom indices; that’s handled later
+    """
+    z0 = deepcopy(zmat)
+
+    # Drop the first atom (index 0)
+    new_symbols = tuple(z0['symbols'][1:])
+    new_coords = list(z0['coords'][1:])
+
+    # Reset DOFs for atoms 0–2
+    if len(new_coords) >= 1:
+        new_coords[0] = (None, None, None)
+    if len(new_coords) >= 2:
+        new_coords[1] = (new_coords[1][0], None, None)
+    if len(new_coords) >= 3:
+        new_coords[2] = (new_coords[2][0], new_coords[2][1], None)
+
+    # Drop any vars no longer referenced
+    used_keys = {p for row in new_coords for p in row if isinstance(p, str)}
+    new_vars = {k: v for k, v in z0['vars'].items() if k in used_keys}
+
+    return {'symbols': new_symbols,
+            'coords': tuple(new_coords),
+            'vars': new_vars,
+            'map': z0['map'].copy()}  # leave untouched for rebuild_map()
+
+
+def renumber_params(zmat: dict, delta: int = -1) -> dict:
+    """
+    Renumber all atom indices in param names in both `coords` and `vars`.
+    Returns a self-consistent Z-matrix.
 
     Args:
-        zmat (dict): The zmat to process.
+        zmat (dict): The Z-matrix dict with 'coords' and 'vars'
+        delta (int): The value to shift all indices by (usually -1)
 
     Returns:
-        dict: The updated zmat.
+        dict: The updated Z-matrix with renamed param strings and values.
     """
-    zmat = remove_1st_atom_references(zmat=zmat)
-    new_symbols = tuple(zmat['symbols'][1:])
-    new_coords, removed_vars = list(), list()
-    for i, coords in enumerate(zmat['coords']):
-        if i == 0:
-            continue
-        removed_vars.extend([coord for j, coord in enumerate(coords) if coord is not None and j > i - 2])
-        new_coords.append((up_param(coords[0], increment=-1) if i >= 2 else None,
-                           up_param(coords[1], increment=-1) if i >= 3 else None,
-                           up_param(coords[2], increment=-1) if i >= 4 else None))
-    new_coords = tuple(new_coords)
-    new_vars = {up_param(key, increment=-1): val for key, val in zmat['vars'].items() if key not in removed_vars}
-    val_0 = map_index_to_int(zmat['map'][0])
-    keys_of_x_atoms = [key - 1 for key, val in zmat['map'].items() if isinstance(val, str) and 'X' in val]
-    new_map = {key - 1: map_index_to_int(val) - 1 if map_index_to_int(val) > val_0 else val for key, val in zmat['map'].items() if key != 0}
-    new_map = {key: val if key not in keys_of_x_atoms else f'X{val}' for key, val in new_map.items()}
-    return {'symbols': new_symbols, 'coords': new_coords, 'vars': new_vars, 'map': new_map}
+    pattern = re.compile(r'^([RAD]X?)_(\d+)(?:_(\d+))?(?:_(\d+))?(?:_(\d+))?')
+
+    # Param key mapping: old_key → new_key
+    key_map = {}
+
+    # 1. Rename all parameter strings in coords
+    new_coords = []
+    for row in zmat['coords']:
+        new_row = []
+        for p in row:
+            if not isinstance(p, str):
+                new_row.append(p)
+                continue
+            match = pattern.fullmatch(p)
+            if not match:
+                new_row.append(p)
+                continue
+            tag, *idxs = match.groups()
+            shifted = [str(max(int(i) + delta, 0)) for i in idxs if i is not None]
+            new_key = '_'.join([tag] + shifted)
+            key_map[p] = new_key
+            new_row.append(new_key)
+        new_coords.append(tuple(new_row))
+
+    # 2. Rename all keys in vars that were used in coords
+    new_vars = {}
+    for old_key, val in zmat['vars'].items():
+        new_key = key_map.get(old_key)
+        if new_key:
+            new_vars[new_key] = val
+
+    return {**zmat,
+            'coords': tuple(new_coords),
+            'vars': new_vars}
 
 
-def remove_1st_atom_references(zmat: dict) -> dict:
+def rebuild_map(old_map: Dict[int, Union[int, str]], dropped_idx: int) -> Dict[int, Union[int, str]]:
     """
-    Remove references for the 1st atom (index 0) in the zmat in all coords and respective vars
-    from the 5th atom (index 4) on. I.e., the 2nd, 3rd, and 4th atoms can include references to the 1st atom.
+    Rebuild the Z-matrix to XYZ index map after removing atom 0.
+
+    - Z-matrix indices (keys) are shifted down by 1 if > 0
+    - XYZ indices (values) are shifted down by 1 if > dropped_idx
+    - Dummy atoms ('Xn') are handled appropriately
 
     Args:
-        zmat (dict): The zmat to process.
+        old_map (dict): Original map from Z-matrix to XYZ indices (int or 'Xn')
+        dropped_idx (int): Cartesian index of the removed atom
 
     Returns:
-        dict: The updated zmat.
+        dict: New map with updated indices
     """
-    zmat = zmat.copy()
-    xyz_coords = None
-    new_zmat_coords, new_vals = list(), list()
-    for i, coords in enumerate(zmat['coords']):
-        new_coords = list(coords)
-        if i >= 4:
-            for j in range(3):
-                if '_0' in new_coords[j]:
-                    if xyz_coords is None:
-                        xyz_coords = zmat_to_coords(zmat=zmat, keep_dummy=True)[0]
-                    indices = get_atom_indices_from_zmat_parameter(new_coords[j])[0]
-                    new_index = 1
-                    while new_index in indices:
-                        new_index += 1
-                    new_indices = [index if index else new_index for index in indices]
-                    new_val = calculate_param(coords=xyz_coords, atoms=new_indices)
-                    new_coords[j] = '_'.join([new_coords[j].split('_')[0]] + [str(index) for index in new_indices])
-                    zmat['vars'][new_coords[j]] = new_val
-        new_zmat_coords.append(tuple(new_coords))
-    zmat['coords'] = tuple(new_zmat_coords)
-    return zmat
+    new_map = {}
+    for old_z_i, old_xyz_i in old_map.items():
+        if old_z_i == 0:
+            continue  # drop atom 0
+
+        new_z_i = old_z_i - 1
+
+        if isinstance(old_xyz_i, str) and old_xyz_i.startswith('X'):
+            x_idx = int(old_xyz_i[1:])
+            new_x_idx = x_idx - 1 if x_idx > dropped_idx else x_idx
+            new_xyz_i = f'X{new_x_idx}'
+        else:
+            new_xyz_i = old_xyz_i - 1 if old_xyz_i > dropped_idx else old_xyz_i
+
+        new_map[new_z_i] = new_xyz_i
+
+    return new_map
 
 
 def map_index_to_int(index: Union[int, str]) -> int:

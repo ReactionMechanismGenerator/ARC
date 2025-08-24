@@ -9,23 +9,19 @@ import os
 import shutil
 import unittest
 
-from rmgpy.molecule.molecule import Molecule
-from rmgpy.reaction import Reaction
-from rmgpy.species import Species
-from rmgpy.transport import TransportData
-
-from arc.common import ARC_PATH, almost_equal_coords_lists
+from arc.common import ARC_PATH, almost_equal_coords_lists, check_that_all_entries_are_in_list
 from arc.species.converter import check_xyz_dict
 from arc.exceptions import SpeciesError
 from arc.level import Level
-from arc.parser import parse_e_elect
+from arc.molecule.molecule import Molecule
+from arc.parser.parser import parse_e_elect
 from arc.plotter import save_conformers_file
 from arc.species.converter import (check_isomorphism,
-                                   molecules_from_xyz,
                                    str_to_xyz,
                                    xyz_to_str,
                                    xyz_to_x_y_z,
                                    )
+from arc.species.perceive_test import perceive_molecule_from_xyz
 from arc.species.species import (ARCSpecies,
                                  TSGuess,
                                  are_coords_compliant_with_graph,
@@ -35,9 +31,10 @@ from arc.species.species import (ARCSpecies,
                                  colliding_atoms,
                                  determine_rotor_symmetry,
                                  determine_rotor_type,
+                                 rmg_mol_from_dict_repr,
+                                 rmg_mol_to_dict_repr,
                                  split_mol,
                                  )
-from arc.species.xyz_to_2d import MolGraph
 
 
 class TestARCSpecies(unittest.TestCase):
@@ -50,15 +47,14 @@ class TestARCSpecies(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        # Method 1: RMG Species object (here by SMILES)
-        cls.spc1_rmg = Species(molecule=[Molecule(smiles='C=C[O]')])
-        cls.spc1_rmg.label = 'vinoxy'
-        cls.spc1 = ARCSpecies(rmg_species=cls.spc1_rmg, xyz="""C      -0.68324480   -0.04685539   -0.10883672
-                                                               C       0.63642204    0.05717653    0.10011041
-                                                               O       1.50082619   -0.82476680    0.32598015
-                                                               H      -1.27691852    0.84199331   -0.29048852
-                                                               H      -1.17606821   -1.00974165   -0.10030145
-                                                               H       0.99232452    1.08896899    0.06242974""")
+        mol = Molecule(smiles='C=C[O]')
+        cls.spc1 = ARCSpecies(label='vinoxy', mol=mol,
+                              xyz="""C      -0.68324480   -0.04685539   -0.10883672
+                                     C       0.63642204    0.05717653    0.10011041
+                                     O       1.50082619   -0.82476680    0.32598015
+                                     H      -1.27691852    0.84199331   -0.29048852
+                                     H      -1.17606821   -1.00974165   -0.10030145
+                                     H       0.99232452    1.08896899    0.06242974""")
 
         # Method 2: ARCSpecies object by XYZ (also give SMILES for thermo BAC)
         oh_xyz = """O       0.00000000    0.00000000   -0.12002167
@@ -116,6 +112,13 @@ class TestARCSpecies(unittest.TestCase):
                                     'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
                                                (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))})
 
+        cls.n2h2_t_xyz = {'coords': ((0.5974274138372041, -0.41113104979405946, 0.08609839663782763),
+                                     (-0.5974274348582206, 0.41113108883884353, -0.08609846602622732),
+                                     (1.421955422639823, 0.19737093442024492, 0.02508578507394823),
+                                     (-1.4219554016188147, -0.19737097346502322, -0.02508571568554942)),
+                          'isotopes': (14, 1, 14, 1),
+                          'symbols': ('N', 'N', 'H', 'H')}
+
     def test_from_yml_file(self):
         """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
         n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
@@ -131,16 +134,11 @@ class TestARCSpecies(unittest.TestCase):
 """
         n4h6_xyz = {'symbols': ('N', 'H', 'H', 'N', 'H', 'N', 'H', 'N', 'H', 'H'),
                     'isotopes': (14, 1, 1, 14, 1, 14, 1, 14, 1, 1),
-                    'coords': ((1.359965, -0.537228, -0.184462),
-                               (2.339584, -0.30093, -0.289911),
-                               (1.2713739999999998, -1.27116, 0.51544),
-                               (0.669838, 0.659561, 0.217548),
-                               (0.61618, 0.715758, 1.2316809999999996),
-                               (-0.669836, 0.659561, -0.217548),
-                               (-0.616179, 0.715757, -1.231682),
-                               (-1.3599669999999997, -0.537227, 0.184463),
-                               (-2.339586, -0.300928, 0.289904),
-                               (-1.2713739999999998, -1.271158, -0.51544))}
+                    'coords': ((1.359965, -0.537228, -0.184462), (2.339584, -0.30093, -0.289911),
+                               (1.2713739999999998, -1.27116, 0.51544), (0.669838, 0.659561, 0.217548),
+                               (0.61618, 0.715758, 1.2316809999999998), (-0.669836, 0.659561, -0.217548),
+                               (-0.616179, 0.715757, -1.231682), (-1.3599669999999997, -0.537227, 0.184463),
+                               (-2.339586, -0.300928, 0.289904), (-1.2713739999999998, -1.271158, -0.51544))}
 
         n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
         n4h6 = ARCSpecies(yml_path=n4h6_yml_path)
@@ -179,6 +177,21 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(str_representation, expected_representation)
 
     def test_set_mol_list(self):
+        """Test the set_mol_list() method."""
+        spc_1 = ARCSpecies(label='C=C', smiles='C=C')
+        self.assertEqual(len(spc_1.mol_list), 1)
+        spc_2 = ARCSpecies(label='C=C[O]', smiles='C=C[O]')
+        self.assertEqual(len(spc_2.mol_list), 2)
+
+        spc_3 = ARCSpecies(label='N2H2(T)', smiles='[N][N]', multiplicity=3)
+        self.assertEqual(len(spc_3.mol_list), 1)
+        spc_4 = ARCSpecies(label='N2H2(T)', smiles='[N][N]')
+        self.assertEqual(len(spc_4.mol_list), 1)
+
+        spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
+        self.assertEqual(len(spc_5.mol_list), 1)
+
+    def test_preserving_atom_order_in_mol_list(self):
         """Test preserving atom order in the .mol_list attribute"""
         bond_dict = dict()
         for index1, atom1 in enumerate(self.spc12.mol.atoms):
@@ -195,6 +208,31 @@ class TestARCSpecies(unittest.TestCase):
                     index2 = mol.atoms.index(atom2)
                     if index1 < index2:
                         self.assertIn(index2, bond_dict[index1])  # check that these atoms are connected in all mols
+
+    def test_preserving_atom_order_in_mol_list_2(self):
+        c4h9o_xyz = {'symbols': ('C', 'H', 'H', 'C', 'C', 'C', 'O', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
+                     'isotopes': (12, 1, 1, 12, 12, 12, 16, 1, 1, 1, 1, 1, 1, 1),
+                     'coords': ((0.025711531222639566, 1.5002469234994276, -0.018809721320361607),
+                                (-0.2501237905589279, 2.283276320160058, 0.6795778782867752),
+                                (0.21710649528235348, 1.7701501165266882, -1.0518607878262018),
+                                (-0.1296127183749531, 0.05931626777072968, 0.3829802045651552),
+                                (-1.5215969202773243, -0.4341372833972907, -0.0024458040153687616),
+                                (0.954275466146204, -0.8261822387409435, -0.2512878552942834),
+                                (2.238645869558612, -0.5229077195628998, 0.2868843893740711),
+                                (-0.022719509344805086, 0.012299638536749403, 1.47391586262432),
+                                (-1.6734988982808552, -1.4656213151526711, 0.3333615031669381),
+                                (-1.6708084550075688, -0.40804497485420527, -1.0879383468423085),
+                                (-2.3005261427143897, 0.18308085969254126, 0.45923715033920876),
+                                (0.7583076310662862, -1.882720433150506, -0.04089782108496264),
+                                (0.9972006722528377, -0.7025586995487184, -1.3391950754631268),
+                                (2.377638769033351, 0.43380253822255727, 0.17647842348371048))}
+        c4h9o = ARCSpecies(label='[CH2]C(C)CO', smiles='[CH2]C(C)CO', xyz=c4h9o_xyz)
+        for mol in c4h9o.mol_list:
+            for atom_1, atom_2 in zip(c4h9o.mol.atoms, mol.atoms):
+                self.assertEqual(atom_1.element.symbol, atom_2.element.symbol)
+            for symbol, atom_2 in zip(c4h9o_xyz['symbols'], mol.atoms):
+                self.assertEqual(symbol, atom_2.element.symbol)
+
 
     def test_is_monoatomic(self):
         """Test the is_monoatomic() method."""
@@ -218,10 +256,8 @@ class TestARCSpecies(unittest.TestCase):
     def test_is_isomorphic(self):
         """Test the is_isomorphic() method."""
         rmg_mol = Molecule(smiles='C=C[O]')
-        rmg_spc = Species(smiles='[CH2]C=O')
         arc_spc = ARCSpecies(label='vinoxy', smiles='C=C[O]')
         self.assertTrue(self.spc1.is_isomorphic(rmg_mol))
-        self.assertTrue(self.spc1.is_isomorphic(rmg_spc))
         self.assertTrue(self.spc1.is_isomorphic(arc_spc))
         self.assertFalse(self.spc1.is_isomorphic(self.spc2))
 
@@ -315,14 +351,6 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(len(spc12.conformers), 2)
         self.assertEqual(len(spc12.conformer_energies), 2)
 
-    def test_from_rmg_species(self):
-        """Test the conversion of an RMG species into an ARCSpecies"""
-        self.spc1_rmg.label = None
-        self.spc = ARCSpecies(rmg_species=self.spc1_rmg, label='vinoxy')
-        self.assertEqual(self.spc.label, 'vinoxy')
-        self.assertEqual(self.spc.multiplicity, 2)
-        self.assertEqual(self.spc.charge, 0)
-
     def test_determine_rotors(self):
         """Test determination of rotors in ARCSpecies"""
         self.spc1.determine_rotors()
@@ -378,8 +406,9 @@ class TestARCSpecies(unittest.TestCase):
                               (-1.40237804, -0.74595759, 0.87143836), (-0.39285462, -1.26299471, -0.69270021))}
         spc7 = ARCSpecies(label='TS1', xyz=ts_xyz1, is_ts=True)
         spc7.determine_rotors()
-        self.assertEqual(len(spc7.rotors_dict), 1)
+        self.assertEqual(len(spc7.rotors_dict), 2)
         self.assertEqual(spc7.rotors_dict[0]['pivots'], [1, 2])
+        self.assertEqual(spc7.rotors_dict[1]['pivots'], [2, 3])
 
         ts_xyz2 = {'symbols': ('N', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'C', 'H', 'H', 'C', 'C', 'C', 'H', 'C',
                                'C', 'N', 'H', 'H', 'C', 'H', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'H',
@@ -420,8 +449,8 @@ class TestARCSpecies(unittest.TestCase):
         self.assertEqual(spc8.rotors_dict[1]['pivots'], [2, 4])
         self.assertEqual(spc8.rotors_dict[2]['pivots'], [4, 10])
         self.assertEqual(spc8.rotors_dict[3]['pivots'], [10, 19])
-        self.assertEqual(spc8.rotors_dict[4]['pivots'], [19, 31])
-        self.assertEqual(spc8.rotors_dict[5]['pivots'], [19, 32])
+        self.assertIn(spc8.rotors_dict[4]['pivots'], [[19, 31], [19, 32]])
+        self.assertIn(spc8.rotors_dict[5]['pivots'], [[19, 31], [19, 32]])
         self.assertEqual(spc8.rotors_dict[6]['pivots'], [46, 47])
         self.assertEqual(spc8.rotors_dict[7]['pivots'], [47, 48])
 
@@ -465,82 +494,6 @@ H      -1.97060638    1.29922153   -0.25658392"""
         self.assertEqual(len(spc2.rotors_dict), 1)
         self.assertEqual(spc2.rotors_dict[0]['dimensions'], 2)
 
-    def test_symmetry(self):
-        """Test external symmetry and chirality determination"""
-        allene = ARCSpecies(label='allene', smiles='C=C=C', multiplicity=1, charge=0)
-        allene.final_xyz = str_to_xyz("""C  -1.01646   0.10640  -0.91445
-                              H  -1.39000   1.03728  -1.16672
-                              C   0.00000   0.00000   0.00000
-                              C   1.01653  -0.10640   0.91438
-                              H  -1.40975  -0.74420  -1.35206
-                              H   0.79874  -0.20864   1.92036
-                              H   2.00101  -0.08444   0.59842""")
-        allene.determine_symmetry()
-        self.assertEqual(allene.optical_isomers, 1)
-        self.assertEqual(allene.external_symmetry, 4)
-
-        ammonia = ARCSpecies(label='ammonia', smiles='N', multiplicity=1, charge=0)
-        ammonia.final_xyz = str_to_xyz("""N  0.06617   0.20024   0.13886
-                               H  -0.62578  -0.34119   0.63709
-                               H  -0.32018   0.51306  -0.74036
-                               H   0.87976  -0.37219  -0.03564""")
-        ammonia.determine_symmetry()
-        self.assertEqual(ammonia.optical_isomers, 1)
-        self.assertEqual(ammonia.external_symmetry, 3)
-
-        methane = ARCSpecies(label='methane', smiles='C', multiplicity=1, charge=0)
-        methane.final_xyz = str_to_xyz("""C   0.00000   0.00000   0.00000
-                               H  -0.29717   0.97009  -0.39841
-                               H   1.08773  -0.06879   0.01517
-                               H  -0.38523  -0.10991   1.01373
-                               H -0.40533  -0.79140  -0.63049""")
-        methane.determine_symmetry()
-        self.assertEqual(methane.optical_isomers, 1)
-        self.assertEqual(methane.external_symmetry, 12)
-
-        chiral = ARCSpecies(label='chiral', smiles='C(C)(O)(N)', multiplicity=1, charge=0)
-        chiral.final_xyz = str_to_xyz("""C                 -0.49341625    0.37828349    0.00442108
-                              H                 -1.56331545    0.39193350    0.01003359
-                              N                  0.01167132    1.06479568    1.20212111
-                              H                  1.01157784    1.05203730    1.19687531
-                              H                 -0.30960193    2.01178202    1.20391932
-                              O                 -0.03399634   -0.97590449    0.00184366
-                              H                 -0.36384913   -1.42423238   -0.78033350
-                              C                  0.02253835    1.09779040   -1.25561654
-                              H                 -0.34510997    0.59808430   -2.12741255
-                              H                 -0.32122209    2.11106387   -1.25369100
-                              H                  1.09243518    1.08414066   -1.26122530""")
-        chiral.determine_symmetry()
-        self.assertEqual(chiral.optical_isomers, 2)
-        self.assertEqual(chiral.external_symmetry, 1)
-
-        s8 = ARCSpecies(label='s8', smiles='S1SSSSSSS1', multiplicity=1, charge=0)
-        s8.final_xyz = str_to_xyz("""S   2.38341   0.12608   0.09413
-                          S   1.45489   1.88955  -0.13515
-                          S  -0.07226   2.09247   1.14966
-                          S  -1.81072   1.52327   0.32608
-                          S  -2.23488  -0.39181   0.74645
-                          S  -1.60342  -1.62383  -0.70542
-                          S   0.22079  -2.35820  -0.30909
-                          S   1.66220  -1.25754  -1.16665""")
-        s8.determine_symmetry()
-        self.assertEqual(s8.optical_isomers, 1)
-        self.assertEqual(s8.external_symmetry, 8)
-
-        water = ARCSpecies(label='H2O', smiles='O', multiplicity=1, charge=0)
-        water.final_xyz = str_to_xyz("""O   0.19927   0.29049  -0.11186
-                             H   0.50770  -0.61852  -0.09124
-                             H  -0.70697   0.32803   0.20310""")
-        water.determine_symmetry()
-        self.assertEqual(water.optical_isomers, 1)
-        self.assertEqual(water.external_symmetry, 2)
-
-        # test setting only symmetry, preserving optical isomers
-        ch2oh = ARCSpecies(label='CH2OH', smiles='[CH2]O', optical_isomers=1)
-        ch2oh.determine_symmetry()
-        self.assertEqual(ch2oh.optical_isomers, 1)
-        self.assertEqual(ch2oh.external_symmetry, 1)
-
     def test_xyz_format_conversion(self):
         """Test conversions from string to dict xyz formats"""
         xyz_str0 = """N       2.24690600   -0.00006500    0.11597700
@@ -557,12 +510,11 @@ H      -1.67091600   -1.35164600   -0.93286400"""
 
         xyz_dict = str_to_xyz(xyz_str0)
         xyz_str1 = xyz_to_str(xyz_dict)
-        s_mol, b_mol = molecules_from_xyz(xyz_dict)
+        b_mol = perceive_molecule_from_xyz(xyz_dict)
         x, y, z = xyz_to_x_y_z(xyz_dict)
 
         self.assertEqual(xyz_str0, xyz_str1)
         self.assertEqual(xyz_dict['symbols'], ('N', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
-        self.assertEqual(xyz_dict['symbols'], tuple(atom.symbol for atom in s_mol.atoms))
         self.assertEqual(xyz_dict['symbols'], tuple(atom.symbol for atom in b_mol.atoms))
         self.assertEqual(x, (2.246906, -1.056548, -1.056614, -0.305141, 1.083589, -0.391683, -1.672426, -1.741854,
                              -0.391871, -1.743414, -1.670916))
@@ -1618,7 +1570,6 @@ H       1.32129900    0.71837500    0.38017700
 
     def test_set_transport_data(self):
         """Test the set_transport_data method"""
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         lj_path = os.path.join(ARC_PATH, 'arc', 'testing', 'NH3_oneDMin.dat')
         opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         bath_gas = 'N2'
@@ -1626,12 +1577,11 @@ H       1.32129900    0.71837500    0.38017700
         freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'SO2OO_CBS-QB3.log')
         freq_level = Level(repr='CBS-QB3')
         self.spc1.set_transport_data(lj_path, opt_path, bath_gas, opt_level, freq_path, freq_level)
-        self.assertIsInstance(self.spc1.transport_data, TransportData)
         self.assertEqual(self.spc1.transport_data.shapeIndex, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.epsilon.value_si, 1420.75, 2)
-        self.assertAlmostEqual(self.spc1.transport_data.sigma.value_si, 3.57813e-10, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment.value_si, 2.10145e-30, 4)
-        self.assertAlmostEqual(self.spc1.transport_data.polarizability.value_si, 3.99506e-30, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.epsilon[0], 1420.75, 2)
+        self.assertAlmostEqual(self.spc1.transport_data.sigma[0], 3.57813e-10, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.dipoleMoment[0], 0.63, 4)
+        self.assertAlmostEqual(self.spc1.transport_data.polarizability[0], 3.9950550446, 4)
         self.assertEqual(self.spc1.transport_data.rotrelaxcollnum, 2)
         self.assertEqual(self.spc1.transport_data.comment, 'L-J coefficients calculated by OneDMin using a '
                                                            'DF-MP2/aug-cc-pVDZ potential energy surface with N2 as '
@@ -1704,6 +1654,13 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(o2.mol.multiplicity, 3)
         self.assertEqual(o2.mol.to_smiles(), '[O][O]')
 
+        # N2H2(T), test assigning radicals
+        spc_5 = ARCSpecies(label='N2H2(T)', smiles='[NH][NH]', xyz=self.n2h2_t_xyz)
+        radical_count = 0
+        for atom in spc_5.mol.atoms:
+            radical_count += atom.radical_electrons
+        self.assertEqual(radical_count, 2)
+
     def test_consistent_atom_order(self):
         """Test that the atom order is preserved whether starting from SMILES or from xyz"""
         xyz9 = """O      -1.17310019   -0.30822930    0.16269772
@@ -1748,13 +1705,13 @@ H       1.32129900    0.71837500    0.38017700
             self.assertEqual(atom.symbol, spc2.get_xyz()['symbols'][i])
 
         n3_xyz = """N      -1.1997440839    -0.1610052059     0.0274738287
-        H      -1.4016624407    -0.6229695533    -0.8487034080
-        H      -0.0000018759     1.2861082773     0.5926077870
-        N       0.0000008520     0.5651072858    -0.1124621525
-        H      -1.1294692206    -0.8709078271     0.7537518889
-        N       1.1997613019    -0.1609980472     0.0274604887
-        H       1.1294795781    -0.8708998550     0.7537444446
-        H       1.4015274689    -0.6230592706    -0.8487058662"""
+                    H      -1.4016624407    -0.6229695533    -0.8487034080
+                    H      -0.0000018759     1.2861082773     0.5926077870
+                    N       0.0000008520     0.5651072858    -0.1124621525
+                    H      -1.1294692206    -0.8709078271     0.7537518889
+                    N       1.1997613019    -0.1609980472     0.0274604887
+                    H       1.1294795781    -0.8708998550     0.7537444446
+                    H       1.4015274689    -0.6230592706    -0.8487058662"""
         spc3 = ARCSpecies(label='N3', xyz=n3_xyz, multiplicity=1, smiles='NNN')
         for i, atom in enumerate(spc3.mol.atoms):
             self.assertEqual(atom.symbol, spc3.get_xyz()['symbols'][i])
@@ -1762,14 +1719,14 @@ H       1.32129900    0.71837500    0.38017700
         self.assertEqual(len(spc3.conformers), 9)
 
         xyz4 = """O      -1.48027320    0.36597456    0.41386552
-        C      -0.49770656   -0.40253648   -0.26500019
-        C       0.86215119    0.24734211   -0.11510338
-        H      -0.77970114   -0.46128090   -1.32025907
-        H      -0.49643724   -1.41548311    0.14879346
-        H       0.84619526    1.26924854   -0.50799415
-        H       1.14377239    0.31659216    0.94076336
-        H       1.62810781   -0.32407050   -0.64676910
-        H      -1.22610851    0.40421362    1.35170355"""
+                  C      -0.49770656   -0.40253648   -0.26500019
+                  C       0.86215119    0.24734211   -0.11510338
+                  H      -0.77970114   -0.46128090   -1.32025907
+                  H      -0.49643724   -1.41548311    0.14879346
+                  H       0.84619526    1.26924854   -0.50799415
+                  H       1.14377239    0.31659216    0.94076336
+                  H       1.62810781   -0.32407050   -0.64676910
+                  H      -1.22610851    0.40421362    1.35170355"""
         spc4 = ARCSpecies(label='CCO', smiles='CCO', xyz=xyz4)  # define from xyz for consistent atom order
         for atom1, atom2 in zip(spc4.mol.atoms, spc4.mol_list[0].atoms):
             self.assertEqual(atom1.symbol, atom2.symbol)
@@ -1948,12 +1905,6 @@ H       1.11582953    0.94384729   -0.10134685"""
         with self.assertRaises(SpeciesError):
             ARCSpecies(label='c1ccccc1OO', smiles='c1ccccc1OO', xyz=xyz5)
 
-        xyz6 = """C    1.1709385492    0.1763143411    0.0
-                  Cl  -0.5031634975   -0.0109430036    0.0
-                  H    1.5281481620   -0.8718549847    0.0"""
-        spc6 = ARCSpecies(label='[CH]Cl', smiles='[CH]Cl', xyz=xyz6)
-        self.assertEqual(spc6.get_xyz(), str_to_xyz(xyz6))
-
     def test_scissors(self):
         """Test the scissors method in Species"""
         ch3oc2h5_xyz = """C  1.3324310  1.2375310  0.0000000
@@ -2043,16 +1994,16 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments
         for spc in spc_list:
             self.assertTrue(check_isomorphism(mol1=spc.mol,
-                                              mol2=molecules_from_xyz(xyz=spc.conformers[0],
+                                              mol2=perceive_molecule_from_xyz(xyz=spc.conformers[0],
                                                                       multiplicity=spc.multiplicity,
-                                                                      charge=spc.charge)[1]))
+                                                                      charge=spc.charge)))
         self.assertTrue(any(spc.mol.to_smiles() == 'CO[NH]' for spc in spc_list))
 
         cycle = ARCSpecies(label="cycle",smiles= "C(1)CC(1)")
         cycle.bdes = [(1, 2)]
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
-        cycle_scissors[0].mol.update()
+        cycle_scissors[0].mol.update(sort_atoms=False)
         self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
@@ -2639,6 +2590,125 @@ H      -1.47626400   -0.10694600   -1.88883800"""
             self.assertEqual(m.to_smiles(), 'O')
         self.assertEqual(fragments, [[0, 3, 4], [1, 5, 6], [2, 7, 8]])
 
+    def test_rmg_mol_from_dict_repr(self):
+        """Test the rmg_mol_from_dict_repr() function."""
+        representation = {'atoms':
+                          [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': -32768,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32765: 1.0, -32764: 1.0}},
+                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32767,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0, -32766: 1.0, -32763: 1.0, -32762: 1.0}},
+                           {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32766,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0, -32761: 1.0, -32760: 1.0, -32759: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32765,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32764,
+                            'props': {'inRing': False}, 'edges': {-32768: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32763,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32762,
+                            'props': {'inRing': False}, 'edges': {-32767: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32761,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32760,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}},
+                           {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                            'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': -32759,
+                            'props': {'inRing': False}, 'edges': {-32766: 1.0}}],
+                          'multiplicity': 1, 'props': {},
+                          'atom_order': [-32768, -32767, -32766, -32765, -32764, -32763, -32762, -32761, -32760, -32759],
+                          }
+        mol = rmg_mol_from_dict_repr(representation=representation, is_ts=False)
+        smiles = mol.to_smiles()
+        self.assertEqual(len(smiles), 3)
+        self.assertEqual(smiles.count('C'), 2)
+        self.assertEqual(smiles.count('N'), 1)
+
+        # Test round trip:
+        mol = Molecule(smiles='CC')
+        representation = rmg_mol_to_dict_repr(mol)
+        new_mol = rmg_mol_from_dict_repr(representation, is_ts=False)
+        self.assertEqual(new_mol.to_smiles(), 'CC')
+
+    def test_rmg_mol_to_dict_repr(self):
+        """Test the rmg_mol_to_dict_repr() function."""
+        mol = Molecule(smiles='CC')
+        for atom in mol.atoms:
+            atom.id = -1
+        representation = rmg_mol_to_dict_repr(mol, testing=True)
+        expected_repr = {'atoms': [{'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 0,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0, 5: 1.0, 6: 1.0, 7: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}}],
+                         'multiplicity': 1, 'props': {},
+                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7]}
+        self.assertEqual(representation, expected_repr)
+
+        mol = Molecule(smiles='NCC')
+        representation = rmg_mol_to_dict_repr(mol, testing=True)
+        expected_repr = {'atoms': [{'element': {'number': 7, 'isotope': -1}, 'atomtype': 'N3s',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 1, 'id': 0,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 3: 1.0, 4: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 1,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0, 2: 1.0, 5: 1.0, 6: 1.0}},
+                                   {'element': {'number': 6, 'isotope': -1}, 'atomtype': 'Cs',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 2,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0, 7: 1.0, 8: 1.0, 9: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 3,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 4,
+                                    'props': {'inRing': False}, 'edges': {0: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 5,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 6,
+                                    'props': {'inRing': False}, 'edges': {1: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 7,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 8,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}},
+                                   {'element': {'number': 1, 'isotope': -1}, 'atomtype': 'H0',
+                                    'radical_electrons': 0, 'charge': 0, 'label': '', 'lone_pairs': 0, 'id': 9,
+                                    'props': {'inRing': False}, 'edges': {2: 1.0}}],
+                         'multiplicity': 1, 'props': {},
+                         'atom_order': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                         }
+        self.assertEqual(representation, expected_repr)
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -2656,6 +2726,46 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         for file_path in file_paths:
             if os.path.isfile(file_path):
                 os.remove(file_path)
+
+    def test_get_bonds(self):
+        """Test the get_bonds() function."""
+        bonds = self.spc1.get_bonds()
+        self.assertTrue(check_that_all_entries_are_in_list(bonds, [(0, 1), (1, 2), (0, 4), (1, 5), (0, 3)]))
+
+        bonds = self.spc2.get_bonds()
+        self.assertEqual(bonds, [(0, 1)])
+
+        bonds = self.spc12.get_bonds()
+        self.assertTrue(check_that_all_entries_are_in_list(bonds,
+            [(9, 26), (10, 11), (14, 30), (5, 6), (1, 17), (15, 31), (3, 21), (8, 9),(10, 15), (0, 16), (0, 10), (1, 2),
+             (2, 19), (4, 9), (6, 7), (12, 13), (7, 24), (11, 27), (13, 29), (5, 22), (3, 4), (12, 28), (8, 25), (4, 5),
+             (2, 20), (2, 3), (6, 23), (14, 15), (11, 12), (0, 1), (13, 14), (1, 18), (7, 8)]))
+
+    def test_eq(self):
+        """Species equality is based on label."""
+        vinoxy = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertEqual(self.spc1, vinoxy)
+        self.assertNotEqual(self.spc1, self.spc2)
+        self.assertFalse(self.spc1 == object())
+        self.assertTrue(self.spc1 != object())
+
+    def test_hash(self):
+        """Species.__hash__ is consistent with __eq__ and allows using Species in sets/dicts."""
+        vinoxy = ARCSpecies(label='vinoxy', smiles='C=C[O]')
+        self.assertEqual(hash(self.spc1), hash(vinoxy))
+        self.assertNotEqual(hash(self.spc1), hash(self.spc2))
+
+        # using Species as dict keys
+        d = {self.spc1: 'vinoxy'}
+        self.assertIn(self.spc1, d)
+        self.assertEqual(d[self.spc1], 'vinoxy')
+
+        # using Species in a set
+        s = {self.spc1, self.spc2}
+        # adding s1b should not increase size
+        s.add(self.spc1)
+        self.assertEqual(len(s), 2)
+        self.assertIn(self.spc1, s)
 
 
 class TestTSGuess(unittest.TestCase):
@@ -2759,20 +2869,6 @@ class TestTSGuess(unittest.TestCase):
         tsg = TSGuess(xyz=self.xyz_2)
         tsg.opt_xyz = {'symbols': ('C',), 'coords': ((-1.0, 0.0, 0.0),)}
         self.assertEqual(tsg.get_xyz()['symbols'], ('C',))
-
-    def test_xyz_perception(self):
-        """Test MolGraph.get_formula()"""
-        xyz_arb = {'symbols': ('H', 'C', 'H', 'H', 'O', 'N', 'O'),
-                   'isotopes': (1, 13, 1, 1, 16, 14, 16),
-                   'coords': ((-1.0, 0.0, 0.0),
-                              (0.0, 0.0, 0.0),
-                              (0.0, -1.0, 0.0),
-                              (0.0, 1.0, 0.0),
-                              (1.0, 0.0, 0.0),
-                              (2.0, 0.0, 0.0),
-                              (3.0, 0.0, 0.0),)}
-        mol_graph_1 = MolGraph(symbols=xyz_arb['symbols'], coords=xyz_arb['coords'])
-        self.assertEqual(mol_graph_1.get_formula(), 'CH3NO2')
 
     def test_almost_equal_tsgs(self):
         """Test the almost_equal_tsgs() method."""

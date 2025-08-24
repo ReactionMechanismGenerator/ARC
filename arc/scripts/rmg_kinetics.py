@@ -18,7 +18,6 @@ from rmgpy import settings as rmg_settings
 from rmgpy.reaction import same_species_lists, Reaction
 from rmgpy.species import Species
 
-
 DB_PATH = rmg_settings['database.directory']
 
 

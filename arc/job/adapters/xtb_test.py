@@ -12,7 +12,7 @@ import unittest
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.adapters.xtb_adapter import xTBAdapter
 from arc.level import Level
-from arc.parser import parse_e_elect, parse_frequencies, parse_geometry
+from arc.parser.parser import parse_e_elect, parse_frequencies, parse_geometry
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
@@ -32,7 +32,7 @@ class TestxTBAdapter(unittest.TestCase):
                                project='test_1',
                                level=Level(method='gfn1', args={'keyword': {'parallel': 'no'}}),
                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_1'),
-                               species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                               species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                testing=True,
                                )
         cls.job_2 = xTBAdapter(execution_type='queue',
@@ -81,7 +81,7 @@ H      -0.20775137    1.01509427    0.05730382""")],
                                project='test_7',
                                fine=True,
                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_7'),
-                               species=[ARCSpecies(label='spc7', xyz='O 0 0 1')],
+                               species=[ARCSpecies(label='spc7', xyz='O 0 0 1', multiplicity=3)],
                                testing=True,
                                )
         spc_8 = ARCSpecies(label='MeOH', smiles='CO')
@@ -162,7 +162,7 @@ H      -0.20775137    1.01509427    0.05730382""")],
         self.job_3.write_input_file()
         with open(os.path.join(self.job_3.local_path, input_filenames[self.job_3.job_adapter]), 'r') as f:
             content_3 = f.read()
-        job_3_expected_input_file = 'mol.sdf --opt tight --gfn2 --input input.in --parallel --uhf 2 --chrg 0 > output.out\n'
+        job_3_expected_input_file = 'mol.sdf --opt tight --gfn2 --input input.in --parallel --uhf 0 --chrg 0 > output.out\n'
         self.assertEqual(content_3.split('xtb ')[1], job_3_expected_input_file)
         with open(os.path.join(self.job_3.local_path, 'input.in'), 'r') as f:
             content_3_in = f.read()
@@ -250,7 +250,7 @@ $end"""
         """Test running a single-point energy calculation using xTB."""
         self.job_5.execute_incore()
         self.assertTrue(os.path.isfile(self.job_5.local_path_to_output_file))
-        e_elect = parse_e_elect(self.job_5.local_path_to_output_file, software='xtb')
+        e_elect = parse_e_elect(self.job_5.local_path_to_output_file)
         self.assertAlmostEqual(e_elect, -28229.8803, places=2)
 
     def test_opt(self):

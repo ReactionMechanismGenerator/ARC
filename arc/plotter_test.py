@@ -178,9 +178,9 @@ H      -1.16115119    0.31478894   -0.81506145
     def test_make_multi_species_output_file(self):
         """Test the make_multi_species_output_file function"""
         # The xyzs used in the ARCSpecies are dummy xyzs, they are not the actual xyzs used in the output file
-        plotter.make_multi_species_output_file(species_list=[ARCSpecies(label='water', xyz=['X 0 0 1'],multi_species='mltspc1'),
-                                                             ARCSpecies(label='acetylene', xyz=['X 0 0 2'],multi_species='mltspc1'),
-                                                             ARCSpecies(label='N-Valeric_Acid', xyz=['X 0 0 3'],multi_species='mltspc1'),],
+        plotter.make_multi_species_output_file(species_list=[ARCSpecies(label='water', smiles='O', multi_species='mltspc1'),
+                                                             ARCSpecies(label='acetylene', smiles='C#C', multi_species='mltspc1'),
+                                                             ARCSpecies(label='N-Valeric_Acid', smiles='CCCCC(O)=O', multi_species='mltspc1')],
                                                label='mltspc1',
                                                path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
                                                )
@@ -191,9 +191,9 @@ H      -1.16115119    0.31478894   -0.81506145
     def test_delete_multi_species_output_file(self):
         """Test the delete_multi_species_output_file function"""
         # The xyzs used in the ARCSpecies are dummy xyzs, they are not the actual xyzs used in the output file
-        species_list = [ARCSpecies(label='water', xyz=['X 0 0 1'],multi_species='mltspc1'),
-                        ARCSpecies(label='acetylene', xyz=['X 0 0 2'],multi_species='mltspc1'),
-                        ARCSpecies(label='N-Valeric_Acid', xyz=['X 0 0 3'],multi_species='mltspc1'),]
+        species_list = [ARCSpecies(label='water', smiles='O', multi_species='mltspc1'),
+                        ARCSpecies(label='acetylene', smiles='C#C', multi_species='mltspc1'),
+                        ARCSpecies(label='N-Valeric_Acid', smiles='CCCCC(O)=O', multi_species='mltspc1')]
         multi_species_path_dict = plotter.make_multi_species_output_file(species_list=species_list,
                                                                          label='mltspc1',
                                                                          path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
