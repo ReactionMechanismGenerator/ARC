@@ -135,20 +135,22 @@ class TestARCReaction(unittest.TestCase):
                                r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
                                           ARCSpecies(label='N2H3', smiles='N[NH]')],
                                p_species=[ARCSpecies(label='NH3', smiles='N'),
-                                          ARCSpecies(label='H2NN(S)', adjlist="""multiplicity 1
-                                                                                 1 N u0 p0 c+1 {2,D} {3,S} {4,S}
-                                                                                 2 N u0 p2 c-1 {1,D}
-                                                                                 3 H u0 p0 c0 {1,S}
-                                                                                 4 H u0 p0 c0 {1,S}""")])
+                                          ARCSpecies(label='H2NN(S)',
+                                                     adjlist="""multiplicity 1
+1 N u0 p0 c+1 {2,D} {3,S} {4,S}
+2 N u0 p2 c-1 {1,D}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}""")])
         cls.rxn7 = ARCReaction(reactants=['NH2', 'N2H3'], products=['NH3', 'H2NN(T)'],
                                r_species=[ARCSpecies(label='NH2', smiles='[NH2]'),
                                           ARCSpecies(label='N2H3', smiles='N[NH]')],
                                p_species=[ARCSpecies(label='NH3', smiles='N'),
-                                          ARCSpecies(label='H2NN(T)', adjlist="""multiplicity 3
-                                                                                 1 N u0 p1 c0 {2,S} {3,S} {4,S}
-                                                                                 2 N u2 p1 c0 {1,S}
-                                                                                 3 H u0 p0 c0 {1,S}
-                                                                                 4 H u0 p0 c0 {1,S}""")])
+                                          ARCSpecies(label='H2NN(T)',
+                                                     adjlist="""multiplicity 3
+1 N u0 p1 c0 {2,S} {3,S} {4,S}
+2 N u2 p1 c0 {1,S}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}""")])
         cls.rxn8 = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C', xyz=cls.ch4_xyz),
                                           ARCSpecies(label='OH', smiles='[OH]', xyz=cls.oh_xyz)],
                                p_species=[ARCSpecies(label='CH3', smiles='[CH3]', xyz=cls.ch3_xyz),
@@ -257,7 +259,8 @@ class TestARCReaction(unittest.TestCase):
                                                   'props': {}},
                                           'multiplicity': 1,
                                           'number_of_rotors': 0},
-                                         {'adjlist': """multiplicity 1
+                                         {'arkane_file': None,
+                                          'adjlist': """multiplicity 1
 1 N u0 p0 c+1 {2,D} {3,S} {4,S}
 2 N u0 p2 c-1 {1,D}
 3 H u0 p0 c0 {1,S}
@@ -307,6 +310,13 @@ class TestARCReaction(unittest.TestCase):
                            'reactants': ['N2H3', 'NH2'],
                            }
         self.assertEqual(rxn_dict_6, expected_dict_6)
+
+        rxn_7_dict = self.rxn7.as_dict()
+        self.assertEqual(rxn_7_dict['p_species'][1]['adjlist'], """multiplicity 3
+1 N u0 p1 c0 {2,S} {3,S} {4,S}
+2 N u2 p1 c0 {1,S}
+3 H u0 p0 c0 {1,S}
+4 H u0 p0 c0 {1,S}""")
 
     def test_from_dict(self):
         """Test ARCReaction.from_dict()"""
