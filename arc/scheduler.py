@@ -989,6 +989,12 @@ class Scheduler(object):
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
 
+        RETRY_COUNT, RETRY_SLEEP_SECONDS = 5, 10
+        i = RETRY_COUNT
+        while i and not os.path.isfile(job.local_path_to_output_file):
+            i -= 1
+            time.sleep(RETRY_SLEEP_SECONDS)
+
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
             job.rename_output_file()
         if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
@@ -1274,10 +1280,10 @@ class Scheduler(object):
 
         if self.job_types['conf_sp'] and conformer is not None and self.conformer_sp_level != self.conformer_opt_level:
             self.run_job(label=label,
-                        xyz=self.species_dict[label].conformers[conformer],
-                        level_of_theory=self.conformer_sp_level,
-                        job_type='conf_sp',
-                        conformer=conformer)
+                         xyz=self.species_dict[label].conformers[conformer],
+                         level_of_theory=self.conformer_sp_level,
+                         job_type='conf_sp',
+                         conformer=conformer)
             return
         # determine_occ(xyz=self.xyz, charge=self.charge)
         if level == self.opt_level and not self.composite_method \
@@ -1348,6 +1354,10 @@ class Scheduler(object):
                              xyz=self.species_dict[label].get_xyz(generate=False),
                              level_of_theory='ccsd/vdz',
                              job_type='sp')
+        mol = self.species_dict[label].mol
+        if mol is not None and len(mol.atoms) == 1 and mol.atoms[0].element.symbol == 'H' and 'DLPNO' in level.method:
+            # Run only CCSD for an H atom instead of DLPNO-CCSD(T) / etc.
+            level = Level(repr='ccsd/vtz', software=level.software, args=level.args)
         if self.job_types['sp']:
             if self.species_dict[label].multi_species:
                 if self.output_multi_spc[self.species_dict[label].multi_species].get('sp', False):

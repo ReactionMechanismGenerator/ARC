@@ -384,7 +384,7 @@ class ARC(object):
                 indices_to_pop.append(i)
                 converted_reactions.append(ARCReaction(reaction_dict=rxn, species_list=self.species))
             elif not isinstance(rxn, ARCReaction):
-                raise ValueError(f'A reaction should either be an `ARCReaction` object.\nGot {type(rxn)} for {rxn}')
+                raise ValueError(f'An input reaction should be an `ARCReaction` object. Got:\n{type(rxn)} for {rxn}')
         for i in reversed(range(len(self.reactions))):  # pop from the end, so other indices won't change
             if i in indices_to_pop:
                 self.reactions.pop(i)
