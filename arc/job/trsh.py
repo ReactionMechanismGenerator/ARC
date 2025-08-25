@@ -83,6 +83,7 @@ def determine_ess_status(output_path: str,
             return 'errored', ['NoOutput'], 'Log file could not be read', ''
         forward_lines = tuple(lines)
         reverse_lines = tuple(lines[::-1])
+        len_reversed_lines, len_forward_lines = len(reverse_lines), len(forward_lines)
 
         if software == 'gaussian':
             for line in forward_lines[-1:-20:-1]:
@@ -93,7 +94,7 @@ def determine_ess_status(output_path: str,
                     if 'l9999.exe' in line or 'link 9999' in line:
                         cycle_issue = False
                         neg_eigenvalues = False
-                        for j in range(i,len(reverse_lines)):
+                        for j in range(i, len_reversed_lines):
                             if 'Number of steps exceeded' in reverse_lines[j]:
                                 keywords = ['MaxOptCycles', 'GL9999']
                                 error = 'Maximum optimization cycles reached.'
@@ -132,7 +133,7 @@ def determine_ess_status(output_path: str,
                         # Check if Inaccurate quadrature in CalDSu
                         inacc_quad = False
                         for j in range(i + 300, i, -1):
-                            if 'Inaccurate quadrature in CalDSu' in reverse_lines[j]:
+                            if j < len_reversed_lines and 'Inaccurate quadrature in CalDSu' in reverse_lines[j]:
                                 inacc_quad = True
                                 keywords = ['InaccurateQuadrature', 'GL502']
                                 error = 'Inaccurate quadrature in CalDSu'
@@ -158,7 +159,7 @@ def determine_ess_status(output_path: str,
                     elif 'l123.exe' in line:
                         delta_x = False
                         gs2_opt = False
-                        for j in range(i + 1, len(reverse_lines)):
+                        for j in range(i + 1, len_reversed_lines):
                             if 'Delta-x Convergence NOT Met' in reverse_lines[j]:
                                 delta_x = True
                                 keywords = ['DeltaX', 'GL123']
@@ -172,16 +173,16 @@ def determine_ess_status(output_path: str,
                                 line = 'GS2 Optimization Failure'
                                 break
                     if any([keyword in ['GL301', 'GL401'] for keyword in keywords]):
-                        additional_info = forward_lines[len(forward_lines) - i - 2]
+                        additional_info = forward_lines[len_forward_lines - i - 2]
                         if 'No data on chk file' in additional_info \
                                 or 'Basis set data is not on the checkpoint file' in additional_info \
                                 or 'Error in GetGes' in additional_info:
                             keywords = ['CheckFile']
                             error = additional_info.strip()
                         elif 'GL301' in keywords:
-                            if 'Atomic number out of range for' in forward_lines[len(forward_lines) - i - 2]:
+                            if 'Atomic number out of range for' in forward_lines[len_forward_lines - i - 2]:
                                 keywords.append('BasisSet')
-                                error = f'The basis set {forward_lines[len(forward_lines) - i - 2].split()[6]} ' \
+                                error = f'The basis set {forward_lines[len_forward_lines - i - 2].split()[6]} ' \
                                         f'is not appropriate for the this chemistry.'
                             else:
                                 keywords.append('InputError')
