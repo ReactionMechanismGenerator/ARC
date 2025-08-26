@@ -2517,8 +2517,37 @@ def add_two_xyzs1(
     return_zmat: bool = False,
 ) -> Optional[dict]:
     """
-    Combine two xyz dictionaries into one, based on internal coordinate parameters
-    for the first three atoms in xyz2. See original docstring for details.
+    Combine two xyz dictionaries into one, based on internal coordinate parameters for the first three atoms in xyz2.
+    The internal coordinate parameters are used to define the position of the first three atoms in xyz2 in relation to xyz1.
+    The remaining atoms in xyz2 are then added based on their internal coordinates in relation to the first three atoms in xyz2.
+    The format of the atom parameters is as follows:
+    for atom1, the required keys are "R", "D", "A", for atom2, the required keys are "D", "A", "index1", for atom3, the required keys are "D".
+    The parameters inside the keys dictates the value, the indices in the first xyz ("anchors") and the indices in the second xyz. Here is an exaple:
+    atom1_params = {"R": {"val": 5.0,
+                          "m2i": [0],
+                          "m1i": [0],
+                          },
+                    "A": {"val": 90.0,
+                            "m2i": [0],
+                            "m1i": [0, 1],
+                          },
+                    "D": {"val": 180.0,
+                            "m2i": [0],
+                            "m1i": [0, 1, 2],
+                          }
+                    }
+    where "m2i" are the indices in xyz2 and "m1i" are the indices in xyz1.
+
+    Args:
+        xyz1 (dict): The first xyz dictionary.
+        xyz2 (dict): The second xyz dictionary to be added.
+        atom1_params (dict): The internal coordinate parameters for the first atom in xyz2.
+        atom2_params (dict): The internal coordinate parameters for the second atom in xyz2.
+        atom3_params (dict): The internal coordinate parameters for the third atom in xyz2.
+        return_zmat (bool, optional): Whether to return the zmat as well as the xyz, ``False`` to only return the xyz. Default is ``False``.
+
+    Returns:
+        Optional(dict, tuple(dict, dict): The combined xyz dictionary, or the zmat and the combined xyz dictionary if ``return_zmat`` is ``True``.
     """
     zmat1 = xyz_to_zmat(xyz1, consolidate=False)
     zmat2 = xyz_to_zmat(xyz2, consolidate=False)
@@ -2531,29 +2560,24 @@ def add_two_xyzs1(
     z2_vars = zmat2['vars']
 
     def shift_piece(piece: str) -> str:
-        # numeric tokens are indices that must be shifted by n
         return str(int(piece) + n) if piece.isnumeric() else piece
 
     def shift_token(token: str) -> str:
-        # token like "R_2_1_0" -> shift only the numeric parts
         parts = token.split('_')
         return '_'.join(shift_piece(p) for p in parts)
 
     def build_key(prefix: str, m2i: list, m1i: list) -> str:
-        # e.g., "R" + shifted m2 indices + original m1 indices
-        # m2i are indices *in zmat2* that must be shifted by n
         m2_part = [str(i + n) for i in m2i]
         m1_part = [str(i) for i in m1i]
         return '_'.join([prefix] + m2_part + m1_part)
 
     for idx, (symbol, coords) in enumerate(zip(zmat2['symbols'], zmat2['coords'])):
-        # Shift any existing coordinate variable names from zmat2 to the merged space
         new_coords = tuple(shift_token(c) for c in coords if c)
 
         vmap = {}
 
         if len(new_coords) == 0:
-            # First atom of xyz2 relative to anchors in xyz1
+            # First atom of xyz2 relative to anchors in xyz1, take all params from atom1_params.
             p = atom1_params
             R = build_key("R", p["R"]["m2i"], p["R"]["m1i"])
             A = build_key("A", p["A"]["m2i"], p["A"]["m1i"])
@@ -2564,7 +2588,7 @@ def add_two_xyzs1(
             vmap[D] = p["D"]["val"]
 
         elif len(new_coords) == 1:
-            # Second atom of xyz2
+            # Second atom of xyz2 relative to first atom of xyz2 and anchors in xyz1, take params from atom2_params.
             p = atom2_params
             A = build_key("A", p["A"]["m2i"], p["A"]["m1i"])
             D = build_key("D", p["D"]["m2i"], p["D"]["m1i"])
@@ -2574,7 +2598,7 @@ def add_two_xyzs1(
             vmap[D] = p["D"]["val"]
 
         elif len(new_coords) == 2:
-            # Third atom of xyz2
+            # Third atom of xyz2 relative to first two atoms of xyz2 and anchors in xyz1, take params from atom3_params.
             p = atom3_params
             D = build_key("D", p["D"]["m2i"], p["D"]["m1i"])
             coords_out = (new_coords[0], new_coords[1], D)
@@ -2583,7 +2607,6 @@ def add_two_xyzs1(
             vmap[D] = p["D"]["val"]
 
         else:
-            # Remaining atoms: copy existing variables (shifted names) verbatim
             coords_out = new_coords
             vmap.update({nc: z2_vars[oc] for nc, oc in zip(new_coords, coords)})
 
