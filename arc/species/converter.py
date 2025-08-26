@@ -6,6 +6,7 @@ import math
 import numpy as np
 import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
+from copy import deepcopy
 
 from ase import Atoms
 from openbabel import openbabel as ob
@@ -2353,12 +2354,14 @@ def generate_initial_guess_r_a(atom_r_coord: tuple,
     X_position = np.array(atom_r_coord) + r_value * X_direction
     return X_position
 
+
 def generate_midpoint_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess midway between the two reference atoms."""
     midpoint = (np.array(atom_a_coord) + np.array(atom_b_coord)) / 2.0
     direction = np.array(atom_r_coord) - midpoint
     direction /= np.linalg.norm(direction)
     return midpoint + r_value * direction
+
 
 def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess that is perpendicular to the plane defined by the reference atoms."""
@@ -2372,18 +2375,220 @@ def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, at
     perpendicular_vector /= np.linalg.norm(perpendicular_vector)
     return np.array(atom_r_coord) + r_value * perpendicular_vector
 
+
 def generate_random_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     perturbation = np.random.uniform(-0.1, 0.1, 3)
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + perturbation
+
 
 def generate_shifted_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     shift = np.array([0.1, -0.1, 0.1])  # A deterministic shift
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + shift
 
+
 def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess considering only the bond length to the reference atom."""
     direction = np.random.uniform(-1.0, 1.0, 3)  # Random direction
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
+
+
+def update_zmat(zmat: dict,
+                element: str,
+                coords: tuple,
+                vars: dict,
+                n: int,
+                ) -> dict:
+    """
+    Update the coordinates and internal coordinates of a zmat dictionary.
+    Args:
+        zmat (dict): The zmat dictionary to update.
+        coords (tuple): The new Cartesian coordinates.
+        vars (dict): The new internal coordinates.
+        n (int): The index of the new atom in the zmat.
+    Returns:
+        dict: The updated zmat dictionary.
+    """
+    zmat = deepcopy(zmat)
+    zmat["symbols"] += (element,)
+    zmat["coords"] += (coords,)
+    zmat["vars"].update(vars)
+    zmat["map"].update({n:n})
+    return zmat
+
+
+def add_two_xyzs(xyz1: dict,
+                 xyz2: dict,
+                 atom1_params: dict,
+                 atom2_params: dict,
+                 atom3_params:dict,
+                 return_zmat: bool = False,
+                 ) -> Optional[dict]:
+    """
+    Combine two xyz dictionaries into one, based on internal coordinate parameters for the first three atoms in xyz2.
+    The internal coordinate parameters are used to define the position of the first three atoms in xyz2 in relation to xyz1.
+    The remaining atoms in xyz2 are then added based on their internal coordinates in relation to the first three atoms in xyz2.
+    The format of the atom parameters is as follows:
+    for atom1, the required keys are "R", "D", "A", for atom2, the required keys are "D", "A", "index1", for atom3, the required keys are "D".
+    The parameters inside the keys dictates the value, the indices in the first xyz ("anchors") and the indices in the second xyz. Here is an exaple:
+    atom1_params = {"R": {"val": 5.0,
+                          "m2i": [0],
+                          "m1i": [0],
+                          },
+                    "A": {"val": 90.0,
+                            "m2i": [0],
+                            "m1i": [0, 1],
+                          },
+                    "D": {"val": 180.0,
+                            "m2i": [0],
+                            "m1i": [0, 1, 2],
+                          }
+                    }
+    where "m2i" are the indices in xyz2 and "m1i" are the indices in xyz1.
+
+    Args:
+        xyz1 (dict): The first xyz dictionary.
+        xyz2 (dict): The second xyz dictionary to be added.
+        atom1_params (dict): The internal coordinate parameters for the first atom in xyz2.
+        atom2_params (dict): The internal coordinate parameters for the second atom in xyz2.
+        atom3_params (dict): The internal coordinate parameters for the third atom in xyz2.
+        return_zmat (bool, optional): Whether to return the zmat as well as the xyz, ``False`` to only return the xyz. Default is ``False``.
+
+    Returns:
+        Optional(dict, tuple(dict, dict): The combined xyz dictionary, or the zmat and the combined xyz dictionary if ``return_zmat`` is ``True``.
+    """
+    zmat1 = xyz_to_zmat(xyz1, consolidate=False)
+    zmat2 = xyz_to_zmat(xyz2, consolidate=False)
+    n = len(zmat1['symbols'])
+    shift = lambda x: str(int(x) + n) if str(x).isnumeric() else x
+    if zmat1 is None or zmat2 is None:
+        logger.error('Cannot add two xyzs if one of them cannot be converted to a zmat.')
+        return None
+    
+    for symbol, coords, index in zip(zmat2['symbols'], zmat2['coords'], range(len(zmat2['symbols']))):
+        new_coords = ()
+        for coord in coords[::-1]:
+            if coord:
+                new_coords = ("_".join(map(shift, coord.split(sep="_"))),) + new_coords
+        
+        vars = {}
+        if len(new_coords) == 0:
+            params = atom1_params
+            R = "_".join(["R"] + list(map(shift, params["R"]["m2i"])) + list(map(str, params["R"]["m1i"])))
+            A = "_".join(["A"] + list(map(shift, params["A"]["m2i"])) + list(map(str, params["A"]["m1i"])))
+            D = "_".join(["D"] + list(map(shift, params["D"]["m2i"])) + list(map(str, params["D"]["m1i"])))
+            coords = (R, A, D)
+            vars.update({R: params["R"]["val"], A: params["A"]["val"], D: params["D"]["val"]})
+        elif len(new_coords) == 1:
+            params = atom2_params
+            A = "_".join(["A"] + list(map(shift, params["A"]["m2i"])) + list(map(str, params["A"]["m1i"])))
+            D = "_".join(["D"] + list(map(shift, params["D"]["m2i"])) + list(map(str, params["D"]["m1i"])))
+            vars.update({new_coords[0] : zmat2["vars"][coords[0]]})
+            vars.update({A: params["A"]["val"], D: params["D"]["val"]})
+            coords = (new_coords[0], A, D)
+
+        elif len(new_coords) == 2:
+            params = atom3_params
+            D = "_".join(["D"] + list(map(shift, params["D"]["m2i"])) + list(map(str, params["D"]["m1i"])))
+            
+            vars.update({new_coords[0] : zmat2["vars"][coords[0]],
+                         new_coords[1] : zmat2["vars"][coords[1]]
+                         })
+            vars.update({D: params["D"]["val"]})
+            coords = (new_coords[0], new_coords[1], D)
+        else:
+            vars.update({new_coord: zmat2["vars"][old_coord] for new_coord, old_coord in zip(new_coords, coords)})
+            coords = new_coords
+            
+        zmat1 = update_zmat(zmat1, symbol, coords, vars, n+index)
+    if return_zmat:
+        return zmat1, zmat_to_xyz(zmat1)
+    return zmat_to_xyz(zmat1)
+
+
+def add_two_xyzs1(
+    xyz1: dict,
+    xyz2: dict,
+    atom1_params: dict,
+    atom2_params: dict,
+    atom3_params: dict,
+    return_zmat: bool = False,
+) -> Optional[dict]:
+    """
+    Combine two xyz dictionaries into one, based on internal coordinate parameters
+    for the first three atoms in xyz2. See original docstring for details.
+    """
+    zmat1 = xyz_to_zmat(xyz1, consolidate=False)
+    zmat2 = xyz_to_zmat(xyz2, consolidate=False)
+
+    if zmat1 is None or zmat2 is None:
+        logger.error('Cannot add two xyzs if one of them cannot be converted to a zmat.')
+        return None
+
+    n = len(zmat1['symbols'])
+    z2_vars = zmat2['vars']
+
+    def shift_piece(piece: str) -> str:
+        # numeric tokens are indices that must be shifted by n
+        return str(int(piece) + n) if piece.isnumeric() else piece
+
+    def shift_token(token: str) -> str:
+        # token like "R_2_1_0" -> shift only the numeric parts
+        parts = token.split('_')
+        return '_'.join(shift_piece(p) for p in parts)
+
+    def build_key(prefix: str, m2i: list, m1i: list) -> str:
+        # e.g., "R" + shifted m2 indices + original m1 indices
+        # m2i are indices *in zmat2* that must be shifted by n
+        m2_part = [str(i + n) for i in m2i]
+        m1_part = [str(i) for i in m1i]
+        return '_'.join([prefix] + m2_part + m1_part)
+
+    for idx, (symbol, coords) in enumerate(zip(zmat2['symbols'], zmat2['coords'])):
+        # Shift any existing coordinate variable names from zmat2 to the merged space
+        new_coords = tuple(shift_token(c) for c in coords if c)
+
+        vmap = {}
+
+        if len(new_coords) == 0:
+            # First atom of xyz2 relative to anchors in xyz1
+            p = atom1_params
+            R = build_key("R", p["R"]["m2i"], p["R"]["m1i"])
+            A = build_key("A", p["A"]["m2i"], p["A"]["m1i"])
+            D = build_key("D", p["D"]["m2i"], p["D"]["m1i"])
+            coords_out = (R, A, D)
+            vmap[R] = p["R"]["val"]
+            vmap[A] = p["A"]["val"]
+            vmap[D] = p["D"]["val"]
+
+        elif len(new_coords) == 1:
+            # Second atom of xyz2
+            p = atom2_params
+            A = build_key("A", p["A"]["m2i"], p["A"]["m1i"])
+            D = build_key("D", p["D"]["m2i"], p["D"]["m1i"])
+            coords_out = (new_coords[0], A, D)
+            vmap[new_coords[0]] = z2_vars[coords[0]]
+            vmap[A] = p["A"]["val"]
+            vmap[D] = p["D"]["val"]
+
+        elif len(new_coords) == 2:
+            # Third atom of xyz2
+            p = atom3_params
+            D = build_key("D", p["D"]["m2i"], p["D"]["m1i"])
+            coords_out = (new_coords[0], new_coords[1], D)
+            vmap[new_coords[0]] = z2_vars[coords[0]]
+            vmap[new_coords[1]] = z2_vars[coords[1]]
+            vmap[D] = p["D"]["val"]
+
+        else:
+            # Remaining atoms: copy existing variables (shifted names) verbatim
+            coords_out = new_coords
+            vmap.update({nc: z2_vars[oc] for nc, oc in zip(new_coords, coords)})
+
+        zmat1 = update_zmat(zmat1, symbol, coords_out, vmap, n + idx)
+
+    if return_zmat:
+        return zmat1, zmat_to_xyz(zmat1)
+    return zmat_to_xyz(zmat1)
