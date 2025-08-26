@@ -2419,14 +2419,13 @@ def update_zmat(zmat: dict,
     return zmat
 
 
-def add_two_xyzs(
-    xyz1: dict,
-    xyz2: dict,
-    atom1_params: dict,
-    atom2_params: dict,
-    atom3_params: dict,
-    return_zmat: bool = False,
-) -> Optional[dict]:
+def add_two_xyzs(xyz1: dict,
+                 xyz2: dict,
+                 atom1_params: dict,
+                 atom2_params: dict,
+                 atom3_params: dict,
+                 return_zmat: bool = False,
+                 ) -> Optional[dict]:
     """
     Combine two xyz dictionaries into one, based on internal coordinate parameters for the first three atoms in xyz2.
     The internal coordinate parameters are used to define the position of the first three atoms in xyz2 in relation to xyz1.
