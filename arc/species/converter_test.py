@@ -4814,6 +4814,52 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertEqual(new_zmat2['coords'][-1], coords2)
         self.assertNotIn(vars.keys(), zmat2['vars'].keys())
         self.assertIn(vars.keys(), new_zmat2['vars'].keys())
+    
+    def test_add_two_xyzs(self):
+        """Test the add_two_xyzs() function."""
+        xyz1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'isotopes': (12, 1, 1, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.0, 0.0, 1.089),
+                           (1.026719, 0.0, -0.363),
+                           (-0.51336, -0.889165, -0.363),
+                           (-0.51336, 0.889165, -0.363))}
+        xyz2 = {'symbols': ('O', 'H', 'H'),
+                'isotopes': (16, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.758602, 0.584882, 0.0),
+                           (-0.758602, 0.584882, 0.0))}
+        combined_xyz = converter.add_two_xyzs(xyz1=xyz1,
+                                              xyz2=xyz2,
+                                              atom1_params={"R": {"val": 5.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0],
+                                                                  },
+                                                            "A": {"val": 90.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0, 1],
+                                                                  },
+                                                            "D": {"val": 90.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0, 1, 2],
+                                                                  }
+                                                            },
+                                                atom2_params={"A": {"val": 90.0,
+                                                                    "m2i": [1],
+                                                                    "m1i": [0, 1],},
+                                                              "D" : {"val": 90.0,
+                                                                    "m2i": [1],
+                                                                    "m1i": [0, 1, 2],}
+                                                              },
+                                                atom3_params={"D": {"val": 90.0,
+                                                                    "m2i": [2],
+                                                                    "m1i": [0, 1, 2],}
+                                                              },
+                                                return_zmat=False,
+                                                )
+        
+
+        # self.assertTrue(almost_equal_coords_lists(combined_xyz, expected_combined_xyz))
 
     @classmethod
     def tearDownClass(cls):
