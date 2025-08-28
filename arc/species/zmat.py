@@ -2371,11 +2371,13 @@ def check_zmat_vs_coords(zmat: dict,
                 nones += 1
     if nones < 6:
         n = len(zmat["symbols"])
-        if n == 1 and nones != 3:
+        if n == 1:
+            return nones == 3 # Exactly 3 Nones for one atom
+        elif n == 2:
+            return nones == 5 # Exactly 5 Nones for two atoms
+        else:
             return False
-        elif n == 2 and nones != 5:
-            return False
-        elif n >= 3 and nones != 6:
-            return False
+    elif nones > 6:
+        return False
     return True
                 
