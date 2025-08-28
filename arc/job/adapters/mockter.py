@@ -122,8 +122,8 @@ class MockAdapter(JobAdapter):
         self.command = 'mockter'
         self.url = ''
 
-        if species is None:
-            raise ValueError('Cannot execute Mockter without an ARCSpecies object.')
+        if species is None and reactions is None:
+            raise ValueError('Cannot execute Mockter without an ARCSpecies or an ARCReaction object.')
 
         _initialize_adapter(obj=self,
                             is_ts=False,
@@ -178,7 +178,7 @@ class MockAdapter(JobAdapter):
         input_dict['memory'] = self.input_file_memory
         input_dict['method'] = self.level.method
         input_dict['multiplicity'] = self.multiplicity
-        input_dict['xyz'] = xyz_to_str(self.xyz)
+        input_dict['xyz'] = xyz_to_str(self.get_mock_xyz())
         input_dict['job_type'] = self.job_type
         input_dict['memory'] = self.input_file_memory
 
@@ -238,7 +238,23 @@ class MockAdapter(JobAdapter):
         Set the input_file_memory attribute.
         """
         self.input_file_memory = self.job_memory_gb
-        
+
+    def get_mock_xyz(self) -> Optional[dict]:
+        """
+        Get the xyz coordinates for the mock job.
+        """
+        if self.xyz is not None:
+            return self.xyz
+        if self.species is not None and len(self.species):
+            return self.species[0].get_xyz()
+        if self.reactions is not None and len(self.reactions):
+            ts_xyz_str = ''
+            reactants, _ = self.reactions[0].get_reactants_and_products()
+            for r in reactants:
+                ts_xyz_str += xyz_to_str(r.get_xyz()) + '\n'
+            return str_to_xyz(ts_xyz_str)
+        return None
+
     def execute_incore(self):
         """
         Execute a job incore.
@@ -250,7 +266,7 @@ class MockAdapter(JobAdapter):
         if self.species[0].is_ts:
             freqs[0] = -500
         output = {'adapter': 'mockter',
-                  'xyz': input['xyz'],
+                  'xyz': xyz,
                   'sp': e_elect,
                   'T1': 0.0002,
                   'freqs': freqs,

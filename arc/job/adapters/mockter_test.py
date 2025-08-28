@@ -12,6 +12,7 @@ import unittest
 from arc.common import ARC_PATH, read_yaml_file
 from arc.job.adapters.mockter import MockAdapter
 from arc.level import Level
+from arc.reaction.reaction import ARCReaction
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
 
@@ -45,6 +46,16 @@ class TestMockAdapter(unittest.TestCase):
                                 project='test',
                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_3'),
                                 species=[ARCSpecies(label='spc3', xyz=['O 0 0 1\nH 0 0 0\nH 1 0 0'], is_ts=True)],
+                                testing=True,
+                                )
+        cls.job_4 = MockAdapter(job_type='tsg',
+                                level=Level(method='mock)', basis='cc-pVmockZ'),
+                                project='test',
+                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_4'),
+                                reactions=[ARCReaction(r_species=[ARCSpecies(label='O', smiles='[O]'),
+                                                                  ARCSpecies(label='CCC', smiles='CCC')],
+                                                       p_species=[ARCSpecies(label='OH', smiles='[OH]'),
+                                                                  ARCSpecies(label='CCCyl', smiles='[CH2]CC')])],
                                 testing=True,
                                 )
 
@@ -109,6 +120,31 @@ class TestMockAdapter(unittest.TestCase):
                                             'H       1.00000000    0.00000000    0.00000000'}
         self.assertEqual(content_3, job_3_expected_input_file)
 
+    def test_get_mock_xyz(self):
+        """Test getting the xyz coordinates from the mock input file"""
+        self.job_1.write_input_file()
+        xyz = self.job_1.get_mock_xyz()
+        expected_xyz = ((0.0, 0.0, 1.0),)
+        self.assertEqual(xyz['coords'], expected_xyz)
+
+        self.job_4.write_input_file()
+        xyz = self.job_4.get_mock_xyz()
+        expected_xyz = {'coords': ((0.0, 0.0, 0.0),
+                                   (-1.23638885, -0.31576286, 0.08035856),
+                                   (-0.01951084, 0.58603214, 0.20011967),
+                                   (1.25111292, -0.12649245, -0.23138091),
+                                   (-1.1299088, -1.20421894, 0.71100631),
+                                   (-1.38117893, -0.64405306, -0.95389019),
+                                   (-2.13745897, 0.21915243, 0.39632612),
+                                   (-0.16491381, 1.47886657, -0.41803363),
+                                   (0.08498971, 0.92174781, 1.23780143),
+                                   (1.43621378, -1.00896698, 0.38941334),
+                                   (1.1849428, -0.44879975, -1.27548267),
+                                   (2.11210099, 0.5424951, -0.13623803)),
+                        'isotopes': (16, 12, 12, 12, 1, 1, 1, 1, 1, 1, 1, 1),
+                        'symbols': ('O', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H')}
+        self.assertEqual(xyz, expected_xyz)
+
     def test_executing_mockter(self):
         """Test executing mockter"""
         self.job_1.execute()
@@ -118,7 +154,7 @@ class TestMockAdapter(unittest.TestCase):
 
         self.job_2.execute()
         output = read_yaml_file(os.path.join(self.job_2.local_path, output_filenames[self.job_2.job_adapter]))
-        self.assertEqual(output['xyz'], 'O       0.00000000    0.00000000    1.00000000')
+        self.assertEqual(output['xyz'], {'coords': ((0.0, 0.0, 1.0),), 'isotopes': (16,), 'symbols': ('O',)})
 
         self.job_3.execute()
         output = read_yaml_file(os.path.join(self.job_3.local_path, output_filenames[self.job_3.job_adapter]))
@@ -131,7 +167,7 @@ class TestMockAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3']:
+        for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4']:
             shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', folder), ignore_errors=True)
 
 
