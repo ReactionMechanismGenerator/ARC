@@ -7,7 +7,7 @@ import numpy as np
 import os
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 from copy import deepcopy
-from ic_params import Atom1Params, Atom2Params, Atom3Params, ParamKey
+from arc.species.ic_params import Atom1Params, Atom2Params, Atom3Params, ParamKey
 
 from ase import Atoms
 from openbabel import openbabel as ob
