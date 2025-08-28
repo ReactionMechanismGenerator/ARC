@@ -2421,7 +2421,7 @@ def update_zmat(zmat: dict,
     return zmat
 
 
-def add_two_xyzs(xyz1: dict,
+def add_two_xyzs1(xyz1: dict,
                  xyz2: dict,
                  atom1_params: dict,
                  atom2_params: dict,
