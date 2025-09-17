@@ -4751,6 +4751,115 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[3, 1, 14]), 77.4, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14]), 140, places=1)
 
+    def test_update_zmat(self):
+        """Test the update_zmat() function."""
+        zmat1 = {'coords': ((None, None, None),
+                            ('R_1_0', None, None),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            None),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            'D_3|4|6|7_0|0|1|1_1|1|0|0_2|3|5|6'),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            'D_3|4|6|7_0|0|1|1_1|1|0|0_2|3|5|6'),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            'D_5_1_0_4'),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            'D_3|4|6|7_0|0|1|1_1|1|0|0_2|3|5|6'),
+                            ('R_2|3|4|5|6|7_0|0|0|1|1|1',
+                            'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0',
+                            'D_3|4|6|7_0|0|1|1_1|1|0|0_2|3|5|6')),
+                'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7},
+                'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'),
+                'vars': {'A_2|3|4|5|6|7_0|0|0|1|1|1_1|1|1|0|0|0': 110.56796391805013,
+                        'D_3|4|6|7_0|0|1|1_1|1|0|0_2|3|5|6': 240.00000225241752,
+                        'D_5_1_0_4': 59.99998551792418,
+                        'R_1_0': 1.512057900428772,
+                        'R_2|3|4|5|6|7_0|0|0|1|1|1': 1.0940840641657512}}
+        add_atom = "C"
+        coords1 = ("R_8_0", "A_8_1_0", "D_8_2_1_0",)
+        vars = {"R_8_0": 5.0, "A_8_1_0": 109.5, "D_8_2_1_0": 60.0}
+        n = len(zmat1['symbols'])
+        new_zmat1 = converter.update_zmat(zmat=zmat1,
+                                          element=add_atom,
+                                          coords=coords1,
+                                          vars=vars,
+                                          n=n,
+                                          )
+        self.assertIsNot(zmat1, new_zmat1) # Test that a copy was made
+        self.assertEqual(len(new_zmat1['symbols']), len(zmat1['symbols']) + 1) # exactly one atom added
+        self.assertEqual(new_zmat1['symbols'][-1], add_atom) # the right atom was added at the end
+        self.assertEqual(new_zmat1['coords'][-1], coords1)
+        self.assertNotIn(vars.keys(), zmat1['vars'].keys())
+        self.assertIn(vars.keys(), new_zmat1['vars'].keys())
+
+        zmat2 = {'coords': ((None, None, None),), 'map': {0: 0}, 'symbols': ('H',), 'vars': {}} # lone H atom
+        add_atom = "H"
+        coords2 = ("R_1_0", None, None,)
+        vars = {"R_1_0": 0.74, }
+        n = len(zmat2['symbols'])
+        new_zmat2 = converter.update_zmat(zmat=zmat2,
+                                          element=add_atom,
+                                          coords=coords2,
+                                          vars=vars,
+                                          n=n,
+                                         )
+        self.assertIsNot(zmat2, new_zmat2) # Test that a copy was made
+        self.assertEqual(len(new_zmat2['symbols']), len(zmat2['symbols']) + 1) # exactly one atom added
+        self.assertEqual(new_zmat2['symbols'][-1], add_atom) # the right atom was added at the end
+        self.assertEqual(new_zmat2['coords'][-1], coords2)
+        self.assertNotIn(vars.keys(), zmat2['vars'].keys())
+        self.assertIn(vars.keys(), new_zmat2['vars'].keys())
+    
+    def test_add_two_xyzs(self):
+        """Test the add_two_xyzs() function."""
+        xyz1 = {'symbols': ('C', 'H', 'H', 'H', 'H'),
+                'isotopes': (12, 1, 1, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.0, 0.0, 1.089),
+                           (1.026719, 0.0, -0.363),
+                           (-0.51336, -0.889165, -0.363),
+                           (-0.51336, 0.889165, -0.363))}
+        xyz2 = {'symbols': ('O', 'H', 'H'),
+                'isotopes': (16, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.758602, 0.584882, 0.0),
+                           (-0.758602, 0.584882, 0.0))}
+        combined_xyz = converter.add_two_xyzs(xyz1=xyz1,
+                                              xyz2=xyz2,
+                                              atom1_params= {"R": {"val": 5.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0],
+                                                                  },
+                                                            "A": {"val": 90.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0, 1],
+                                                                  },
+                                                            "D": {"val": 90.0,
+                                                                  "m2i": [0],
+                                                                  "m1i": [0, 1, 2],
+                                                                  }
+                                                            },
+                                                atom2_params={"A": {"val": 90.0,
+                                                                    "m2i": [1],
+                                                                    "m1i": [0, 1],},
+                                                              "D" : {"val": 90.0,
+                                                                    "m2i": [1],
+                                                                    "m1i": [0, 1, 2],}
+                                                              },
+                                                atom3_params={"D": {"val": 90.0,
+                                                                    "m2i": [2],
+                                                                    "m1i": [0, 1, 2],}
+                                                              },
+                                                return_zmat=False,
+                                                )
+        
+
+        # self.assertTrue(almost_equal_coords_lists(combined_xyz, expected_combined_xyz))
 
     @classmethod
     def tearDownClass(cls):
