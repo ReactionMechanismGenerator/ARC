@@ -13,9 +13,9 @@ alias rmge='micromamba activate rmg_env'
 alias arce='micromamba activate arc_env'
 
 # code roots (set once at image build)
-export rmgpy_path=/home/rmguser/Code/RMG-Py
-export rmgdb_path=/home/rmguser/Code/RMG-database
-export arc_path=/home/rmguser/Code/ARC
+export rmgpy_path=/home/mambauser/Code/RMG-Py
+export rmgdb_path=/home/mambauser/Code/RMG-database
+export arc_path=/home/mambauser/Code/ARC
 
 alias rmgcode='cd "$rmgpy_path"'
 alias dbcode='cd "$rmgdb_path"'

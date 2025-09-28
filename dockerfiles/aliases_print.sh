@@ -22,7 +22,7 @@ cat <<'EOF'
     arcode      →  cd $arc_path
 
 ‣ One-liner runners
-    rmg         →  python-jl $rmgpy_path/rmg.py    input.py
+    rmg         →  python $rmgpy_path/rmg.py    input.py
     arkane      →  python    $rmgpy_path/Arkane.py input.py
     arc         →  python    $arc_path/ARC.py      input.yml
     arcrestart  →  python    $arc_path/ARC.py      restart.yml
