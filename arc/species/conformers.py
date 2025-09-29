@@ -1528,6 +1528,120 @@ def rdkit_force_field(label: str,
                       try_uff: bool = True,
                       optimize: bool = True,
                       try_ob: bool = False,
+                      return_status: bool = False,
+                      ) -> Tuple[list, list]:
+    """
+    Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
+    For UFF see: https://www.rdkit.org/docs/source/rdkit.Chem.rdForceFieldHelpers.html#rdkit.Chem.rdForceFieldHelpers.UFFOptimizeMoleculeConfs
+
+    Args:
+        label (str): The species' label.
+        rd_mol (RDKit RDMol): The RDKit molecule with embedded conformers to optimize.
+        mol (Molecule, optional): The RMG molecule object with connectivity and bond order information.
+        num_confs (int, optional): The number of random 3D conformations to generate.
+        force_field (str, optional): The type of force field to use.
+        try_uff (bool, optional): Whether to try UFF if MMFF94(s) fails. ``True`` by default.
+        optimize (bool, optional): Whether to first optimize the conformer using FF. True to optimize.
+        try_ob (bool, optional): Whether to try OpenBabel if RDKit fails. ``True`` to try, ``False`` by default.
+        return_status (bool, optional): Whether to return the optimization status codes. ``False`` by default.
+
+    Returns:
+        If ``return_status`` is ``False``:
+            Tuple[list, list]:
+                - Entries are optimized xyz's in a dictionary format.
+                - Entries are float numbers representing the energies.
+        If ``return_status`` is ``True``:
+            Tuple[list, list, list]:
+                - Entries are optimized xyz's in a dictionary format.
+                - Entries are float numbers representing the energies.
+                - Entries are integers representing the optimization status codes (0 is success).
+    """
+    xyzs, energies, statuses = list(), list(), list()
+    
+    if rd_mol is None or rd_mol.GetNumConformers() == 0:
+        return (xyzs, energies) if not return_status else (xyzs, energies, statuses)
+    
+    used_mmff_batch = False
+    
+    if optimize and "MMFF" in force_field:
+        try:
+            res = Chem.AllChem.MMFFOptimizeMoleculeConfs(rd_mol,
+                                                          mmffVariant=force_field,
+                                                          maxIters=1000,
+                                                          ignoreInterfragInteractions=False,
+                                                          numThreads=0,
+                                                          )
+            # res is a list of tuples [(status, energy), ...]
+            for i, (st, en) in enumerate(res):
+                statuses.append(st)
+                energies.append(en)
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+            used_mmff_batch = True
+        except Exception as e:
+            logger.warning(f"MMFF optimization failed for {label} with error: {e}")
+        
+    if optimize and not xyzs and try_uff:
+        try:
+            res = Chem.AllChem.UFFOptimizeMoleculeConfs(rd_mol,
+                                                       maxIters=1000,
+                                                       ignoreInterfragInteractions=False,
+                                                       numThreads=0,
+                                                       )
+            # res is a list of tuples [(status, energy), ...]
+            for i, (st, en) in enumerate(res):
+                statuses.append(st)
+                energies.append(en)
+                xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
+        except (RuntimeError, ValueError) as e:
+            pass
+        
+    if optimize and not xyzs and try_ob:
+        logger.warning(f'Using OpenBabel (instead of RDKit) as a fall back method to generate conformers for {label}. '
+                       f'This is often slower.')
+        xyzs, energies = openbabel_force_field_on_rdkit_conformers(label,
+                                                                   rd_mol,
+                                                                   force_field=force_field,
+                                                                   optimize=optimize,
+                                                                   )
+        if return_status:
+            return (xyzs, energies, [0]*len(xyzs))  # OpenBabel does not return status codes so treat all as successful
+        return xyzs, energies
+    
+    # Not optimize, then no energies or statuses
+    if not optimize:
+        xyzs = [read_rdkit_embedded_conformer_i(rd_mol, i)
+                for i in range(rd_mol.GetNumConformers())]
+        # Energies must remain empty in this case
+        return (xyzs, energies) if not return_status else (xyzs, energies, statuses)
+
+    # Optimisation returned some conformers but not energies for all conformers
+    if used_mmff_batch and (len(energies) != rd_mol.GetNumConformers()):
+        props = Chem.AllChem.MMFFGetMoleculeProperties(rd_mol, mmffVariant=force_field) \
+                if "MMFF" in force_field.upper() else None
+        for i in range(rd_mol.GetNumConformers()):
+            if len(energies) <= i:
+                try:
+                    if props is not None:
+                        ff = Chem.AllChem.MMFFGetMoleculeForceField(rd_mol, props, confId=i)
+                        energies.append(ff.CalcEnergy())
+                    else:
+                        ff = Chem.AllChem.UFFGetMoleculeForceField(rd_mol, confId=i)
+                        energies.append(ff.CalcEnergy())
+                except Exception:
+                    energies.append(float("nan"))
+            if return_status and len(statuses) <= i:
+                statuses.append(0)
+    
+    return (xyzs, energies) if not return_status else (xyzs, energies, statuses)
+
+def old_rdkit_force_field(label: str,
+                      rd_mol: Optional[RDMol],
+                      mol: Optional[Molecule] = None,
+                      num_confs: Optional[int] = None,
+                      force_field: str = 'MMFF94s',
+                      try_uff: bool = True,
+                      optimize: bool = True,
+                      try_ob: bool = False,
                       ) -> Tuple[list, list]:
     """
     Optimize RDKit conformers using a force field (MMFF94 or MMFF94s are recommended).
@@ -1595,6 +1709,7 @@ def rdkit_force_field(label: str,
                 energies.append(output[i][1])
             xyzs.append(read_rdkit_embedded_conformer_i(rd_mol, i))
     return xyzs, energies
+
 
 
 def get_wells(label, angles, blank=WELL_GAP):

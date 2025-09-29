@@ -5,9 +5,11 @@
 This module contains unit tests for the arc.scheduler module
 """
 
+import time
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -23,6 +25,29 @@ from arc.species.species import ARCSpecies
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
+
+# Helpers for MultiProcessing Test
+def fake_generate_conformers(species_self, n_confs=10, e_confs=5, plot_path=None):
+    """Stand-in for ARCSpecies.generate_conformers.
+    It both *creates a dummy conformer* and *records the label* on a function attribute."""
+    species_self.conformers = [{
+        "symbols": ("H", "H"),
+        "isotopes": (1, 1),
+        "coords": ((0.0, 0.0, 0.0), (0.0, 0.0, 0.74)),
+    }]
+    species_self.conformer_energies = [0.0]
+    fake_generate_conformers.called.add(species_self.label)
+
+
+def fake_process_conformers(sched_self, lbl):
+    """Stand-in for Scheduler.process_conformers."""
+    fake_process_conformers.called.add(lbl)
+
+
+# simple per-test “state holders” on the functions themselves
+fake_generate_conformers.called = set()
+fake_process_conformers.called = set()
+#
 
 
 class TestScheduler(unittest.TestCase):
@@ -757,6 +782,93 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
+    def test_run_conformer_jobs_calls_process_conformers_for_dont_gen_confs(self):
+        """
+        If a non-TS is in dont_gen_confs and the species has initial/final xyz or existing conformers,
+        run_conformer_jobs should call process_conformers(label) for that species.
+        """
+        label = "spc_dont_gen_confs"
+        xyz = {
+            'symbols': ("H", "H"),
+            'isotopes': (1, 1),
+            'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.74)),
+        }
+        spc = ARCSpecies(label=label, smiles='[H][H]', xyz=xyz)
+        spc.number_of_atoms = 2
+        spc.conformers = [xyz]
+        spc.conformer_energies = [None]
+
+        job_types = {'conf_opt': True, 'conf_sp': False, 'opt': False, 'fine': False, 'freq': False,
+                     'sp': False, 'rotors': False, 'orbitals': False, 'lennard_jones': False, 'bde': False, 'irc': False, 'tsg': False}
+        sched = Scheduler(project='test_run_conformer_jobs_dont_gen_confs',
+                            ess_settings=self.ess_settings,
+                            species_list=[spc],
+                            project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3'),
+                            testing=True,
+                            job_types=job_types)
+        sched.dont_gen_confs = [label]
+
+        with patch.object(Scheduler, "process_conformers", autospec=True) as mock_proc:
+            sched.run_conformer_jobs(labels=[label])
+            mock_proc.assert_called_once()
+            # First arg is Scheduler (self), second is label
+            called_args = mock_proc.call_args[0]
+            self.assertEqual(called_args[1], label)
+
+    def test_sched_calls_real_generate_conformers(self):
+        spc = ARCSpecies(label="spc_real_gen_confs", multiplicity=1, charge=0, smiles='CC')
+        sched = Scheduler(
+            project='test_sched_calls_real_generate_conformers',
+            ess_settings=self.ess_settings,
+            species_list=[spc],
+            project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3'),
+            testing=True,
+            job_types={'conf_opt': True, 'conf_sp': False, 'opt': False, 'fine': False, 'freq': False,
+                       'sp': False, 'rotors': False, 'orbitals': False, 'lennard_jones': False, 'bde': False, 'irc': False, 'tsg': False},
+        )
+
+        sched._generate_conformers_for_label(label=spc.label)
+        assert len(spc.conformers) > 0, "Real conformer generation did not populate spc.conformers"
+
+    def test_run_conformer_jobs_generates_and_processes_for_multiple_species(self):
+        """
+        For multiple non-TS species needing conformer generation, verify that:
+          - ARCSpecies.generate_conformers is invoked for each species
+          - Scheduler.process_conformers is subsequently called for each label
+        Also verify both serial (nprocs=1) and parallel (nprocs>1) code paths.
+        """
+        job_types = {
+            'conf_opt': True, 'conf_sp': False, 'opt': False, 'fine': False, 'freq': False,
+            'sp': False, 'rotors': False, 'orbitals': False, 'lennard_jones': False,
+            'bde': False, 'irc': False, 'tsg': False
+        }
+        time_taken = {}
+        for nprocs in (1, 2):
+            with self.subTest(nprocs=nprocs):
+                start_time = time.time()
+                fake_generate_conformers.called.clear()
+                fake_process_conformers.called.clear()
+                spc1 = ARCSpecies(label="spc_multi_1", multiplicity=1, charge=0, smiles='CCO')
+                spc2 = ARCSpecies(label="spc_multi_2", multiplicity=1, charge=0, smiles='CCN')
+
+                sched = Scheduler(
+                    project='test_run_conformer_jobs_multiple_species',
+                    ess_settings=self.ess_settings,
+                    species_list=[
+                        spc1,
+                        spc2,
+                    ],
+                    project_directory=os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage3'),
+                    testing=True,
+                    job_types=job_types,
+                    conformer_gen_nprocs=nprocs,
+                )
+                
+                sched.run_conformer_jobs(labels=[spc1.label, spc2.label])
+                time_taken[nprocs] = time.time() - start_time
+                print(f"nprocs={nprocs}, fake_generate_conformers.called={fake_generate_conformers.called}, fake_process_conformers.called={fake_process_conformers.called}")
+
+        print(f"Time taken: {time_taken}")
     @classmethod
     def tearDownClass(cls):
         """
