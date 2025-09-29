@@ -2338,3 +2338,46 @@ def map_index_to_int(index: Union[int, str]) -> int:
     if isinstance(index, str) and all(char.isdigit() for char in index[1:]):
         return int(index[1:])
     raise TypeError(f'Expected either an int or a string on the format "X15", got {index}')
+
+
+def check_zmat_vs_coords(zmat: dict,
+                         coords: np.array,
+                         rtol: float = 0.05,
+                         atol: float = 1e-4
+                         ) -> bool:
+    """
+    Check the zmat for consistency vs coordinates.
+    Args:
+        zmat (dict): The zmat.
+        coords (np.array): The cartesian coordinates.
+        rtol (float, optional): Tolerance to the radius (in ångström).
+        atol (float, optional): Tolerance to the angle (in degrees).
+    Returns:
+        bool: Whether the zmat is consistent with the coordinates.
+    """
+    nones = 0
+    for zmat_coords in zmat["coords"]:
+        for param in zmat_coords:
+            if param is not None:
+                if param not in zmat["vars"]:
+                    return False
+                else:
+                    indices = list(get_atom_indices_from_zmat_parameter(param)[0])
+                    calculated_param = calculate_param(coords=coords.tolist(), atoms=indices)
+                    zmat_param = zmat["vars"][param]
+                    if abs(calculated_param - zmat_param) > (rtol if param.startswith('R') else atol):
+                        return False
+            else:
+                nones += 1
+    if nones < 6:
+        n = len(zmat["symbols"])
+        if n == 1:
+            return nones == 3 # Exactly 3 Nones for one atom
+        elif n == 2:
+            return nones == 5 # Exactly 5 Nones for two atoms
+        else:
+            return False
+    elif nones > 6:
+        return False
+    return True
+                
