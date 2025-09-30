@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
+DIST_PRECISION = 0.01  # Angstrom
+ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+
 
 def str_to_xyz(xyz_str: str,
                project_directory: Optional[str] = None,
@@ -2074,7 +2077,7 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
 
     def meets_precision(result_coords):
         r_error, a_error, d_error = calculate_errors(result_coords)
-        return r_error < 0.01 and a_error < 0.1 and d_error < 0.1
+        return r_error < DIST_PRECISION and a_error < ANGL_PRECISION and d_error < ANGL_PRECISION
 
     guess_functions = [
         generate_initial_guess_r_a,
@@ -2262,7 +2265,9 @@ def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
         cross_product_length = np.linalg.norm(np.cross(BA, BX))
         dot_product = np.dot(BA, BX)
         calc_angle = math.atan2(cross_product_length, dot_product)
-        return (calc_angle - target_angle) ** 2
+        angle_diff = calc_angle - target_angle
+        wrapped_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))  # wrapped to the range (-pi, pi]
+        return wrapped_diff
 
     return angle_eq
 
@@ -2310,7 +2315,7 @@ def dihedral_constraint(atom_a: tuple, atom_b: tuple, atom_c: tuple, dihedral: f
         BC_norm = np.linalg.norm(BC)
         cos_calc = np.dot(N1, N2) / (N1_norm * N2_norm)
         sin_calc = np.dot(BC, np.cross(N1, N2)) / (BC_norm * N1_norm * N2_norm)
-        return (cos_calc - cos_d) ** 2 + (sin_calc - sin_d) ** 2
+        return np.sqrt((cos_calc - cos_d) ** 2 + (sin_calc - sin_d) ** 2)
 
     return dihedral_eq
 
