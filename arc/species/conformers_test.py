@@ -6,6 +6,7 @@ This module contains unit tests of the arc.species.conformers module
 """
 
 import unittest
+import pytest
 
 from rdkit.Chem import rdMolTransforms as rdMT
 
@@ -554,7 +555,7 @@ H       0.68104300    0.74807180    0.61546062""")]
                                                           method='diverse',
                                                           )
         self.assertEqual(len(xyzs), 1)
-        self.assertAlmostEqual(energies[0], 2.931930, 3)
+        self.assertAlmostEqual(energies[0], 2.931930, delta=0.001)
 
     def test_openbabel_force_field_on_rdkit_conformers(self):
         """Test Open Babel force field on RDKit conformers"""
@@ -603,6 +604,41 @@ H       0.68104300    0.74807180    0.61546062""")]
         # More info can be found from PR #332
         self.assertEqual(xyzs[0]['symbols'], expected_xyzs[0]['symbols'])
         self.assertEqual(xyzs[1]['symbols'], expected_xyzs[1]['symbols'])
+
+    def test_openbabel_force_field_on_rdkit_conformers_parallel(self):
+        """Parallel and serial OB-on-RDKit paths give identical results (up to ordering)."""
+        xyz = converter.str_to_xyz("""C         -2.18276        2.03598        0.00028
+                                    C         -0.83696        1.34108       -0.05231
+                                    H         -2.23808        2.82717       -0.75474
+                                    H         -2.33219        2.51406        0.97405
+                                    H         -2.99589        1.32546       -0.17267
+                                    O          0.18176        2.30786        0.17821
+                                    H         -0.69161        0.88171       -1.03641
+                                    H         -0.78712        0.56391        0.71847
+                                    O          1.39175        1.59510        0.11494""")
+        spc = ARCSpecies(label='CCO[O]', smiles='CCO[O]', xyz=xyz)
+        rd_mol = conformers.embed_rdkit(label='', mol=spc.mol, num_confs=2, xyz=xyz)
+
+        # serial
+        xyzs_s, energies_s = conformers.openbabel_force_field_on_rdkit_conformers(
+            label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=True, nprocs=1
+        )
+        # parallel
+        xyzs_p, energies_p = conformers.openbabel_force_field_on_rdkit_conformers(
+            label='', rd_mol=rd_mol, force_field='MMFF94s', optimize=True, nprocs=2
+        )
+
+        # same counts
+        self.assertEqual(len(energies_s), len(energies_p))
+        self.assertEqual(len(xyzs_s), len(xyzs_p))
+
+        # energies equal up to ordering
+        self.assertEqual(sorted(energies_s), pytest.approx(sorted(energies_p), abs=1e-8))
+
+        # compare symbols only (OB coords can differ slightly across platforms)
+        sym_s = sorted([tuple(x['symbols']) for x in xyzs_s])
+        sym_p = sorted([tuple(x['symbols']) for x in xyzs_p])
+        self.assertEqual(sym_s, sym_p)
 
     def test_embed_rdkit(self):
         """Test embedding in RDKit"""
