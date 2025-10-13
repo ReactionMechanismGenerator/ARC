@@ -982,7 +982,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
             base_xyz_indices = {
                 "a": xyz_indices["a"],
                 "b": xyz_indices["b"],
-                "f": xyz_indices["f"],
+                "e": xyz_indices["e"],
                 "o": xyz_indices["o"],
                 "h1": xyz_indices["h1"],
             }
@@ -1064,11 +1064,11 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
                                  product_dict: dict,
                                  is_set_1: bool) -> Tuple[ARCSpecies, ARCSpecies, dict, dict]:
     """
-    Extract the reactant molecules and relevant atomic indices (a,b,f,d,o,h1) for the hydrolysis reaction.
+    Extract the reactant molecules and relevant atomic indices (a,b,e,d,o,h1) for the hydrolysis reaction.
 
     Atom scheme for the TS structure of the hydrolysis reaction:
 
-                f
+                e
                 |
             d — a — — b
                 |     |
@@ -1079,7 +1079,7 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     Description:
             - a: Electrophilic center (receives nucleophilic attack from o).
             - b: Leaving group atom (accepts proton h1).
-            - f, d: Atoms bonded to a (used to define geometry).
+            - e, d: Atoms bonded to a (used to define geometry).
             - o: Oxygen from water
             - h1: The reactive hydrogen from water
             - h2: The other hydrogen from water (not reactive).
@@ -1094,7 +1094,7 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
             - main_reactant(ARCSpecies): The main reactant molecule
             - water(ARCSpecies): The water molecule
             - initial_xyz(dict): Initial XYZ coordinates of the main reactant
-            - xyz_indices(dict): Dictionary mapping a, b, f, d , o, h1 atoms to their indices in the xyz dictionary
+            - xyz_indices(dict): Dictionary mapping a, b, e, d , o, h1 atoms to their indices in the xyz dictionary
     """
     main_reactant, water = get_main_reactant_and_water_from_hydrolysis_reaction(reaction)
     a_xyz_index = product_dict["r_label_map"]["*1"]
@@ -1117,7 +1117,7 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     xyz_indices = {
         "a": a_xyz_index,
         "b": b_xyz_index,
-        "f": f_xyz_index,
+        "e": e_xyz_index,
         "d": d_xyz_indices,
         "o": o_index,
         "h1": h1_index
@@ -1167,7 +1167,7 @@ def process_chosen_d_indices(initial_xyz: dict,
                                                                                              "d": None}
         current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, chosen_xyz_indices)
         matches = get_matching_dihedrals(current_zmat, zmat_indices['a'], zmat_indices['b'],
-                                         zmat_indices['f'], zmat_indices['d'])
+                                         zmat_indices['e'], zmat_indices['d'])
         max_dihedrals_found = max(max_dihedrals_found, len(matches))
         if should_adjust_dihedral and dihedrals_to_change_num > len(matches):
             continue
@@ -1328,7 +1328,7 @@ def setup_zmat_indices(initial_xyz: dict,
     zmat_indices = {
         'a': key_by_val(initial_zmat.get('map', {}), xyz_indices['a']),
         'b': key_by_val(initial_zmat.get('map', {}), xyz_indices['b']),
-        'f': key_by_val(initial_zmat.get('map', {}), xyz_indices['f']),
+        'e': key_by_val(initial_zmat.get('map', {}), xyz_indices['e']),
         'd': key_by_val(initial_zmat.get('map', {}), xyz_indices['d']) if xyz_indices['d'] is not None else None
     }
     return initial_zmat, zmat_indices
@@ -1387,7 +1387,7 @@ def generate_dihedral_variants(zmat: dict,
 def get_matching_dihedrals(zmat: dict,
                           a: int,
                           b: int,
-                          f: int,
+                          e: int,
                           d: Optional[int]) -> List[List[int]]:
     """
     Retrieve all dihedral angles in the Z-matrix that match the given atom indices.
@@ -1398,7 +1398,7 @@ def get_matching_dihedrals(zmat: dict,
         zmat (dict): The Z-matrix containing atomic coordinates and parameters.
         a (int): The first atom index to match.
         b (int): The second atom index to match.
-        f (int): The third atom index to match.
+        e (int): The third atom index to match.
         d (Optional[int]): The fourth atom index to match (optional).
 
     Returns:
@@ -1410,10 +1410,10 @@ def get_matching_dihedrals(zmat: dict,
         if key.startswith('D_') or key.startswith('DX_'):
             indices = [int(idx) for idx in key.split('_')[1:]]
             if d is not None:
-                if a in indices and b in indices and (f in indices or d in indices):
+                if a in indices and b in indices and (e in indices or d in indices):
                     matches.append(indices)
             else:
-                if a in indices and b in indices and f in indices:
+                if a in indices and b in indices and e in indices:
                     matches.append(indices)
     return matches
 
@@ -1548,13 +1548,13 @@ def generate_hydrolysis_ts_guess(initial_xyz: dict,
                 d_value=d_value[i]
             )
 
-        a_xyz, b_xyz, f_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices
+        a_xyz, b_xyz, e_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices
         are_valid_bonds=check_ts_bonds(xyz_guess, [o_xyz, h1_xyz, h1_xyz+1,  a_xyz, b_xyz])
         colliding=colliding_atoms(xyz_guess, threshold=threshold)
         duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
         if is_set_1:
-            dihedral_fdao=[f_xyz, d_xyz, a_xyz, o_xyz]
-            dao_is_linear=check_dao_angle(dihedral_fdao, xyz_guess)
+            dihedral_edao=[e_xyz, d_xyz, a_xyz, o_xyz]
+            dao_is_linear=check_dao_angle(dihedral_edao, xyz_guess)
         else:
             dao_is_linear=False
         if xyz_guess is not None and not colliding and not duplicate and are_valid_bonds and not dao_is_linear:
