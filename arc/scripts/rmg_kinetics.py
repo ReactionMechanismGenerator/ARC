@@ -98,7 +98,6 @@ def determine_rmg_kinetics(rmgdb: RMGDatabase,
             kinetics_list = family.get_kinetics(reaction=deg_rxn, template_labels=deg_rxn.template, degeneracy=deg_rxn.degeneracy)
             for kinetics_detailes in kinetics_list:
                 kinetics = kinetics_detailes[0]
-                kinetics.change_rate(deg_rxn.degeneracy)
                 if hasattr(kinetics, 'to_arrhenius'):
                     kinetics = kinetics.to_arrhenius(dh_rxn298)  # Convert ArrheniusEP to Arrhenius
                 kinetics.A.value_si = kinetics.A.value_si * (1e6 if A_units == "cm^3/(mol*s)" else 1)
@@ -268,6 +267,8 @@ def load_rmg_database() -> RMGDatabase:
                         reaction_libraries=kinetics_libraries,
                         kinetics_families='default',
                         kinetics_depositories=['training'])
+    for family in rmgdb.kinetics.families.values():
+        family.add_rules_from_training(rmgdb)
     return rmgdb
 
 
