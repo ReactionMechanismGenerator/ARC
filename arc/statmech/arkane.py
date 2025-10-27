@@ -50,7 +50,7 @@ bondCorrectionType = '${bac_type}'
 % for spc in species_list:
 % if spc['smiles']:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
-        structure=SMILES('${spc['smiles']}'))
+        structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''})
 % endif
@@ -325,7 +325,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             if e0_only or spc.compute_thermo:
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
-                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else ''})
+                                     'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
+                                     'multiplicity': spc.multiplicity,
+                                     })
         ts_list = [{'label': rxn.ts_species.label,
                      'path': rxn.ts_species.yml_path or os.path.join(statmech_dir, 'TSs', f'{rxn.ts_species.label}.py')}
                      for rxn in self.reactions] if self.reactions else list()
