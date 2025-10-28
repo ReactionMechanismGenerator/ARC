@@ -604,6 +604,24 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(traj_4[0]['symbols'], ('C', 'C', 'H', 'H', 'H', 'H', 'H', 'C', 'C', 'C', 'C', 'C', 'C', 'C',
                                                 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H',
                                                 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'))
+        
+        path_5 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'orca', 'cc.txt')
+        traj_5 = parser.parse_1d_scan_coords(path_5)
+        self.assertEqual(len(traj_5), 45)
+        self.assertEqual(traj_5[0]['symbols'], ('O', 'N', 'O', 'H'))
+        self.assertEqual(traj_5[10]['coords'], ((-0.799556, -0.234171, 0.251428),
+                                                (0.64986, -0.41193, -0.121131),
+                                                (0.909042, 0.203539, -1.074932),
+                                                (-0.759345, 0.442562, 0.944635)))
+        
+        path_6 = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'orca', 'dft.txt')
+        traj_6 = parser.parse_1d_scan_coords(path_6)
+        self.assertEqual(len(traj_6), 40)
+        self.assertEqual(traj_6[0]['symbols'], ('N', 'O', 'O', 'H'))
+        self.assertEqual(traj_6[30]['coords'], ((0.002293, -0.673281, -0.26298),
+                                                (-0.138634, 0.590201, -0.397709),
+                                                (0.692562, 1.371759, 0.229642),
+                                                (-0.574929, -1.150836, 0.427339)))
 
     def test_parse_t1(self):
         """Test T1 diagnostic parsing"""
