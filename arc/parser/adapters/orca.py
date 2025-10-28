@@ -239,8 +239,22 @@ class OrcaParser(ESSAdapter, ABC):
         Returns: Tuple[Optional[List[float]], Optional[List[float]]]
             The electronic energy in kJ/mol and the dihedral scan angle in degrees.
         """
-        # Not implemented for Orca.
-        return None, None
+        cs, es = [], []
+        with open(self.log_file_path, "r") as f:
+            flag_actual = False
+            for line in f.readlines():
+                if "The Calculated Surface using the 'Actual Energy'" in line:
+                    flag_actual = True
+                elif flag_actual:
+                    if not line.strip():
+                        break
+                    else:
+                        c, e = line.split()
+                        cs.append(float(c))
+                        es.append(float(e))
+        if len(cs) != len(es) or not cs:
+            raise ValueError("Failed to parse 1D scan energies from Orca log file.")
+        return np.array(es), np.array(cs)
 
     def parse_1d_scan_coords(self) -> Optional[List[Dict[str, tuple]]]:
         """
