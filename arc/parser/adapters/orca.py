@@ -7,10 +7,11 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import re
 
 from arc.common import SYMBOL_BY_NUMBER
 from arc.constants import E_h_kJmol, bohr_to_angstrom
-from arc.species.converter import xyz_from_data
+from arc.species.converter import str_to_xyz, xyz_from_data
 from arc.parser.adapter import ESSAdapter
 from arc.parser.factory import register_ess_adapter
 from arc.parser.parser import _get_lines_from_file
@@ -248,8 +249,31 @@ class OrcaParser(ESSAdapter, ABC):
         Returns: List[Dict[str, tuple]]
             The Cartesian coordinates for each scan point.
         """
-        # Not implemented for Orca.
-        return None
+        coords_list = []
+        with open(self.log_file_path, "r") as f:
+            flag_hurray, flag_coords = False, False
+            pat = re.compile(
+                            r'^\s*([A-Z][a-z]?)\s+'
+                            r'([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s+'
+                            r'([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s+'
+                            r'([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$',
+                            re.MULTILINE
+                            )
+            for line in f.readlines():
+                if "HURRAY" in line:
+                    coords = """"""
+                    flag_hurray = True
+                if flag_hurray and "CARTESIAN COORDINATES (ANGSTROEM)" in line:
+                    flag_coords = True
+                if flag_hurray and flag_coords:
+                    if not line.strip():
+                        coords_list.append(str_to_xyz(coords))
+                        flag_hurray, flag_coords = False, False
+                    if bool(pat.match(line)):
+                        coords += line
+            if not coords_list:
+                raise ValueError("Failed to parse 1D scan coordinates from Orca log file.")
+        return coords_list
 
     def parse_irc_traj(self) -> Optional[List[Dict[str, tuple]]]:
         """
