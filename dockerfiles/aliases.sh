@@ -22,7 +22,7 @@ alias dbcode='cd "$rmgdb_path"'
 alias arcode='cd "$arc_path"'
 
 # job wrappers
-alias rmg='python-jl "$rmgpy_path/rmg.py" input.py  > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
+alias rmg='python "$rmgpy_path/rmg.py" input.py  > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
 alias arkane='python "$rmgpy_path/Arkane.py" input.py  > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
 alias arc='python "$arc_path/ARC.py" input.yml  > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
 alias arcrestart='python "$arc_path/ARC.py" restart.yml > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)'
