@@ -2,38 +2,7 @@
 Input files
 """
 
-input_files = {
-    'mrci': """***,name
-memory,{memory},m;
-geometry={{angstrom;
-{xyz}}}
-
-gprint,orbitals;
-
-basis={basis}
-
-{{hf;shift,-1.0,-0.5;
-maxit,1000;
-wf,spin={spin},charge={charge};}}
-
-{{multi;
-{occ}noextra,failsafe,config,csf;
-wf,spin={spin},charge={charge};
-natorb,print,ci;}}
-
-{{mrci;
-{occ}wf,spin={spin},charge={charge};}}
-
-E_mrci=energy;
-E_mrci_Davidson=energd;
-
-table,E_mrci,E_mrci_Davidson;
-
----;
-
-""",
-
-    'arkane_input_species': """#!/usr/bin/env python3
+input_files = {'arkane_input_species': """#!/usr/bin/env python3
 # encoding: utf-8
 
 {bonds}externalSymmetry = {symmetry}

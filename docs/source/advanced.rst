@@ -186,6 +186,31 @@ Another example::
 
 will append ``iop(99/33=1)`` to the respective Gaussian job input file.
 
+To request a multireference calculation, such as MRCI, one can specify any of the following examples:
+
+- A "simple" MRCI computation (text example)::
+
+    sp_level = 'MRCI/cc-pVTZ'
+
+ - Adding explicitly correlated calculations (F12) which provide improvement of the basis set convergence.
+Only available through Molpro (dictionary example)::
+
+    sp_level = {'method': 'MRCI-F12', 'basis': 'cc-pVTZ-F12}
+
+Users can also specify a chain of jobs to be performed (supported in Molpro and Orca) so that the MRCI
+calculation uses the orbitals of the previous job. For example, to perform a MRCI calculation on CASSCF orbitals,
+one can specify::
+
+    sp_level = {'method': 'MP2_CASSCF_MRCI', 'basis': 'aug-cc-pVTZ'}
+
+This chain, seperated by underscores, will perform an HF calculation (by default, no need to specify),
+an MP2 calculation, then a CASSCF calculation, and finally an MRCI calculation on CASSCF orbitals.
+Note that requesting an MRCI job will cause ARC to first automatically spawn a Molpro CCSD/cc-pVDZ job to identify
+the active space for the MRCI calculation. If the subsequent job is spawned in Orca, the active space will be used.
+If the subsequent MRCI job is spawned in Molpro, the entire space is currently considered (the active space is not
+determined explicitly). It is therefore recommended to set the ``levels_ess`` dict in settings to that "MRCI" jobs
+will be executed in Orca, and "F12" and "CCSD" jobs will be executed in Molpro.
+
 
 Adaptive levels of theory
 ^^^^^^^^^^^^^^^^^^^^^^^^^
