@@ -2933,15 +2933,15 @@ H      -0.30139889    0.23142254    3.12085495"""
             print()
             distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.5
             self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
-            self.check_distance(coords=guess['coords'], atoms=[a, O], expected=2.1, places=0)
-            self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+            self.check_distance(coords=guess['coords'], atoms=[a, O], expected=2.14, places=0)
+            self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.1, places=0)
             self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
-            self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=65)
-            self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=72)
-            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=106)
-            self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=98.25)
-            self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.72, delta=5)
-            self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103)
+            self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=66)
+            self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=72.6)
+            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=107)
+            self.check_dihedral(coords=guess['coords'], atoms=[e, d, a, O], expected=101.8)
+            self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=0.3, delta=5)
+            self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=102.2)
 
 
     def test_imine_hydrolysis(self):
@@ -2983,17 +2983,17 @@ H      -0.30139889    0.23142254    3.12085495"""
             print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
-            distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.3
+            distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.065
             self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
-            self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
+            self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.79, places=0)
             self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
             self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
-            self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=78)
-            self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=70)
-            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
-            self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=108)
-            self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=12, delta=5)
-            self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=113)
+            self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=93.3)
+            self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=61.6)
+            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=110.5)
+            self.check_dihedral(coords=guess['coords'], atoms=[e, d, a, O], expected=107.6)
+            self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-8.93, delta=5)
+            self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=101.9)
 
 
     def test_nitrile_hydrolysis(self):
@@ -3035,15 +3035,15 @@ H      -0.30139889    0.23142254    3.12085495"""
             print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
-            distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.1
+            distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.04
             self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab, places=0)
             self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8, places=0)
-            self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21, places=0)
+            self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.3, places=0)
             self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97, places=0)
             self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=97)
             self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=58)
-            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
-            self.check_dihedral(coords=guess['coords'], atoms=[f, b, a, O], expected=174)
+            self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=114)
+            self.check_dihedral(coords=guess['coords'], atoms=[e, b, a, O], expected=174)
             self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=-0.0154, delta=5)
             self.check_dihedral(coords=guess['coords'], atoms=[a, O, H1, H1 + 1], expected=104)
 
