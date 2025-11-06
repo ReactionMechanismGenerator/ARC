@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
 
 
-FAMILY_SETS = {'set_1': ['ester_hydrolysis', 'ether_hydrolysis', 'imine_hydrolysis'],
+FAMILY_SETS = {'set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolysis', 'imine_hydrolysis'],
                'set_2': ['nitrile_hydrolysis']}
 
 DIHEDRAL_INCREMENT = 30
@@ -959,7 +959,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
             - List[int]: Indices of the generated TS guesses.
     """
     xyz_guesses_total, zmats_total, reaction_families, guesses_indices = [], [], [], []
-    product_dicts, ester_and_ether_families = get_products_and_check_families(reaction)
+    product_dicts, carbonyl_based_and_ether_families = get_products_and_check_families(reaction)
     hydrolysis_parameters = load_hydrolysis_parameters()
     dihedrals_to_change_num, max_dihedrals_found = 0, 0
     if reaction._family is not None:
@@ -998,8 +998,8 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
                     guesses_indices.extend([list(chosen_xyz_indices.values()) for _ in range(len(xyz_guesses))])
         if reaction._family is not None:
             condition_met = any(fam == reaction._family for fam in reaction_families)
-        elif ester_and_ether_families:
-            condition_met = has_ester_hydrolysis(reaction_families)
+        elif carbonyl_based_and_ether_families:
+            condition_met = has_carbonyl_based_hydrolysis(reaction_families)
         else:
             condition_met = len(xyz_guesses_total) > 0
 
@@ -1008,7 +1008,7 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
 
 def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
     """
-    Get all reaction products and determine if both ester and ether hydrolysis families are present.
+    Get all reaction products and determine if both carbonyl-based and ether hydrolysis families are present.
 
     Args:
         reaction: An ARCReaction instance.
@@ -1016,7 +1016,7 @@ def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict]
     Returns:
         Tuple containing:
             - List[dict]: Product dictionaries with reaction family information
-            - bool: True if both ester and ether hydrolysis families are present
+            - bool: True if both carbonyl-based and ether hydrolysis families are present
     """
     product_dicts = get_reaction_family_products(
         rxn=reaction,
@@ -1024,8 +1024,8 @@ def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict]
         consider_rmg_families=False,
         consider_arc_families=True,
     )
-    ester_present = any(
-        "ester_hydrolysis" in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
+    carbonyl_based_present = any(
+        "carbonyl_based_hydrolysis" in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
         for d in product_dicts
     )
     ether_present = any(
@@ -1033,7 +1033,7 @@ def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict]
         for d in product_dicts
     )
 
-    return product_dicts, (ester_present and ether_present)
+    return product_dicts, (carbonyl_based_present and ether_present)
 
 
 def load_hydrolysis_parameters() -> dict:
@@ -1047,17 +1047,17 @@ def load_hydrolysis_parameters() -> dict:
     return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
 
 
-def has_ester_hydrolysis(reaction_families: List[dict]) -> bool:
+def has_carbonyl_based_hydrolysis(reaction_families: List[dict]) -> bool:
     """
-    Check if ester hydrolysis is present in the generated transition state guesses.
+    Check if carbonyl-based hydrolysis is present in the generated transition state guesses.
 
     Args:
         reaction_families:  Reaction families of the generated TS guesses.
 
     Returns:
-        bool: True if ester hydrolysis is present in any of the transition state guesses.
+        bool: True if carbonyl-based hydrolysis is present in any of the transition state guesses.
     """
-    return any(family == "ester_hydrolysis" for family in reaction_families)
+    return any(family == "carbonyl_based_hydrolysis" for family in reaction_families)
 
 
 def extract_reactant_and_indices(reaction: 'ARCReaction',

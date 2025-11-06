@@ -1,7 +1,7 @@
-name = "ester_hydrolysis/groups"
-shortDesc = u"ester_hydrolysis"
+name = "carbonyl_based_hydrolysis/groups"
+shortDesc = u"carbonyl_based_hydrolysis"
 longDesc = u"""
-A generic bimolecular ester hydrolysis reaction: R-A(=O)-B + H2O <=> R-A(=O)-OH + B-H
+A generic bimolecular carbonyl_based hydrolysis reaction: R-A(=O)-B + H2O <=> R-A(=O)-OH + B-H
 
 Where:
 - A can be C (carbonyl) or P (phosphoryl).
@@ -11,10 +11,10 @@ Where:
 RA(*1)(=O)B(*2) + H(*3)O(*4)H <=> RA(*1)(=O)O(*4)H + B(*2)H(*3)
 
 
-This family encompasses hydrolysis reactions for a range of ester types, including carboxylic, phosphoric, and thioester variants.
+This family encompasses hydrolysis reactions for a range of carbonyl_based classes, including esters, amides, and acyl halides.
 """
 
-template(reactants=["ester", "H2O"], products=["acid", "alcohol"], ownReverse=False)
+template(reactants=["carbonyl_group", "H2O"], products=["acid", "alcohol"], ownReverse=False)
 
 reverse = "condensation"
 
@@ -29,7 +29,7 @@ recipe(actions=[
 
 entry(
     index = 0,
-    label = "ester",
+    label = "carbonyl_group",
     group = 
 """
 1    R               u0 {2,S}
@@ -55,7 +55,7 @@ entry(
 
 tree(
 """
-L1: ester
+L1: carbonyl_group
 L1: H2O
 """
 )

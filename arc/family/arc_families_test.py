@@ -15,23 +15,23 @@ from arc.species.species import ARCSpecies
 ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
 
-class TestEsterHydrolysisReactionFamily(unittest.TestCase):
+class TestCarbonylBasedHydrolysisReactionFamily(unittest.TestCase):
     """
-    Contains unit tests for the ester hydrolysis reaction family.
+    Contains unit tests for the carbonyl-based hydrolysis reaction family.
     """
 
     @classmethod
     def setUpClass(cls):
-        """Set up the test by defining the ester hydrolysis reaction family."""
-        cls.family = ReactionFamily('ester_hydrolysis')
+        """Set up the test by defining the carbonyl-based hydrolysis reaction family."""
+        cls.family = ReactionFamily('carbonyl_based_hydrolysis')
 
-    def test_ester_hydrolysis_reaction(self):
-        """Test if ester hydrolysis products are correctly generated."""
-        ester = ARCSpecies(label='ester', smiles='CC(=O)OC')
+    def test_carbonyl_based_hydrolysis_reaction(self):
+        """Test if carbonyl_based hydrolysis products are correctly generated."""
+        carbonyl = ARCSpecies(label='carbonyl', smiles='CC(=O)OC')
         water = ARCSpecies(label='H2O', smiles='O')
         acid = ARCSpecies(label='acid', smiles='CC(=O)O')
         alcohol = ARCSpecies(label='alcohol', smiles='CO')
-        rxn = ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
+        rxn = ARCReaction(r_species=[carbonyl, water], p_species=[acid, alcohol])
         products = get_reaction_family_products(rxn)
         product_smiles = [p.to_smiles() for p in products[0]['products']]
         expected_product_smiles = ['CC(=O)O', 'CO']
@@ -39,7 +39,7 @@ class TestEsterHydrolysisReactionFamily(unittest.TestCase):
 
     def test_recipe_actions(self):
         """Test if the reaction recipe is applied correctly."""
-        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'ester_hydrolysis.py')
+        groups_file_path = os.path.join(ARC_FAMILIES_PATH, 'carbonyl_based_hydrolysis.py')
         with open(groups_file_path, 'r') as f:
             groups_as_lines = f.readlines()
         actions = get_recipe_actions(groups_as_lines)
@@ -51,13 +51,13 @@ class TestEsterHydrolysisReactionFamily(unittest.TestCase):
         ]
         self.assertEqual(actions, expected_actions)
 
-    def test_ester_hydrolysis_withP(self):
-        """Test if ester hydrolysis products are correctly generated."""
-        ester = ARCSpecies(label='ester', smiles='CP(=O)(OC)O')
+    def test_carbonyl_based_hydrolysis_withP(self):
+        """Test if carbonyl-based hydrolysis products are correctly generated."""
+        carbonyl= ARCSpecies(label='carbonyl', smiles='CP(=O)(OC)O')
         water = ARCSpecies(label='H2O', smiles='O')
         acid = ARCSpecies(label='acid', smiles='CP(=O)(O)O')
         alcohol = ARCSpecies(label='alcohol', smiles='CO')
-        rxn = ARCReaction(r_species=[ester, water], p_species=[acid, alcohol])
+        rxn = ARCReaction(r_species=[carbonyl, water], p_species=[acid, alcohol])
         products = get_reaction_family_products(rxn)
         product_smiles = [p.to_smiles() for p in products[0]['products']]
         expected_product_smiles = ['CP(=O)(O)O', 'CO']
@@ -143,7 +143,7 @@ class TestEtherHydrolysisReactionFamily(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up the test by defining the ester hydrolysis reaction family."""
+        """Set up the test by defining the ether hydrolysis reaction family."""
         cls.family = ReactionFamily('ether_hydrolysis')
 
     def test_ether_hydrolysis_reaction(self):

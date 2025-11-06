@@ -1664,13 +1664,13 @@ H       4.77508221   -0.06185183    0.53448907""")
         """
         Test that ARC can generate TS guesses based on heuristics for different hydrolysis families reactions.
         """
-        # Ester hydrolysis
+        # Carbonyl-based hydrolysis
         # C2H4O2 + H2O <=> CH2O2 + CH4O
         methylformate = self.methylformate
         formicacid = self.formicacid
         methanol = self.methanol
         water= self.water
-        rxn1 = ARCReaction(r_species=[methylformate, water], p_species=[formicacid, methanol], family='ester_hydrolysis')
+        rxn1 = ARCReaction(r_species=[methylformate, water], p_species=[formicacid, methanol], family='carbonyl_based_hydrolysis')
         heuristics_1 = HeuristicsAdapter(job_type='tsg',
                                          reactions=[rxn1],
                                          testing=True,
@@ -1678,7 +1678,7 @@ H       4.77508221   -0.06185183    0.53448907""")
                                          project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'heuristics')
                                          )
         heuristics_1.execute_incore()
-        self.assertEqual(rxn1.family, 'ester_hydrolysis')
+        self.assertEqual(rxn1.family, 'carbonyl_based_hydrolysis')
         self.assertTrue(rxn1.ts_species.is_ts)
         self.assertEqual(rxn1.ts_species.ts_guesses[0].initial_xyz['symbols'], ('C', 'O', 'C', 'O', 'H', 'H', 'H', 'H', 'O', 'H', 'H'))
         self.assertEqual(len(rxn1.ts_species.ts_guesses), 10)
@@ -2793,8 +2793,8 @@ H      -0.30139889    0.23142254    3.12085495"""
             self.assertAlmostEqual(normalized, expected, delta=rel_delta)
 
 
-    def test_ester_hydrolysis(self):
-        """Test ester hydrolysis reactions."""
+    def test_carbonyl_based_hydrolysis(self):
+        """Test carbonyl-based hydrolysis reactions."""
         water = self.water
         #RXN1
         ethyl_ethanoate = self.ethyl_ethanoate
@@ -2867,7 +2867,7 @@ H      -0.30139889    0.23142254    3.12085495"""
             consider_arc_families=True,
         )
         families = [entry['family'] for entry in product_dicts]
-        self.assertIn('ester_hydrolysis', families)
+        self.assertIn('carbonyl_based_hydrolysis', families)
         xyz_guesses_total, reaction_families, guesses_indices= hydrolysis(tested_rxn)
 
         for i, guess in enumerate(xyz_guesses_total):
@@ -2877,7 +2877,7 @@ H      -0.30139889    0.23142254    3.12085495"""
             print(a, b, f, d, O, H1)
             print(xyz_str)
             print()
-            if reaction_families[i]== 'ester_hydrolysis':#the parameters of ether hydrolysis are checked in the following test section
+            if reaction_families[i]== 'carbonyl_based_hydrolysis':#the parameters of ether hydrolysis are checked in the following test section
                 distance_ab=(calculate_param(coords=initial_xyz['coords'], atoms=[b, a]))*1.3
                 self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab)
                 self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8)
