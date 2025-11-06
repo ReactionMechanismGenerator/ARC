@@ -1003,6 +1003,53 @@ def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[in
         else:
             condition_met = len(xyz_guesses_total) > 0
 
+    nitrile_in_inputs = any(
+        (pd.get("family") == "nitrile_hydrolysis") or
+        (isinstance(pd.get("family"), list) and "nitrile_hydrolysis" in pd.get("family"))
+        for pd in product_dicts
+    )
+    nitrile_already_found = any(fam == "nitrile_hydrolysis" for fam in reaction_families)
+
+    if nitrile_in_inputs and not nitrile_already_found:
+        dihedrals_to_change_num, max_dihedrals_found = 0, 0
+        for product_dict in product_dicts:
+            _fam = product_dict["family"]
+            reaction_family = _fam[0] if isinstance(_fam, list) else _fam
+            if reaction_family != "nitrile_hydrolysis":
+                continue
+
+            is_set_1 = reaction_family in hydrolysis_parameters["family_sets"]["set_1"]
+            is_set_2 = reaction_family in hydrolysis_parameters["family_sets"]["set_2"]
+
+            main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(reaction,
+                                                                                          product_dict,
+                                                                                          is_set_1)
+            base_xyz_indices = {
+                "a": xyz_indices["a"],
+                "b": xyz_indices["b"],
+                "e": xyz_indices["e"],
+                "o": xyz_indices["o"],
+                "h1": xyz_indices["h1"],
+            }
+
+            while True:
+                if dihedrals_to_change_num >= max_dihedrals_found > 0:
+                    break
+                dihedrals_to_change_num += 1
+                chosen_xyz_indices, xyz_guesses, zmats_total, n_dihedrals_found = process_chosen_d_indices(
+                    initial_xyz, base_xyz_indices, xyz_indices,
+                    hydrolysis_parameters, reaction_family, water, zmats_total, is_set_1, is_set_2,
+                    dihedrals_to_change_num, should_adjust_dihedral=True,
+                    allow_nitrile_dihedrals=True
+                )
+                max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
+
+                if xyz_guesses:
+                    xyz_guesses_total.extend(xyz_guesses)
+                    reaction_families.extend([reaction_family] * len(xyz_guesses))
+                    guesses_indices.extend([list(chosen_xyz_indices.values()) for _ in range(len(xyz_guesses))])
+                    break
+
     return xyz_guesses_total, reaction_families, guesses_indices
 
 
@@ -1136,7 +1183,8 @@ def process_chosen_d_indices(initial_xyz: dict,
                              is_set_1: bool,
                              is_set_2: bool,
                              dihedrals_to_change_num: int,
-                             should_adjust_dihedral: bool
+                             should_adjust_dihedral: bool,
+                             allow_nitrile_dihedrals: bool = False
                              ) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]], int]:
     """
     Iterates over the 'd' indices to process TS guess generation.
@@ -1153,6 +1201,8 @@ def process_chosen_d_indices(initial_xyz: dict,
         is_set_2 (bool): Flag indicating if reaction_family is in set 2.
         dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
         should_adjust_dihedral (bool): Whether to adjust dihedral angles.
+        allow_nitrile_dihedrals (bool, optional): Force-enable dihedral adjustments for nitriles. Defaults to False.
+
 
     Returns:
         Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
