@@ -1224,9 +1224,11 @@ def process_chosen_d_indices(initial_xyz: dict,
 
         stretch_ab_bond(current_zmat, chosen_xyz_indices, zmat_indices, hydrolysis_parameters, reaction_family)
         zmats_to_process = [current_zmat]
+        attempted_dihedral_adjustments = False
 
-        if should_adjust_dihedral:
-            adjustment_factors = hydrolysis_parameters['dihedral_adjustment_factors']
+        if should_adjust_dihedral and (reaction_family != 'nitrile_hydrolysis' or allow_nitrile_dihedrals):
+            attempted_dihedral_adjustments = True
+            adjustment_factors = [15, 25, 35, 45, 55]
             indices_list = matches[:dihedrals_to_change_num]
             adjusted_zmats = []
             for indices in indices_list:
@@ -1234,8 +1236,9 @@ def process_chosen_d_indices(initial_xyz: dict,
                 if zmat_variants:
                     adjusted_zmats.extend(zmat_variants)
             if not adjusted_zmats:
-                continue
-            zmats_to_process = adjusted_zmats
+                pass
+            else:
+                zmats_to_process = adjusted_zmats
 
         ts_guesses_list = []
         for zmat_to_process in zmats_to_process:
@@ -1244,6 +1247,22 @@ def process_chosen_d_indices(initial_xyz: dict,
                 zmat_to_process, water, chosen_xyz_indices, zmats_total)
             zmats_total = updated_zmats
             ts_guesses_list.extend(ts_guesses)
+
+        if attempted_dihedral_adjustments and not ts_guesses_list and (
+                    reaction_family != 'nitrile_hydrolysis' or allow_nitrile_dihedrals):
+            flipped_zmats= []
+            adjustment_factors = [15, 25, 35, 45, 55]
+            for indices in indices_list:
+                flipped_variants = generate_dihedral_variants(current_zmat, indices, adjustment_factors, flip=True)
+                flipped_zmats.extend(flipped_variants)
+
+            for zmat_to_process in flipped_zmats:
+                ts_guesses, updated_zmats = process_family_specific_adjustments(
+                    is_set_1, is_set_2, reaction_family, hydrolysis_parameters,
+                    zmat_to_process, water, chosen_xyz_indices, zmats_total
+                )
+                zmats_total = updated_zmats
+                ts_guesses_list.extend(ts_guesses)
 
         if ts_guesses_list:
             return chosen_xyz_indices, ts_guesses_list, zmats_total, max_dihedrals_found
@@ -1386,18 +1405,25 @@ def setup_zmat_indices(initial_xyz: dict,
 
 def generate_dihedral_variants(zmat: dict,
                               indices: List[int],
-                              adjustment_factors: List[float]) -> List[dict]:
+                              adjustment_factors: List[float],
+                              flip: bool = False) -> List[dict]:
     """
    Create variants of a Z-matrix by adjusting dihedral angles using multiple adjustment factors.
 
     This function creates variants of the Z-matrix using different adjustment factors:
-    1. For each factor in adjustment_factors, apply to the original dihedral
-    2. For each factor in adjustment_factors, apply to the flipped (180°) dihedral
+        1. Retrieve the current dihedral value and normalize it to the (-180°, 180°] range.
+        2. For each adjustment factor, slightly push the angle away from 0° or ±180° to avoid
+           unstable, boundary configurations.
+        3. If `flip=True`, the same procedure is applied starting from a flipped
+           (180°-shifted) baseline angle.
+        4. Each adjusted or flipped variant is deep-copied to ensure independence.
 
     Args:
         zmat (dict): The initial Z-matrix.
         indices (List[int]): The indices defining the dihedral angle.
         adjustment_factors (List[float], optional): List of factors to try.
+        flip (bool, optional): Whether to start from a flipped (180°) baseline dihedral angle.
+                               Defaults to False.
 
     Returns:
         List[dict]: List of Z-matrix variants with adjusted dihedral angles.
@@ -1410,24 +1436,25 @@ def generate_dihedral_variants(zmat: dict,
     def push_up_dihedral(val: float, adj_factor: float) -> float:
         """Scale the dihedral away from 0°/180° using the given factor."""
         if abs(val) < 10:
-            fac = 1 + adj_factor
+            new_value = (val + 360 + adj_factor) - 360
+        elif val < 0:
+            new_value = val + adj_factor
         else:
-            fac = 1 - adj_factor
-        new_value = (val + 360) * fac - 360 if abs(val) < 10 else val * fac
+            new_value = val - adj_factor
         normalized_new_value = get_angle_in_180_range(new_value)
-        print(f"Updated dihedral value for {parameter_name} (factor {factor}): {normalized_new_value}")
+        print(f"Updated dihedral value for {parameter_name} (factor {adj_factor}): {normalized_new_value}")
         return normalized_new_value
 
-    if abs(normalized_value) < 10 or 170 <= abs(normalized_value) <= 190:
-        for factor in adjustment_factors:
-            original_variant = copy.deepcopy(zmat)
-            original_variant["vars"][parameter_name] = push_up_dihedral(normalized_value, factor)
-            variants.append(original_variant)
+    seed_value = normalized_value
+    if flip:
+        seed_value = get_angle_in_180_range(normalized_value + 180.0)
 
-            flipped = get_angle_in_180_range(normalized_value + 180.0)
-            flipped_variant = copy.deepcopy(zmat)
-            flipped_variant["vars"][parameter_name] = push_up_dihedral(flipped, factor)
-            variants.append(flipped_variant)
+    boundary_like = (abs(seed_value) < 10) or (170 <= abs(seed_value) <= 190)
+    if boundary_like:
+        for factor in adjustment_factors:
+            variant = copy.deepcopy(zmat)
+            variant["vars"][parameter_name] = push_up_dihedral(seed_value, factor)
+            variants.append(variant)
     else:
         print(f"No adjustment needed for {parameter_name} (not close to 0 or ±180 degrees)")
 
