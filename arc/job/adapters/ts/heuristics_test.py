@@ -2647,14 +2647,14 @@ H       4.77508221   -0.06185183    0.53448907""")
                                   (1.10435907, 0.67758465, 1.10037299)),
                        'isotopes': (12, 16, 1, 1, 1, 1),
                        'symbols': ('C', 'O', 'H', 'H', 'H', 'H')}
-        xyz_indices = {'a': 0, 'b': 1, 'f': 2, 'd': 3}
+        xyz_indices = {'a': 0, 'b': 1, 'e': 2, 'd': 3}
         initial_zmat, zmat_indices = setup_zmat_indices(initial_xyz, xyz_indices)
         self.assertIsNotNone(zmat_indices['a'])
         self.assertIsNotNone(zmat_indices['b'])
-        self.assertIsNotNone(zmat_indices['f'])
+        self.assertIsNotNone(zmat_indices['e'])
         self.assertIsNotNone(zmat_indices['d'])
 
-        xyz_indices_no_d = {'a': 0, 'b': 1, 'f': 2, 'd': None}
+        xyz_indices_no_d = {'a': 0, 'b': 1, 'e': 2, 'd': None}
         initial_zmat, zmat_indices = setup_zmat_indices(initial_xyz, xyz_indices_no_d)
         self.assertIsNone(zmat_indices['d'])
 
@@ -2668,11 +2668,11 @@ H       4.77508221   -0.06185183    0.53448907""")
                          'DX_1_2_4_7': 90,
                          'DX_3_4_5_6': -60,
                          'D_2_3_5_6': 150}}
-        matches_with_d = get_matching_dihedrals(zmat, a=1, b=2, f=3, d=4)
+        matches_with_d = get_matching_dihedrals(zmat, a=1, b=2, e=3, d=4)
         expected_matches_with_d = [[1, 2, 3, 4], [1, 2, 4, 7]]
         self.assertEqual(matches_with_d, expected_matches_with_d,
                          "get_matching_dihedrals with 'd' provided failed.")
-        matches_without_d = get_matching_dihedrals(zmat, a=1, b=2, f=3, d=None)
+        matches_without_d = get_matching_dihedrals(zmat, a=1, b=2, e=3, d=None)
         expected_matches_without_d = [[1, 2, 3, 4]]
         self.assertEqual(matches_without_d, expected_matches_without_d,
                          "get_matching_dihedrals without 'd' provided failed.")
@@ -2871,10 +2871,10 @@ H      -0.30139889    0.23142254    3.12085495"""
         xyz_guesses_total, reaction_families, guesses_indices= hydrolysis(tested_rxn)
 
         for i, guess in enumerate(xyz_guesses_total):
-            a, b, f, O, H1, d = guesses_indices[i]
+            a, b, e, O, H1, d = guesses_indices[i]
             xyz_str = xyz_to_str(guess)
             print(reaction_families[i])
-            print(a, b, f, d, O, H1)
+            print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
             if reaction_families[i]== 'carbonyl_based_hydrolysis':#the parameters of ether hydrolysis are checked in the following test section
@@ -2925,10 +2925,10 @@ H      -0.30139889    0.23142254    3.12085495"""
         self.assertIn('ether_hydrolysis', families)
         xyz_guesses_total, reaction_families, guesses_indices= hydrolysis(tested_rxn)
         for i, guess in enumerate(xyz_guesses_total):
-            a, b, f, O, H1, d = guesses_indices[i]
+            a, b, e, O, H1, d = guesses_indices[i]
             xyz_str = xyz_to_str(guess)
             print(reaction_families[i])
-            print(a, b, f, d, O, H1)
+            print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
             distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.5
@@ -2977,10 +2977,10 @@ H      -0.30139889    0.23142254    3.12085495"""
         self.assertIn('imine_hydrolysis', families)
         xyz_guesses_total, reaction_families, guesses_indices= hydrolysis(reaction=tested_rxn)
         for i, guess in enumerate(xyz_guesses_total):
-            a, b, f, O, H1, d = guesses_indices[i]
+            a, b, e, O, H1, d = guesses_indices[i]
             xyz_str = xyz_to_str(guess)
             print(reaction_families[i])
-            print(a, b, f, d, O, H1)
+            print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
             distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.3
@@ -3029,10 +3029,10 @@ H      -0.30139889    0.23142254    3.12085495"""
         self.assertIn('nitrile_hydrolysis', families)
         xyz_guesses_total, reaction_families, guesses_indices= hydrolysis(tested_rxn)
         for i, guess in enumerate(xyz_guesses_total):
-            a, b, f, O, H1, d = guesses_indices[i]
+            a, b, e, O, H1, d = guesses_indices[i]
             xyz_str = xyz_to_str(guess)
             print(reaction_families[i])
-            print(a, b, f, d, O, H1)
+            print(a, b, e, d, O, H1)
             print(xyz_str)
             print()
             distance_ab = (calculate_param(coords=initial_xyz['coords'], atoms=[b, a])) * 1.1

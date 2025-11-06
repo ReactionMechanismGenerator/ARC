@@ -1101,7 +1101,7 @@ def extract_reactant_and_indices(reaction: 'ARCReaction',
     b_xyz_index = product_dict["r_label_map"]["*2"]
     two_neighbors = is_set_1
     try:
-        f_xyz_index, d_xyz_indices = get_neighbors_by_electronegativity(
+        e_xyz_index, d_xyz_indices = get_neighbors_by_electronegativity(
             main_reactant,
             a_xyz_index,
             b_xyz_index,
@@ -1480,12 +1480,12 @@ def process_family_specific_adjustments(is_set_1: bool,
     Raises:
         ValueError: If the reaction family is not supported.
     """
-    a_xyz, b_xyz, f_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices.values()
+    a_xyz, b_xyz, e_xyz, o_xyz, h1_xyz, d_xyz= xyz_indices.values()
     r_atoms = [a_xyz, o_xyz, o_xyz]
     a_atoms = [[b_xyz, a_xyz], [a_xyz, o_xyz], [h1_xyz, o_xyz]]
-    d_atoms = ([[f_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
+    d_atoms = ([[e_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
                if d_xyz is not None else
-               [[f_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]])
+               [[e_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]])
     r_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value']
     a_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['a_value']
     d_values = hydrolysis_parameters['family_parameters'][str(reaction_family)]['d_values']
