@@ -5,7 +5,9 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from copy import deepcopy
+from arc.species.ic_params import Atom1Params, Atom2Params, Atom3Params, ParamKey
 
 from ase import Atoms
 from openbabel import openbabel as ob
@@ -35,7 +37,8 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               get_atom_indices_from_zmat_parameter,
                               get_parameter_from_atom_indices,
                               zmat_to_coords,
-                              xyz_to_zmat)
+                              xyz_to_zmat,
+                              check_zmat_vs_coords,)
 
 if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
@@ -2353,12 +2356,14 @@ def generate_initial_guess_r_a(atom_r_coord: tuple,
     X_position = np.array(atom_r_coord) + r_value * X_direction
     return X_position
 
+
 def generate_midpoint_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess midway between the two reference atoms."""
     midpoint = (np.array(atom_a_coord) + np.array(atom_b_coord)) / 2.0
     direction = np.array(atom_r_coord) - midpoint
     direction /= np.linalg.norm(direction)
     return midpoint + r_value * direction
+
 
 def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess that is perpendicular to the plane defined by the reference atoms."""
@@ -2372,18 +2377,140 @@ def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, at
     perpendicular_vector /= np.linalg.norm(perpendicular_vector)
     return np.array(atom_r_coord) + r_value * perpendicular_vector
 
+
 def generate_random_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     perturbation = np.random.uniform(-0.1, 0.1, 3)
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + perturbation
+
 
 def generate_shifted_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     shift = np.array([0.1, -0.1, 0.1])  # A deterministic shift
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + shift
 
+
 def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess considering only the bond length to the reference atom."""
     direction = np.random.uniform(-1.0, 1.0, 3)  # Random direction
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
+
+
+def update_zmat(zmat: dict,
+                element: str,
+                coords: tuple,
+                vars: dict,
+                n: int,
+                ) -> dict:
+    """
+    Update the coordinates and internal coordinates of a zmat dictionary.
+    Args:
+        zmat (dict): The zmat dictionary to update.
+        coords (tuple): The new Cartesian coordinates.
+        vars (dict): The new internal coordinates.
+        n (int): The index of the new atom in the zmat.
+    Returns:
+        dict: The updated zmat dictionary.
+    """
+    zmat = deepcopy(zmat)
+    zmat["symbols"] += (element,)
+    zmat["coords"] += (coords,)
+    zmat["vars"].update(vars)
+    zmat["map"].update({n:n})
+    return zmat
+
+
+def add_two_xyzs(
+    xyz1: Dict[str, Any],
+    xyz2: Dict[str, Any],
+    atom1: Atom1Params,
+    atom2: Atom2Params,
+    atom3: Atom3Params,
+    return_zmat: bool = False,
+) -> Optional[Union[Dict[str, Any], Tuple[Dict[str, Any], Dict[str, Any]]]]:
+    """
+    Combine two xyz dictionaries into one, based on internal-coordinate parameters
+    (objects) for the first three atoms in xyz2. The remaining atoms in xyz2 are
+    added based on their internal coordinates relative to the first three.
+
+    Parameters
+    ----------
+    xyz1, xyz2 : dict
+        Your existing xyz dicts.
+    atom1 : Atom1Params
+        R/A/D for placing xyz2's first atom relative to anchors in xyz1.
+    atom2 : Atom2Params
+        A/D for placing xyz2's second atom (its R is taken from xyz2's own zmat).
+    atom3 : Atom3Params
+        D for placing xyz2's third atom (its R/A are taken from xyz2's own zmat).
+    return_zmat : bool
+        If True, return (zmat, combined_xyz); otherwise return combined xyz dict.
+
+    Returns
+    -------
+    dict or (dict, dict) or None
+        Combined xyz, or (zmat, xyz) if requested. Returns None on failure.
+    """
+    zmat1 = xyz_to_zmat(xyz1, consolidate=False)
+    zmat2 = xyz_to_zmat(xyz2, consolidate=False)
+
+    if zmat1 is None or zmat2 is None:
+        logger.error('Cannot add two xyzs if one of them cannot be converted to a zmat.')
+        return None
+
+    n = len(zmat1['symbols'])
+    z2_vars: Dict[str, float] = zmat2['vars']
+
+    atom1.set_base_n(n)
+    atom2.set_base_n(n)
+    atom3.set_base_n(n)
+
+    shift_piece = lambda piece: str(int(piece) + n) if piece.isnumeric() else piece
+    shift_token = lambda token: '_'.join(shift_piece(p) for p in token.split('_'))
+
+    for idx, (symbol, coords) in enumerate(zip(zmat2['symbols'], zmat2['coords'])):
+        # coords is a tuple like (), (R), (R, A), or (R, A, D) from z2
+        new_coords = tuple(shift_token(c) for c in coords if c)
+        vmap: Dict[str, float] = {}
+
+        if len(new_coords) == 0:
+            # First atom of xyz2 relative to anchors in xyz1
+            R_key = atom1.R.build_key(n)
+            A_key = atom1.A.build_key(n)
+            D_key = atom1.D.build_key(n)
+            coords_out = (R_key, A_key, D_key)
+            vmap[R_key] = atom1.R.val
+            vmap[A_key] = atom1.A.val
+            vmap[D_key] = atom1.D.val
+
+        elif len(new_coords) == 1:
+            # Second atom of xyz2: use its own R from z2, A/D from anchors in xyz1
+            A_key = atom2.A.build_key(n)
+            D_key = atom2.D.build_key(n)
+            coords_out = (new_coords[0], A_key, D_key)
+            vmap[new_coords[0]] = z2_vars[coords[0]]  # carry R from z2
+            vmap[A_key] = atom2.A.val
+            vmap[D_key] = atom2.D.val
+
+        elif len(new_coords) == 2:
+            # Third atom of xyz2: use R/A from z2, D from anchors in xyz1
+            D_key = atom3.D.build_key(n)
+            coords_out = (new_coords[0], new_coords[1], D_key)
+            vmap[new_coords[0]] = z2_vars[coords[0]]  # carry R
+            vmap[new_coords[1]] = z2_vars[coords[1]]  # carry A
+            vmap[D_key] = atom3.D.val
+
+        else:
+            # Remaining atoms: just shift tokens and copy the values from z2
+            coords_out = new_coords
+            vmap.update({nc: z2_vars[oc] for nc, oc in zip(new_coords, coords)})
+
+        zmat1 = update_zmat(zmat1, symbol, coords_out, vmap, n + idx)
+    if zmat1 is None or xyz1 is None:
+        raise ValueError("The combined zmat or xyz is invalid. Please check the input parameters and xyzs.")
+    if not check_zmat_vs_coords(zmat1, xyz_to_np_array(xyz1)):
+        raise ValueError("The combined zmat is invalid. Please check the input parameters and xyzs.")
+    if return_zmat:
+        return zmat1, zmat_to_xyz(zmat1)
+    return zmat_to_xyz(zmat1)
