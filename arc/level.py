@@ -39,6 +39,7 @@ class Level(object):
         args (Dict[Dict[str, str]], optional): Additional arguments provided to the software.
                                                Different than the ``args`` in ``LevelOfTheory``.
         compatible_ess (list, optional): Entries are names of compatible ESS. Not in ``LevelOfTheory``.
+        year (int, optional): Optional 4-digit year suffix for differentiating methods such as b97d3/b97d32023.
     """
 
     def __init__(self,
@@ -56,6 +57,7 @@ class Level(object):
                  solvent: Optional[str] = None,
                  solvation_scheme_level: Optional['Level'] = None,
                  args: Optional[Union[Dict[str, str], Iterable, str]] = None,
+                 year: Optional[int] = None,
                  ):
         self.repr = repr
         self.method = method
@@ -87,6 +89,7 @@ class Level(object):
             raise ValueError(f'Cannot represent a level of theory with a solvation method ("{self.solvation_method}") '
                              f'that lacks a solvent.')
 
+        self.year = int(year) if year is not None else None
         self.args = args or {'keyword': dict(), 'block': dict()}
 
         if self.repr is not None:
@@ -121,6 +124,8 @@ class Level(object):
         str_ = self.method
         if self.basis is not None:
             str_ += f'/{self.basis}'
+        if self.year is not None:
+            str_ += f', year: {self.year}'
         if self.auxiliary_basis is not None:
             str_ += f', auxiliary_basis: {self.auxiliary_basis}'
         if self.dispersion is not None:
@@ -164,6 +169,8 @@ class Level(object):
         str_ = self.method
         if self.basis is not None:
             str_ += f'/{self.basis}'
+        if self.year is not None:
+            str_ += f' ({self.year})'
         return str_
 
     def as_dict(self) -> dict:
@@ -195,7 +202,8 @@ class Level(object):
                       'solvation_method': None,
                       'solvent': None,
                       'solvation_scheme_level': None,
-                      'args': None}
+                      'args': None,
+                      'year': None}
         allowed_keys = list(level_dict.keys())
 
         if isinstance(self.repr, str):

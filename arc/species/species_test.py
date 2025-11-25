@@ -602,14 +602,17 @@ H 0.0 0.0 1.48"""
         ts = ARCSpecies(label='TSX', is_ts=True, priority=True, xyz=ts_xyz)
         ts.ts_priority_checks_concluded = True
         ts.ts_priority_passed = False
+        ts.ts_priority_reopted = True
         ts_dict = ts.as_dict()
         self.assertTrue(ts_dict['priority'])
         self.assertTrue(ts_dict['priority_checks_concluded'])
         self.assertFalse(ts_dict['priority_passed'])
+        self.assertTrue(ts_dict['priority_reopted'])
         ts_rt = ARCSpecies(species_dict=ts_dict)
         self.assertTrue(ts_rt.ts_guess_priority)
         self.assertTrue(ts_rt.ts_priority_checks_concluded)
         self.assertFalse(ts_rt.ts_priority_passed)
+        self.assertTrue(ts_rt.ts_priority_reopted)
 
     def test_from_dict(self):
         """Test Species.from_dict()"""

@@ -120,6 +120,8 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')")
         self.assertEqual(_level_to_str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
+        self.assertEqual(_level_to_str(Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2023)),
+                         "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')")
 
     def test_section_contains_key(self):
         """Test the _section_contains_key function"""

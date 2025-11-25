@@ -770,7 +770,8 @@ def _find_best_level_key_for_sp_level(level: "Level",
         return None
 
     target_method_norm = _normalize_method(level.method)
-    target_base, _ = _split_method_year(target_method_norm)
+    target_base, method_year = _split_method_year(target_method_norm)
+    target_year = getattr(level, 'year', None) if getattr(level, 'year', None) is not None else method_year
     target_basis_norm = _normalize_basis(level.basis)
     target_software = level.software.lower() if level.software else None
 
@@ -805,10 +806,18 @@ def _find_best_level_key_for_sp_level(level: "Level",
             if cand_sw.lower() != target_software:
                 continue
 
-        year_val = cand_year if cand_year is not None else 0
-        if year_val > best_year:
-            best_year = year_val
-            best_key = lot_str
+        if target_year is not None:
+            if cand_year != target_year:
+                continue
+            year_val = cand_year if cand_year is not None else 0
+            if year_val > best_year:
+                best_year = year_val
+                best_key = lot_str
+        else:
+            year_val = cand_year if cand_year is not None else 0
+            if year_val > best_year:
+                best_year = year_val
+                best_key = lot_str
 
     return best_key
 
@@ -823,12 +832,16 @@ def _level_to_str(level: 'Level') -> str:
     Returns:
         str: LevelOfTheory string representation.
     """
-    parts = [f"method='{level.method}'"]
+    method = _normalize_method(level.method)
+    if getattr(level, 'year', None) is not None and not method.endswith(str(level.year)):
+        method = f"{method}{level.year}"
+
+    parts = [f"method='{method}'"]
     if level.basis:
-        parts.append(f"basis='{level.basis}'")
+        parts.append(f"basis='{_normalize_basis(level.basis)}'")
     if level.software:
-        parts.append(f"software='{level.software}'")
-    return f"LevelOfTheory({','.join(parts)})".replace('-','')
+        parts.append(f"software='{level.software.lower()}'")
+    return f"LevelOfTheory({','.join(parts)})".replace('-', '')
 
 
 def get_arkane_model_chemistry(sp_level: 'Level',

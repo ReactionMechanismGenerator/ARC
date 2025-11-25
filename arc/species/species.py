@@ -368,6 +368,7 @@ class ARCSpecies(object):
         self.ts_guess_priority = priority if is_ts else False
         self.ts_priority_checks_concluded = False
         self.ts_priority_passed = None
+        self.ts_priority_reopted = False
         self.ts_checks = dict()
         self.project_directory = project_directory
         self.label = label
@@ -708,6 +709,8 @@ class ARCSpecies(object):
                 species_dict['priority_checks_concluded'] = self.ts_priority_checks_concluded
             if self.ts_priority_passed is not None:
                 species_dict['priority_passed'] = self.ts_priority_passed
+            if self.ts_priority_reopted:
+                species_dict['priority_reopted'] = self.ts_priority_reopted
             if self.rxn_label is not None:
                 species_dict['rxn_label'] = self.rxn_label
             if self.rxn_index is not None:
@@ -857,6 +860,7 @@ class ARCSpecies(object):
             self.ts_guess_priority = species_dict.get('priority', self.ts_guess_priority)
             self.ts_priority_checks_concluded = species_dict.get('priority_checks_concluded', False)
             self.ts_priority_passed = species_dict.get('priority_passed', None)
+            self.ts_priority_reopted = species_dict.get('priority_reopted', False)
             self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
             self.successful_methods = species_dict['successful_methods'] \

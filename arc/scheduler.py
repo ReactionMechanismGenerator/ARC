@@ -2243,21 +2243,30 @@ class Scheduler(object):
             logger.info(message)
             logger.info('\n')
 
-        if all([tsg.energy is None for tsg in self.species_dict[label].ts_guesses]):
+        energies = [tsg.energy for tsg in self.species_dict[label].ts_guesses if tsg.energy is not None]
+        if not energies:
+            if self.species_dict[label].ts_guess_priority and not self.species_dict[label].ts_priority_checks_concluded:
+                # Priority guess failed checks; avoid fatal logging while we fall back to automated TS guesses.
+                self.species_dict[label].ts_guesses_exhausted = False
+                return None
             logger.error(f'No guess converged for TS {label}!\n'
                          f'Cannot compute a rate coefficient for {self.species_dict[label].rxn_label}.')
         else:
             # Select the TSG with the lowest energy given that it has only one significant imaginary frequency.
             # Todo: consider IRC well isomorphism
-            e_min, selected_i = None, None
+            selected_i = None
             self.species_dict[label].ts_guesses_exhausted = True
+            # pick the lowest-energy unused guess that passes the imag-freq filter (if available)
+            min_candidate_energy = None
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.success and tsg.energy is not None and (e_min is None or tsg.energy < e_min) \
+                if tsg.success and tsg.energy is not None \
                         and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
                         and tsg.index not in self.species_dict[label].chosen_ts_list:
-                    e_min = tsg.energy
-                    selected_i = tsg.index
-            e_min = None
+                    if min_candidate_energy is None or tsg.energy < min_candidate_energy:
+                        min_candidate_energy = tsg.energy
+                        selected_i = tsg.index
+            # compute global minimum for relative energies
+            e_min = min(energies)
             if selected_i is None:
                 logger.warning(f'Could not determine a likely TS conformer for {label}')
                 self.species_dict[label].ts_number, self.species_dict[label].chosen_ts = None, None
@@ -2267,10 +2276,6 @@ class Scheduler(object):
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
                     else f' of reaction {self.species_dict[label].rxn_label}'
                 logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
-            for tsg in self.species_dict[label].ts_guesses:
-                # Reset e_min to the lowest value regardless of other criteria (imaginary frequencies, IRC, normal modes).
-                if tsg.energy is not None and (e_min is None or tsg.energy < e_min):
-                    e_min = tsg.energy
             for tsg in self.species_dict[label].ts_guesses:
                 if tsg.index == selected_i:
                     self.species_dict[label].chosen_ts = selected_i
@@ -2624,7 +2629,8 @@ class Scheduler(object):
             # This is a TS. Assign the imaginary frequencies to the respective TSGuess.
             tsg = None
             for tsg in self.species_dict[label].ts_guesses:
-                if tsg.conformer_index == self.species_dict[label].chosen_ts:
+                if tsg.conformer_index == self.species_dict[label].chosen_ts \
+                        or tsg.index == self.species_dict[label].chosen_ts:
                     tsg.imaginary_freqs = neg_freqs
                     break
             if tsg is not None and not check_imaginary_frequencies(tsg.imaginary_freqs):
@@ -2732,7 +2738,19 @@ class Scheduler(object):
             for tsg in species.ts_guesses:
                 if 'user guess' in tsg.method:
                     tsg.success = False
-            logger.info(f'TS {label} failed priority checks; falling back to automated TS guessing.')
+            logger.info(f'TS {label} failed priority checks; re-optimizing user guess and falling back to automated TS guessing.')
+            if not species.ts_priority_reopted:
+                # Re-optimize the user guess once before giving up.
+                species.initial_xyz = species.initial_xyz or species.final_xyz or \
+                    next((tsg.initial_xyz or tsg.opt_xyz for tsg in species.ts_guesses if 'user guess' in tsg.method),
+                         None)
+                species.final_xyz = None
+                species.ts_priority_reopted = True
+                if not self.composite_method:
+                    self.run_opt_job(label, fine=self.fine_only)
+                else:
+                    self.run_composite_job(label)
+                return
             if species.rxn_index in self.rxn_dict:
                 self.rxn_dict[species.rxn_index].ts_species.tsg_spawned = False
                 self.spawn_ts_jobs()

@@ -178,6 +178,15 @@ class TestLevel(unittest.TestCase):
         self.assertEqual(assign_frequency_scale_factor(Level(method='CBS-QB3')), 1.004)
         self.assertEqual(assign_frequency_scale_factor(Level(method='PM6')), 1.093)
 
+    def test_year_support(self):
+        """Levels can carry a year suffix without losing it in string/dict representations."""
+        level = Level(method='dlpno-ccsd(t)-f12', basis='def2-tzvp', software='orca', year=2023)
+        self.assertEqual(level.year, 2023)
+        self.assertIn('year: 2023', str(level))
+        self.assertIn('(2023)', level.simple())
+        level_dict = level.as_dict()
+        self.assertEqual(level_dict['year'], 2023)
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
