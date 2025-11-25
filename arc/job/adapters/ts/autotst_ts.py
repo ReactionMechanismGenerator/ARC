@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from autotst.reaction import Reaction as AutoTST_Reaction  # noqa: F401
 
 
-AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
-if AUTOTST_PYTHON is None:
+AUTOTST_RUNNER = settings.get('AUTOTST_RUNNER')
+if AUTOTST_RUNNER is None:
     HAS_AUTOTST = False
 
 logger = get_logger()
@@ -261,32 +261,47 @@ class AutoTSTAdapter(JobAdapter):
                     script_path = os.path.join(
                         ARC_PATH, 'arc', 'job', 'adapters', 'scripts', 'autotst_script.py'
                     )
-                    # 2) Build the bash command to run tst_env’s Python on the script
+
                     commands = [
-                        'source ~/.bashrc',
-                        f'"{AUTOTST_PYTHON}" "{script_path}" "{reaction_label}" "{self.output_path}"',
+                        # no ~/.bashrc – avoid pulling in RMG dev PYTHONPATH by accident
+                        'export OPENBLAS_NUM_THREADS=1',
+                        'export MKL_NUM_THREADS=1',
+                        'export OMP_NUM_THREADS=1',
+                        'export NUMEXPR_NUM_THREADS=1',
+                        # AUTOTST_RUNNER is something like "micromamba run -n tst_env"
+                        f'{AUTOTST_RUNNER} python "{script_path}" "{reaction_label}" "{self.output_path}"',
                     ]
                     command = '; '.join(commands)
 
-                    tic = datetime.datetime.now()
+                    env = os.environ.copy()
+                    # kill any RMG/AutoTST dev PYTHONPATH pollution
+                    env.pop('PYTHONPATH', None)
 
-                    # 3) Capture stdout/stderr so we can diagnose missing AutoTST
+                    tic = datetime.datetime.now()
                     output = subprocess.run(
                         command,
                         shell=True,
                         executable='/bin/bash',
                         capture_output=True,
                         text=True,
+                        env=env,
                     )
-
                     tok = datetime.datetime.now() - tic
 
                     if output.returncode:
                         stderr = output.stderr or ""
                         stdout = output.stdout or ""
 
-                        # Special case: autotst itself is missing in tst_env
-                        if 'No module named' in stderr and 'autotst' in stderr:
+                        # Special case: NumPy C-extension / BLAS thread issues
+                        if 'Error importing numpy' in stderr or 'blas_thread_init' in stderr:
+                            logger.error(
+                                f"AutoTST subprocess hit a NumPy / BLAS threading issue for {rxn}.\n"
+                                f"stderr:\n{stderr}\n"
+                                f"stdout:\n{stdout}\n"
+                                f"Hint: This is usually caused by too many BLAS threads. "
+                                f"ARC now forces OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1 for AutoTST jobs."
+                            )
+                        elif 'No module named' in stderr and 'autotst' in stderr:
                             logger.error(
                                 f"AutoTST subprocess failed for {rxn} because the 'autotst' "
                                 f"package is not importable in the tst_env used by AUTOTST_PYTHON:\n"
@@ -301,6 +316,7 @@ class AutoTSTAdapter(JobAdapter):
                                 f'stdout: {stdout}\n'
                                 f'stderr: {stderr}'
                             )
+
 
                     # 4) Check for the YAML output and add TS guesses as before
                     if os.path.isfile(self.output_path):

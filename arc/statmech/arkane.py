@@ -518,6 +518,13 @@ def run_arkane(statmech_dir: str) -> None:
     shell_script = rf'''bash -lc 'set -euo pipefail
 cd "{statmech_dir}"
 
+# Limit BLAS thread counts so OpenBLAS/MKL cannot explode into 48 threads
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export MKL_DYNAMIC=FALSE
+
 if command -v micromamba >/dev/null 2>&1; then
     micromamba run -n {env_name} {arkane_cmd}
 elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then

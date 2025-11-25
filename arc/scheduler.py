@@ -303,12 +303,44 @@ class Scheduler(object):
             self.species_dict[species.label] = species
         for rxn in self.rxn_list:
             self.rxn_dict[rxn.index] = rxn
+        # If the user disabled well optimizations but provided xyz, treat them as finalized
+        # so TS jobs can spawn. We only do this for non-TS species when both conf_opt and opt are off.
+        if not self.job_types.get('opt', True) and not self.job_types.get('conf_opt', True):
+            for spc in self.species_list:
+                if not spc.is_ts and spc.final_xyz is None:
+                    xyz = spc.get_xyz(generate=False)
+                    if xyz is not None:
+                        spc.final_xyz = xyz
+                        # Ensure we have a Molecule consistent with the provided geometry.
+                        spc.mol_from_xyz(get_cheap=False)
+                        logger.info(f'Using provided xyz as final geometry for {spc.label} (opt/conf_opt disabled).')
+
         if self.restart_dict is not None:
             self.output = self.restart_dict['output'] if 'output' in self.restart_dict else dict()
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
             if 'running_jobs' in self.restart_dict:
                 self.restore_running_jobs()
         self.initialize_output_dict()
+
+        xyz_final_species = [spc for spc in self.species_list if not spc.is_ts and getattr(spc, 'xyz_is_final', False)]
+        non_ts_species = [spc for spc in self.species_list if not spc.is_ts]
+        if xyz_final_species and len(xyz_final_species) == len(non_ts_species) \
+                and (self.job_types.get('opt', False) or self.job_types.get('conf_opt', False)):
+            raise InputError('All wells were flagged with xyz_is_final=True while opt/conf_opt are enabled. '
+                             'Disable opt/conf_opt to use the provided geometries as final, or remove xyz_is_final.')
+        for spc in xyz_final_species:
+            if spc.final_xyz is None:
+                xyz = spc.get_xyz(generate=False)
+                if xyz is not None:
+                    spc.final_xyz = xyz
+                    if spc.mol is None:
+                        spc.mol_from_xyz(get_cheap=False)
+            if spc.label not in self.dont_gen_confs:
+                self.dont_gen_confs.append(spc.label)
+            if spc.label in self.output:
+                # Mark these as "done" so conformer/opt jobs are not spawned for them.
+                self.output[spc.label]['job_types']['opt'] = True
+                self.output[spc.label]['job_types']['conf_opt'] = True
 
         self.restart_path = os.path.join(self.project_directory, 'restart.yml')
         self.report_time = time.time()  # init time for reporting status every 1 hr
@@ -1015,6 +1047,11 @@ class Scheduler(object):
         if job.job_status[0] != 'running' and job.job_status[1]['status'] != 'running':
             if job_name in self.running_jobs[label]:
                 self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+                # Clean up any stale TS guess markers for this label when a TSG job actually ends.
+                if job.job_type == 'tsg':
+                    for candidate in list(self.running_jobs.get(label, [])):
+                        if candidate.startswith('tsg') and candidate != job_name:
+                            self.running_jobs[label].remove(candidate)
             self.timer = False
             job.write_completed_job_to_csv_file()
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
@@ -3141,6 +3178,11 @@ class Scheduler(object):
                 elif 'conf_sp' in job_name:
                     job = self.job_dict[label]['conf_sp'][i]
                 elif 'tsg' in job_name:
+                    # Skip stale tsg markers that lost their Job object.
+                    if i not in self.job_dict[label]['tsg']:
+                        if job_name in self.running_jobs[label]:
+                            self.running_jobs[label].remove(job_name)
+                        continue
                     job = self.job_dict[label]['tsg'][i]
                 else:
                     raise ValueError(f'Did not recognize job {job_name} of species {label}.')
@@ -3487,10 +3529,16 @@ class Scheduler(object):
                          shift=shift,
                          )
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
-            logger.info(f'TS {label} did not converge. '
-                        f'Status is:\n{self.species_dict[label].ts_checks}\n'
-                        f'Searching for a better TS conformer...')
-            self.switch_ts(label=label)
+            # Avoid switching while other TS jobs for this label are still running.
+            other_running_ts_jobs = any(j != job.job_name for j in self.running_jobs.get(label, list()))
+            if other_running_ts_jobs:
+                logger.info(f'TS {label} troubleshooting skipped switching guesses because other TS jobs are still '
+                            f'running: {self.running_jobs.get(label, list())}')
+            else:
+                logger.info(f'TS {label} did not converge. '
+                            f'Status is:\n{self.species_dict[label].ts_checks}\n'
+                            f'Searching for a better TS conformer...')
+                self.switch_ts(label=label)
 
         self.save_restart_dict()
 

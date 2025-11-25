@@ -299,6 +299,8 @@ ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname
 TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
     None, None, None, None, None, None, None, None, None
 
+AUTOTST_RUNNER = None
+
 home = os.getenv("HOME") or os.path.expanduser("~")
 
 # Helper function to find executables in common paths
@@ -316,6 +318,17 @@ def find_executable(env_name, executable_name='python'):
             return path
     return None
 
+
+def find_env_runner(env_name: str) -> Optional[str]:
+    """
+    Return a command prefix like 'micromamba run -n ENV' or 'conda run -n ENV',
+    depending on what is available on this system. Returns None if nothing found.
+    """
+    for manager in ('micromamba', 'mamba', 'conda'):
+        if shutil.which(manager):
+            return f"{manager} run -n {env_name}"
+    return None
+
 TANI_PYTHON = find_executable('tani_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
@@ -323,6 +336,8 @@ AUTOTST_PYTHON = find_executable('tst_env')
 ARC_PYTHON = find_executable('arc_env')
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
+
+AUTOTST_RUNNER = find_env_runner('tst_env')
 
 # Set RMG_DB_PATH with fallback methods
 rmg_db_candidates, rmg_candidates = list(), list()

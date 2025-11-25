@@ -321,6 +321,7 @@ class ARCSpecies(object):
                  species_dict: Optional[dict] = None,
                  ts_number: Optional[int] = None,
                  xyz: Optional[Union[list, dict, str]] = None,
+                 xyz_is_final: bool = False,
                  yml_path: Optional[str] = None,
                  keep_mol: bool = False,
                  project_directory: Optional[str] = None,
@@ -393,6 +394,7 @@ class ARCSpecies(object):
             self.preserve_param_in_scan = preserve_param_in_scan
             self.rxn_label = rxn_label
             self.rxn_index = rxn_index
+            self.xyz_is_final = xyz_is_final
             self.successful_methods = list()
             self.unsuccessful_methods = list()
             self.chosen_ts_method = None
@@ -457,6 +459,12 @@ class ARCSpecies(object):
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
                     self.mol_from_xyz(get_cheap=False)
+            if self.xyz_is_final and self.final_xyz is None:
+                xyz_to_use = self.initial_xyz or self.get_xyz(generate=False)
+                if xyz_to_use is not None:
+                    self.final_xyz = xyz_to_use
+                    if self.mol is None:
+                        self.mol_from_xyz(get_cheap=False)
             if not self.is_ts:
                 # We don't care about BACs in TSs
                 if self.mol is None:
@@ -741,6 +749,8 @@ class ARCSpecies(object):
             species_dict['initial_xyz'] = xyz_to_str(self.initial_xyz)
         if self.final_xyz is not None:
             species_dict['final_xyz'] = xyz_to_str(self.final_xyz)
+        if self.xyz_is_final:
+            species_dict['xyz_is_final'] = self.xyz_is_final
         if self.zmat is not None:
             species_dict['zmat'] = self.zmat
         if self.checkfile is not None:
@@ -821,6 +831,8 @@ class ARCSpecies(object):
             if 'long_thermo_description' in species_dict else ''
         self.initial_xyz = str_to_xyz(species_dict['initial_xyz']) if 'initial_xyz' in species_dict else None
         self.final_xyz = str_to_xyz(species_dict['final_xyz']) if 'final_xyz' in species_dict else None
+        self.xyz_is_final = species_dict['xyz_is_final'] if 'xyz_is_final' in species_dict \
+            else species_dict['xyz_final'] if 'xyz_final' in species_dict else False
         self.conf_is_isomorphic = species_dict['conf_is_isomorphic'] if 'conf_is_isomorphic' in species_dict else None
         self.zmat = check_zmat_dict(species_dict['zmat']) if 'zmat' in species_dict else None
         self.is_ts = species_dict['is_ts'] if 'is_ts' in species_dict else False
