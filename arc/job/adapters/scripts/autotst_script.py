@@ -51,10 +51,11 @@ def main(reaction_label: Optional[str] = None,
     # Parse command-line arguments
     args = parse_command_line_arguments()
 
-    if reaction_label is None:
+    if reaction_label is None or output_path is None or mkl_num_threads is None:
+        args = parse_command_line_arguments()
         reaction_label = str(args.reaction_label)
         output_path = str(args.output_path)
-    print(f'AutoTST reaction label: {reaction_label}')
+        mkl_num_threads = int(args.mkl_num_threads)
 
     thread_str = str(mkl_num_threads)
     os.environ['MKL_NUM_THREADS'] = thread_str
