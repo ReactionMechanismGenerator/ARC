@@ -641,10 +641,21 @@ class ARCReaction(object):
         """
         Check whether the ``final_xyz`` attributes of all ``r_species`` and ``p_species``
         are populated, and flag ``self.done_opt_r_n_p`` as ``True`` if they are.
+        If a species has no optimization job (e.g., monoatomic wells), fall back to any
+        existing xyz so TS spawning is not blocked.
         Useful to know when to spawn TS search jobs.
         """
         if not self.done_opt_r_n_p:
-            self.done_opt_r_n_p = all(spc.final_xyz is not None for spc in self.r_species + self.p_species)
+            def _has_usable_xyz(species):
+                """
+                A species is considered ready if it has a final optimized geometry, or, for cases
+                where no optimization is run (e.g., monoatomic species), any available xyz.
+                """
+                return species.final_xyz is not None or (
+                    species.number_of_atoms == 1 and species.get_xyz(generate=False) is not None
+                )
+
+            self.done_opt_r_n_p = all(_has_usable_xyz(spc) for spc in self.r_species + self.p_species)
 
     def check_atom_balance(self,
                            ts_xyz: Optional[dict] = None,

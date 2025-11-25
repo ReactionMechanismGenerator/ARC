@@ -881,6 +881,7 @@ def h_abstraction(reaction: 'ARCReaction',
     """
     xyz_guesses = list()
     crest_paths = list()
+    crest_idx = 0
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
@@ -979,9 +980,10 @@ def h_abstraction(reaction: 'ARCReaction',
                             h_abs_atoms_dict["H"],
                             h_abs_atoms_dict["B"],
                             path=path,
-                            xyz_crest_int=iteration,
+                            xyz_crest_int=crest_idx,
                         )
                         crest_paths.append(crest_path)
+                        crest_idx += 1 # Increment CREST job index
                     except (ValueError, KeyError) as e:
                         logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
 

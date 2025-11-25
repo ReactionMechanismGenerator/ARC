@@ -841,6 +841,15 @@ H       1.12853146   -0.86793870    0.06973060"""
         rxn_2.check_done_opt_r_n_p()
         self.assertEqual(rxn_2.done_opt_r_n_p, False)
 
+    def test_check_done_opt_r_n_p_monoatomic_xyz(self):
+        """Monoatomic species with user xyz should be considered ready without an opt job."""
+        o_atom = ARCSpecies(label='O', smiles='[O]', multiplicity=3, xyz="""O 0.0 0.0 0.0""")
+        h_atom = ARCSpecies(label='H', smiles='[H]', multiplicity=2, xyz="""H 0.0 0.0 0.0""")
+        rxn = ARCReaction(r_species=[o_atom], p_species=[h_atom])
+        self.assertIsNone(rxn.done_opt_r_n_p)
+        rxn.check_done_opt_r_n_p()
+        self.assertTrue(rxn.done_opt_r_n_p)
+
     def tests_white_space_in_reaction_label(self):
         """Test that an extra white space in the reaction label does not confuse ARC."""
         hno = ARCSpecies(label='HNO', smiles='N=O')
