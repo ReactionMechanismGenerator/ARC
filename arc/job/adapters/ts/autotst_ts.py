@@ -222,11 +222,11 @@ class AutoTSTAdapter(JobAdapter):
         Execute a job incore.
         """
         # 1) Check that ARC knows *which* Python to use for AutoTST
-        if not AUTOTST_PYTHON:
+        if not AUTOTST_RUNNER:
             raise ModuleNotFoundError(
-                "settings['AUTOTST_PYTHON'] is not set. "
+                "settings['AUTOTST_RUNNER'] is not set. "
                 "ARC cannot run AutoTST as a subprocess without this. "
-                "Set AUTOTST_PYTHON in your ARC settings to the Python executable of your tst_env."
+                "Set AUTOTST_RUNNER in your ARC settings to the Python executable of your tst_env."
             )
 
         self._log_job_execution()
