@@ -19,17 +19,39 @@ import copy
 import datetime
 import itertools
 import os
+import math
+import os
+import re
+import subprocess
+import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+import re
 
 from arc.common import (ARC_PATH, almost_equal_coords, get_angle_in_180_range, get_logger, is_angle_linear,
                         is_xyz_linear, key_by_val, read_yaml_file)
 from arc.family import get_reaction_family_products
+import numpy as np
+import pandas as pd
+
+from arc.imports import settings, submit_scripts
+from arc.common import almost_equal_coords, get_logger, is_angle_linear, is_xyz_linear, key_by_val
 from arc.job.adapter import JobAdapter
+from arc.job.local import check_job_status, submit_job
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
 from arc.plotter import save_geo
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
                                    add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom)
+from arc.species.converter import (
+    compare_zmats,
+    relocate_zmat_dummy_atoms_to_the_end,
+    str_to_str,
+    str_to_xyz,
+    xyz_to_dmat,
+    xyz_to_str,
+    zmat_from_xyz,
+    zmat_to_xyz,
+)
 from arc.mapping.engine import map_two_species
 from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
@@ -40,6 +62,13 @@ if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
 
+try:
+    CREST_PATH = settings["CREST_PATH"]
+    CREST_ENV_PATH = settings["CREST_ENV_PATH"]
+    HAS_CREST = True
+    SERVERS = settings["servers"]
+except KeyError:
+    HAS_CREST = False
 
 FAMILY_SETS = {'hydrolysis_set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolysis'],
                'hydrolysis_set_2': ['nitrile_hydrolysis']}
@@ -263,7 +292,7 @@ class HeuristicsAdapter(JobAdapter):
             if rxn.family == 'H_Abstraction':
                 tsg = TSGuess(method='Heuristics')
                 tsg.tic()
-                xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment)
+                xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment, path=self.local_path)
                 tsg.tok()
 
             if rxn.family in FAMILY_SETS['hydrolysis_set_1'] or rxn.family in FAMILY_SETS['hydrolysis_set_2']:
@@ -859,6 +888,7 @@ def h_abstraction(reaction: 'ARCReaction',
                   r2_stretch: float = 1.2,
                   a2: float = 180,
                   dihedral_increment: Optional[int] = None,
+                  path: str = ""
                   ) -> List[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
@@ -876,6 +906,7 @@ def h_abstraction(reaction: 'ARCReaction',
         Entries are Cartesian coordinates of TS guesses for all reactions.
     """
     xyz_guesses = list()
+    crest_paths = list()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
@@ -921,7 +952,7 @@ def h_abstraction(reaction: 'ARCReaction',
             d2_d3_product = [(None, None)]
 
         zmats = list()
-        for d2, d3 in d2_d3_product:
+        for iteration, (d2, d3) in enumerate(d2_d3_product):
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -953,6 +984,51 @@ def h_abstraction(reaction: 'ARCReaction',
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
                     xyz_guesses.append(xyz_guess)
+        
+                if HAS_CREST:
+                    xyz_guess_crest = xyz_guess.copy()
+                    if isinstance(xyz_guess_crest, dict):
+                        df_dmat = convert_xyz_to_df(xyz_guess_crest)
+                    elif isinstance(xyz_guess_crest, str):
+                        xyz = str_to_xyz(xyz_guess_crest)
+                        df_dmat = convert_xyz_to_df(xyz)
+                    elif isinstance(xyz_guess_crest, list):
+                        xyz_temp = "\n".join(xyz_guess_crest)
+                        xyz_to_dmat = str_to_xyz(xyz_temp)
+                        df_dmat = convert_xyz_to_df(xyz_to_dmat)
+
+                    try:
+                        h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
+                        crest_path = crest_ts_conformer_search(
+                            xyz_guess_crest,
+                            h_abs_atoms_dict["A"],
+                            h_abs_atoms_dict["H"],
+                            h_abs_atoms_dict["B"],
+                            path=path,
+                            xyz_crest_int=iteration,
+                        )
+                        crest_paths.append(crest_path)
+                    except (ValueError, KeyError) as e:
+                        logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
+
+    if crest_paths:
+        crest_jobs = submit_crest_jobs(crest_paths)
+        monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
+        xyz_guesses_crest = process_completed_jobs(crest_jobs)
+        for xyz_guess_crest in xyz_guesses_crest:
+            zmat_guess = zmat_from_xyz(xyz_guess_crest, is_ts=True)
+            is_unique = True  # Assume the current Z-matrix is unique
+            for existing_zmat_guess in zmats:
+                if compare_zmats(existing_zmat_guess, zmat_guess):
+                    is_unique = False  # Found a match, mark as not unique
+                    break  # Exit this inner loop only
+            if is_unique:
+                # If no match was found, append to lists
+                zmats.append(zmat_guess)
+                xyz_guesses.append(xyz_guess_crest)
+    else:
+        logger.error("No CREST paths found")
+
     return xyz_guesses
 
 
@@ -1685,3 +1761,337 @@ def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> boo
 
 
 register_job_adapter('heuristics', HeuristicsAdapter)
+def crest_ts_conformer_search(
+    xyz_guess: dict,
+    a_atom: int,
+    h_atom: int,
+    b_atom: int,
+    path: str = "",
+    xyz_crest_int: int = 0,
+) -> str:
+    """
+    Prepare a CREST TS conformer search job:
+    - Write coords.ref and constraints.inp
+    - Write a PBS submit script using submit_scripts["local"]["crest"]
+    - Return the CREST job directory path
+    """
+    path = os.path.join(path, f"crest_{xyz_crest_int}")
+    os.makedirs(path, exist_ok=True)
+
+    # --- coords.ref ---
+    symbols = xyz_guess["symbols"]
+    converted_coords = str_to_str(
+        xyz_str=xyz_to_str(xyz_guess),
+        reverse_atoms=True,
+        convert_to="bohr",
+    )
+    coords_ref_content = f"$coord\n{converted_coords}\n$end\n"
+    coords_ref_path = os.path.join(path, "coords.ref")
+    with open(coords_ref_path, "w") as f:
+        f.write(coords_ref_content)
+
+    # --- constraints.inp ---
+    num_atoms = len(symbols)
+    # CREST uses 1-based indices
+    a_atom += 1
+    h_atom += 1
+    b_atom += 1
+
+    # All atoms not directly involved in A–H–B go into the metadynamics atom list
+    list_of_atoms_numbers_not_participating_in_reaction = [
+        i for i in range(1, num_atoms + 1) if i not in [a_atom, h_atom, b_atom]
+    ]
+
+    constraints_path = os.path.join(path, "constraints.inp")
+    with open(constraints_path, "w") as f:
+        f.write("$constrain\n")
+        f.write(f"  atoms: {a_atom}, {h_atom}, {b_atom}\n")
+        f.write("  force constant: 0.5\n")
+        f.write("  reference=coords.ref\n")
+        f.write(f"  distance: {a_atom}, {h_atom}, auto\n")
+        f.write(f"  distance: {h_atom}, {b_atom}, auto\n")
+        f.write("$metadyn\n")
+        if list_of_atoms_numbers_not_participating_in_reaction:
+            f.write(
+                f'  atoms: {", ".join(map(str, list_of_atoms_numbers_not_participating_in_reaction))}\n'
+            )
+        f.write("$end\n")
+
+    # --- build CREST command string ---
+    # Example: crest coords.ref --cinp constraints.inp --noreftopo -T 8
+    cpus = int(SERVERS["local"].get("cpus", 8))
+    if CREST_ENV_PATH:
+        crest_exe = "crest"
+    else:
+        crest_exe = CREST_PATH if CREST_PATH is not None else "crest"
+
+    commands = [
+        crest_exe,
+        "coords.ref",
+        "--cinp constraints.inp",
+        "--noreftopo",
+        f'-T {SERVERS["local"].get("cpus", 8)}',
+    ]
+    command = " ".join(commands)
+
+    # --- activation line (optional) ---
+    activation_line = CREST_ENV_PATH or ""
+
+    if SERVERS.get("local") is not None:
+        cluster_soft = SERVERS["local"]["cluster_soft"].lower()
+
+        if cluster_soft in ["condor", "htcondor"]:
+            # HTCondor branch (kept for completeness – you can delete if you don't use it)
+            sub_job = submit_scripts["local"]["crest"]
+            format_params = {
+                "name": f"crest_{xyz_crest_int}",
+                "cpus": cpus,
+                "memory": int(SERVERS["local"].get("memory", 32.0) * 1024),
+            }
+            sub_job = sub_job.format(**format_params)
+
+            with open(
+                os.path.join(path, settings["submit_filenames"]["HTCondor"]), "w"
+            ) as f:
+                f.write(sub_job)
+
+            crest_job = submit_scripts["local"]["crest_job"]
+            crest_job = crest_job.format(
+                path=path,
+                activation_line=activation_line,
+                commands=command,
+            )
+
+            with open(os.path.join(path, "job.sh"), "w") as f:
+                f.write(crest_job)
+            os.chmod(os.path.join(path, "job.sh"), 0o777)
+
+            # Pre-create out/err for any status checkers that expect them
+            for fname in ("out.txt", "err.txt"):
+                fpath = os.path.join(path, fname)
+                if not os.path.exists(fpath):
+                    with open(fpath, "w") as f:
+                        f.write("")
+                    os.chmod(fpath, 0o777)
+
+        elif cluster_soft == "pbs":
+            # PBS branch that matches your 'crest' template above
+            sub_job = submit_scripts["local"]["crest"]
+            format_params = {
+                "queue": SERVERS["local"].get("queue", "alon_q"),
+                "name": f"crest_{xyz_crest_int}",
+                "cpus": cpus,
+                # 'memory' is in GB for the template: mem={memory}gb
+                "memory": int(
+                    SERVERS["local"].get("memory", 32)
+                    if SERVERS["local"].get("memory", 32) < 60
+                    else 40
+                ),
+                "activation_line": activation_line,
+                "commands": command,
+            }
+            sub_job = sub_job.format(**format_params)
+
+            submit_filename = settings["submit_filenames"]["PBS"]  # usually 'submit.sh'
+            submit_path = os.path.join(path, submit_filename)
+            with open(submit_path, "w") as f:
+                f.write(sub_job)
+            os.chmod(submit_path, 0o755)
+
+        else:
+            raise ValueError(f"Unsupported cluster_soft for CREST: {cluster_soft!r}")
+
+    return path
+
+
+def submit_crest_jobs(crest_paths: List[str]) -> None:
+    """
+    Submit CREST jobs to the server.
+
+    Args:
+        crest_paths (List[str]): List of paths to the CREST directories.
+
+    Returns:
+        dict: A dictionary containing job IDs as keys and their statuses as values.
+    """
+    crest_jobs = {}
+    for crest_path in crest_paths:
+        job_status, job_id = submit_job(path=crest_path)
+        logger.info(f"CREST job {job_id} submitted for {crest_path}")
+        crest_jobs[job_id] = {"path": crest_path, "status": job_status}
+    return crest_jobs
+
+
+def monitor_crest_jobs(crest_jobs: dict, check_interval: int = 300) -> None:
+    """
+    Monitor CREST jobs until they are complete.
+
+    Args:
+        crest_jobs (dict): Dictionary containing job information (job ID, path, and status).
+        check_interval (int): Time interval (in seconds) to wait between status checks.
+    """
+    while True:
+        all_done = True
+        for job_id, job_info in crest_jobs.items():
+            if job_info["status"] not in ["done", "failed"]:
+                try:
+                    job_info["status"] = check_job_status(job_id)  # Update job status
+                except Exception as e:
+                    logger.error(f"Error checking job status for job {job_id}: {e}")
+                    job_info["status"] = "failed"
+                if job_info["status"] not in ["done", "failed"]:
+                    all_done = False
+        if all_done:
+            break
+        time.sleep(min(check_interval, 100))
+
+
+def process_completed_jobs(crest_jobs: dict) -> list:
+    """
+    Process the completed CREST jobs and update XYZ guesses.
+
+    Args:
+        crest_jobs (dict): Dictionary containing job information.
+        xyz_guesses (list): List to store the resulting XYZ guesses.
+    """
+    xyz_guesses = []
+    for job_id, job_info in crest_jobs.items():
+        crest_path = job_info["path"]
+        if job_info["status"] == "done":
+            crest_best_path = os.path.join(crest_path, "crest_best.xyz")
+            if os.path.exists(crest_best_path):
+                with open(crest_best_path, "r") as f:
+                    content = f.read()
+                xyz_guess = str_to_xyz(content)
+                xyz_guesses.append(xyz_guess)
+            else:
+                logger.error(f"crest_best.xyz not found in {crest_path}")
+        elif job_info["status"] == "failed":
+            logger.error(f"CREST job failed for {crest_path}")
+
+    return xyz_guesses
+
+
+def extract_digits(s: str) -> int:
+    """
+    Extract the first integer from a string
+
+    Args:
+        s (str): The string to extract the integer from
+
+    Returns:
+        int: The first integer in the string
+
+    """
+    return int(re.sub(r"[^\d]", "", s))
+
+
+def convert_xyz_to_df(xyz: dict) -> pd.DataFrame:
+    """
+    Convert a dictionary of xyz coords to a pandas DataFrame with bond distances
+
+    Args:
+        xyz (dict): The xyz coordinates of the molecule
+
+    Return:
+        pd.DataFrame: The xyz coordinates as a pandas DataFrame
+
+    """
+    symbols = xyz["symbols"]
+    symbol_enum = [f"{symbol}{i}" for i, symbol in enumerate(symbols)]
+    ts_dmat = xyz_to_dmat(xyz)
+
+    return pd.DataFrame(ts_dmat, columns=symbol_enum, index=symbol_enum)
+
+
+def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
+    """
+    Get the donating/accepting hydrogen atom, and the two heavy atoms that are bonded to it
+
+    Args:
+        dataframe (pd.DataFrame): The dataframe of the bond distances, columns and index are the atom symbols
+
+    Returns:
+        dict: The hydrogen atom and the two heavy atoms. The keys are 'H', 'A', 'B'
+    """
+
+    closest_atoms = {}
+    for index, row in dataframe.iterrows():
+
+        row[index] = np.inf
+        closest = row.nsmallest(2).index.tolist()
+        closest_atoms[index] = closest
+
+    hydrogen_keys = [key for key in dataframe.index if key.startswith("H")]
+    condition_occurrences = []
+
+    for hydrogen_key in hydrogen_keys:
+        atom_neighbours = closest_atoms[hydrogen_key]
+        is_heavy_present = any(
+            atom for atom in closest_atoms if not atom.startswith("H")
+        )
+        if_hydrogen_present = any(
+            atom
+            for atom in closest_atoms
+            if atom.startswith("H") and atom != hydrogen_key
+        )
+
+        if is_heavy_present and if_hydrogen_present:
+            # Store the details of this occurrence
+            condition_occurrences.append(
+                {"H": hydrogen_key, "A": atom_neighbours[0], "B": atom_neighbours[1]}
+            )
+
+    # Check if the condition was met
+    if condition_occurrences:
+        if len(condition_occurrences) > 1:
+            # Store distances to decide which occurrence to use
+            occurrence_distances = []
+            for occurrence in condition_occurrences:
+                # Calculate the sum of distances to the two heavy atoms
+                hydrogen_key = f"{occurrence['H']}"
+                heavy_atoms = [f"{occurrence['A']}", f"{occurrence['B']}"]
+                try:
+                    distances = dataframe.loc[hydrogen_key, heavy_atoms].sum()
+                    occurrence_distances.append((occurrence, distances))
+                except KeyError as e:
+                    print(f"Error accessing distances for occurrence {occurrence}: {e}")
+
+            # Select the occurrence with the smallest distance
+            best_occurrence = min(occurrence_distances, key=lambda x: x[1])[0]
+            return {
+                "H": extract_digits(best_occurrence["H"]),
+                "A": extract_digits(best_occurrence["A"]),
+                "B": extract_digits(best_occurrence["B"]),
+            }
+    else:
+
+        # Check the all the hydrogen atoms, and see the closest two heavy atoms and aggregate their distances to determine which Hyodrogen atom has the lowest distance aggregate
+        min_distance = np.inf
+        selected_hydrogen = None
+        selected_heavy_atoms = None
+
+        for hydrogen_key in hydrogen_keys:
+            atom_neighbours = closest_atoms[hydrogen_key]
+            heavy_atoms = [atom for atom in atom_neighbours if not atom.startswith("H")]
+
+            if len(heavy_atoms) < 2:
+                continue
+
+            distances = dataframe.loc[hydrogen_key, heavy_atoms[:2]].sum()
+            if distances < min_distance:
+                min_distance = distances
+                selected_hydrogen = hydrogen_key
+                selected_heavy_atoms = heavy_atoms
+
+        if selected_hydrogen:
+            return {
+                "H": extract_digits(selected_hydrogen),
+                "A": extract_digits(selected_heavy_atoms[0]),
+                "B": extract_digits(selected_heavy_atoms[1]),
+            }
+        else:
+            raise ValueError("No valid hydrogen atom found.")
+
+
+register_job_adapter("heuristics", HeuristicsAdapter)
