@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import arc.parser.parser as parser
 from arc import plotter
 from arc.checks.common import get_i_from_job_name, sum_time_delta
-from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn
+from arc.checks.ts import check_imaginary_frequencies, check_ts, check_irc_species_and_rxn, ts_passed_checks
 from arc.common import (extremum_list,
                         get_angle_in_180_range,
                         get_logger,
@@ -1643,6 +1643,12 @@ class Scheduler(object):
         for rxn in self.rxn_list:
             rxn.check_done_opt_r_n_p()
             if rxn.done_opt_r_n_p and not rxn.ts_species.tsg_spawned:
+                if rxn.ts_species.ts_guess_priority and not rxn.ts_species.ts_priority_checks_concluded:
+                    if self._has_priority_user_guess(rxn.ts_species):
+                        logger.info(f'Deferring automated TS guesses for reaction {rxn.label} '
+                                    f'while validating the user-provided TS geometry.')
+                        continue
+                    rxn.ts_species.ts_guess_priority = False
                 if rxn.multiplicity is None:
                     logger.info(f'Not spawning TS search jobs for reaction {rxn} for which the multiplicity is unknown.')
                 else:
@@ -1663,6 +1669,13 @@ class Scheduler(object):
                 if all('user guess' in tsg.method for tsg in rxn.ts_species.ts_guesses):
                     rxn.ts_species.tsg_spawned = True
                     self.run_conformer_jobs(labels=[rxn.ts_label])
+
+    @staticmethod
+    def _has_priority_user_guess(ts_species: ARCSpecies) -> bool:
+        """
+        Determine whether a TS species has user-supplied information to validate before spawning automated guesses.
+        """
+        return bool(ts_species.ts_guesses or ts_species.initial_xyz or ts_species.final_xyz)
 
     def spawn_directed_scan_jobs(self,
                                  label: str,
@@ -2352,6 +2365,8 @@ class Scheduler(object):
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=frequencies)
             if freq_ok:
                 # Update restart dictionary and save a restart file:
+                if self.species_dict[label].is_ts:
+                    self.species_dict[label].ts_checks['freq'] = True
                 self.save_restart_dict()
                 success = True  # run freq / scan jobs on this optimized geometry
                 if not self.species_dict[label].is_ts:
@@ -2362,11 +2377,16 @@ class Scheduler(object):
                     else:
                         self.output[label]['isomorphism'] += 'composite did not pass isomorphism check; '
                     success &= is_isomorphic
+                else:
+                    self.update_priority_ts_status(label)
                 return success
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
                 self.troubleshoot_negative_freq(label=label, job=job)
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+        if not freq_ok and self.species_dict[label].is_ts:
+            self.species_dict[label].ts_checks['freq'] = False
+            self.update_priority_ts_status(label)
         return False  # return ``False``, so no freq / scan jobs are initiated for this unoptimized geometry
 
     def parse_opt_e_elect(self,
@@ -2548,6 +2568,7 @@ class Scheduler(object):
                                     f'Searching for a better TS conformer...')
                         self.switch_ts(label)
                         switch_ts = True
+                    self.species_dict[label].ts_checks['freq'] = True
                 if wrong_freq_message in self.output[label]['warnings']:
                     self.output[label]['warnings'] = ''.join(self.output[label]['warnings'].split(wrong_freq_message))
             elif not self.species_dict[label].is_ts and self.trsh_ess_jobs:
@@ -2555,11 +2576,15 @@ class Scheduler(object):
                 self.troubleshoot_negative_freq(label=label, job=job)
             if not freq_ok:
                 self.output[label]['warnings'] += wrong_freq_message
+                if self.species_dict[label].is_ts:
+                    self.species_dict[label].ts_checks['freq'] = False
         if job.job_status[1]['status'] != 'done' or (not freq_ok and not self.species_dict[label].is_ts):
             self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
         if (job.job_status[1]['status'] == 'done' and freq_ok and not switch_ts
                 and species_has_sp(self.output[label], self.species_dict[label].yml_path)):
             self.check_rxn_e0_by_spc(label)
+        if self.species_dict[label].is_ts:
+            self.update_priority_ts_status(label)
 
     def check_negative_freq(self,
                             label: str,
@@ -2671,6 +2696,46 @@ class Scheduler(object):
                     logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Searching for a better TS conformer...\n')
                     self.switch_ts(rxn.ts_label)
+                self.update_priority_ts_status(rxn.ts_label)
+
+    def update_priority_ts_status(self, label: str):
+        """
+        Update the status of a priority TS guess and decide whether additional TS guesses should be spawned.
+
+        Args:
+            label (str): The TS species label.
+        """
+        if label not in self.species_dict:
+            return
+        species = self.species_dict[label]
+        if not species.is_ts or not species.ts_guess_priority or species.ts_priority_checks_concluded:
+            return
+        if not self._has_priority_user_guess(species):
+            species.ts_guess_priority = False
+            species.ts_priority_checks_concluded = True
+            species.ts_priority_passed = None
+            return
+        if ts_passed_checks(species=species, exemptions=['IRC']):
+            species.ts_priority_checks_concluded = True
+            species.ts_priority_passed = True
+            species.tsg_spawned = True
+            logger.info(f'TS {label} passed priority checks; using the user guess without spawning additional TS guesses.')
+            return
+        if any(species.ts_checks.get(key) is False for key in ['freq', 'NMD', 'E0', 'e_elect']):
+            species.ts_priority_checks_concluded = True
+            species.ts_priority_passed = False
+            species.ts_guess_priority = False
+            species.ts_conf_spawned = False
+            species.ts_guesses_exhausted = False
+            species.chosen_ts = None
+            species.chosen_ts_method = None
+            for tsg in species.ts_guesses:
+                if 'user guess' in tsg.method:
+                    tsg.success = False
+            logger.info(f'TS {label} failed priority checks; falling back to automated TS guessing.')
+            if species.rxn_index in self.rxn_dict:
+                self.rxn_dict[species.rxn_index].ts_species.tsg_spawned = False
+                self.spawn_ts_jobs()
 
     def switch_ts(self, label: str):
         """

@@ -184,6 +184,7 @@ class ARCSpecies(object):
         multi_species: (str, optional): The multi-species set this species belongs to. Used for running a set of species
                                         simultaneously in a single ESS input file. A species marked as multi_species
                                         will only have one conformer considered (n_confs set to 1).
+        priority (bool, optional): Whether to prioritize a user-supplied TS guess before spawning additional TS guesses.
 
     Attributes:
         label (str): The species' label.
@@ -325,6 +326,7 @@ class ARCSpecies(object):
                  yml_path: Optional[str] = None,
                  keep_mol: bool = False,
                  project_directory: Optional[str] = None,
+                 priority: bool = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -363,6 +365,9 @@ class ARCSpecies(object):
         self.original_label = None
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
+        self.ts_guess_priority = priority if is_ts else False
+        self.ts_priority_checks_concluded = False
+        self.ts_priority_passed = None
         self.ts_checks = dict()
         self.project_directory = project_directory
         self.label = label
@@ -697,6 +702,12 @@ class ARCSpecies(object):
                 species_dict['ts_number'] = self.ts_number
             if self.ts_report:
                 species_dict['ts_report'] = self.ts_report
+            if self.ts_guess_priority:
+                species_dict['priority'] = self.ts_guess_priority
+            if self.ts_priority_checks_concluded:
+                species_dict['priority_checks_concluded'] = self.ts_priority_checks_concluded
+            if self.ts_priority_passed is not None:
+                species_dict['priority_passed'] = self.ts_priority_passed
             if self.rxn_label is not None:
                 species_dict['rxn_label'] = self.rxn_label
             if self.rxn_index is not None:
@@ -843,6 +854,9 @@ class ARCSpecies(object):
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
             self.ts_report = species_dict['ts_report'] if 'ts_report' in species_dict else ''
+            self.ts_guess_priority = species_dict.get('priority', self.ts_guess_priority)
+            self.ts_priority_checks_concluded = species_dict.get('priority_checks_concluded', False)
+            self.ts_priority_passed = species_dict.get('priority_passed', None)
             self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
             self.successful_methods = species_dict['successful_methods'] \

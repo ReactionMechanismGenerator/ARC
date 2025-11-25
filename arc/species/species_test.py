@@ -594,6 +594,23 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_dict['mol']['atoms'][0]['element']['isotope'], -1)
         self.assertEqual(spc_dict['mol']['atoms'][0]['atomtype'], 'Cs')
 
+    def test_ts_priority_round_trip(self):
+        """Priority TS flag should survive as_dict/from_dict."""
+        ts_xyz = """H 0.0 0.0 0.0
+H 0.0 0.0 0.74
+H 0.0 0.0 1.48"""
+        ts = ARCSpecies(label='TSX', is_ts=True, priority=True, xyz=ts_xyz)
+        ts.ts_priority_checks_concluded = True
+        ts.ts_priority_passed = False
+        ts_dict = ts.as_dict()
+        self.assertTrue(ts_dict['priority'])
+        self.assertTrue(ts_dict['priority_checks_concluded'])
+        self.assertFalse(ts_dict['priority_passed'])
+        ts_rt = ARCSpecies(species_dict=ts_dict)
+        self.assertTrue(ts_rt.ts_guess_priority)
+        self.assertTrue(ts_rt.ts_priority_checks_concluded)
+        self.assertFalse(ts_rt.ts_priority_passed)
+
     def test_from_dict(self):
         """Test Species.from_dict()"""
         species_dict = self.spc2.as_dict()
