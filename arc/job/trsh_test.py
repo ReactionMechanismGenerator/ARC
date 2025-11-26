@@ -341,11 +341,26 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(status, "errored")
         self.assertEqual(keywords, ["Basis"])
         expected_error_msg = (
-            "There was a basis set error in the Orca input file. In particular, basis for atom type "
+            "There was a basis set error in the Orca input file. In particular, the CABS basis for atom type "
             "Br is missing. Please check if specified basis set supports this atom."
         )
         self.assertEqual(error, expected_error_msg)
         self.assertIn("There are no CABS", line)
+
+        # test detection of missing main basis functions (e.g., Br unsupported by requested basis)
+        path = os.path.join(self.base_path["orca"], "orca_basis_error_main.log")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["Basis"])
+        expected_error_msg = (
+            "There was a basis set error in the Orca input file. In particular, the main basis for atom type "
+            "Br is missing. Please check if specified basis set supports this atom. "
+            "Consider using a pseudopotential (PP) basis if available for this element."
+        )
+        self.assertEqual(error, expected_error_msg)
+        self.assertIn("There are no main", line)
 
         # test detection of wavefunction convergence failure
         path = os.path.join(

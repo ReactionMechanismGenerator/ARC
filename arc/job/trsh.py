@@ -367,12 +367,20 @@ def determine_ess_status(output_path: str,
                             f'input file template under arc/job/inputs.py. Alternatively, perhaps the level of ' \
                             f'theory or the job option is not supported by Orca in the format it was given.'
                     break
-                elif 'There are no CABS' in line:
+                elif 'there are no' in line.lower() and 'basis functions on atom number' in line.lower():
                     # e.g., ** There are no CABS   basis functions on atom number   2 (Br) **
                     keywords = ['Basis']
-                    problematic_atom = line.split()[-2].strip('()')
-                    error = f'There was a basis set error in the Orca input file. In particular, basis for atom type ' \
-                            f'{problematic_atom} is missing. Please check if specified basis set supports this atom.'
+                    tokens = line.split()
+                    problematic_atom = tokens[-2].strip('()') if len(tokens) >= 2 else ''
+                    basis_match = re.search(r'There are no\s+([A-Za-z]+)\s+basis functions on atom number',
+                                            line,
+                                            re.IGNORECASE)
+                    basis_type = basis_match.group(1) if basis_match else ''
+                    error = 'There was a basis set error in the Orca input file. '
+                    error += f'In particular, the {basis_type + " " if basis_type else ""}basis for atom type ' \
+                             f'{problematic_atom} is missing. Please check if specified basis set supports this atom.'
+                    if basis_type.lower() != 'cabs':
+                        error += ' Consider using a pseudopotential (PP) basis if available for this element.'
                     break
                 elif 'This wavefunction IS NOT FULLY CONVERGED!' in line:
                     keywords = ['Convergence']
