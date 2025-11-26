@@ -3988,6 +3988,7 @@ class Scheduler(object):
                 ts_dict['run_time'] = str(species.run_time)
                 ts_dict['successful_methods'] = species.successful_methods
                 ts_dict['unsuccessful_methods'] = species.unsuccessful_methods
+                ts_dict['chosen_ts_method'] = species.chosen_ts_method
                 ts_dict['chosen_ts'] = species.chosen_ts
                 ts_dict['chosen_ts_list'] = species.chosen_ts_list
                 ts_dict['ts_guesses_exhausted'] = species.ts_guesses_exhausted

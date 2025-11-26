@@ -281,16 +281,21 @@ class HeuristicsAdapter(JobAdapter):
                 xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment, path=self.local_path)
                 tsg.tok()
 
-            for method_index, xyz in enumerate(xyzs):
+            method_counter = dict()
+            for xyz_entry in xyzs:
+                xyz = xyz_entry["xyz"]
+                method_name = xyz_entry.get("method", "Heuristics")
+                method_counter[method_name] = method_counter.get(method_name, 0) + 1
+                method_index = method_counter[method_name] - 1
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
                     if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                        if 'heuristics' not in other_tsg.method.lower():
-                            other_tsg.method += ' and Heuristics'
+                        if method_name.lower() not in other_tsg.method.lower():
+                            other_tsg.method += f' and {method_name}'
                         unique = False
                         break
                 if unique:
-                    ts_guess = TSGuess(method='Heuristics',
+                    ts_guess = TSGuess(method=method_name,
                                        index=len(rxn.ts_species.ts_guesses),
                                        method_index=method_index,
                                        t0=tsg.t0,
@@ -302,9 +307,9 @@ class HeuristicsAdapter(JobAdapter):
                     rxn.ts_species.ts_guesses.append(ts_guess)
                     save_geo(xyz=xyz,
                              path=self.local_path,
-                             filename=f'Heuristics_{method_index}',
+                             filename=f'{method_name}_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {rxn.family}',
+                             comment=f'{method_name} {method_index}, family: {rxn.family}',
                              )
 
             if len(self.reactions) < 5:
@@ -863,7 +868,7 @@ def h_abstraction(reaction: 'ARCReaction',
                   a2: float = 180,
                   dihedral_increment: Optional[int] = None,
                   path: str = ""
-                  ) -> List[dict]:
+                  ) -> List[Dict[str, Any]]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
 
@@ -877,7 +882,8 @@ def h_abstraction(reaction: 'ARCReaction',
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
     Returns: List[dict]
-        Entries are Cartesian coordinates of TS guesses for all reactions.
+        Entries hold Cartesian coordinates of TS guesses under the ``xyz`` key and their generation method under
+        the ``method`` key.
     """
     xyz_guesses = list()
     crest_paths = list()
@@ -958,7 +964,7 @@ def h_abstraction(reaction: 'ARCReaction',
                 else:
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
-                    xyz_guesses.append(xyz_guess)
+                    xyz_guesses.append({"xyz": xyz_guess, "method": "Heuristics"})
         
                 if HAS_CREST:
                     xyz_guess_crest = xyz_guess.copy()
@@ -1001,9 +1007,9 @@ def h_abstraction(reaction: 'ARCReaction',
             if is_unique:
                 # If no match was found, append to lists
                 zmats.append(zmat_guess)
-                xyz_guesses.append(xyz_guess_crest)
-    else:
-        logger.error("No CREST paths found")
+                xyz_guesses.append({"xyz": xyz_guess_crest, "method": "CREST"})
+    elif HAS_CREST:
+        logger.info("CREST enabled but no CREST paths were generated for this reaction.")
 
     return xyz_guesses
 
