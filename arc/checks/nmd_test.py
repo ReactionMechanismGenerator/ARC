@@ -681,6 +681,23 @@ class TestNMD(unittest.TestCase):
         self.assertEqual(xyzs[0], expected_xyzs[0])
         self.assertEqual(xyzs[1], expected_xyzs[1])
 
+    def test_significance_not_double_scaled(self):
+        """Ensure the insignificance check does not apply the amplitude twice."""
+        xyz_r = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                 'coords': ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))}
+        xyz_p = {'symbols': ('H', 'H'), 'isotopes': (1, 1),
+                 'coords': ((0.0, 0.0, 0.0), (0.9, 0.0, 0.0))}
+        weights = np.ones((2, 1))
+        diffs, _ = nmd.get_bond_length_changes(bonds=[(0, 1)],
+                                               xyzs=(xyz_r, xyz_p),
+                                               weights=weights,
+                                               amplitude=0.25,
+                                               return_none_if_change_is_insignificant=True,
+                                               considered_reactive=True,
+                                               )
+        self.assertIsNotNone(diffs)
+        self.assertAlmostEqual(float(diffs[0]), 0.1)
+
     def test_find_equivalent_atoms(self):
         """Test the find_equivalent_atoms() function."""
         r_eq_atoms, p_eq_atoms = nmd.find_equivalent_atoms(reaction=self.rxn_1, reactant_only=False)

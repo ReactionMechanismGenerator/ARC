@@ -120,6 +120,11 @@ def is_nmd_correct_for_any_mapping(reaction: 'ARCReaction',
                                                        )
         if reactive_bonds_diffs is None:
             continue
+        if not bonds_change_in_expected_direction(eq_formed_bonds=eq_formed_bonds,
+                                                  eq_broken_bonds=eq_broken_bonds,
+                                                  xyzs=xyzs,
+                                                  weights=weights):
+            continue
         r_bonds, _ = reaction.get_bonds(r_bonds_only=True)
         non_reactive_bonds = list()
         for bond in r_bonds:
@@ -344,7 +349,7 @@ def get_bond_length_changes(bonds: Union[List[Tuple[int, int]], Set[Tuple[int, i
             continue
         diff = abs(r_bond_length - p_bond_length)
         if amplitude is not None and return_none_if_change_is_insignificant \
-                and abs(diff * amplitude / r_bond_length) < 0.05 and abs(diff * amplitude / p_bond_length) < 0.05:
+                and abs(diff / r_bond_length) < 0.08 and abs(diff / p_bond_length) < 0.08:
             return None, None
         diffs.append(diff)
         if considered_reactive:
@@ -377,6 +382,50 @@ def get_bond_length_in_reaction(bond: Union[Tuple[int, int], List[int]],
     if isinstance(distance, np.ndarray):
         return distance.item()
     return float(distance)
+
+
+def bonds_change_in_expected_direction(eq_formed_bonds: List[Tuple[int, int]],
+                                       eq_broken_bonds: List[Tuple[int, int]],
+                                       xyzs: Tuple[dict, dict],
+                                       weights: Optional[np.array] = None,
+                                       tol: float = 1e-4,
+                                       ) -> bool:
+    """
+    Check that formed and broken bonds change in opposite directions between the displaced structures.
+
+    Args:
+        eq_formed_bonds (List[Tuple[int, int]]): Bonds expected to form.
+        eq_broken_bonds (List[Tuple[int, int]]): Bonds expected to break.
+        xyzs (Tuple[dict, dict]): The Cartesian coordinates of the TS displaced along the normal mode.
+        weights (np.array): The weights for the atoms.
+        tol (float): A small tolerance to allow for numerical noise.
+
+    Returns:
+        bool: Whether all bonds move in the expected direction.
+    """
+    def _get_deltas(bonds: List[Tuple[int, int]]) -> Optional[List[float]]:
+        deltas = list()
+        for bond in bonds:
+            r_len = get_bond_length_in_reaction(bond=bond, xyz=xyzs[0], weights=weights)
+            p_len = get_bond_length_in_reaction(bond=bond, xyz=xyzs[1], weights=weights)
+            if r_len is None or p_len is None:
+                return None
+            deltas.append(p_len - r_len)
+        return deltas
+
+    formed_deltas = _get_deltas(eq_formed_bonds)
+    broken_deltas = _get_deltas(eq_broken_bonds)
+    if formed_deltas is None or broken_deltas is None:
+        return False
+    if not formed_deltas or not broken_deltas:
+        return True
+
+    cond_formed_shorter = all(d < -tol for d in formed_deltas)
+    cond_formed_longer = all(d > tol for d in formed_deltas)
+    cond_broken_shorter = all(d < -tol for d in broken_deltas)
+    cond_broken_longer = all(d > tol for d in broken_deltas)
+
+    return (cond_formed_shorter and cond_broken_longer) or (cond_formed_longer and cond_broken_shorter)
 
 
 def find_equivalent_atoms(reaction: 'ARCReaction',
