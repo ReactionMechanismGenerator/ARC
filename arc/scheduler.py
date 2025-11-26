@@ -2800,7 +2800,10 @@ class Scheduler(object):
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
-        self.species_dict[label].populate_ts_checks()  # Restart the TS checks dict.
+        # If we're still in priority-validation mode, keep existing ts_checks (e.g., NMD failure) so that the
+        # priority fallback logic can see the failing check and respond accordingly.
+        if not (self.species_dict[label].ts_guess_priority and not self.species_dict[label].ts_priority_checks_concluded):
+            self.species_dict[label].populate_ts_checks()
         if not self.species_dict[label].ts_guesses_exhausted and self.species_dict[label].chosen_ts is not None:
             logger.info(f'Optimizing species {label} again using a different TS guess: '
                         f'conformer {self.species_dict[label].chosen_ts}')
@@ -2808,6 +2811,13 @@ class Scheduler(object):
                 self.run_opt_job(label, fine=self.fine_only)
             else:
                 self.run_composite_job(label)
+        elif not self.species_dict[label].ts_guess_priority:
+            # No viable TS guess selected (e.g., only a failed user guess). Fall back to automated TS guessing.
+            self.species_dict[label].ts_guesses_exhausted = False
+            self.species_dict[label].ts_conf_spawned = False
+            if self.species_dict[label].rxn_index in self.rxn_dict:
+                self.rxn_dict[self.species_dict[label].rxn_index].ts_species.tsg_spawned = False
+            self.spawn_ts_jobs()
 
     def check_sp_job(self,
                      label: str,
