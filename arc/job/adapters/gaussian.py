@@ -366,6 +366,16 @@ class GaussianAdapter(JobAdapter):
                 
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
+        if self.is_ts:
+            ts_keywords_to_add = ['NoSymm', 'Geom=Cartesian']
+            for keyword in ts_keywords_to_add:
+                if keyword.lower() not in input_dict['keywords'].lower():
+                    input_dict['keywords'] = f"{input_dict['keywords']} {keyword}".strip()
+            ts_scf_parameters = ['xqc', 'novaracc', 'maxcycle=512']
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += f"scf=({','.join(ts_scf_parameters)})"
+
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]
             constraint_atom_indices = ' '.join([str(atom_index) for atom_index in constraint_tuple[0]])

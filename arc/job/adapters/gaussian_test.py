@@ -695,7 +695,7 @@ O       0.00000000    0.00000000    1.00000000
 %mem=14336mb
 %NProcShared=8
 
-#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  uwb97xd/def2tzvp   IOp(2/9=2000)   
+#P irc=(CalcAll,maxpoints=50,reverse,stepsize=7)  uwb97xd/def2tzvp   IOp(2/9=2000) NoSymm Geom=Cartesian   scf=(maxcycle=512,novaracc,xqc)
 
 IRC
 
