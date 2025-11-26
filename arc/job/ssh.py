@@ -303,6 +303,7 @@ class SSHClient(object):
         cluster_soft = servers[self.server]['cluster_soft']
         cmd = f'{submit_command[cluster_soft]} {submit_filenames[cluster_soft]}'
         stdout, stderr = self._send_command_to_server(cmd, remote_path)
+        self._append_submission_log(remote_path, stdout, stderr)
         if len(stderr) > 0 or len(stdout) == 0:
             logger.warning(f'Got stderr when submitting job:\n{stderr}')
             job_status = 'errored'
@@ -331,6 +332,31 @@ class SSHClient(object):
             raise ValueError(f'Unrecognized cluster software: {cluster_soft}')
         job_status = 'running' if job_id else job_status
         return job_status, job_id
+
+    def _append_submission_log(self,
+                               remote_path: str,
+                               stdout: Optional[List[str]],
+                               stderr: Optional[List[str]],
+                               ) -> None:
+        """
+        Persist the submission stdout/stderr to ``job.log`` on the remote server.
+        """
+        if not remote_path:
+            return
+        timestamp = datetime.datetime.now().isoformat(timespec='seconds')
+        lines = [f'[{timestamp}] submission stdout:']
+        lines.extend(stdout or ['<empty>'])
+        lines.append(f'[{timestamp}] submission stderr:')
+        lines.extend(stderr or ['<empty>'])
+        content = '\n'.join(lines) + '\n'
+        # Use a heredoc to avoid escaping issues.
+        cmd = (f'cd "{remote_path}" && cat >> job.log << "ARC_SUBMISSION_LOG"\n'
+               f'{content}'
+               f'ARC_SUBMISSION_LOG\n')
+        try:
+            self._send_command_to_server(cmd)
+        except Exception as e:
+            logger.debug(f'Could not write submission log for {remote_path}: {e}')
 
     def connect(self) -> None:
         """

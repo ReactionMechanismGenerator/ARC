@@ -1058,10 +1058,20 @@ class Scheduler(object):
             i -= 1
             time.sleep(RETRY_SLEEP_SECONDS)
 
-        if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
+        missing_output = not os.path.isfile(job.local_path_to_output_file)
+        if missing_output and job.execution_type != 'incore':
             job.rename_output_file()
-        if not os.path.isfile(job.local_path_to_output_file) and not job.execution_type == 'incore':
-            if 'restart_due_to_file_not_found' in job.ess_trsh_methods:
+            missing_output = not os.path.isfile(job.local_path_to_output_file)
+        if missing_output and job.execution_type != 'incore':
+            initial_time_path = os.path.join(job.local_path, 'initial_time')
+            has_initial_time = os.path.isfile(initial_time_path)
+            if not has_initial_time:
+                logger.warning(f'Did not find the output file of job {job.job_name} at '
+                               f'{job.local_path_to_output_file}, and no initial_time marker was written. '
+                               f'Assuming submission failed; waiting 5 minutes before resubmitting.')
+                time.sleep(5 * 60)
+                self._run_a_job(job=job, label=label, rerun=True)
+            elif 'restart_due_to_file_not_found' in job.ess_trsh_methods:
                 job.job_status[0] = 'errored'
                 job.job_status[1]['status'] = 'errored'
                 logger.warning(f'Job {job.job_name} errored because for the second time ARC did not find the output '

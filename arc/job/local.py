@@ -243,9 +243,11 @@ def submit_job(path: str,
     submit_filename = submit_filename or submit_filenames[cluster_soft]
     cmd = f'cd "{path}"; {submit_cmd} {submit_filename}'
     stdout, stderr = execute_command(cmd)
+    _append_submission_log(path, stdout, stderr)
     if not len(stdout):
         time.sleep(10)
         stdout, stderr = execute_command(cmd)
+        _append_submission_log(path, stdout, stderr)
     if stderr:
         if cluster_soft.lower() == 'slurm' and any('AssocMaxSubmitJobLimit' in err_line for err_line in stderr):
             logger.warning(f'Max number of submitted jobs was reached, sleeping...')
@@ -276,6 +278,29 @@ def submit_job(path: str,
         job_id = _determine_job_id(stdout=stdout, cluster_soft=cluster_soft)
     job_status = 'running' if job_id else job_status
     return job_status, job_id
+
+
+def _append_submission_log(path: str,
+                           stdout: Optional[List[str]],
+                           stderr: Optional[List[str]],
+                           ) -> None:
+    """
+    Persist the submission stdout/stderr to ``job.log`` so queue errors are captured.
+    """
+    if path is None:
+        return
+    log_path = os.path.join(path, 'job.log')
+    timestamp = datetime.datetime.now().isoformat(timespec='seconds')
+    lines = [f'[{timestamp}] submission stdout:']
+    lines.extend(stdout or ['<empty>'])
+    lines.append(f'[{timestamp}] submission stderr:')
+    lines.extend(stderr or ['<empty>'])
+    try:
+        with open(log_path, 'a') as log_file:
+            log_file.write('\n'.join(lines))
+            log_file.write('\n')
+    except (IOError, OSError) as e:
+        logger.debug(f'Could not write submission log to {log_path}: {e}')
 
 
 def _determine_job_id(stdout: List[str],
