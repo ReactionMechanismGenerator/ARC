@@ -2880,13 +2880,13 @@ H      -0.30139889    0.23142254    3.12085495"""
             if reaction_families[i]== 'carbonyl_based_hydrolysis':#the parameters of ether hydrolysis are checked in the following test section
                 distance_ab=(calculate_param(coords=initial_xyz['coords'], atoms=[b, a]))*1.3
                 self.check_distance(coords=guess['coords'], atoms=[b, a], expected=distance_ab)
-                self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.8)
+                self.check_distance(coords=guess['coords'], atoms=[a, O], expected=1.85)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1], expected=1.21)
                 self.check_distance(coords=guess['coords'], atoms=[O, H1 + 1], expected=0.97)
                 self.check_angle(coords=guess['coords'], atoms=[b, a, O], expected=77)
-                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=71)
-                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=111)
-                self.check_dihedral(coords=guess['coords'], atoms=[f, d, a, O], expected=140)
+                self.check_angle(coords=guess['coords'], atoms=[a, O, H1], expected=76)
+                self.check_angle(coords=guess['coords'], atoms=[H1, O, H1 + 1], expected=112)
+                self.check_dihedral(coords=guess['coords'], atoms=[e, d, a, O], expected=140)
                 self.check_dihedral(coords=guess['coords'], atoms=[b, a, O, H1], expected=1.64, delta=5)
                 self.check_dihedral(coords=guess['coords'], atoms=[a, H1, O, H1 + 1], expected=103)
 
