@@ -279,9 +279,13 @@ def plot_ts_guesses_by_e_and_method(species: ARCSpecies,
             map_tsg_to_results[cluster.index] = i - number_of_cluster_wo_energy
         else:
             number_of_cluster_wo_energy += 1
-    ts_results = sorted(results, key=lambda x: x[1], reverse=False)
+    if not results:
+        return
+    e_min = min(r[1] for r in results)
+    rel_results = [(method, energy - e_min, im_freqs, idx) for method, energy, im_freqs, idx in results]
+    ts_results = sorted(rel_results, key=lambda x: x[1], reverse=False)
     energy_sorting_map = list(range(len(ts_results)))
-    energy_sorting_map = sort_two_lists_by_the_first([r[1] for r in results], energy_sorting_map)[1]
+    energy_sorting_map = sort_two_lists_by_the_first([r[1] for r in rel_results], energy_sorting_map)[1]
     x = np.arange(len(ts_results))  # the label locations
     width = 0.45  # the width of the bars
     y = [x[1] for x in ts_results]  # electronic energies

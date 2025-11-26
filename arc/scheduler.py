@@ -2239,6 +2239,26 @@ class Scheduler(object):
                 if sp_flag:
                     self.output[label]['job_types']['conf_sp'] = True
 
+    @staticmethod
+    def _get_relative_ts_guess_energies(ts_guesses: List[TSGuess]) -> Tuple[List[Optional[float]], Optional[float]]:
+        """
+        Calculate TS guess relative energies without mutating the stored absolute values.
+
+        Args:
+            ts_guesses (List[TSGuess]): A list of TS guesses with electronic energies in kJ/mol.
+
+        Returns:
+            Tuple[List[Optional[float]], Optional[float]]: A list of relative energies ordered as ts_guesses
+                                                           (``None`` where energy is missing) and the minimum
+                                                           absolute energy used as the reference.
+        """
+        energies = [tsg.energy for tsg in ts_guesses if tsg.energy is not None]
+        if not energies:
+            return [None for _ in ts_guesses], None
+        e_min = min(energies)
+        relative_energies = [tsg.energy - e_min if tsg.energy is not None else None for tsg in ts_guesses]
+        return relative_energies, e_min
+
     def determine_most_likely_ts_conformer(self, label: str):
         """
         Determine the most likely TS conformer.
@@ -2285,6 +2305,7 @@ class Scheduler(object):
         else:
             # Select the TSG with the lowest energy given that it has only one significant imaginary frequency.
             # Todo: consider IRC well isomorphism
+            relative_energies, e_min = self._get_relative_ts_guess_energies(self.species_dict[label].ts_guesses)
             selected_i = None
             self.species_dict[label].ts_guesses_exhausted = True
             # pick the lowest-energy unused guess that passes the imag-freq filter (if available)
@@ -2307,7 +2328,7 @@ class Scheduler(object):
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
                     else f' of reaction {self.species_dict[label].rxn_label}'
                 logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
-            for tsg in self.species_dict[label].ts_guesses:
+            for i, tsg in enumerate(self.species_dict[label].ts_guesses):
                 if tsg.index == selected_i:
                     self.species_dict[label].chosen_ts = selected_i
                     self.species_dict[label].chosen_ts_list.append(selected_i)
@@ -2316,15 +2337,15 @@ class Scheduler(object):
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
-                    tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
+                    rel_energy = relative_energies[i]
                     execution_time = str(tsg.execution_time)
                     execution_time = execution_time[:execution_time.index('.') + 2] \
                         if '.' in execution_time else execution_time
                     aux = f' {tsg.errors}.' if tsg.errors else '.'
                     logger.info(f'TS guess {tsg.index:2} for {label}. '
                                 f'Method: {tsg.method:10}, '
-                                f'relative energy: {tsg.energy:8.2f} kJ/mol, '
+                                f'relative energy: {rel_energy:8.2f} kJ/mol, '
                                 f'guess ex time: {execution_time}{im_freqs}'
                                 f'{aux}')
                     # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
@@ -2341,7 +2362,7 @@ class Scheduler(object):
                 multiplicity=self.species_dict[label].multiplicity,
                 charge=self.species_dict[label].charge,
                 is_ts=True,
-                energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                energies=relative_energies,
                 ts_methods=[f'{tsg.method} '
                             f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                             f'{tsg.method_index if tsg.method_index is not None else ""} '
@@ -2684,6 +2705,7 @@ class Scheduler(object):
                 self.output[label]['job_types']['freq'] = True
                 self.output[label]['paths']['geo'] = job.local_path_to_output_file
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
+                relative_energies, _ = self._get_relative_ts_guess_energies(self.species_dict[label].ts_guesses)
                 plotter.save_conformers_file(
                     project_directory=self.project_directory,
                     label=label,
@@ -2692,7 +2714,7 @@ class Scheduler(object):
                     multiplicity=self.species_dict[label].multiplicity,
                     charge=self.species_dict[label].charge,
                     is_ts=True,
-                    energies=[tsg.energy for tsg in self.species_dict[label].ts_guesses],
+                    energies=relative_energies,
                     ts_methods=[f'{tsg.method} '
                                 f'{tsg.method_direction if tsg.method_direction is not None else ""} '
                                 f'{tsg.method_index if tsg.method_index is not None else ""} '

@@ -19,7 +19,7 @@ from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -743,6 +743,17 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertTrue(species_has_geo(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_sp(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_sp_and_freq(species_output_dict=species_output_dict, yml_path=yml_path))
+
+    def test_get_relative_ts_guess_energies(self):
+        """Test that TS relative energies are calculated without mutating the stored absolute energies."""
+        tsg1 = TSGuess(index=0, method='heuristics', energy=-607770.11)
+        tsg2 = TSGuess(index=1, method='heuristics', energy=-607633.55)
+        relative_energies, e_min = Scheduler._get_relative_ts_guess_energies([tsg1, tsg2])
+        self.assertAlmostEqual(e_min, -607770.11)
+        self.assertAlmostEqual(relative_energies[0], 0.0)
+        self.assertAlmostEqual(relative_energies[1], 136.56, places=2)
+        self.assertAlmostEqual(tsg1.energy, -607770.11)
+        self.assertAlmostEqual(tsg2.energy, -607633.55)
 
     def test_add_label_to_unique_species_labels(self):
         """Test the add_label_to_unique_species_labels() method."""
