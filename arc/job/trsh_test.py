@@ -356,8 +356,9 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(keywords, ["Basis"])
         expected_error_msg = (
             "There was a basis set error in the Orca input file. In particular, the main basis for atom type "
-            "Br is missing. Please check if specified basis set supports this atom. "
-            "Consider using a pseudopotential (PP) basis if available for this element."
+            "Br is missing. Please check if specified basis set supports this atom. When using Orca DLPNO/F12 methods "
+            "for heavy halogens, consider a PP basis that explicitly supports the element (e.g., cc-pVnZ-PP-F12 for "
+            "Br/I)."
         )
         self.assertEqual(error, expected_error_msg)
         self.assertIn("There are no main", line)

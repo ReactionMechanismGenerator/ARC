@@ -380,7 +380,8 @@ def determine_ess_status(output_path: str,
                     error += f'In particular, the {basis_type + " " if basis_type else ""}basis for atom type ' \
                              f'{problematic_atom} is missing. Please check if specified basis set supports this atom.'
                     if basis_type.lower() != 'cabs':
-                        error += ' Consider using a pseudopotential (PP) basis if available for this element.'
+                        error += (' When using Orca DLPNO/F12 methods for heavy halogens, consider a PP basis that '
+                                  'explicitly supports the element (e.g., cc-pVnZ-PP-F12 for Br/I).')
                     break
                 elif 'This wavefunction IS NOT FULLY CONVERGED!' in line:
                     keywords = ['Convergence']
