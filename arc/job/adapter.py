@@ -29,6 +29,7 @@ from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
                            check_job_status,
                            delete_job,
+                           execute_command,
                            get_last_modified_time,
                            rename_output,
                            submit_job,
@@ -502,7 +503,17 @@ class JobAdapter(ABC):
         submit_script = submit_scripts[self.server][self.job_adapter] if self.workers is None \
             else pipe_submit[self.server]
 
-        queue = self.queue if self.queue is not None else default_queue
+        queue_candidates = list()
+        if self.queue is not None:
+            queue_candidates.append(self.queue)
+        if default_queue is not None:
+            queue_candidates.append(default_queue)
+        # Preserve the order defined by the user's queues mapping, avoiding duplicates.
+        queue_candidates.extend(
+            [queue_name for queue_name in servers[self.server].get('queues', {}).keys()
+             if queue_name not in queue_candidates]
+        )
+        queue = self._choose_queue_by_backlog(queue_candidates) if queue_candidates else None
 
         format_params = {
             "name": self.job_server_name,
@@ -604,6 +615,67 @@ class JobAdapter(ABC):
                         except shutil.SameFileError:
                             pass
             self.initial_time = datetime.datetime.now()
+
+    def _choose_queue_by_backlog(self, queue_candidates: List[str]) -> Optional[str]:
+        """
+        Given an ordered list of queue candidates, pick the first whose queued job count
+        does not exceed the configured backlog threshold. Falls back to the first candidate
+        if counts cannot be determined.
+
+        Args:
+            queue_candidates (List[str]): Ordered queue names to consider.
+
+        Returns:
+            Optional[str]: The chosen queue name, or None if no candidates are given.
+        """
+        if not queue_candidates:
+            return None
+        backlog_cap = default_job_settings.get('job_max_queue_backlog')
+        if backlog_cap is None:
+            return queue_candidates[0]
+        for queue_name in queue_candidates:
+            queued = self._get_queue_queued_count(queue_name)
+            if queued is None:
+                return queue_candidates[0]
+            if queued <= backlog_cap:
+                return queue_name
+        return queue_candidates[0]
+
+    def _get_queue_queued_count(self, queue_name: str) -> Optional[int]:
+        """
+        Get the number of queued jobs in a PBS queue.
+        Currently implemented for local PBS clusters; returns None if unavailable.
+        """
+        if self.server is None:
+            return None
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        if cluster_soft != 'pbs':
+            return None
+        cmd = f"qstat -Qf {queue_name}"
+        try:
+            if self.server == 'local':
+                stdout, stderr = execute_command(cmd)
+            else:
+                return None  # Remote queue probing not implemented yet.
+        except Exception:
+            return None
+        if stderr:
+            return None
+        queued = None
+        for line in stdout:
+            if 'state_count' in line:
+                # Example: state_count = Transit:0 Queued:3 Held:0 Waiting:0 Running:44 Exiting:0 Begun:0
+                parts = line.split('=', 1)
+                counts_str = parts[1] if len(parts) > 1 else ''
+                tokens = counts_str.replace(',', ' ').split()
+                for token in tokens:
+                    if 'Queued' in token:
+                        try:
+                            queued = int(token.split(':')[1])
+                        except (IndexError, ValueError):
+                            queued = None
+                        break
+        return queued
 
     def download_files(self):
         """

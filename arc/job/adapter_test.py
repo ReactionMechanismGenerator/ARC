@@ -459,7 +459,27 @@ class TestJobAdapter(unittest.TestCase):
         self.assertIn('short_queue', self.job_6.attempted_queues)
         self.assertIn('middle_queue', self.job_6.attempted_queues)
 
-
+    @patch("arc.job.adapter.servers",
+           {"local": {"cluster_soft": "PBS",
+                      "un": "user",
+                      "queues": {"fast": "1:00:00", "long": "10:00:00"}}})
+    @patch("arc.job.adapter.default_job_settings",
+           {'job_max_queue_backlog': 2, 'job_max_queued_time_hrs': 0.5, 'job_cpu_cores': 8})
+    def test_choose_queue_by_backlog(self):
+        """Test selecting a queue based on backlog"""
+        def fake_backlog(queue):
+            return 3 if queue == 'fast' else 1
+        with patch.object(GaussianAdapter, "_get_queue_queued_count", side_effect=fake_backlog):
+            job = GaussianAdapter(execution_type='queue',
+                                  job_type='opt',
+                                  level=Level(method='cbs-qb3'),
+                                  project='test',
+                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                  species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
+                                  server='local',
+                                  testing=True)
+            queue_candidates = ['fast', 'long']
+            self.assertEqual(job._choose_queue_by_backlog(queue_candidates), 'long')
 
     @classmethod
     def tearDownClass(cls):
