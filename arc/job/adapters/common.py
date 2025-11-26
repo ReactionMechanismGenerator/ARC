@@ -162,6 +162,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.job_server_name = job_server_name
     obj.job_status = job_status \
         or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+    obj.queued_since = None
     obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
     obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance

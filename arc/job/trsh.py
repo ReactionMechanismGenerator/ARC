@@ -1191,7 +1191,7 @@ def trsh_conformer_isomorphism(software: str,
 
 def trsh_job_queue(server: str,
                     job_name: str,
-                    max_time: int = 24,
+                    max_time: Optional[int] = 24,
                     attempted_queues: list = None,
                     ) -> Tuple[dict, bool]:
     """ A function to troubleshoot job queue issues. This function will attempt to determine if the user has provided a queue that provides more time than the walltime failed queue.
@@ -1200,7 +1200,8 @@ def trsh_job_queue(server: str,
     Args:
         server (str): Name of the server
         job_name (str): Name of the job
-        max_time (int, optional): The max time that the current queue that the job failed on provied. Defaults to 24, measured in hours.
+        max_time (int, optional): The max time that the current queue that the job failed on provided. Defaults to 24 hours.
+                                  Use ``None`` to ignore walltime when selecting a fallback queue.
         attempted_queues (list, optional): Any queues that have already been attempted to run the job on. Defaults to None.
 
     Returns:
@@ -1210,6 +1211,7 @@ def trsh_job_queue(server: str,
     server_queues = servers[server].get('queues', dict())
     cluster_soft = servers[server].get('cluster_soft','Undefined')
     excluded_queues = servers[server].get('excluded_queues', list())
+    max_time_hours = max_time
 
     # Check if there are any available queues in server_queues that hasn't been tried yet
     if len(server_queues) >  1:
@@ -1217,7 +1219,7 @@ def trsh_job_queue(server: str,
         server_queues = {
             queue: walltime for queue, walltime in server_queues.items()
             if (attempted_queues is None or queue not in attempted_queues)
-            and convert_to_hours(walltime) >= max_time
+            and (max_time_hours is None or convert_to_hours(walltime) >= max_time_hours)
         }
         if len(server_queues) == 0:
             logger.error(f' Could not troubleshoot {job_name} on {server} as all available queues have been tried. Will attempt to query the server for additional queues.')

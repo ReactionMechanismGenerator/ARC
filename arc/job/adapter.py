@@ -893,6 +893,7 @@ class JobAdapter(ABC):
             return
         self.job_status[0] = self._check_job_server_status() if self.execution_type != 'incore' else 'done'
         if self.job_status[0] == 'done':
+            self.queued_since = None
             try:
                 self._check_job_ess_status()  # Populates self.job_status[1], and downloads the output file.
             except IOError:
@@ -930,7 +931,11 @@ class JobAdapter(ABC):
                         self.job_status[1]['line'] = line
                         break
         elif self.job_status[0] == 'running':
+            self.queued_since = None
             self.job_status[1]['status'] = 'running'
+        elif self.job_status[0] == 'queued':
+            self.queued_since = self.queued_since or datetime.datetime.now()
+            self.job_status[1]['status'] = 'queued'
 
     def _get_additional_job_info(self):
         """
@@ -1348,7 +1353,7 @@ class JobAdapter(ABC):
             # resubmit job
             self.execute()
 
-    def troubleshoot_queue(self) -> bool:
+    def troubleshoot_queue(self, max_time: Optional[int] = None) -> bool:
         """Troubleshoot queue errors.
 
         Returns:
@@ -1356,7 +1361,7 @@ class JobAdapter(ABC):
         """
         queues, run_job = trsh_job_queue(job_name=self.job_name,
                                          server=self.server,
-                                         max_time=24,
+                                         max_time=max_time if max_time is not None else 24,
                                          attempted_queues = self.attempted_queues,
                                         )
         

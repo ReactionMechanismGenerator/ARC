@@ -38,7 +38,7 @@ class TestSSH(unittest.TestCase):
         status1 = ssh.check_job_status_in_stdout(job_id=5231, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'running')
         status1 = ssh.check_job_status_in_stdout(job_id=5241, stdout=stdout_2, server='local')
-        self.assertEqual(status1, 'running')
+        self.assertEqual(status1, 'queued')
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
 

@@ -286,6 +286,7 @@ default_job_settings = {
     'job_total_memory_gb': 14,
     'job_cpu_cores': 8,
     'job_time_limit_hrs': 120,
+    'job_max_queued_time_hrs': 0.5,  # hours to wait in queue before trying an alternative queue (None to disable, 0 for immediate)
     'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 

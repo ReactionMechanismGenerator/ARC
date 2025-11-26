@@ -273,6 +273,7 @@ class Scheduler(object):
         self.restart_dict = restart_dict
         self.rxn_list = rxn_list if rxn_list is not None else list()
         self.max_job_time = max_job_time or default_job_settings.get('job_time_limit_hrs', 120)
+        self.max_hours_in_queue = default_job_settings.get('job_max_queued_time_hrs')
         self.job_dict = dict()
         self.server_job_ids = list()
         self.completed_incore_jobs = list()
@@ -994,6 +995,36 @@ class Scheduler(object):
                     self._run_a_job(job=job, label=label)
                 if job_name in self.running_jobs[label]:
                     self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+
+        if job.job_status[0] == 'queued':
+            job.queued_since = job.queued_since or datetime.datetime.now()
+            queued_hours = (datetime.datetime.now() - job.queued_since).total_seconds() / 3600
+            # If max_hours_in_queue is None we simply wait indefinitely on the same queue.
+            if self.max_hours_in_queue is None:
+                return False
+            if self.max_hours_in_queue <= 0 or queued_hours >= self.max_hours_in_queue:
+                logger.warning(f'Job {job.job_name} on {job.server} has been queued for '
+                               f'{queued_hours:.2f} hours. Trying a different queue.')
+                if job.queue and job.queue not in job.attempted_queues:
+                    job.attempted_queues.append(job.queue)
+                run_again = job.troubleshoot_queue(max_time=job.max_job_time)
+                if run_again:
+                    try:
+                        job.delete()
+                    except Exception as e:
+                        logger.warning(f'Could not delete queued job {job.job_name} ({job.job_id}) before '
+                                       f'resubmitting: {e}')
+                    self._run_a_job(job=job, label=label, rerun=True)
+                    if job_name in self.running_jobs[label]:
+                        self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
+                else:
+                    logger.warning(f'No alternative queues available for {job.job_name}; keeping the current queue.')
+                return False
+            else:
+                remaining = self.max_hours_in_queue - queued_hours
+                logger.info(f'Job {job.job_name} is still queued on {job.server} ({queued_hours:.2f} h so far). '
+                            f'Will attempt a different queue after {remaining:.2f} h more if needed.')
+                return False
 
         if job.job_status[1]['status'] == 'errored' and job.job_status[1]['keywords'] == ['memory']:
             original_mem = job.job_memory_gb

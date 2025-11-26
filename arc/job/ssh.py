@@ -558,25 +558,37 @@ def check_job_status_in_stdout(job_id: int,
             break
     else:
         return 'done'
-    if servers[server]['cluster_soft'].lower() == 'slurm':
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't', 'cg', 'pd']:
+    cluster_soft = servers[server]['cluster_soft'].lower()
+    if cluster_soft == 'slurm':
+        status = status_line.split()[4].lower()
+        if status in ['pd', 'cf']:
+            return 'queued'
+        if status in ['r', 'cg', 't', 'qw']:
             return 'running'
-        elif status.lower() in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
+        if status in ['bf', 'ca', 'f', 'nf', 'st', 'oom']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'pbs':
-        status = status_line.split()[-2]
-        if status.lower() in ['r', 'q', 'c', 'e', 'w']:
+    elif cluster_soft == 'pbs':
+        status = status_line.split()[-2].lower()
+        if status in ['q', 'w']:
+            return 'queued'
+        if status in ['r', 'e', 'c']:
             return 'running'
-        elif status.lower() in ['h', 's']:
+        if status in ['h', 's']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() in ['oge', 'sge']:
-        status = status_line.split()[4]
-        if status.lower() in ['r', 'qw', 't']:
+    elif cluster_soft in ['oge', 'sge']:
+        status = status_line.split()[4].lower()
+        if status in ['qw']:
+            return 'queued'
+        if status in ['r', 't']:
             return 'running'
-        elif status.lower() in ['e']:
+        if status in ['e']:
             return 'errored'
-    elif servers[server]['cluster_soft'].lower() == 'htcondor':
+    elif cluster_soft == 'htcondor':
+        status = status_line.split()[1].lower()
+        if status in ['p', 'i']:
+            return 'queued'
+        if status in ['h', 's']:
+            return 'errored'
         return 'running'
     raise ValueError(f'Unknown cluster software {servers[server]["cluster_soft"]}')
 
