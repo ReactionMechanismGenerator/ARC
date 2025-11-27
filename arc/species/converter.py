@@ -5,6 +5,7 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
+import warnings
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 from ase import Atoms
@@ -44,14 +45,14 @@ if TYPE_CHECKING:
 ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
-def str_to_str(xyz_str: str,
-               reverse_atoms: bool = False,
-               units: str = 'angstrom',
-               convert_to: str = 'angstrom',
-               project_directory: Optional[str] = None
-               ) -> str:
+def reorder_xyz_string(xyz_str: str,
+                       reverse_atoms: bool = False,
+                       units: str = 'angstrom',
+                       convert_to: str = 'angstrom',
+                       project_directory: Optional[str] = None
+                       ) -> str:
     """
-    Convert a string xyz format from `ATOM X Y Z` to `X Y Z ATOM`. Also, can convert units from `Angstrom` to `Bohr` and vice versa.
+    Reorder an XYZ string between ``ATOM X Y Z`` and ``X Y Z ATOM`` with optional unit conversion.
 
     Args:
         xyz_str (str): The string xyz format to be converted.
@@ -127,6 +128,14 @@ def str_to_str(xyz_str: str,
         processed_lines.append(formatted_line)
     
     return '\n'.join(processed_lines)
+
+
+def str_to_str(*args, **kwargs) -> str:
+    """
+    Backwards compatible wrapper for reorder_xyz_string.
+    """
+    warnings.warn("str_to_str was renamed to reorder_xyz_string", DeprecationWarning)
+    return reorder_xyz_string(*args, **kwargs)
 
 
 def str_to_xyz(xyz_str: str,
