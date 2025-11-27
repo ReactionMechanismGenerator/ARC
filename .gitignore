@@ -67,3 +67,4 @@ build/*
 
 *.log
 *.xml
+AGENTS.md
