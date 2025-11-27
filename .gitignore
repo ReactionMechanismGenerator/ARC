@@ -67,6 +67,7 @@ build/*
 
 *.log
 *.xml
+AGENTS.md
 
 # AI Agent files
 AGENTS.md
