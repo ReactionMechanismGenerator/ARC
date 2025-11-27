@@ -921,6 +921,15 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(est_cpu_2, expected_cpu_2)
         self.assertEqual(est_memory_2, expected_memory_2)
 
+    def test_get_number_of_electron_pairs(self):
+        """Test determining electron counts and pairs."""
+        symbols = ['C', 'H', 'H', 'H', 'H']  # CH4
+        self.assertEqual(common.get_number_of_electrons(symbols, charge=0), 10)
+        self.assertEqual(common.get_number_of_electron_pairs(symbols, charge=0, multiplicity=1), 5)
+        self.assertEqual(common.get_number_of_electron_pairs(symbols, charge=1, multiplicity=2), 4)
+        with self.assertRaises(InputError):
+            common.get_number_of_electron_pairs(symbols, charge=0, multiplicity=None)
+
     def test_check_torsion_change(self):
         """Test checking if torsion changes are significant"""
         ics = {0: [120], 1: [126], 2: [176], 3: [-174]}

@@ -534,6 +534,53 @@ def read_element_dicts() -> Tuple[dict, dict, dict, dict]:
 SYMBOL_BY_NUMBER, NUMBER_BY_SYMBOL, MASS_BY_SYMBOL, COVALENT_RADII = read_element_dicts()
 
 
+def get_number_of_electrons(symbols: Sequence[str],
+                            charge: int = 0,
+                            ) -> int:
+    """
+    Return the total number of electrons for a set of atomic symbols and an overall charge.
+
+    Args:
+        symbols (Sequence[str]): Atomic symbols.
+        charge (int, optional): Total molecular charge. Defaults to 0.
+
+    Returns:
+        int: The total number of electrons.
+    """
+    electrons = 0
+    for symbol in symbols:
+        if symbol not in NUMBER_BY_SYMBOL:
+            raise InputError(f'Could not identify atom symbol "{symbol}" while counting electrons.')
+        electrons += NUMBER_BY_SYMBOL[symbol]
+    return electrons - charge
+
+
+def get_number_of_electron_pairs(symbols: Sequence[str],
+                                 charge: int = 0,
+                                 multiplicity: int = 1,
+                                 ) -> int:
+    """
+    Return the number of electron pairs, accounting for unpaired electrons from the multiplicity.
+
+    Args:
+        symbols (Sequence[str]): Atomic symbols.
+        charge (int, optional): Total molecular charge. Defaults to 0.
+        multiplicity (int, optional): Spin multiplicity. Defaults to 1.
+
+    Returns:
+        int: The number of electron pairs.
+    """
+    if multiplicity is None:
+        raise InputError('Multiplicity must be specified to determine the number of electron pairs.')
+    total_electrons = get_number_of_electrons(symbols=symbols, charge=charge)
+    unpaired = max(multiplicity - 1, 0)
+    if total_electrons < unpaired:
+        raise InputError(f'Cannot determine electron pairs: total electrons ({total_electrons}) is smaller than the '
+                         f'number of unpaired electrons implied by multiplicity ({unpaired}).')
+    paired = total_electrons - unpaired
+    return max(paired // 2, 0)
+
+
 def get_atom_radius(symbol: str) -> Optional[float]:
     """
     Get the atom covalent radius of an atom in Angstroms.

@@ -23,7 +23,14 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file, torsions_to_scans, convert_to_hours
+from arc.common import (ARC_PATH,
+                        convert_to_hours,
+                        get_logger,
+                        get_number_of_electron_pairs,
+                        read_yaml_file,
+                        save_yaml_file,
+                        torsions_to_scans,
+                        )
 from arc.exceptions import JobError
 from arc.imports import local_arc_path, pipe_submit, settings, submit_scripts
 from arc.job.local import (change_mode,
@@ -838,6 +845,22 @@ class JobAdapter(ABC):
         if max_cpu is not None and job_cpu_cores > max_cpu:
             job_cpu_cores = max_cpu
         self.cpu_cores = self.cpu_cores or job_cpu_cores
+        if self.job_adapter == 'orca' and self.level is not None and self.level.method_type == 'wavefunction' \
+                and not self.run_multi_species:
+            mdci_related_methods = ('cc', 'dlpno', 'lno', 'qcisd', 'cisd', 'cid', 'mdci')
+            if any(token in self.level.method for token in mdci_related_methods):
+                try:
+                    symbols = self.xyz['symbols'] if isinstance(self.xyz, dict) else None
+                    electron_pairs = get_number_of_electron_pairs(symbols=symbols,
+                                                                  charge=self.charge,
+                                                                  multiplicity=self.multiplicity)
+                except Exception as e:
+                    logger.debug(f'Could not determine electron pairs for {self.job_name}: {e}')
+                else:
+                    if electron_pairs and self.cpu_cores > electron_pairs:
+                        logger.info(f'Reducing cpu cores for {self.job_name} from {self.cpu_cores} to '
+                                    f'{electron_pairs} so they do not exceed the number of electron pairs.')
+                        self.cpu_cores = electron_pairs
         max_mem = servers[self.server].get('memory', None) if self.server is not None else 32.0  # Max memory per node in GB.
         job_max_server_node_memory_allocation = default_job_settings.get('job_max_server_node_memory_allocation', 0.95)
         if max_mem is not None and self.job_memory_gb > max_mem * job_max_server_node_memory_allocation:

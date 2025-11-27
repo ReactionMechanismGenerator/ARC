@@ -69,12 +69,31 @@ class TestOrcaAdapter(unittest.TestCase):
                                                            H      -0.53338088   -0.77135867   -0.54806440""")],
                                 testing=True,
                                 )
+        cls.job_4 = OrcaAdapter(execution_type='queue',
+                                job_type='sp',
+                                level=Level(method='CCSD(T)', basis='def2-svp'),
+                                project='test',
+                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                species=[ARCSpecies(label='H2',
+                                                    xyz="""H      -0.37082000    0.00000000    0.00000000
+                                                           H       0.37082000    0.00000000    0.00000000""")],
+                                cpu_cores=16,
+                                testing=True,
+                                )
     def test_set_cpu_and_mem(self):
         """Test assigning number of cpu's and memory"""
         self.job_1.input_file_memory = None
         self.job_1.submit_script_memory = None
         self.job_1.set_cpu_and_mem()
         self.assertEqual(self.job_1.cpu_cores, 8)
+
+    def test_set_cpu_and_mem_caps_mdci_by_pairs(self):
+        """Test that Orca cores are capped by the number of electron pairs for MDCI jobs"""
+        self.job_4.cpu_cores = 16
+        self.job_4.input_file_memory = None
+        self.job_4.submit_script_memory = None
+        self.job_4.set_cpu_and_mem()
+        self.assertEqual(self.job_4.cpu_cores, 1)
 
     def test_set_input_file_memory(self):
         """Test setting the input_file_memory argument"""
