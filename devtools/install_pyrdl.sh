@@ -49,8 +49,8 @@ fi
 
 # Ensure CMake is installed in the environment
 if ! command -v cmake &> /dev/null; then
-    echo "Installing CMake..."
-    "$COMMAND_PKG" install -y cmake
+    echo "Installing CMake into arc_env..."
+    "$COMMAND_PKG" install -n arc_env -c conda-forge -y cmake
 fi
 
 # Clone and build RingDecomposerLib
