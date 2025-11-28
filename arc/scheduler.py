@@ -2338,30 +2338,46 @@ class Scheduler(object):
             else f' of reaction {self.species_dict[label].rxn_label}'
         logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
         for i, tsg in enumerate(self.species_dict[label].ts_guesses):
-            if tsg.index == selected_i:
+            is_selected = tsg.index == selected_i
+            if is_selected:
                 self.species_dict[label].chosen_ts = selected_i
                 self.species_dict[label].chosen_ts_list.append(selected_i)
                 self.species_dict[label].chosen_ts_method = tsg.method
                 self.species_dict[label].initial_xyz = tsg.opt_xyz or tsg.initial_xyz
                 self.species_dict[label].final_xyz = None
                 self.species_dict[label].ts_guesses_exhausted = False
-                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
-                    im_freqs = ''
-                    if tsg.imaginary_freqs is not None:
-                        freqs = [float(freq) for freq in tsg.imaginary_freqs]
-                        im_freqs = f', imaginary frequencies {freqs}'
-                    rel_energy = relative_energies[i]
-                    execution_time = str(tsg.execution_time)
-                    execution_time = execution_time[:execution_time.index('.') + 2] \
-                        if '.' in execution_time else execution_time
-                    aux = f' {tsg.errors}.' if tsg.errors else '.'
-                    logger.info(f'TS guess {tsg.index:2} for {label}. '
-                                f'Method: {tsg.method:<18}, '
-                                f'relative energy: {rel_energy:8.2f} kJ/mol, '
-                                f'guess ex time: {execution_time}{im_freqs}'
-                                f'{aux}')
-                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+            im_freqs = ''
+            if tsg.imaginary_freqs is not None:
+                freqs = [float(freq) for freq in tsg.imaginary_freqs]
+                im_freqs = f', imaginary frequencies {freqs}'
+            rel_energy = relative_energies[i]
+            rel_energy_str = f'{rel_energy:8.2f} kJ/mol' if rel_energy is not None else '   n/a      '
+            execution_time = str(tsg.execution_time)
+            execution_time = execution_time[:execution_time.index('.') + 2] \
+                if '.' in execution_time else execution_time
+            aux = f' {tsg.errors}.' if tsg.errors else '.'
+            selection_txt = ' <-- selected' if is_selected else ''
+            logger.info(f'TS guess {tsg.index:2} for {label}. '
+                        f'Method: {tsg.method:<18}, '
+                        f'relative energy: {rel_energy_str}, '
+                        f'guess ex time: {execution_time}{im_freqs}'
+                        f'{aux}{selection_txt}')
+            if is_selected:
+                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+        queue_candidates = [tsg for tsg in self.species_dict[label].ts_guesses
+                            if tsg.index != self.species_dict[label].chosen_ts
+                            and tsg.success and tsg.index not in self.species_dict[label].chosen_ts_list]
+        energy_ordered = [tsg for tsg in queue_candidates if tsg.energy is not None
+                          and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs))]
+        energy_ordered.sort(key=lambda tsg: tsg.energy)
+        fallback_ordered = [tsg for tsg in queue_candidates if tsg.energy is None and tsg.get_xyz() is not None]
+        queue_order = energy_ordered + fallback_ordered
+        if queue_order:
+            queue_txt = ', '.join([f'{tsg.index} ({relative_energies[self.species_dict[label].ts_guesses.index(tsg)]:.2f} kJ/mol)'
+                                   if tsg.energy is not None else f'{tsg.index} (no energy)'
+                                   for tsg in queue_order])
+            logger.info(f'Queue of backup TS guesses (in priority order if current guess fails): {queue_txt}')
         logger.info('\n')
         if self.species_dict[label].chosen_ts is None:
             raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '

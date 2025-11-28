@@ -59,6 +59,15 @@ class TestGaussianAdapter(unittest.TestCase):
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     )
+        cls.job_ts_opt = GaussianAdapter(execution_type='queue',
+                                         job_type='opt',
+                                         level=Level(method='wb97xd',
+                                                     basis='def2-TZVP'),
+                                         project='test',
+                                         project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                         species=[ARCSpecies(label='ts', xyz=['O 0 0 1'], multiplicity=1, is_ts=True)],
+                                         testing=True,
+                                         )
         spc_4 = ARCSpecies(label='ethanol', xyz=["""C	1.1658210	-0.4043550	0.0000000
                                                     C	0.0000000	0.5518050	0.0000000
                                                     O	-1.1894600	-0.2141940	0.0000000
@@ -772,6 +781,13 @@ O       0.00000000    0.00000000    1.00000000
     def test_gaussian_def2tzvp(self):
         """Test a Gaussian job using def2-tzvp"""
         self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
+
+    def test_ts_opt_uses_maxcycle_200_by_default(self):
+        """TS optimizations should request more cycles by default"""
+        self.job_ts_opt.write_input_file()
+        with open(os.path.join(self.job_ts_opt.local_path, input_filenames[self.job_ts_opt.job_adapter]), 'r') as f:
+            content = f.read()
+        self.assertIn('opt=(ts,calcfc,noeigentest,maxcycle=200)', content)
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
