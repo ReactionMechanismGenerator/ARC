@@ -2345,20 +2345,23 @@ class Scheduler(object):
                 self.species_dict[label].initial_xyz = tsg.opt_xyz or tsg.initial_xyz
                 self.species_dict[label].final_xyz = None
                 self.species_dict[label].ts_guesses_exhausted = False
-            if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
-                im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
-                rel_energy = relative_energies[i]
-                execution_time = str(tsg.execution_time)
-                execution_time = execution_time[:execution_time.index('.') + 2] \
-                    if '.' in execution_time else execution_time
-                aux = f' {tsg.errors}.' if tsg.errors else '.'
-                logger.info(f'TS guess {tsg.index:2} for {label}. '
-                            f'Method: {tsg.method:10}, '
-                            f'relative energy: {rel_energy:8.2f} kJ/mol, '
-                            f'guess ex time: {execution_time}{im_freqs}'
-                            f'{aux}')
-                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
+                    im_freqs = ''
+                    if tsg.imaginary_freqs is not None:
+                        freqs = [float(freq) for freq in tsg.imaginary_freqs]
+                        im_freqs = f', imaginary frequencies {freqs}'
+                    rel_energy = relative_energies[i]
+                    execution_time = str(tsg.execution_time)
+                    execution_time = execution_time[:execution_time.index('.') + 2] \
+                        if '.' in execution_time else execution_time
+                    aux = f' {tsg.errors}.' if tsg.errors else '.'
+                    logger.info(f'TS guess {tsg.index:2} for {label}. '
+                                f'Method: {tsg.method:<18}, '
+                                f'relative energy: {rel_energy:8.2f} kJ/mol, '
+                                f'guess ex time: {execution_time}{im_freqs}'
+                                f'{aux}')
+                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                    plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
         logger.info('\n')
         if self.species_dict[label].chosen_ts is None:
             raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '
