@@ -58,6 +58,7 @@ def reorder_xyz_string(xyz_str: str,
     Args:
         xyz_str (str): The string xyz format to be converted.
         reverse_atoms (bool, optional): Whether to reverse the atoms and coordinates.
+        units (str, optional): Units of the input coordinates ('angstrom' or 'bohr').
         convert_to (str, optional): The units to convert to (either 'angstrom' or 'bohr').
         project_directory (str, optional): The path to the project directory.
     

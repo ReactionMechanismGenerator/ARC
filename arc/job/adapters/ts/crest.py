@@ -303,11 +303,11 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
     for hydrogen_key in hydrogen_keys:
         atom_neighbours = closest_atoms[hydrogen_key]
         is_heavy_present = any(
-            atom for atom in closest_atoms if not atom.startswith("H")
+            atom for atom in atom_neighbours if not atom.startswith("H")
         )
         if_hydrogen_present = any(
             atom
-            for atom in closest_atoms
+            for atom in atom_neighbours
             if atom.startswith("H") and atom != hydrogen_key
         )
 
@@ -330,7 +330,7 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
                     distances = dataframe.loc[hydrogen_key, heavy_atoms].sum()
                     occurrence_distances.append((occurrence, distances))
                 except KeyError as e:
-                    print(f"Error accessing distances for occurrence {occurrence}: {e}")
+                    logger.error(f"Error accessing distances for occurrence {occurrence}: {e}")
 
             # Select the occurrence with the smallest distance
             best_occurrence = min(occurrence_distances, key=lambda x: x[1])[0]
@@ -338,6 +338,13 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
                 "H": extract_digits(best_occurrence["H"]),
                 "A": extract_digits(best_occurrence["A"]),
                 "B": extract_digits(best_occurrence["B"]),
+            }
+        else:
+            single_occurrence = condition_occurrences[0]
+            return {
+                "H": extract_digits(single_occurrence["H"]),
+                "A": extract_digits(single_occurrence["A"]),
+                "B": extract_digits(single_occurrence["B"]),
             }
     else:
 

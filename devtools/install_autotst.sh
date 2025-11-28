@@ -140,12 +140,16 @@ if [[ $MODE == "path" ]]; then
     if ! grep -Fqx "$HOOK_SENTINEL" ~/.bashrc; then
         cat <<'EOF' >> ~/.bashrc
 # AutoTST path-mode hook
+_strip_path () {
+    local needle=":$1:"
+    local haystack=":$2:"
+    echo "${haystack//$needle/:}" | sed 's/^://;s/:$//'
+}
+
 autotst_on () {
     export AUTOTST_ROOT="__AUTOTST_PATH__"
     export AUTOTST_OLD_PATH="$PATH"
     export AUTOTST_OLD_PYTHONPATH="${PYTHONPATH:-}"
-
-    _strip_path () { local needle=":$1:"; local haystack=":$2:"; echo "${haystack//$needle/:}" | sed 's/^://;s/:$//'; }
     if [[ -n "${RMG_PY_PATH:-}" ]]; then
         PATH="$(_strip_path "$RMG_PY_PATH" "$PATH")"
         PYTHONPATH="$(_strip_path "$RMG_PY_PATH" "${PYTHONPATH:-}")"
