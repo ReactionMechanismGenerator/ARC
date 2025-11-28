@@ -41,8 +41,6 @@ from arc.species.converter import (
     compare_zmats,
     relocate_zmat_dummy_atoms_to_the_end,
     str_to_xyz,
-    xyz_to_dmat,
-    xyz_to_str,
     zmat_from_xyz,
     zmat_to_xyz,
 )
@@ -310,7 +308,6 @@ class HeuristicsAdapter(JobAdapter):
 
             if len(self.reactions) < 5:
                 successes = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
-                heuristics_successes = len([tsg for tsg in successes if 'heuristics' in tsg.method.lower()])
                 crest_successes = len([tsg for tsg in successes if 'crest' in tsg.method.lower()])
                 if successes:
                     logger.info(f'Heuristics successfully found {len(successes)} TS guesses for {rxn.label}.')

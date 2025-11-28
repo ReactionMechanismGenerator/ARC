@@ -443,19 +443,7 @@ crest_path7 = os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'cres
 
 for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_path5, crest_path6, crest_path7]:
     if os.path.isfile(crest_path):
-        CREST_PATH = crest_path
         # check if using micromamba, mambaforge, anaconda3, miniconda3, or .conda
-        if 'micromamba' in crest_path:
-            #         CREST_ENV_PATH = "source ~/micromamba/etc/profile.d/micromamba.sh && micromamba activate crest_env"
-            CREST_ENV_PATH = "source ~/.bashrc && micromamba activate crest_env"
-        elif 'mambaforge' in crest_path:
-            CREST_ENV_PATH = "source ~/.bashrc && mamba activate crest_env"
-        elif 'anaconda3' in crest_path:
-            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
-        elif 'miniconda3' in crest_path:
-            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
-        elif '.conda' in crest_path:
-            CREST_ENV_PATH = "source ~/.bashrc && conda activate crest_env"
         break
 # If the path (environment) does not exist, then we use the binary
 

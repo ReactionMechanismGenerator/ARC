@@ -21,7 +21,6 @@ from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 if TYPE_CHECKING:
     from arc.level import Level
-    from autotst.reaction import Reaction as AutoTST_Reaction  # noqa: F401
 
 
 AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
