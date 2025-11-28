@@ -287,6 +287,17 @@ class TestTrsh(unittest.TestCase):
         self.assertEqual(error, expected_error_msg)
         self.assertIn("ORCA finished by error termination in MDCI", line)
 
+        # test detection of MDCI failure with explicit MemNeeded/MemAvailable hint
+        path = os.path.join(self.base_path["orca"], "orca_mdci_memneeded_error.log")
+        status, keywords, error, line = trsh.determine_ess_status(
+            output_path=path, species_label="test", job_type="sp", software="orca"
+        )
+        self.assertEqual(status, "errored")
+        self.assertEqual(keywords, ["MDCI", "Memory"])
+        self.assertIn("requires at least 4550 MB per core", error)
+        self.assertIn("available 3435 MB", error)
+        self.assertIn("Please increase MaxCore", line)
+
         # test detection of MDCI failure in Orca version 4.1.x log files (no memory/cpu suggestions compared to 4.2.x)
         path = os.path.join(self.base_path["orca"], "orca_mdci_error_3.log")
         status, keywords, error, line = trsh.determine_ess_status(
@@ -705,7 +716,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 327)
+        self.assertAlmostEqual(memory, 390)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -730,8 +741,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 22)
-        self.assertAlmostEqual(memory, 227)
+        self.assertEqual(cpu_cores, 18)
+        self.assertAlmostEqual(memory, 222)
 
         # Orca: test 3
         # Test troubleshooting insufficient memory issue

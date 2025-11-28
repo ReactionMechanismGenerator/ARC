@@ -310,6 +310,14 @@ def determine_ess_status(output_path: str,
                     break
                 elif 'ORCA finished by error termination in MDCI' in line:
                     keywords = ['MDCI']
+                    mem_needed, mem_available = None, None
+                    for info in reverse_lines:
+                        if 'MemNeeded' in info and 'MemAvailable' in info:
+                            match = re.search(r'MemNeeded\s+([\d.]+)\s*MB\s*>\s*MemAvailable\s+([\d.]+)\s*MB', info)
+                            if match:
+                                mem_needed = float(match.group(1))
+                                mem_available = float(match.group(2))
+                                line = info
                     for j, info in enumerate(reverse_lines):
                         if 'Please increase MaxCore' in info:
                             estimated_mem_list = []
@@ -352,6 +360,11 @@ def determine_ess_status(output_path: str,
                     else:
                         error = 'MDCI error in Orca. Assuming memory allocation error.'
                         keywords.append('Memory')
+                    if mem_needed is not None:
+                        error = f'Orca MDCI triples requires at least {math.ceil(mem_needed)} MB per core ' \
+                                f'(available {math.ceil(mem_available)} MB).' if mem_available is not None else \
+                                f'Orca MDCI triples requires at least {math.ceil(mem_needed)} MB per core.'
+                        keywords.append('Memory') if 'Memory' not in keywords else None
                     break
                 elif 'Error : multiplicity' in line:
                     keywords = ['Input']
@@ -1027,6 +1040,15 @@ def trsh_ess_job(label: str,
             # `Error  (ORCA_SCF): Not enough memory available! Please increase MaxCore to more than: 289 MB`.
             if 'memory' not in ess_trsh_methods:
                 ess_trsh_methods.append('memory')
+            target_per_core_mb = None
+            memneed_match = re.search(r'MDCI triples requires at least\s+(\d+)\s+MB per core\s+\(available\s+(\d+)\s+MB\)',
+                                      job_status['error'])
+            if memneed_match:
+                target_per_core_mb = float(memneed_match.group(1))
+            if target_per_core_mb is None:
+                memneed_match = re.search(r'MDCI triples requires at least\s+(\d+)\s+MB per core', job_status['error'])
+                if memneed_match:
+                    target_per_core_mb = float(memneed_match.group(1))
             try:
                 # parse Orca's memory requirement in MB
                 estimated_mem_per_core = float(job_status['error'].split()[-2])
@@ -1034,8 +1056,9 @@ def trsh_ess_job(label: str,
                 estimated_mem_per_core = estimate_orca_mem_cpu_requirement(num_heavy_atoms=num_heavy_atoms,
                                                                            server=server,
                                                                            consider_server_limits=True)[1]/cpu_cores
-            # round up to the next hundred
-            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core / 100.0)) * 100
+            estimated_mem_per_core = target_per_core_mb or estimated_mem_per_core
+            # round up to the next hundred and add a 20% safety margin
+            estimated_mem_per_core = int(np.ceil(estimated_mem_per_core * 1.2 / 100.0)) * 100
             if 'max_total_job_memory' in job_status['keywords']:
                 per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
                 logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
