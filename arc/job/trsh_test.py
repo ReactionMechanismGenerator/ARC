@@ -715,8 +715,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 32)
-        self.assertAlmostEqual(memory, 390)
+        self.assertEqual(cpu_cores, 5)
+        self.assertAlmostEqual(memory, 66)
 
         # Orca: test 2
         # Test troubleshooting insufficient memory issue
@@ -741,8 +741,8 @@ class TestTrsh(unittest.TestCase):
                                                                        job_type, software, fine, memory_gb,
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
-        self.assertEqual(cpu_cores, 18)
-        self.assertAlmostEqual(memory, 222)
+        self.assertEqual(cpu_cores, 5)
+        self.assertAlmostEqual(memory, 66)
 
         # Orca: test 3
         # Test troubleshooting insufficient memory issue
@@ -768,7 +768,7 @@ class TestTrsh(unittest.TestCase):
                                                                        num_heavy_atoms, cpu_cores, ess_trsh_methods)
         self.assertIn('memory', ess_trsh_methods)
         self.assertEqual(couldnt_trsh, True)
-        self.assertLess(cpu_cores, 1)  # can't really run job with less than 1 cpu ^o^
+        self.assertEqual(cpu_cores, 1)  # last-resort single-core attempt before giving up
 
         # Orca: test 4
         # Test troubleshooting too many cpu cores

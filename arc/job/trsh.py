@@ -1059,30 +1059,35 @@ def trsh_ess_job(label: str,
             estimated_mem_per_core = target_per_core_mb or estimated_mem_per_core
             # round up to the next hundred and add a 20% safety margin
             estimated_mem_per_core = int(np.ceil(estimated_mem_per_core * 1.2 / 100.0)) * 100
+            node_mem_gb = servers[server].get('memory', 64) if server else 64
             if 'max_total_job_memory' in job_status['keywords']:
-                per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
+                node_mem_gb = min(node_mem_gb, memory_gb)
+            node_mem_mb = node_mem_gb * 1024
+            per_cpu_core_memory = np.ceil(memory_gb / cpu_cores * 1024)
+            if 'max_total_job_memory' in job_status['keywords'] or estimated_mem_per_core * cpu_cores > node_mem_mb:
                 logger.info(f'The crashed Orca job {label} was ran with {cpu_cores} cpu cores and '
                             f'{per_cpu_core_memory} MB memory per cpu core. It requires at least '
-                            f'{estimated_mem_per_core} MB per cpu core. Since the job had already requested the '
-                            f'maximum amount of available total node memory, ARC will attempt to reduce the number '
-                            f'of cpu cores to increase memory per cpu core.')
-                if 'cpu' not in ess_trsh_methods:
+                            f'{estimated_mem_per_core} MB per cpu core.')
+                # pick cores so total fits the node and per-core meets requirement
+                max_cores_from_node = max(1, math.floor(node_mem_mb / estimated_mem_per_core))
+                proposed_cores = min(cpu_cores, max_cores_from_node)
+                if proposed_cores < cpu_cores and 'cpu' not in ess_trsh_methods:
                     ess_trsh_methods.append('cpu')
-                cpu_cores = math.floor(cpu_cores * per_cpu_core_memory / estimated_mem_per_core) - 2  # be conservative
-                if cpu_cores > 1:
-                    logger.info(f'Troubleshooting job {label} using {cpu_cores} cpu cores.')
-                elif cpu_cores == 1:  # last resort
-                    logger.info(f'Troubleshooting job {label} using only {cpu_cores} cpu core. Notice that the '
-                                f'required job time may be unrealistically long or exceed limits on servers.')
-                else:
+                cpu_cores = proposed_cores
+                per_cpu_core_memory = np.ceil(node_mem_mb / cpu_cores)
+                if cpu_cores <= 0:
                     logger.info(f'Not enough computational resource to accomplish job {label}. Please consider cheaper '
                                 f'methods or allocate more resources if possible.')
                     couldnt_trsh = True
             if not couldnt_trsh:
-                memory = estimated_mem_per_core * cpu_cores  # total memory for all cpu cores
+                memory = estimated_mem_per_core * cpu_cores  # total memory for all cpu cores in MB
                 memory = np.ceil(memory / 1024 + 5)  # convert MB to GB, add 5 extra GB (be conservative)
+                if memory > node_mem_gb:
+                    logger.info(f'Not enough computational resource to accomplish job {label}. Required '
+                                f'{memory:.1f} GB exceeds available {node_mem_gb:.1f} GB.')
+                    couldnt_trsh = True
                 logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
-                            f'and {cpu_cores} cpu cores.')
+                            f'and {cpu_cores} cpu cores (target MaxCore ~ {estimated_mem_per_core} MB/core).')
         elif 'cpu' in job_status['keywords']:
             # Reduce cpu allocation.
             try:
