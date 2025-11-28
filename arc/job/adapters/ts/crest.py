@@ -140,7 +140,7 @@ def crest_ts_conformer_search(
 
             with open(os.path.join(path, "job.sh"), "w") as f:
                 f.write(crest_job)
-            os.chmod(os.path.join(path, "job.sh"), 0o777)
+            os.chmod(os.path.join(path, "job.sh"), 0o700)
 
             # Pre-create out/err for any status checkers that expect them
             for fname in ("out.txt", "err.txt"):
@@ -148,7 +148,7 @@ def crest_ts_conformer_search(
                 if not os.path.exists(fpath):
                     with open(fpath, "w") as f:
                         f.write("")
-                    os.chmod(fpath, 0o777)
+                    os.chmod(fpath, 0o600)
 
         elif cluster_soft == "pbs":
             # PBS branch that matches your 'crest' template above
@@ -172,7 +172,7 @@ def crest_ts_conformer_search(
             submit_path = os.path.join(path, submit_filename)
             with open(submit_path, "w") as f:
                 f.write(sub_job)
-            os.chmod(submit_path, 0o755)
+            os.chmod(submit_path, 0o750)
 
         else:
             raise ValueError(f"Unsupported cluster_soft for CREST: {cluster_soft!r}")
@@ -367,3 +367,5 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
             }
         else:
             raise ValueError("No valid hydrogen atom found.")
+
+    return {}

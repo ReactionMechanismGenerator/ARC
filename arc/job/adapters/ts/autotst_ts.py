@@ -27,7 +27,6 @@ HAS_AUTOTST = True
 
 if TYPE_CHECKING:
     from arc.level import Level
-    from autotst.reaction import Reaction as AutoTST_Reaction  # noqa: F401
 
 
 AUTOTST_PYTHON = settings['AUTOTST_PYTHON']
