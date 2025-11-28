@@ -18,7 +18,6 @@ Todo:
 import copy
 import datetime
 import itertools
-import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from arc.common import almost_equal_coords, get_logger, is_angle_linear, is_xyz_linear, key_by_val
