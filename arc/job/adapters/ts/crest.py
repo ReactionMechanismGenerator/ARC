@@ -172,7 +172,7 @@ def crest_ts_conformer_search(
             submit_path = os.path.join(path, submit_filename)
             with open(submit_path, "w") as f:
                 f.write(sub_job)
-            os.chmod(submit_path, 0o750)
+            os.chmod(submit_path, 0o700)
 
         else:
             raise ValueError(f"Unsupported cluster_soft for CREST: {cluster_soft!r}")

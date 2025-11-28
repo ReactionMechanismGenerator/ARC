@@ -20,10 +20,6 @@ from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
 HAS_AUTOTST = True
-# try:
-#     from autotst.reaction import Reaction as AutoTST_Reaction
-# except (ImportError, ModuleNotFoundError):
-#     HAS_AUTOTST = False
 
 if TYPE_CHECKING:
     from arc.level import Level
