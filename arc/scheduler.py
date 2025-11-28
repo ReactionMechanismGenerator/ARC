@@ -2305,84 +2305,83 @@ class Scheduler(object):
             logger.info('\n')
 
         energies = [tsg.energy for tsg in self.species_dict[label].ts_guesses if tsg.energy is not None]
-        if not energies:
+        unused_successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses
+                                  if tsg.success and tsg.index not in self.species_dict[label].chosen_ts_list]
+        relative_energies, e_min = self._get_relative_ts_guess_energies(self.species_dict[label].ts_guesses)
+        selected_i = None
+        self.species_dict[label].ts_guesses_exhausted = True
+        # Prefer the lowest-energy unused guess that passes the imag-freq filter (if available)
+        min_candidate_energy = None
+        for tsg in self.species_dict[label].ts_guesses:
+            if tsg.success and tsg.energy is not None \
+                    and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
+                    and tsg.index not in self.species_dict[label].chosen_ts_list:
+                if min_candidate_energy is None or tsg.energy < min_candidate_energy:
+                    min_candidate_energy = tsg.energy
+                    selected_i = tsg.index
+        # If no energy-bearing guess is available, fall back to any unused successful guess with coordinates
+        if selected_i is None and unused_successful_tsgs:
+            fallback_tsg = next((tsg for tsg in unused_successful_tsgs if tsg.get_xyz() is not None), None)
+            if fallback_tsg is not None:
+                selected_i = fallback_tsg.index
+                logger.info(f'No TS guess with parsed energy available; falling back to guess {fallback_tsg.index}.')
+        if selected_i is None:
             if self.species_dict[label].ts_guess_priority and not self.species_dict[label].ts_priority_checks_concluded:
                 # Priority guess failed checks; avoid fatal logging while we fall back to automated TS guesses.
                 self.species_dict[label].ts_guesses_exhausted = False
                 return None
-            logger.error(f'No guess converged for TS {label}!\n'
-                         f'Cannot compute a rate coefficient for {self.species_dict[label].rxn_label}.')
-        else:
-            # Select the TSG with the lowest energy given that it has only one significant imaginary frequency.
-            # Todo: consider IRC well isomorphism
-            relative_energies, e_min = self._get_relative_ts_guess_energies(self.species_dict[label].ts_guesses)
-            selected_i = None
+            logger.warning(f'Could not determine a likely TS conformer for {label}')
+            self.species_dict[label].ts_number, self.species_dict[label].chosen_ts = None, None
+            self.species_dict[label].populate_ts_checks()
+            return None
+        rxn_txt = '' if self.species_dict[label].rxn_label is None \
+            else f' of reaction {self.species_dict[label].rxn_label}'
+        logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
+        for i, tsg in enumerate(self.species_dict[label].ts_guesses):
+            if tsg.index == selected_i:
+                self.species_dict[label].chosen_ts = selected_i
+                self.species_dict[label].chosen_ts_list.append(selected_i)
+                self.species_dict[label].chosen_ts_method = tsg.method
+                self.species_dict[label].initial_xyz = tsg.opt_xyz or tsg.initial_xyz
+                self.species_dict[label].final_xyz = None
+                self.species_dict[label].ts_guesses_exhausted = False
+            if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
+                im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
+                rel_energy = relative_energies[i]
+                execution_time = str(tsg.execution_time)
+                execution_time = execution_time[:execution_time.index('.') + 2] \
+                    if '.' in execution_time else execution_time
+                aux = f' {tsg.errors}.' if tsg.errors else '.'
+                logger.info(f'TS guess {tsg.index:2} for {label}. '
+                            f'Method: {tsg.method:10}, '
+                            f'relative energy: {rel_energy:8.2f} kJ/mol, '
+                            f'guess ex time: {execution_time}{im_freqs}'
+                            f'{aux}')
+                # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
+                plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+        logger.info('\n')
+        if self.species_dict[label].chosen_ts is None:
+            raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '
+                               f'TS guess')
+        plotter.save_conformers_file(
+            project_directory=self.project_directory,
+            label=label,
+            xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
+            level_of_theory=self.ts_guess_level,
+            multiplicity=self.species_dict[label].multiplicity,
+            charge=self.species_dict[label].charge,
+            is_ts=True,
+            energies=relative_energies,
+            ts_methods=[f'{tsg.method} '
+                        f'{tsg.method_direction if tsg.method_direction is not None else ""} '
+                        f'{tsg.method_index if tsg.method_index is not None else ""} '
+                        for tsg in self.species_dict[label].ts_guesses],
+            im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
+                if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
+            before_optimization=False,
+        )
+        if len(self.species_dict[label].ts_guesses) <= 1:
             self.species_dict[label].ts_guesses_exhausted = True
-            # pick the lowest-energy unused guess that passes the imag-freq filter (if available)
-            min_candidate_energy = None
-            for tsg in self.species_dict[label].ts_guesses:
-                if tsg.success and tsg.energy is not None \
-                        and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs)) \
-                        and tsg.index not in self.species_dict[label].chosen_ts_list:
-                    if min_candidate_energy is None or tsg.energy < min_candidate_energy:
-                        min_candidate_energy = tsg.energy
-                        selected_i = tsg.index
-            # compute global minimum for relative energies
-            e_min = min(energies)
-            if selected_i is None:
-                logger.warning(f'Could not determine a likely TS conformer for {label}')
-                self.species_dict[label].ts_number, self.species_dict[label].chosen_ts = None, None
-                self.species_dict[label].populate_ts_checks()
-                return None
-            else:
-                rxn_txt = '' if self.species_dict[label].rxn_label is None \
-                    else f' of reaction {self.species_dict[label].rxn_label}'
-                logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
-            for i, tsg in enumerate(self.species_dict[label].ts_guesses):
-                if tsg.index == selected_i:
-                    self.species_dict[label].chosen_ts = selected_i
-                    self.species_dict[label].chosen_ts_list.append(selected_i)
-                    self.species_dict[label].chosen_ts_method = tsg.method
-                    self.species_dict[label].initial_xyz = tsg.opt_xyz
-                    self.species_dict[label].final_xyz = None
-                    self.species_dict[label].ts_guesses_exhausted = False
-                if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
-                    im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
-                    rel_energy = relative_energies[i]
-                    execution_time = str(tsg.execution_time)
-                    execution_time = execution_time[:execution_time.index('.') + 2] \
-                        if '.' in execution_time else execution_time
-                    aux = f' {tsg.errors}.' if tsg.errors else '.'
-                    logger.info(f'TS guess {tsg.index:2} for {label}. '
-                                f'Method: {tsg.method:10}, '
-                                f'relative energy: {rel_energy:8.2f} kJ/mol, '
-                                f'guess ex time: {execution_time}{im_freqs}'
-                                f'{aux}')
-                    # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
-                    plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
-            logger.info('\n')
-            if self.species_dict[label].chosen_ts is None:
-                raise SpeciesError(f'Could not pair most stable conformer {selected_i} of {label} to a respective '
-                                   f'TS guess')
-            plotter.save_conformers_file(
-                project_directory=self.project_directory,
-                label=label,
-                xyzs=[tsg.opt_xyz for tsg in self.species_dict[label].ts_guesses],
-                level_of_theory=self.ts_guess_level,
-                multiplicity=self.species_dict[label].multiplicity,
-                charge=self.species_dict[label].charge,
-                is_ts=True,
-                energies=relative_energies,
-                ts_methods=[f'{tsg.method} '
-                            f'{tsg.method_direction if tsg.method_direction is not None else ""} '
-                            f'{tsg.method_index if tsg.method_index is not None else ""} '
-                            for tsg in self.species_dict[label].ts_guesses],
-                im_freqs=[tsg.imaginary_freqs for tsg in self.species_dict[label].ts_guesses]
-                    if any(tsg.imaginary_freqs is not None for tsg in self.species_dict[label].ts_guesses) else None,
-                before_optimization=False,
-            )
-            if len(self.species_dict[label].ts_guesses) <= 1:
-                self.species_dict[label].ts_guesses_exhausted = True
 
     def parse_composite_geo(self,
                             label: str,
@@ -2845,6 +2844,10 @@ class Scheduler(object):
                 self.run_composite_job(label)
         elif not self.species_dict[label].ts_guess_priority:
             # No viable TS guess selected (e.g., only a failed user guess). Fall back to automated TS guessing.
+            if self.species_dict[label].tsg_spawned and self.species_dict[label].ts_guesses_exhausted:
+                logger.info(f'All TS guesses for {label} were already generated and exhausted; '
+                            f'not spawning another round.')
+                return
             self.species_dict[label].ts_guesses_exhausted = False
             self.species_dict[label].ts_conf_spawned = False
             if self.species_dict[label].rxn_index in self.rxn_dict:

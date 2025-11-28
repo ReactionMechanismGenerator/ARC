@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import unittest
 import os
 import shutil
+from unittest.mock import patch
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -754,6 +755,37 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertAlmostEqual(relative_energies[1], 136.56, places=2)
         self.assertAlmostEqual(tsg1.energy, -607770.11)
         self.assertAlmostEqual(tsg2.energy, -607633.55)
+
+    def test_switch_ts_does_not_respawn_after_exhaustion(self):
+        """Ensure switch_ts() does not spawn a new TS-guess round once guesses are exhausted."""
+        ts_xyz = str_to_xyz("""O 0.0 0.0 0.0
+H 0.0 0.0 1.0
+H 0.0 1.0 0.0""")
+        ts_species = ARCSpecies(label='TS_respawn', xyz=ts_xyz, is_ts=True)
+        ts_species.ts_guesses = [TSGuess(index=0, method='heuristics', success=True, energy=1.0, xyz=ts_xyz)]
+        ts_species.tsg_spawned = True
+        ts_species.ts_guesses_exhausted = True
+        ts_species.chosen_ts_list = [0]
+        sched = Scheduler(project='project_test_respawn',
+                          ess_settings=self.ess_settings,
+                          species_list=[ts_species],
+                          composite_method=None,
+                          conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          scan_level=Level(repr=default_levels_of_theory['scan']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory,
+                          testing=True,
+                          job_types=self.job_types1,
+                          orbitals_level=default_levels_of_theory['orbitals'],
+                          adaptive_levels=None,
+                          )
+        sched.job_dict[ts_species.label] = dict()
+        with patch.object(sched, 'spawn_ts_jobs') as mock_spawn:
+            sched.switch_ts(label=ts_species.label)
+        mock_spawn.assert_not_called()
 
     def test_add_label_to_unique_species_labels(self):
         """Test the add_label_to_unique_species_labels() method."""
