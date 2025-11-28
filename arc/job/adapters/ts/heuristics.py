@@ -307,11 +307,15 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Dict[str, Any],
                                              h2: int,
                                              c: Optional[int] = None,
                                              d: Optional[int] = None,
+                                             e: Optional[int] = None,
+                                             j: Optional[int] = None,
                                              r1_stretch: float = 1.2,
                                              r2_stretch: float = 1.2,
                                              a2: float = 180.0,
                                              d2: Optional[float] = None,
                                              d3: Optional[float] = None,
+                                             d4: Optional[float] = None,
+                                             d5: Optional[float] = None,
                                              keep_dummy: bool = False,
                                              reactants_reversed: bool = False,
                                              ) -> Dict[str, Any]:
@@ -373,6 +377,10 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Dict[str, Any],
         d3 (Optional[float]): The dihedral angel (in degrees) between atoms D-B-H-A (dihedral D-B-H-A).
                               This parameter is mandatory only if atom D exists (i.e., if ``mol2`` has 3 or more atoms)
                               and angle a2 is not linear.
+        d4 (Optional[float]): The dihedral angle (in degrees) between atoms H-A-C-E (dihedral H-A-C-E).
+                              This parameter is optional, only applied if atom E exists.
+        d5 (Optional[float]): The dihedral angle (in degrees) between atoms J-D-B-H (dihedral J-D-B-H).
+                              This parameter is optional, only applied if atom J exists.
         keep_dummy (bool, optional): Whether to keep a dummy atom if added, ``True`` to keep, ``False`` by default.
         reactants_reversed (bool, optional): Whether the reactants were reversed relative to the RMG template.
 
@@ -384,11 +392,26 @@ def combine_coordinates_with_redundant_atoms(xyz_1: Dict[str, Any],
           before returning the final cartesian coordinates
     """
     is_a2_linear, is_mol_1_linear, a, b = _validate_combine_coordinates_with_redundant_atoms_args(
-        xyz_1, xyz_2, mol_1, mol_2, h1, h2, a2, d2, d3, c, d)
-    zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1, xyz_2, mol_1, mol_2, h1, h2, a, b, c, d)
+        xyz_1, xyz_2, mol_1, mol_2, h1, h2, a2, d2, d3, c, d, e, j)
+    zmat_1, zmat_2 = generate_the_two_constrained_zmats(xyz_1, xyz_2, mol_1, mol_2, h1, h2, a, b, c, d, e, j)
     # Stretch the A--H1 and B--H2 bonds.
     stretch_zmat_bond(zmat=zmat_1, indices=(h1, a), stretch=r1_stretch)
     stretch_zmat_bond(zmat=zmat_2, indices=(b, h2), stretch=r2_stretch)
+
+    def _set_dihedral_value(zmat: dict, indices: Tuple[int, int, int, int], value: Optional[float]) -> None:
+        """Set a dihedral in a zmat if a value is provided."""
+        if value is None:
+            return
+        params = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=True)
+        params = params if isinstance(params, (list, tuple)) else [params]
+        for param in params:
+            if param is not None:
+                zmat['vars'][param] = value
+
+    if e is not None and c is not None:
+        _set_dihedral_value(zmat=zmat_1, indices=(h1, a, c, e), value=d4)
+    if j is not None and d is not None:
+        _set_dihedral_value(zmat=zmat_2, indices=(j, d, b, h2), value=d5)
     add_dummy = is_a2_linear and len(zmat_1['symbols']) > 2 and not is_mol_1_linear
     glue_params = determine_glue_params(zmat=zmat_1,
                                         add_dummy=add_dummy,
@@ -431,6 +454,8 @@ def _validate_combine_coordinates_with_redundant_atoms_args(xyz_1: dict,
                                                             d3: Optional[float],
                                                             c: Optional[int],
                                                             d: Optional[int],
+                                                            e: Optional[int],
+                                                            j: Optional[int],
                                                             ) -> Tuple[bool, bool, int, int]:
     """
     Validate and normalize all the combine_coordinates… parameters.
@@ -468,6 +493,10 @@ def _validate_combine_coordinates_with_redundant_atoms_args(xyz_1: dict,
         raise ValueError(f"c ({c}) cannot be the same as A index {a_idx}")
     if d == b_idx:
         raise ValueError(f"d ({d}) cannot be the same as B index {b_idx}")
+    if e == a_idx:
+        raise ValueError(f"e ({e}) cannot be the same as A index {a_idx}")
+    if j == b_idx:
+        raise ValueError(f"j ({j}) cannot be the same as B index {b_idx}")
     return is_a2_linear, is_mol_1_linear, a_idx, b_idx
 
 
@@ -481,6 +510,8 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
                                        b: int,
                                        c: Optional[int],
                                        d: Optional[int],
+                                       e: Optional[int] = None,
+                                       j: Optional[int] = None,
                                        ) -> Tuple[dict, dict]:
     """
     Generate the two constrained zmats required for combining coordinates with a redundant atom.
@@ -496,20 +527,34 @@ def generate_the_two_constrained_zmats(xyz_1: dict,
         b (int): The 0-index of an atom in ``xyz_2`` connected to H2 (atom B).
         c (Optional[int]): The 0-index of an atom in ``xyz_1`` connected to either A or H1 which is neither A nor H1 (atom C).
         d (Optional[int]): The 0-index of an atom in ``xyz_2`` connected to either B or H2 which is neither B nor H2 (atom D).
+        e (Optional[int]): The 0-index of an atom in ``xyz_1`` connected to C which is neither A nor H1 (atom E).
+        j (Optional[int]): The 0-index of an atom in ``xyz_2`` connected to D which is neither B nor H2 (atom J).
 
     Returns:
         Tuple[dict, dict]: The two zmats.
     """
+    constraints_1 = {'R_atom': [(h1, a)]}
+    if c is not None:
+        constraints_1['A_group'] = [(h1, a, c)]
+        if e is not None:
+            constraints_1['D_group'] = [(h1, a, c, e)]
+
+    constraints_2 = {'R_group': [(b, h2)]}
+    if d is not None:
+        constraints_2['A_group'] = [(d, b, h2)]
+        if j is not None:
+            constraints_2['D_group'] = [(j, d, b, h2)]
+
     zmat1 = zmat_from_xyz(xyz=xyz_1,
                           mol=mol_1,
                           is_ts=True,
-                          constraints={'A_group': [(h1, a, c)], 'R_atom': [(h1, a)]} if c is not None else {'R_atom': [(h1, a)]},
+                          constraints=constraints_1,
                           consolidate=False,
                           )
     zmat2 = zmat_from_xyz(xyz=xyz_2,
                           mol=mol_2,
                           is_ts=True,
-                          constraints={'R_group': [(b, h2)], 'A_group': [(d, b, h2)]} if d is not None else {'R_group': [(b, h2)]},
+                          constraints=constraints_2,
                           consolidate=False,
                           )
     return zmat1, zmat2
@@ -804,6 +849,35 @@ def find_distant_neighbor(mol: 'Molecule',
     return distant_neighbor_h_index
 
 
+def find_close_neighbor(rmg_mol: 'Molecule',
+                        start: int,
+                        ) -> Optional[int]:
+    """
+    Find the 0-index of a close neighbor (1 step away) if possible from the starting atom.
+    Preferably, a heavy atom will be returned.
+
+    Args:
+        rmg_mol ('Molecule'): The RMG molecule object instance to explore.
+        start (int): The 0-index of the start atom.
+
+    Returns:
+        Optional[int]: The 0-index of the close neighbor.
+    """
+    if len(rmg_mol.atoms) <= 1:
+        return None
+
+    hydrogen_index = None
+
+    for neighbor in rmg_mol.atoms[start].edges.keys():
+        neighbor_index = rmg_mol.atoms.index(neighbor)
+        if neighbor_index != start:
+            if neighbor.is_hydrogen():
+                hydrogen_index = neighbor_index
+            else:
+                return neighbor_index
+    return hydrogen_index
+
+
 # Family-specific heuristics functions:
 
 
@@ -880,6 +954,10 @@ def h_abstraction(reaction: 'ARCReaction',
         h2 = product_atom_map[h2]
         c = find_distant_neighbor(mol=r_mol, start=h1)
         d = find_distant_neighbor(mol=p_mol, start=h2)
+        close_neighbor_c = find_close_neighbor(rmg_mol=r_mol, start=h1)
+        close_neighbor_d = find_close_neighbor(rmg_mol=p_mol, start=h2)
+        e = find_distant_neighbor(mol=r_mol, start=close_neighbor_c) if close_neighbor_c is not None else None
+        j = find_distant_neighbor(mol=p_mol, start=close_neighbor_d) if close_neighbor_d is not None else None
 
         # d2 describes the B-H-A-C dihedral, populate d2_values if C exists and the B-H-A angle (a2) is not linear.
         d2_values = list(range(0, 360, dihedral_increment)) if len(r_mol.atoms) > 2 \
@@ -888,17 +966,21 @@ def h_abstraction(reaction: 'ARCReaction',
         # d3 describes the D-B-H-A dihedral, populate d3_values if D exists.
         d3_values = list(range(0, 360, dihedral_increment)) if len(p_mol.atoms) > 2 else list()
 
-        if len(d2_values) and len(d3_values):
-            d2_d3_product = list(itertools.product(d2_values, d3_values))
-        elif len(d2_values):
-            d2_d3_product = [(d2, None) for d2 in d2_values]
-        elif len(d3_values):
-            d2_d3_product = [(None, d3) for d3 in d3_values]
-        else:
-            d2_d3_product = [(None, None)]
+        # d4 describes the H-A-C-E dihedral, populate d4_values if E exists.
+        d4_values = list(range(0, 360, dihedral_increment)) if len(r_mol.atoms) > 3 and e is not None else list()
+
+        # d5 describes the J-D-B-H dihedral, populate d5_values if J exists.
+        d5_values = list(range(0, 360, dihedral_increment)) if len(p_mol.atoms) > 3 and j is not None else list()
+
+        d2_d3_d4_d5_product = list(itertools.product(
+            d2_values or [None],
+            d3_values or [None],
+            d4_values or [None],
+            d5_values or [None],
+        ))
 
         zmats = list()
-        for d2, d3 in d2_d3_product:
+        for d2, d3, d4, d5 in d2_d3_d4_d5_product:
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -911,11 +993,15 @@ def h_abstraction(reaction: 'ARCReaction',
                     h2=h2,
                     c=c,
                     d=d,
+                    e=e,
+                    j=j,
                     r1_stretch=r1_stretch,
                     r2_stretch=r2_stretch,
                     a2=a2,
                     d2=d2,
                     d3=d3,
+                    d4=d4,
+                    d5=d5,
                     reactants_reversed=reactants_reversed,
                 )
             except (ValueError, SpeciesError) as e:

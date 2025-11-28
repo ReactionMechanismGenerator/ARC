@@ -17,6 +17,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             are_h_abs_wells_reversed,
                                             combine_coordinates_with_redundant_atoms,
                                             determine_glue_params,
+                                            find_close_neighbor,
                                             find_distant_neighbor,
                                             generate_the_two_constrained_zmats,
                                             get_modified_params_from_zmat_2,
@@ -1063,6 +1064,28 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                    (-1.2481402862001663, -0.961958946530624, -0.20697484805157007))}
         self.assertTrue(almost_equal_coords(ts_xyz, expected_xyz))
 
+    def test_combine_coordinates_rejects_duplicate_neighbors(self):
+        """Test combine_coordinates_with_redundant_atoms() validation for duplicate E/J atoms."""
+        mol_1 = ARCSpecies(label='CCOOH', smiles='CCOO', xyz=self.ccooh_xyz).mol
+        mol_2 = ARCSpecies(label='C2H6', smiles='CC', xyz=self.c2h6_xyz).mol
+        a_idx = mol_1.atoms.index(next(iter(mol_1.atoms[9].edges)))
+        b_idx = mol_2.atoms.index(next(iter(mol_2.atoms[5].edges)))
+        with self.assertRaises(ValueError):
+            combine_coordinates_with_redundant_atoms(
+                xyz_1=self.ccooh_xyz,
+                xyz_2=self.c2h6_xyz,
+                mol_1=mol_1,
+                mol_2=mol_2,
+                reactant_2=ARCSpecies(label='C2H5', smiles='C[CH2]', xyz=self.c2h5_xyz),
+                h1=9,
+                h2=5,
+                c=2,
+                d=0,
+                e=a_idx,
+                j=b_idx,
+                a2=180,
+            )
+
     def test_get_new_zmat2_map(self):
         """Test the get_new_zmat_2_map() function."""
         new_map = get_new_zmat_2_map(zmat_1=self.zmat_3,
@@ -1123,6 +1146,11 @@ class TestHeuristicsAdapter(unittest.TestCase):
                              25: 5, 26: 6, 28: 7, 20: 'X8', 22: 'X9', 24: 'X10', 27: 'X11'}
 
         self.assertEqual(new_map, expected_new_map)
+
+    def test_find_close_neighbor(self):
+        """Test selecting a close neighbor preferring heavy atoms."""
+        self.assertEqual(find_close_neighbor(self.ch4_mol, start=1), 0)  # H bonded to C.
+        self.assertEqual(find_close_neighbor(self.h2_mol, start=0), 1)  # Only another H available.
 
     def test_get_new_map_based_on_zmat_1(self):
         """Test the get_new_map_based_on_zmat_1() function."""
