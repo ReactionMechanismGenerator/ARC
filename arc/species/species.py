@@ -1567,8 +1567,10 @@ class ARCSpecies(object):
                 if cluster_tsg.almost_equal_tsgs(tsg):
                     logger.info(f"Similar TSGuesses found: {tsg.index} is similar to {cluster_tsg.index}")
                     cluster_tsg.cluster.append(tsg.index)
-                    if tsg.method not in cluster_tsg.method:
-                        cluster_tsg.method += f' + {tsg.method}'
+                    if cluster_tsg.method != tsg.method:
+                        methods = set(cluster_tsg.method.split(' + '))
+                        methods.update(tsg.method.split(' + '))
+                        cluster_tsg.method = ' + '.join(sorted(list(methods)))
                         cluster_tsg.execution_time = f'{cluster_tsg.execution_time} + {tsg.execution_time}'
                     break
             else:
@@ -2342,7 +2344,7 @@ class TSGuess(object):
         self.execution_time = timedelta_from_str(ts_dict['execution_time']) if 'execution_time' in ts_dict \
             and isinstance(ts_dict['execution_time'], str) \
             else ts_dict['execution_time'] if 'execution_time' in ts_dict else None
-        self.method = ts_dict['method'].lower() if 'method' in ts_dict else 'user guess'
+        self.method = ts_dict['method'] if 'method' in ts_dict else 'user guess'
         self.method_index = ts_dict['method_index'] if 'method_index' in ts_dict else None
         self.method_direction = ts_dict['method_direction'] if 'method_direction' in ts_dict else None
         self.imaginary_freqs = ts_dict['imaginary_freqs'] if 'imaginary_freqs' in ts_dict else None
