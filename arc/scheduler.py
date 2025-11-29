@@ -2734,6 +2734,13 @@ class Scheduler(object):
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
+                        if self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
+                                and self.species_dict[label].fine_reopt and not self.species_dict[label].ts_priority_reopted:
+                            logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                                        f'Running a fine re-optimization as requested...')
+                            self.species_dict[label].ts_priority_reopted = True
+                            self.run_opt_job(label, fine=True)
+                            return
                         logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                     f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                     f'Searching for a better TS conformer...')
@@ -2811,7 +2818,14 @@ class Scheduler(object):
                     logger.info(f'TS {label} did not pass the negative frequency check. '
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
-                self.switch_ts(label=label)
+                if self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
+                        and self.species_dict[label].fine_reopt and not self.species_dict[label].ts_priority_reopted:
+                    logger.info(f'TS {label} did not pass the negative frequency check. '
+                                f'Running a fine re-optimization as requested...')
+                    self.species_dict[label].ts_priority_reopted = True
+                    self.run_opt_job(label, fine=True)
+                else:
+                    self.switch_ts(label=label)
                 return False
             else:
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')

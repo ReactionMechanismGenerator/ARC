@@ -302,6 +302,7 @@ class ARCSpecies(object):
                  directed_rotors: Optional[dict] = None,
                  e0_only: bool = False,
                  external_symmetry: Optional[int] = None,
+                 fine_reopt: bool = False,
                  fragments: Optional[List[List[int]]] = None,
                  force_field: str = 'MMFF94s',
                  inchi: str = '',
@@ -369,6 +370,7 @@ class ARCSpecies(object):
         self.ts_priority_checks_concluded = False
         self.ts_priority_passed = None
         self.ts_priority_reopted = False
+        self.fine_reopt = False
         self.ts_checks = dict()
         self.project_directory = project_directory
         self.is_forced_opt = False
@@ -388,6 +390,7 @@ class ARCSpecies(object):
             # Not reading from a dictionary.
             self.force_field = force_field
             self.is_ts = is_ts
+            self.fine_reopt = fine_reopt if is_ts else False
             self.ts_conf_spawned = False
             self.ts_guesses_exhausted = False
             self.e_elect = None
@@ -714,6 +717,8 @@ class ARCSpecies(object):
                 species_dict['priority_passed'] = self.ts_priority_passed
             if self.ts_priority_reopted:
                 species_dict['priority_reopted'] = self.ts_priority_reopted
+            if self.fine_reopt:
+                species_dict['fine_reopt'] = self.fine_reopt
             if self.rxn_label is not None:
                 species_dict['rxn_label'] = self.rxn_label
             if self.rxn_index is not None:
@@ -864,6 +869,7 @@ class ARCSpecies(object):
             self.ts_priority_checks_concluded = species_dict.get('priority_checks_concluded', False)
             self.ts_priority_passed = species_dict.get('priority_passed', None)
             self.ts_priority_reopted = species_dict.get('priority_reopted', False)
+            self.fine_reopt = species_dict.get('fine_reopt', False)
             self.ts_guesses = [TSGuess(ts_dict=tsg) for tsg in species_dict['ts_guesses']] \
                 if 'ts_guesses' in species_dict else list()
             self.successful_methods = species_dict['successful_methods'] \
