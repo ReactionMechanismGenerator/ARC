@@ -1727,7 +1727,8 @@ class ARCSpecies(object):
             else:
                 tsg_index = len(self.ts_guesses)
                 for xyz, energy in zip(xyzs, energies):
-                    self.ts_guesses.append(TSGuess(method=f'user guess {tsg_index}',
+                    method_name = 'User provided TS' if self.xyz_is_final and self.ts_guess_priority else 'user guess'
+                    self.ts_guesses.append(TSGuess(method=f'{method_name} {tsg_index}',
                                                    xyz=remove_dummies(xyz),
                                                    energy=energy,
                                                    success=True,
