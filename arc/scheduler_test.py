@@ -203,6 +203,38 @@ H      -1.82570782    0.42754384   -0.56130718"""
         vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
 
+    def test_ts_conformer_throttling(self):
+        """Ensure TS conformer jobs are throttled and excess queued."""
+        project_dir = os.path.join(ARC_PATH, 'Projects', 'ts_conf_throttle_test')
+        if os.path.isdir(project_dir):
+            shutil.rmtree(project_dir, ignore_errors=True)
+        ts_species = ARCSpecies(label='TS_throttle', is_ts=True, multiplicity=1, charge=0, compute_thermo=False)
+        ts_guesses = []
+        for i in range(20):
+            xyz = {'symbols': ('H', 'H'), 'isotopes': (1, 1), 'coords': ((0.0, 0.0, 0.0), (0.0, 0.0, 0.74 + 0.01 * i))}
+            ts_guesses.append(TSGuess(method='test', xyz=xyz, index=i, success=True))
+        ts_species.ts_guesses = ts_guesses
+        scheduler = Scheduler(project='ts_conf_throttle_test',
+                              ess_settings={'gaussian': ['local']},
+                              species_list=[ts_species],
+                              composite_method=None,
+                              conformer_opt_level=Level(repr=default_levels_of_theory['conformer']),
+                              opt_level=Level(repr=default_levels_of_theory['opt']),
+                              freq_level=Level(repr=default_levels_of_theory['freq']),
+                              scan_level=Level(repr=default_levels_of_theory['scan']),
+                              ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                              project_directory=project_dir,
+                              testing=True,
+                              job_types=initialize_job_types({'conf_opt': True, 'opt': True, 'freq': False, 'sp': False}),
+                              )
+        with patch.object(ts_species, 'cluster_tsgs', return_value=None):
+            with patch.object(scheduler, 'run_job') as run_job_mock:
+                scheduler.run_ts_conformer_jobs(label='TS_throttle')
+        self.assertEqual(run_job_mock.call_count, 15)
+        self.assertIn('TS_throttle', scheduler.ts_conf_queue)
+        self.assertEqual(len(scheduler.ts_conf_queue['TS_throttle']), 5)
+        shutil.rmtree(project_dir, ignore_errors=True)
+
     def test_determine_adaptive_level(self):
         """Test the determine_adaptive_level() method"""
         # adaptive_levels get converted to ``Level`` objects in main, but here we skip main and test Scheduler directly

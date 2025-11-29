@@ -20,6 +20,7 @@ import math
 import os
 import re
 import subprocess
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 import re
@@ -1171,7 +1172,7 @@ def submit_crest_jobs(crest_paths: List[str]) -> None:
     for crest_path in crest_paths:
         job_status, job_id = submit_job(path=crest_path)
         logger.info(f"CREST job {job_id} submitted for {crest_path}")
-        crest_jobs[job_id] = {"path": crest_path, "status": job_status}
+        crest_jobs[job_id] = {"path": crest_path, "status": job_status, "resubmitted": False}
     return crest_jobs
 
 
@@ -1208,7 +1209,8 @@ def process_completed_jobs(crest_jobs: dict) -> list:
         xyz_guesses (list): List to store the resulting XYZ guesses.
     """
     xyz_guesses = []
-    for job_id, job_info in crest_jobs.items():
+    resubmissions = dict()
+    for job_id, job_info in list(crest_jobs.items()):
         crest_path = job_info["path"]
         if job_info["status"] == "done":
             crest_best_path = os.path.join(crest_path, "crest_best.xyz")
@@ -1219,10 +1221,62 @@ def process_completed_jobs(crest_jobs: dict) -> list:
                 xyz_guesses.append(xyz_guess)
             else:
                 logger.error(f"crest_best.xyz not found in {crest_path}")
-        elif job_info["status"] == "failed":
-            logger.error(f"CREST job failed for {crest_path}")
+                if not job_info.get("resubmitted"):
+                    history_stdout, _ = get_job_history(job_id)
+                    if history_stdout and _is_pbs_failure(history_stdout):
+                        logger.info(f"Resubmitting CREST job {job_id} for {crest_path} after PBS failure history.")
+                        new_status, new_id = submit_job(path=crest_path)
+                        crest_jobs[new_id] = {"path": crest_path, "status": new_status, "resubmitted": True}
+                        resubmissions[new_id] = crest_jobs[new_id]
+        elif job_info["status"] == "failed" and not job_info.get("resubmitted"):
+            history_stdout, _ = get_job_history(job_id)
+            if history_stdout and _is_pbs_failure(history_stdout):
+                logger.info(f"Resubmitting failed CREST job {job_id} for {crest_path} after PBS history failure.")
+                new_status, new_id = submit_job(path=crest_path)
+                crest_jobs[new_id] = {"path": crest_path, "status": new_status, "resubmitted": True}
+                resubmissions[new_id] = crest_jobs[new_id]
+
+    if resubmissions:
+        monitor_crest_jobs(resubmissions)
+        xyz_guesses.extend(process_completed_jobs(resubmissions))
 
     return xyz_guesses
+
+
+def get_job_history(job_id: Union[int, str]) -> Tuple[list, list]:
+    """
+    Helper to fetch job history for CREST jobs on the local scheduler based on cluster software.
+    """
+    cluster_soft = settings['servers'].get('local', {}).get('cluster_soft', '').lower()
+    cmd = None
+    if cluster_soft in ['pbs']:
+        cmd = f"qstat -JH {job_id}"
+    elif cluster_soft in ['slurm']:
+        cmd = f"sacct -j {job_id} --format=JobID,State,ExitCode,Elapsed -n -P"
+    elif cluster_soft in ['oge', 'sge']:
+        cmd = f"qacct -j {job_id}"
+    if cmd is None:
+        return [], [f'No job history command implemented for scheduler \"{cluster_soft}\".']
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        stdout = result.stdout.splitlines()
+        stderr = result.stderr.splitlines()
+        if result.returncode and not stderr:
+            stderr = [f'Command exited with code {result.returncode}']
+        return stdout, stderr
+    except Exception as e:
+        logger.debug(f"Could not retrieve job history for {job_id}: {e}")
+        return [], []
+
+
+def _is_pbs_failure(history_stdout: list) -> bool:
+    """
+    Detect a PBS failure flag (' F ') in qstat -JH style output.
+    """
+    for line in history_stdout:
+        if " F " in line or line.strip().endswith(" F"):
+            return True
+    return False
 
 
 def extract_digits(s: str) -> int:

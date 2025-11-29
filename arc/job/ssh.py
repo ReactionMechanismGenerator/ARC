@@ -7,7 +7,9 @@ Todo:
 """
 
 import datetime
+import logging
 import os
+import subprocess
 import time
 from typing import Any, Callable, List, Optional, Tuple, Union
 
@@ -78,7 +80,7 @@ class SSHClient(object):
         self.key = servers[server]['key']
         self._sftp = None
         self._ssh = None
-        logger.getLogger("paramiko").setLevel(logger.WARNING)
+        logging.getLogger("paramiko").setLevel(logging.WARNING)
 
     def __enter__(self) -> 'SSHClient':
         self.connect()
@@ -282,6 +284,67 @@ class SSHClient(object):
                 job_id = job_id.split('.')[0] if '.' in job_id else job_id
                 running_job_ids.append(job_id)
         return running_job_ids
+
+    def get_job_history(self, job_id: Union[int, str]) -> Tuple[list, list]:
+        """
+        Retrieve completed/archived job information from the scheduler, if supported.
+
+        Args:
+            job_id (Union[int, str]): The job's ID.
+
+        Returns:
+            Tuple[list, list]: stdout and stderr from the history command (empty if unsupported).
+        """
+        cluster_soft = servers[self.server]['cluster_soft'].lower()
+        cmd = None
+        if cluster_soft in ['pbs']:
+            cmd = f"qstat -JH {job_id}"
+        elif cluster_soft in ['slurm']:
+            cmd = f"sacct -j {job_id} --format=JobID,State,ExitCode,Elapsed -n -P"
+        elif cluster_soft in ['oge', 'sge']:
+            cmd = f"qacct -j {job_id}"
+        if cmd is None:
+            return [], [f'No job history command implemented for scheduler "{cluster_soft}".']
+        # Run locally if this is the local scheduler; otherwise use SSH.
+        if self.server == 'local':
+            return _run_local_history_cmd(cmd)
+        stdout, stderr = self._send_command_to_server(cmd)
+        return stdout, stderr
+
+
+def get_job_history_for_server(job_id: Union[int, str], server: str) -> Tuple[list, list]:
+    """
+    Retrieve job history for a specific server, running locally when server == 'local'.
+    """
+    cluster_soft = servers[server]['cluster_soft'].lower()
+    cmd = None
+    if cluster_soft in ['pbs']:
+        cmd = f"qstat -JH {job_id}"
+    elif cluster_soft in ['slurm']:
+        cmd = f"sacct -j {job_id} --format=JobID,State,ExitCode,Elapsed -n -P"
+    elif cluster_soft in ['oge', 'sge']:
+        cmd = f"qacct -j {job_id}"
+    if cmd is None:
+        return [], [f'No job history command implemented for scheduler \"{cluster_soft}\".']
+    if server == 'local':
+        return _run_local_history_cmd(cmd)
+    with SSHClient(server) as ssh:
+        return ssh.get_job_history(job_id)
+
+
+def _run_local_history_cmd(cmd: str) -> Tuple[list, list]:
+    """
+    Run a scheduler history command locally.
+    """
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        stdout = result.stdout.splitlines()
+        stderr = result.stderr.splitlines()
+        if result.returncode and not stderr:
+            stderr = [f'Command exited with code {result.returncode}']
+        return stdout, stderr
+    except Exception as e:
+        return [], [f'Failed to run history command locally: {e}']
 
     def submit_job(self, remote_path: str,
                    recursion: bool = False,

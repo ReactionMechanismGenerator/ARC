@@ -38,7 +38,7 @@ from arc.imports import settings
 from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
-from arc.job.ssh import SSHClient
+from arc.job.ssh import SSHClient, get_job_history_for_server
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
                           trsh_ess_job,
@@ -278,6 +278,7 @@ class Scheduler(object):
         self.server_job_ids = list()
         self.completed_incore_jobs = list()
         self.running_jobs = dict()
+        self.ts_conf_queue = dict()
         self.allow_nonisomorphic_2d = allow_nonisomorphic_2d
         self.testing = testing
         self.memory = memory or default_job_settings.get('job_total_memory_gb', 14)
@@ -589,6 +590,7 @@ class Scheduler(object):
                 self.get_completed_incore_jobs()  # updates ``self.completed_incore_jobs``
                 if label not in self.running_jobs.keys():
                     continue
+                self._spawn_pending_ts_conf_jobs(label)
                 job_list = self.running_jobs[label]
                 for job_name in job_list:
                     if 'conf' in job_name:
@@ -1095,6 +1097,7 @@ class Scheduler(object):
                                f'file path {job.local_path_to_output_file}.')
             elif job.job_type not in ['orbitals']:
                 job.ess_trsh_methods.append('restart_due_to_file_not_found')
+                self._log_job_history(job)
                 logger.warning(f'Did not find the output file of job {job.job_name} with path '
                                f'{job.local_path_to_output_file}. Maybe the job never ran. Re-running job.')
                 self._run_a_job(job=job, label=label)
@@ -1260,14 +1263,21 @@ class Scheduler(object):
         successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
         if len(successful_tsgs) > 1:
             self.job_dict[label]['conf_opt'] = dict()
+            max_conf_jobs = 15
+            running_conf = self._count_running_ts_conf_jobs(label)
+            self.ts_conf_queue.setdefault(label, list())
             for i, tsg in enumerate(successful_tsgs):
+                tsg.conformer_index = i  # Store the conformer index in the TSGuess object to match them later.
+                if running_conf >= max_conf_jobs:
+                    self.ts_conf_queue[label].append({'conformer': i, 'xyz': tsg.initial_xyz})
+                    continue
                 self.run_job(label=label,
                              xyz=tsg.initial_xyz,
                              level_of_theory=self.ts_guess_level,
                              job_type='conf_opt',
                              conformer=i,
                              )
-                tsg.conformer_index = i  # Store the conformer index in the TSGuess object to match them later.
+                running_conf += 1
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label].keys() and 'composite' not in self.job_dict[label].keys():
                 # proceed only if opt (/composite) not already spawned
@@ -2618,6 +2628,45 @@ class Scheduler(object):
         elif self.trsh_ess_jobs:
             self.troubleshoot_opt_jobs(label=label)
         return success
+
+    def _count_running_ts_conf_jobs(self, label: str) -> int:
+        """
+        Count currently running TS conformer jobs for a label.
+        """
+        return len([job for job in self.running_jobs.get(label, []) if job.startswith('conf_opt')])
+
+    def _spawn_pending_ts_conf_jobs(self, label: str) -> None:
+        """
+        Spawn queued TS conformer jobs in batches to avoid overwhelming the server.
+        """
+        if label not in self.ts_conf_queue or not self.ts_conf_queue[label]:
+            return
+        max_conf_jobs = 15
+        while self.ts_conf_queue[label] and self._count_running_ts_conf_jobs(label) < max_conf_jobs:
+            job_data = self.ts_conf_queue[label].pop(0)
+            self.run_job(label=label,
+                         xyz=job_data['xyz'],
+                         level_of_theory=self.ts_guess_level,
+                         job_type='conf_opt',
+                         conformer=job_data['conformer'],
+                         )
+
+    def _log_job_history(self, job: 'JobAdapter') -> None:
+        """
+        Try to pull scheduler history for a job when its output file is missing.
+        """
+        if job.job_id is None or job.server is None:
+            return
+        try:
+            stdout, stderr = get_job_history_for_server(job.job_id, job.server)
+            if stdout:
+                logger.info(f'Job history for {job.job_name} ({job.job_id}) on {job.server}:\n' +
+                            ''.join(stdout))
+            if stderr:
+                logger.info(f'Job history stderr for {job.job_name} ({job.job_id}) on {job.server}:\n' +
+                            ''.join(stderr))
+        except Exception as e:
+            logger.debug(f'Could not retrieve scheduler history for {job.job_name} ({job.job_id}): {e}')
 
     def post_opt_geo_work(self, 
                           spc_label: str, 

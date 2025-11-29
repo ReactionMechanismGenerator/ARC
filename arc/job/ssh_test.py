@@ -6,6 +6,7 @@ This module contains unit tests of the arc.job.ssh module
 """
 
 import unittest
+from unittest.mock import patch, MagicMock
 
 import arc.job.ssh as ssh
 
@@ -41,6 +42,41 @@ class TestSSH(unittest.TestCase):
         self.assertEqual(status1, 'queued')
         status1 = ssh.check_job_status_in_stdout(job_id=4000, stdout=stdout_2, server='local')
         self.assertEqual(status1, 'done')
+
+    def test_get_job_history_local_pbs(self):
+        """Ensure get_job_history runs locally for PBS when server=='local'."""
+        orig_cluster = ssh.servers['local'].get('cluster_soft')
+        orig_address = ssh.servers['local'].get('address')
+        orig_un = ssh.servers['local'].get('un')
+        orig_key = ssh.servers['local'].get('key')
+        ssh.servers['local']['cluster_soft'] = 'PBS'
+        ssh.servers['local']['address'] = 'localhost'
+        ssh.servers['local']['un'] = 'user'
+        ssh.servers['local']['key'] = ''
+        try:
+            mock_completed = MagicMock(returncode=0, stdout='line1\nline2\n', stderr='')
+            with patch('arc.job.ssh.subprocess.run', return_value=mock_completed) as sub_run:
+                stdout, stderr = ssh.get_job_history_for_server('12345', 'local')
+                sub_run.assert_called_once()
+                self.assertEqual(stdout, ['line1', 'line2'])
+                self.assertEqual(stderr, [])
+        finally:
+            if orig_cluster is not None:
+                ssh.servers['local']['cluster_soft'] = orig_cluster
+            else:
+                ssh.servers['local'].pop('cluster_soft', None)
+            if orig_address is not None:
+                ssh.servers['local']['address'] = orig_address
+            else:
+                ssh.servers['local'].pop('address', None)
+            if orig_un is not None:
+                ssh.servers['local']['un'] = orig_un
+            else:
+                ssh.servers['local'].pop('un', None)
+            if orig_key is not None:
+                ssh.servers['local']['key'] = orig_key
+            else:
+                ssh.servers['local'].pop('key', None)
 
 
 if __name__ == '__main__':
