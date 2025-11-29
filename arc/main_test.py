@@ -43,11 +43,71 @@ class TestARC(unittest.TestCase):
                           'bde': True,
                           }
         projects = ['arc_project_for_testing_delete_after_usage_test_from_dict',
-                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong']
+                    'arc_model_chemistry_test', 'arc_test', 'test', 'unit_test_specific_job', 'wrong',
+                    'test_bde_false_is_respected']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             if os.path.isdir(project_directory):
                 shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_bde_false_is_respected(self):
+        """
+        Test that `job_types={'bde': False}` is respected even if a species has a `bdes` attribute.
+        """
+        project = 'test_bde_false_is_respected'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        ess_settings = {'mockter': ['local']}
+        mock_level = 'mock/def2svp'
+        species_dict = {
+            'label': 'buta_1_2_diene',
+            'smiles': 'C=C=CC',
+            'bdes': ['all_h'],
+            'xyz_is_final': True,
+            'multiplicity': 1,
+            'xyz': """C   2.08613500 -0.02907200 -0.21136200
+C   0.85895200 -0.08013400  0.21509600
+C  -0.37007900 -0.12988200  0.63602700
+C  -1.57915300  0.10838300 -0.22285000
+H   2.64954700  0.89676800 -0.19019200
+H   2.58301500 -0.91143400 -0.59815300
+H  -0.53968300 -0.36017500  1.68441400
+H  -2.22863800 -0.76996800 -0.22476700
+H  -1.29458500  0.32977700 -1.25053800
+H  -2.16550900  0.94573700  0.16232500
+"""
+        }
+        species = ARCSpecies(species_dict=species_dict)
+        job_types = {
+            'bde': False,
+            'opt': False,
+            'freq': True,
+            'sp': True,
+            'rotors': False,
+            'conf_opt': False,
+            'irc': False,
+            'fine': False,
+        }
+        arc_obj = ARC(
+            project=project,
+            species=[species],
+            job_types=job_types,
+            opt_level=mock_level,
+            freq_level=mock_level,
+            sp_level=mock_level,
+            ess_settings=ess_settings,
+            compute_thermo=False,
+            compute_rates=False,
+            freq_scale_factor=1.0,
+            calc_freq_factor=False,
+        )
+        arc_obj.execute()
+        bde_prod_label = 'buta_1_2_diene_BDE_1_5_A'
+        bde_prod_path = os.path.join(project_directory, 'output', 'Species', bde_prod_label)
+        self.assertFalse(os.path.isdir(bde_prod_path))
+        with open(os.path.join(project_directory, 'arc.log'), 'r') as f:
+            log_content = f.read()
+        self.assertNotIn('Creating the BDE species', log_content)
+        self.assertNotIn('spawning bde jobs', log_content.lower())
 
     def test_as_dict(self):
         """Test the as_dict() method of ARC"""

@@ -371,6 +371,7 @@ class ARCSpecies(object):
         self.ts_priority_reopted = False
         self.ts_checks = dict()
         self.project_directory = project_directory
+        self.is_forced_opt = False
         self.label = label
         self.symmetry_number = None
 
@@ -658,6 +659,8 @@ class ARCSpecies(object):
             dict: The dictionary representation of the object instance.
         """
         species_dict = dict()
+        if self.is_forced_opt:
+            species_dict['is_forced_opt'] = self.is_forced_opt
         if self.force_field != 'MMFF94s':
             species_dict['force_field'] = self.force_field
         if self.is_ts:
@@ -890,6 +893,7 @@ class ARCSpecies(object):
         self.optical_isomers = species_dict['optical_isomers'] if 'optical_isomers' in species_dict else None
         self.neg_freqs_trshed = species_dict['neg_freqs_trshed'] if 'neg_freqs_trshed' in species_dict else list()
         self.bond_corrections = species_dict['bond_corrections'] if 'bond_corrections' in species_dict else dict()
+        self.is_forced_opt = species_dict['is_forced_opt'] if 'is_forced_opt' in species_dict else False
         if 'mol' in species_dict:
             if isinstance(species_dict['mol'], str):
                 try:

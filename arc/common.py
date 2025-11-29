@@ -74,7 +74,7 @@ def initialize_job_types(job_types: Optional[dict] = None,
             raise InputError(f'Specified job type {specific_job_type} is not supported.')
 
     if specific_job_type == 'bde':
-        bde_default = {'opt': True, 'fine': True, 'freq': True, 'sp': True}
+        bde_default = {'opt': True, 'fine': True, 'freq': True, 'sp': True, 'bde': True}
         job_types.update(bde_default)
         if 'fine_grid' in job_types:
             del job_types['fine_grid']

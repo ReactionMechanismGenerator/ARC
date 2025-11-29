@@ -694,7 +694,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             )
         job_1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
-        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': False, 'warnings': ''})
+        self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': True, 'warnings': ''})
 
     def test_save_e_elect(self):
         """Test the save_e_elect() method."""
@@ -814,3 +814,35 @@ H 0.0 1.0 0.0""")
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
+
+    def test_forced_reoptimization(self):
+        """Test that the is_forced_opt flag is correctly applied."""
+        label = 'methane'
+        xyz = str_to_xyz("""C      0.00000000    0.00000000    0.00000000
+H      0.62911800    0.62911800    0.62911800
+H     -0.62911800   -0.62911800    0.62911800
+H     -0.62911800    0.62911800   -0.62911800
+H      0.62911800   -0.62911800   -0.62911800""")
+        spc = ARCSpecies(label=label, xyz=xyz)
+        job_types = {'conf_opt': False, 'opt': False, 'freq': True, 'sp': True, 'rotors': False, 'fine': False, 'irc': False}
+        sched = Scheduler(project='project_test_forced_reopt', ess_settings=self.ess_settings,
+                               species_list=[spc],
+                               project_directory=self.project_directory,
+                               testing=True,
+                               job_types=job_types,
+                               )
+        job = job_factory(job_adapter='gaussian', project='project_test_forced_reopt', ess_settings=self.ess_settings,
+                          species=[spc], xyz=xyz, job_type='freq',
+                          level=Level(repr={'method': 'wb97x-d', 'basis': '6-311+g(d,p)'}),
+                          project_directory=self.project_directory, job_num=105)
+        sched.job_dict[label] = {'freq': {job.job_name: job}}
+        job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'methane_imag_freq.out')
+        job.job_status = ['done', {'status': 'done'}]
+
+        with patch('arc.scheduler.Scheduler.troubleshoot_negative_freq') as troubleshoot_mock:
+            sched.check_freq_job(label=label, job=job)
+            self.assertTrue(troubleshoot_mock.called)
+
+        sched.troubleshoot_negative_freq(label=label, job=job)
+        self.assertTrue(sched.species_dict[label].is_forced_opt)
+        self.assertIn('Geometry re-optimized due to imaginary frequencies', sched.output[label]['warnings'])

@@ -287,6 +287,23 @@ class Scheduler(object):
         self.e_confs = e_confs
         self.dont_gen_confs = dont_gen_confs or list()
         self.job_types = job_types if job_types is not None else default_job_types
+        if not self.job_types.get('bde', False):
+            # If bde jobs are disabled for this run, drop any leftover BDE fragment species
+            # that might have been saved in a restart file.
+            bde_labels = {spc.label for spc in self.species_list if '_BDE_' in spc.label}
+            if bde_labels:
+                logger.info(f'Ignoring BDE fragment species since bde job type is disabled: {sorted(bde_labels)}')
+                self.species_list = [spc for spc in self.species_list if spc.label not in bde_labels]
+                if self.restart_dict:
+                    for label in bde_labels:
+                        if 'output' in self.restart_dict and label in self.restart_dict['output']:
+                            self.restart_dict['output'].pop(label, None)
+                        if 'running_jobs' in self.restart_dict and label in self.restart_dict['running_jobs']:
+                            self.restart_dict['running_jobs'].pop(label, None)
+            # Also clear any bdes attributes so no new BDE fragments are generated in this run.
+            for spc in self.species_list:
+                if spc.bdes:
+                    spc.bdes = None
         self.fine_only = fine_only
         self.trsh_ess_jobs = trsh_ess_jobs
         self.trsh_rotors = trsh_rotors
@@ -1166,6 +1183,10 @@ class Scheduler(object):
                            If ``None``, conformer jobs will be spawned for all species in self.species_list.
         """
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
+        # If BDE jobs are disabled, silently skip any lingering BDE fragment labels that might have been
+        # loaded from a restart or supplied by mistake to avoid confusing logs.
+        if not self.job_types.get('bde', False):
+            labels_to_consider = [label for label in labels_to_consider if '_BDE_' not in label]
         log_info_printed = False
         for label in labels_to_consider:
             if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
@@ -2278,6 +2299,8 @@ class Scheduler(object):
             label (str): The TS species label.
         """
         self.species_dict[label].cluster_tsgs()
+        priority_validation = self.species_dict[label].ts_guess_priority \
+            and not self.species_dict[label].ts_priority_checks_concluded
         if not self.species_dict[label].is_ts:
             raise SchedulerError('determine_most_likely_ts_conformer() method only processes transition state guesses.')
         if not self.species_dict[label].successful_methods:
@@ -2301,8 +2324,9 @@ class Scheduler(object):
                 logger.error(f'No TS methods for {label} have converged!')
             if self.species_dict[label].unsuccessful_methods:
                 message += f'\nUnsuccessful methods: {self.species_dict[label].unsuccessful_methods}'
-            logger.info(message)
-            logger.info('\n')
+            if not priority_validation:
+                logger.info(message)
+                logger.info('\n')
 
         energies = [tsg.energy for tsg in self.species_dict[label].ts_guesses if tsg.energy is not None]
         unused_successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses
@@ -2324,10 +2348,14 @@ class Scheduler(object):
             fallback_tsg = next((tsg for tsg in unused_successful_tsgs if tsg.get_xyz() is not None), None)
             if fallback_tsg is not None:
                 selected_i = fallback_tsg.index
-                logger.info(f'No TS guess with parsed energy available; falling back to guess {fallback_tsg.index}.')
+                if not priority_validation:
+                    fallback_label = fallback_tsg.index if fallback_tsg.index is not None else fallback_tsg.method
+                    logger.info(f'No TS guess with parsed energy available; falling back to guess {fallback_label}.')
         if selected_i is None:
-            if self.species_dict[label].ts_guess_priority and not self.species_dict[label].ts_priority_checks_concluded:
+            if priority_validation:
                 # Priority guess failed checks; avoid fatal logging while we fall back to automated TS guesses.
+                logger.info(f'Re-optimizing the priority user TS guess for {label}; '
+                            f'no alternative TS conformers are available yet.')
                 self.species_dict[label].ts_guesses_exhausted = False
                 return None
             logger.warning(f'Could not determine a likely TS conformer for {label}')
@@ -2337,6 +2365,8 @@ class Scheduler(object):
         rxn_txt = '' if self.species_dict[label].rxn_label is None \
             else f' of reaction {self.species_dict[label].rxn_label}'
         logger.info(f'\n\nGeometry *guesses* of successful TS guesses for {label}{rxn_txt}:')
+        total_tsgs = len(self.species_dict[label].ts_guesses)
+        reported_tsgs = 0
         for i, tsg in enumerate(self.species_dict[label].ts_guesses):
             is_selected = tsg.index == selected_i
             if is_selected:
@@ -2346,12 +2376,15 @@ class Scheduler(object):
                 self.species_dict[label].initial_xyz = tsg.opt_xyz or tsg.initial_xyz
                 self.species_dict[label].final_xyz = None
                 self.species_dict[label].ts_guesses_exhausted = False
+            rel_energy = relative_energies[i]
+            if rel_energy is None:
+                # Skip guesses without energies to avoid noisy "n/a" lines, but keep selection bookkeeping above.
+                continue
             im_freqs = ''
             if tsg.imaginary_freqs is not None:
                 freqs = [float(freq) for freq in tsg.imaginary_freqs]
                 im_freqs = f', imaginary frequencies {freqs}'
-            rel_energy = relative_energies[i]
-            rel_energy_str = f'{rel_energy:8.2f} kJ/mol' if rel_energy is not None else '   n/a      '
+            rel_energy_str = f'{rel_energy:8.2f} kJ/mol'
             execution_time = str(tsg.execution_time)
             execution_time = execution_time[:execution_time.index('.') + 2] \
                 if '.' in execution_time else execution_time
@@ -2362,9 +2395,13 @@ class Scheduler(object):
                         f'relative energy: {rel_energy_str}, '
                         f'guess ex time: {execution_time}{im_freqs}'
                         f'{aux}{selection_txt}')
+            reported_tsgs += 1
             if is_selected:
                 # for TSs, only use `draw_3d()`, not `show_sticks()` which gets connectivity wrong:
                 plotter.draw_structure(xyz=tsg.initial_xyz, method='draw_3d')
+        if reported_tsgs < total_tsgs:
+            logger.info(f'Relative energies available for {reported_tsgs} out of {total_tsgs} TS guesses; '
+                        f'omitted {total_tsgs - reported_tsgs} without energies.')
         queue_candidates = [tsg for tsg in self.species_dict[label].ts_guesses
                             if tsg.index != self.species_dict[label].chosen_ts
                             and tsg.success and tsg.index not in self.species_dict[label].chosen_ts_list]
@@ -3311,6 +3348,8 @@ class Scheduler(object):
                                                 (opt_time or zero_delta) + \
                                                 (comp_time or zero_delta) + \
                                                 (other_time or zero_delta)
+            if self.species_dict[label].is_forced_opt:
+                self.output[label]['warnings'] += 'Geometry re-optimized due to imaginary frequencies; '
             logger.info(f'\nAll jobs for species {label} successfully converged. '
                         f'Run time: {self.species_dict[label].run_time}')
             # Todo: any TS which did not converged (any rxn not calculated) should be reported here with full status: Was the family identified? Were TS guesses found? IF so, what's wrong?
@@ -3379,6 +3418,10 @@ class Scheduler(object):
             label (str): The species label.
             job (JobAdapter): The frequency job object.
         """
+        if not self.job_types.get('opt', True) and not self.job_types.get('conf_opt', True):
+            logger.warning(f'Species {label} has imaginary frequencies. ARC will re-optimize the geometry even '
+                           f'though "opt" and "conf_opt" were set to False.')
+            self.species_dict[label].is_forced_opt = True
         if not self.trsh_ess_jobs:
             logger.warning(f'Not troubleshooting negative freq for {label} and job {job.job_name}. '
                            f'To enable troubleshooting, set the "trsh_ess_jobs" to "True".')
