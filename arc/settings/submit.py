@@ -305,6 +305,46 @@ conda activate xtb_env
 touch final_time
 
 """,
+        'crest': """#!/bin/bash -l
+#SBATCH -p normal
+#SBATCH -J {name}
+#SBATCH -N 1
+#SBATCH -n {cpus}
+#SBATCH --time={t_max}
+#SBATCH --mem-per-cpu={memory}
+#SBATCH -o out.txt
+#SBATCH -e err.txt
+
+echo "============================================================"
+echo "Job ID : $SLURM_JOB_ID"
+echo "Job Name : $SLURM_JOB_NAME"
+echo "Starting on : $(date)"
+echo "Running on node : $SLURMD_NODENAME"
+echo "Current directory : $(pwd)"
+echo "============================================================"
+
+touch initial_time
+
+{activation_line}
+
+{commands}
+
+touch final_time
+
+""",
+        'crest_job': """#!/bin/bash -l
+
+touch initial_time
+
+cd {path}
+
+{activation_line}
+
+{commands}
+
+touch final_time
+
+""",
     },
 
     'atlas': {
