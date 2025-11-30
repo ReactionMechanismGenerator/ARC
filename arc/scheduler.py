@@ -725,6 +725,16 @@ class Scheduler(object):
                             shutil.rmtree(job.local_path, ignore_errors=True)
                             self.timer = False
                             break
+                    elif 'constraint_scan' in job_name:
+                        job = self.job_dict[label]['constraint_scan'][job_name]
+                        if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if successful_server_termination and job.job_status[1]['status'] == 'done':
+                                self.process_constraint_scan_results(label=label, job=job)
+                            elif successful_server_termination and job.job_status[1]['status'] == 'errored':
+                                logger.error(f'Constraint scan job for {label} errored. Cannot create TS guess from scan.')
+                            self.timer = False
+                            break
                     elif 'scan' in job_name and 'directed' not in job_name:
                         job = self.job_dict[label]['scan'][job_name]
                         if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
@@ -734,16 +744,6 @@ class Scheduler(object):
                                 self.check_scan_job(label=label, job=job)
                             elif successful_server_termination and job.job_status[1]['status'] == 'errored':
                                  self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
-                            self.timer = False
-                            break
-                    elif 'constraint_scan' in job_name:
-                        job = self.job_dict[label]['constraint_scan'][job_name]
-                        if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
-                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
-                            if successful_server_termination and job.job_status[1]['status'] == 'done':
-                                self.process_constraint_scan_results(label=label, job=job)
-                            elif successful_server_termination and job.job_status[1]['status'] == 'errored':
-                                logger.error(f'Constraint scan job for {label} errored. Cannot create TS guess from scan.')
                             self.timer = False
                             break
                     elif 'irc' in job_name:
