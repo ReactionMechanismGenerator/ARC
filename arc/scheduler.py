@@ -437,6 +437,7 @@ class Scheduler(object):
                 # 3. Generate TSGuess objects for all methods, start with the user guesses
                 if rxn.ts_xyz_guess:
                     rxn.ts_species.ts_guess_priority = True
+                    logger.info(f'TS species {rxn.ts_species.label} has user-provided TS guesses. Setting ts_guess_priority to True.')
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # This is a list of user guesses, could be empty.
                     ts_species.ts_guesses.append(
                         TSGuess(method=f'user guess {i}',
@@ -2995,6 +2996,12 @@ class Scheduler(object):
         """
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
+        
+        # If we were in priority mode but have run out of valid guesses, disable priority to allow fallback.
+        if self.species_dict[label].ts_guess_priority and self.species_dict[label].chosen_ts is None:
+            logger.info(f"Priority TS guess(es) for {label} failed. Disabling priority mode.")
+            self.species_dict[label].ts_guess_priority = False
+
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
         self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
@@ -3015,10 +3022,9 @@ class Scheduler(object):
             else:
                 self.run_composite_job(label)
         elif not self.species_dict[label].ts_guess_priority:
-            # Check if constraint_scan is enforced by the user for this reaction
-            rxn = self.rxn_dict[self.species_dict[label].rxn_index]
-            if getattr(rxn, 'constraint_scan', False) and not getattr(self.species_dict[label], 'constraint_scan_attempted', False):
-                logger.info(f'User requested constraint scan for {label} if initial guess fails. Running scan...')
+            # Check if fallback_scan_only is enforced by the user for this TS species
+            if self.species_dict[label].fallback_scan_only and not getattr(self.species_dict[label], 'constraint_scan_attempted', False):
+                logger.info(f'User requested constraint scan fallback for {label} if initial guess fails. Running scan...')
                 self.species_dict[label].constraint_scan_attempted = True
                 self.run_constraint_scan_for_ts(label)
                 return
@@ -3058,6 +3064,7 @@ class Scheduler(object):
         Returns:
             bool: True if constraint scan was successfully initiated, False otherwise.
         """
+        logger.info(f'\nInitiating constraint scan for TS species {label}...\n')
         # Get reaction object
         if label not in self.species_dict or not self.species_dict[label].is_ts:
             logger.error(f'Species {label} is not a TS, cannot run constraint scan.')

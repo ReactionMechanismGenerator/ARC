@@ -328,6 +328,7 @@ class ARCSpecies(object):
                  keep_mol: bool = False,
                  project_directory: Optional[str] = None,
                  priority: bool = False,
+                 fallback_scan_only: bool = False,
                  ):
         self.t1 = None
         self.ts_number = ts_number
@@ -367,6 +368,7 @@ class ARCSpecies(object):
         self.chosen_ts = None
         self.rxn_zone_atom_indices = None
         self.ts_guess_priority = priority if is_ts else False
+        self.fallback_scan_only = fallback_scan_only if is_ts else False
         self.ts_priority_checks_concluded = False
         self.ts_priority_passed = None
         self.ts_priority_reopted = False
@@ -711,6 +713,8 @@ class ARCSpecies(object):
                 species_dict['ts_report'] = self.ts_report
             if self.ts_guess_priority:
                 species_dict['priority'] = self.ts_guess_priority
+            if self.fallback_scan_only:
+                species_dict['fallback_scan_only'] = self.fallback_scan_only
             if self.ts_priority_checks_concluded:
                 species_dict['priority_checks_concluded'] = self.ts_priority_checks_concluded
             if self.ts_priority_passed is not None:
@@ -866,6 +870,7 @@ class ARCSpecies(object):
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
             self.ts_report = species_dict['ts_report'] if 'ts_report' in species_dict else ''
             self.ts_guess_priority = species_dict.get('priority', self.ts_guess_priority)
+            self.fallback_scan_only = species_dict.get('fallback_scan_only', False)
             self.ts_priority_checks_concluded = species_dict.get('priority_checks_concluded', False)
             self.ts_priority_passed = species_dict.get('priority_passed', None)
             self.ts_priority_reopted = species_dict.get('priority_reopted', False)
