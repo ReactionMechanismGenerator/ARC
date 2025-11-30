@@ -3077,8 +3077,19 @@ class Scheduler(object):
         
         rxn = self.rxn_dict[rxn_index]
         
-        # Identify reaction coordinate
-        coord_info = identify_reaction_coordinate(rxn)
+        # Get existing geometry (e.g. user guess) or create from reactants
+        ts_species = self.species_dict[label]
+        initial_xyz = ts_species.get_xyz(generate=False)
+        
+        if initial_xyz is None:
+            initial_xyz = self._create_reactant_complex_geometry(label)
+            
+        if initial_xyz is None:
+            logger.error(f'Could not obtain or create geometry for {label} constraint scan')
+            return False
+
+        # Identify reaction coordinate, passing the geometry if available
+        coord_info = identify_reaction_coordinate(rxn, xyz=initial_xyz)
         if coord_info is None:
             logger.warning(f'Could not identify reaction coordinate for {label}. '
                           f'Constraint scan fallback not available.')
@@ -3087,12 +3098,6 @@ class Scheduler(object):
         logger.info(f'Identified reaction coordinate for {label}: '
                     f'D={coord_info.get("donor_idx")}, H={coord_info.get("hydrogen_idx")}, '
                     f'A={coord_info.get("acceptor_idx")}')
-        
-        # Create initial geometry from reactants
-        initial_xyz = self._create_reactant_complex_geometry(label)
-        if initial_xyz is None:
-            logger.error(f'Could not create reactant complex geometry for {label}')
-            return False
         
         # Store coord_info in the species for later use
         self.species_dict[label].constraint_scan_coord_info = coord_info

@@ -2,9 +2,11 @@
 Module for identifying and handling reaction coordinates for constraint scans.
 """
 
-from typing import Optional, Dict, TYPE_CHECKING
+from typing import Optional, Dict, TYPE_CHECKING, Union
 
+import numpy as np
 from arc.common import get_logger
+from arc.species.converter import check_xyz_dict
 
 if TYPE_CHECKING:
     from arc.reaction import ARCReaction
@@ -12,78 +14,156 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
-def identify_h_abstraction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
+def identify_h_abstraction_from_xyz(xyz: dict) -> Optional[Dict]:
+    """
+    Identify H-abstraction atoms (H, A, B) purely from geometry.
+    Finds a Hydrogen atom that has exactly two heavy atom neighbors within bonding distance.
+    
+    Args:
+        xyz: ARC xyz dictionary
+        
+    Returns:
+        Dict with keys 'hydrogen_idx', 'heavy1_idx', 'heavy2_idx' or None.
+        Note: Does NOT distinguish Donor vs Acceptor.
+    """
+    if not xyz or 'coords' not in xyz or 'symbols' not in xyz:
+        return None
+        
+    coords = np.array(xyz['coords'])
+    symbols = xyz['symbols']
+    num_atoms = len(symbols)
+    
+    if num_atoms < 3:
+        return None
+        
+    # Simple distance matrix
+    # (N, 3) - (N, 1, 3) -> (N, N, 3)
+    delta = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    dists = np.sqrt(np.sum(delta**2, axis=-1))
+    
+    # Threshold for "bonding" or "close interaction" in a TS
+    # Normal CH bond is ~1.1, TS bond might be ~1.3-1.5.
+    # Heavy-Heavy bond is > 1.4.
+    # Let's check for H atoms having 2 heavy neighbors within ~1.6 Angstroms?
+    # Or simply find the H with the *closest* two heavy atoms.
+    
+    candidates = []
+    
+    for i, sym in enumerate(symbols):
+        if sym == 'H':
+            # Find distances to heavy atoms
+            heavy_indices = [j for j, s in enumerate(symbols) if s != 'H']
+            if len(heavy_indices) < 2:
+                continue
+                
+            # Get distances to all heavy atoms
+            h_dists = [(dists[i, j], j) for j in heavy_indices]
+            h_dists.sort(key=lambda x: x[0])
+            
+            # Check the two closest heavy atoms
+            d1, idx1 = h_dists[0]
+            d2, idx2 = h_dists[1]
+            
+            # If both are reasonably close (e.g. < 2.0 Angstroms for a TS), this is a candidate
+            if d1 < 2.0 and d2 < 2.0:
+                candidates.append({
+                    'hydrogen_idx': i,
+                    'heavy1_idx': idx1,
+                    'heavy2_idx': idx2,
+                    'sum_dist': d1 + d2
+                })
+    
+    if not candidates:
+        return None
+        
+    # Return candidate with smallest sum of bond lengths (likely the active site)
+    best = min(candidates, key=lambda x: x['sum_dist'])
+    return best
+
+
+def identify_h_abstraction_coordinate(rxn: 'ARCReaction', xyz: Optional[dict] = None) -> Optional[Dict]:
     """
     Identify the reaction coordinate for an H-abstraction reaction.
     
-    For H-abstraction: R-H + X· → R· + H-X
-    Need to identify:
-    - Donor atom (R)
-    - Hydrogen atom (H)
-    - Acceptor atom (X)
-    
     Args:
         rxn: ARCReaction object
-        
-    Returns:
-        Dict with keys: 'donor_idx', 'hydrogen_idx', 'acceptor_idx'
-        None if coordinate cannot be identified
+        xyz: Optional xyz dictionary of the TS guess. If provided, geometric identification 
+             will be attempted first.
     """
-    if rxn.family is None:
-        return None
-    
-    # Check if this is H-abstraction family
-    if 'H_Abstraction' not in rxn.family:
-        return None
-
-    formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
-
-    if len(formed_bonds) != 1 or len(broken_bonds) != 1:
-        logger.warning(f"Expected 1 formed and 1 broken bond for H_Abstraction, but got {len(formed_bonds)} formed and {len(broken_bonds)} broken bonds for reaction {rxn.label}.")
-        return None
-
-    breaking_bond = broken_bonds[0]  # (R_idx, H_idx)
-    forming_bond = formed_bonds[0]  # (H_idx, X_idx)
-
-    # Find the common atom (hydrogen)
+    donor_idx = None
     hydrogen_idx = None
-    if breaking_bond[0] in forming_bond:
-        hydrogen_idx = breaking_bond[0]
-    elif breaking_bond[1] in forming_bond:
-        hydrogen_idx = breaking_bond[1]
-
+    acceptor_idx = None
+    
+    # 1. Try Geometry-based identification if xyz is available
+    if xyz:
+        geo_info = identify_h_abstraction_from_xyz(xyz)
+        if geo_info:
+            logger.info(f"Geometry-based identification found H atom {geo_info['hydrogen_idx']} "
+                        f"between heavy atoms {geo_info['heavy1_idx']} and {geo_info['heavy2_idx']}")
+            hydrogen_idx = geo_info['hydrogen_idx']
+            # We don't know which is donor/acceptor yet, assign tentatively
+            donor_idx = geo_info['heavy1_idx']
+            acceptor_idx = geo_info['heavy2_idx']
+    
+    # 2. If no geometry match (or no xyz), fall back to Graph-based identification
     if hydrogen_idx is None:
-        logger.warning(f"Could not identify the transferring hydrogen atom for H_Abstraction in reaction {rxn.label}.")
-        return None
+        if rxn.family is None or 'H_Abstraction' not in rxn.family:
+            return None
 
-    # Identify donor (R) and acceptor (X)
-    donor_idx = breaking_bond[0] if breaking_bond[1] == hydrogen_idx else breaking_bond[1]
-    acceptor_idx = forming_bond[0] if forming_bond[1] == hydrogen_idx else forming_bond[1]
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
 
-    # Verify donor is bonded to H in reactants
-    # Iterate through reactant species to find the one containing the hydrogen atom
-    r_species_with_h = None
-    for r_spc in rxn.r_species:
-        # This is a heuristic check: look for an atom with the same index if indices are preserved,
-        # or we rely on the atom map.
-        # Since we are working with mapped indices, we should use the reaction's reactant/product checks.
-        # A more robust way is to check if the bond (donor_idx, hydrogen_idx) exists in the reactant bonds list.
-        pass
+        if len(formed_bonds) != 1 or len(broken_bonds) != 1:
+            logger.warning(f"Expected 1 formed and 1 broken bond for H_Abstraction...")
+            return None
 
-    r_bonds, _ = rxn.get_bonds()
-    # r_bonds contains tuples of sorted atom indices (0-indexed) present in reactants.
+        breaking_bond = broken_bonds[0]
+        forming_bond = formed_bonds[0]
+
+        if breaking_bond[0] in forming_bond:
+            hydrogen_idx = breaking_bond[0]
+        elif breaking_bond[1] in forming_bond:
+            hydrogen_idx = breaking_bond[1]
+
+        if hydrogen_idx is None:
+            return None
+
+        donor_idx = breaking_bond[0] if breaking_bond[1] == hydrogen_idx else breaking_bond[1]
+        acceptor_idx = forming_bond[0] if forming_bond[1] == hydrogen_idx else forming_bond[1]
+
+    # 3. Robust verification & Assignment using Reactant/Product connectivity
+    # This step is CRITICAL to assign/correct Donor vs Acceptor roles
+    r_bonds, p_bonds = rxn.get_bonds()
     
     bond_dh = tuple(sorted((donor_idx, hydrogen_idx)))
     bond_ah = tuple(sorted((acceptor_idx, hydrogen_idx)))
     
-    donor_bonded = bond_dh in r_bonds
-    acceptor_bonded = bond_ah in r_bonds
+    dh_in_r = bond_dh in r_bonds
+    dh_in_p = bond_dh in p_bonds
+    ah_in_r = bond_ah in r_bonds
+    ah_in_p = bond_ah in p_bonds
     
-    if acceptor_bonded and not donor_bonded:
-        logger.warning(f"Identified Donor {donor_idx} and Acceptor {acceptor_idx} seem swapped based on reactant connectivity. Swapping them.")
+    logger.info(f"Connectivity Check:"
+                f"\n  Donor-H ({donor_idx}-{hydrogen_idx}): In Reactants? {dh_in_r}, In Products? {dh_in_p}"
+                f"\n  Acceptor-H ({acceptor_idx}-{hydrogen_idx}): In Reactants? {ah_in_r}, In Products? {ah_in_p}")
+
+    # Logic: True Donor is Bonded in R, Not in P. True Acceptor is Not in R, Bonded in P.
+    
+    # Case 1: Swapped (Current Donor is actually Acceptor)
+    if (not dh_in_r and dh_in_p) and (ah_in_r and not ah_in_p):
+        logger.warning(f"Swapping Donor/Acceptor based on R/P connectivity logic.")
         donor_idx, acceptor_idx = acceptor_idx, donor_idx
-    elif not donor_bonded and not acceptor_bonded:
-        logger.warning(f"Neither identified Donor {donor_idx} nor Acceptor {acceptor_idx} seem bonded to Hydrogen {hydrogen_idx} in reactants. Check atom mapping.")
+    
+    # Case 2: Both bonded in R? (Ambiguous input, e.g. Water reactant)
+    elif dh_in_r and ah_in_r:
+        # The one that is NOT bonded in products is the true Donor (bond broken).
+        if dh_in_p and not ah_in_p:
+             logger.warning(f"Swapping Donor/Acceptor: Donor bond persists in products, Acceptor bond lost.")
+             donor_idx, acceptor_idx = acceptor_idx, donor_idx
+             
+    # Case 3: Standard correction if we just guessed wrong from geometry
+    elif (not dh_in_r) and (ah_in_r):
+         logger.warning(f"Swapping Donor/Acceptor: Identified Donor not bonded in Reactants.")
+         donor_idx, acceptor_idx = acceptor_idx, donor_idx
 
     logger.info(f"H-Abstraction Coordinate Identification for {rxn.label}:")
     logger.info(f"  Hydrogen Atom Index: {hydrogen_idx + 1} (0-indexed: {hydrogen_idx})")
@@ -97,18 +177,18 @@ def identify_h_abstraction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
     }
 
 
-def identify_reaction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
+def identify_reaction_coordinate(rxn: 'ARCReaction', xyz: Optional[dict] = None) -> Optional[Dict]:
     """
     Identify the reaction coordinate for constraint scan.
     Dispatches to family-specific methods.
     
     Args:
         rxn: ARCReaction object
+        xyz: Optional xyz dictionary (e.g. from TS guess)
         
     Returns:
         Dict with keys depending on reaction type:
         - For H-abstraction: 'donor_idx', 'hydrogen_idx', 'acceptor_idx', 'type'
-        - For other reactions: TBD
         None if coordinate cannot be identified
     """
     if rxn.family is None:
@@ -118,16 +198,12 @@ def identify_reaction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
     family_name = rxn.family
     
     if 'H_Abstraction' in family_name:
-        coord = identify_h_abstraction_coordinate(rxn)
+        coord = identify_h_abstraction_coordinate(rxn, xyz)
         if coord:
             coord['type'] = 'H_Abstraction'
         return coord
     
-    # TODO: Add support for other reaction families:
-    # - Addition reactions
-    # - Elimination reactions
-    # - Substitution reactions
-    # etc.
+    # TODO: Add support for other reaction families
     
     logger.warning(f'Reaction coordinate identification not implemented for family: {family_name}')
     return None
