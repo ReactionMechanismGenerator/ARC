@@ -2587,8 +2587,10 @@ class Scheduler(object):
 
             if not job.fine and self.job_types['fine'] \
                     and not job.level.method_type == 'wavefunction' \
-                    and self.species_dict[label].irc_label is None:
-                # Run opt again using a finer grid.
+                    and self.species_dict[label].irc_label is None \
+                    and not self.species_dict[label].is_ts:
+                # Run opt again using a finer grid for non-TS species.
+                # For TS species, check frequencies first, then decide if fine opt is needed.
                 # Save the optimized geometry as ``initial_xyz``, since trsh looks there.
                 if multi_species:
                     for spc in self.species_list:
@@ -2743,7 +2745,20 @@ class Scheduler(object):
                                  skip_nmd=self.skip_nmd,
                                  )
                     if self.species_dict[label].ts_checks['NMD'] is False:
-                        if self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
+                        # Check if we should try fine optimization before switching TS
+                        should_try_fine_opt = (
+                            self.job_types['fine'] 
+                            and not job.fine
+                            and not getattr(self.species_dict[label], 'ts_fine_attempted', False)
+                        )
+                        if should_try_fine_opt:
+                            logger.info(f'TS {label} did not pass the normal mode displacement check. '
+                                        f'Running a fine optimization before trying a different TS guess...')
+                            self.species_dict[label].ts_fine_attempted = True
+                            self.run_opt_job(label, fine=True)
+                            return
+                        # Priority TS fine reopt logic (for backward compatibility)
+                        elif self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
                                 and self.species_dict[label].fine_reopt and not self.species_dict[label].ts_priority_reopted:
                             logger.info(f'TS {label} did not pass the normal mode displacement check. '
                                         f'Running a fine re-optimization as requested...')
@@ -2827,7 +2842,20 @@ class Scheduler(object):
                     logger.info(f'TS {label} did not pass the negative frequency check. '
                                 f'Status is:\n{self.species_dict[label].ts_checks}\n'
                                 f'Searching for a better TS conformer...')
-                if self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
+                # Check if we should try fine optimization before switching TS
+                should_try_fine_opt = (
+                    self.job_types['fine']
+                    and not job.fine
+                    and not getattr(self.species_dict[label], 'ts_fine_attempted', False)
+                )
+                if should_try_fine_opt:
+                    logger.info(f'TS {label} did not pass the negative frequency check. '
+                                f'Running a fine optimization before trying a different TS guess...')
+                    self.species_dict[label].ts_fine_attempted = True
+                    self.run_opt_job(label, fine=True)
+                    return False
+                # Priority TS fine reopt logic (for backward compatibility)
+                elif self.species_dict[label].ts_guess_priority and self.species_dict[label].xyz_is_final \
                         and self.species_dict[label].fine_reopt and not self.species_dict[label].ts_priority_reopted:
                     logger.info(f'TS {label} did not pass the negative frequency check. '
                                 f'Running a fine re-optimization as requested...')
@@ -2959,6 +2987,9 @@ class Scheduler(object):
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
+        # Reset the fine opt attempt flag for the new TS guess
+        if hasattr(self.species_dict[label], 'ts_fine_attempted'):
+            self.species_dict[label].ts_fine_attempted = False
         # If we're still in priority-validation mode, keep existing ts_checks (e.g., NMD failure) so that the
         # priority fallback logic can see the failing check and respond accordingly.
         if not (self.species_dict[label].ts_guess_priority and not self.species_dict[label].ts_priority_checks_concluded):

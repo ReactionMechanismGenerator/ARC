@@ -301,14 +301,24 @@ class GaussianAdapter(JobAdapter):
                             input_dict['trsh'] += ' '
                         input_dict['trsh'] += 'scf=(tight,direct)'
                 if self.is_ts:
-                    keywords.extend(['tight', 'maxstep=5'])
+                    keywords.extend(['tight', 'maxstep=15'])
                 else:
                     keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
+            elif self.is_ts:
+                # For coarse TS opt: use maxstep=20
+                keywords.append('maxstep=20')
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 
         elif self.job_type == 'freq':
-            input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
+            if self.is_ts:
+                input_dict['job_type_2'] = f'freq IOp(7/33=1) IOp(2/9=2000) integral=(grid=ultrafine, Acc2E=12)'
+                # Add SCF parameters for TS freq
+                if input_dict['trsh']:
+                    input_dict['trsh'] += ' '
+                input_dict['trsh'] += 'scf=(xqc,maxcycle=512)'
+            else:
+                input_dict['job_type_2'] = f'freq IOp(7/33=1) scf=(tight, direct) integral=(grid=ultrafine, {integral_algorithm})'
 
         elif self.job_type == 'optfreq':
             input_dict['job_type_2'] = 'freq IOp(7/33=1)'
@@ -368,14 +378,35 @@ class GaussianAdapter(JobAdapter):
             input_dict['job_type_1'] = f'irc=(CalcAll, {self.irc_direction}, maxpoints=50, stepsize=7)'
 
         if self.is_ts:
-            ts_keywords_to_add = ['NoSymm', 'Geom=Cartesian']
+            # Determine whether to use Geom=Cartesian or Geom=AllCheck
+            has_checkfile = self.checkfile is not None and os.path.isfile(self.checkfile)
+            
+            if self.job_type == 'freq' and has_checkfile:
+                # For TS freq jobs with checkfile, use Geom=AllCheck
+                ts_keywords_to_add = ['NoSymm', 'Geom=AllCheck']
+            elif self.fine and has_checkfile and self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite']:
+                # For fine TS opt with checkfile, use Geom=AllCheck
+                ts_keywords_to_add = ['NoSymm', 'Geom=AllCheck']
+            else:
+                # For coarse TS opt or when no checkfile, use Geom=Cartesian
+                ts_keywords_to_add = ['NoSymm', 'Geom=Cartesian']
+            
             for keyword in ts_keywords_to_add:
                 if keyword.lower() not in input_dict['keywords'].lower():
                     input_dict['keywords'] = f"{input_dict['keywords']} {keyword}".strip()
-            ts_scf_parameters = ['xqc', 'novaracc', 'maxcycle=512']
-            if input_dict['trsh']:
-                input_dict['trsh'] += ' '
-            input_dict['trsh'] += f"scf=({','.join(ts_scf_parameters)})"
+            
+            # Add SCF parameters for TS jobs
+            # Check if scf parameters are already in trsh to avoid duplication
+            if 'scf=' not in input_dict['trsh'].lower():
+                if self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite']:
+                    # For TS opt: use xqc, novaracc and maxcycle=256
+                    ts_scf_parameters = ['xqc', 'novaracc', 'maxcycle=256']
+                else:
+                    # For IRC and other TS jobs: use original parameters
+                    ts_scf_parameters = ['xqc', 'novaracc', 'maxcycle=512']
+                if input_dict['trsh']:
+                    input_dict['trsh'] += ' '
+                input_dict['trsh'] += f"scf=({','.join(ts_scf_parameters)})"
 
         for constraint_tuple in self.constraints:
             constraint_type = constraint_type_dict[len(constraint_tuple[0])]

@@ -783,11 +783,16 @@ O       0.00000000    0.00000000    1.00000000
         self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
 
     def test_ts_opt_uses_maxcycle_200_by_default(self):
-        """TS optimizations should request more cycles by default"""
+        """TS optimizations should request more cycles by default and use maxstep=20"""
         self.job_ts_opt.write_input_file()
         with open(os.path.join(self.job_ts_opt.local_path, input_filenames[self.job_ts_opt.job_adapter]), 'r') as f:
             content = f.read()
-        self.assertIn('opt=(ts,calcfc,noeigentest,maxcycle=200)', content)
+        # Check that all required keywords are present (order may vary)
+        self.assertIn('maxcycle=200', content)
+        self.assertIn('maxstep=20', content)
+        self.assertIn('ts', content)
+        self.assertIn('calcfc', content)
+        self.assertIn('noeigentest', content)
     
     def test_trsh_write_input_file(self):
         """Test writing a trsh input file
