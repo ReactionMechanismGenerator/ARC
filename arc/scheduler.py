@@ -2354,13 +2354,19 @@ class Scheduler(object):
                     min_candidate_energy = tsg.energy
                     selected_i = tsg.index
         # If no energy-bearing guess is available, fall back to any unused successful guess with coordinates
+        # Only use this fallback if there are NO unused successful TS guesses with energies at all
         if selected_i is None and unused_successful_tsgs:
-            fallback_tsg = next((tsg for tsg in unused_successful_tsgs if tsg.get_xyz() is not None), None)
-            if fallback_tsg is not None:
-                selected_i = fallback_tsg.index
-                if not priority_validation:
-                    fallback_label = fallback_tsg.index if fallback_tsg.index is not None else fallback_tsg.method
-                    logger.info(f'No TS guess with parsed energy available; falling back to guess {fallback_label}.')
+            # Check if any unused successful TS guesses have energy values
+            has_energy_candidates = any(tsg.success and tsg.energy is not None 
+                                       and tsg.index not in self.species_dict[label].chosen_ts_list
+                                       for tsg in self.species_dict[label].ts_guesses)
+            if not has_energy_candidates:
+                fallback_tsg = next((tsg for tsg in unused_successful_tsgs if tsg.get_xyz() is not None), None)
+                if fallback_tsg is not None:
+                    selected_i = fallback_tsg.index
+                    if not priority_validation:
+                        fallback_label = fallback_tsg.index if fallback_tsg.index is not None else fallback_tsg.method
+                        logger.info(f'No TS guess with parsed energy available; falling back to guess {fallback_label}.')
         if selected_i is None:
             if priority_validation:
                 # Priority guess failed checks; avoid fatal logging while we fall back to automated TS guesses.
@@ -2418,7 +2424,10 @@ class Scheduler(object):
         energy_ordered = [tsg for tsg in queue_candidates if tsg.energy is not None
                           and (tsg.imaginary_freqs is None or check_imaginary_frequencies(tsg.imaginary_freqs))]
         energy_ordered.sort(key=lambda tsg: tsg.energy)
-        fallback_ordered = [tsg for tsg in queue_candidates if tsg.energy is None and tsg.get_xyz() is not None]
+        # Only include TS guesses without energy if no energy-bearing options exist
+        fallback_ordered = []
+        if not energy_ordered:
+            fallback_ordered = [tsg for tsg in queue_candidates if tsg.energy is None and tsg.get_xyz() is not None]
         queue_order = energy_ordered + fallback_ordered
         if queue_order:
             queue_txt = ', '.join([f'{tsg.index} ({relative_energies[self.species_dict[label].ts_guesses.index(tsg)]:.2f} kJ/mol)'
