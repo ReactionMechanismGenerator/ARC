@@ -60,6 +60,31 @@ def identify_h_abstraction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
     donor_idx = breaking_bond[0] if breaking_bond[1] == hydrogen_idx else breaking_bond[1]
     acceptor_idx = forming_bond[0] if forming_bond[1] == hydrogen_idx else forming_bond[1]
 
+    # Verify donor is bonded to H in reactants
+    # Iterate through reactant species to find the one containing the hydrogen atom
+    r_species_with_h = None
+    for r_spc in rxn.r_species:
+        # This is a heuristic check: look for an atom with the same index if indices are preserved,
+        # or we rely on the atom map.
+        # Since we are working with mapped indices, we should use the reaction's reactant/product checks.
+        # A more robust way is to check if the bond (donor_idx, hydrogen_idx) exists in the reactant bonds list.
+        pass
+
+    r_bonds, _ = rxn.get_bonds()
+    # r_bonds contains tuples of sorted atom indices (0-indexed) present in reactants.
+    
+    bond_dh = tuple(sorted((donor_idx, hydrogen_idx)))
+    bond_ah = tuple(sorted((acceptor_idx, hydrogen_idx)))
+    
+    donor_bonded = bond_dh in r_bonds
+    acceptor_bonded = bond_ah in r_bonds
+    
+    if acceptor_bonded and not donor_bonded:
+        logger.warning(f"Identified Donor {donor_idx} and Acceptor {acceptor_idx} seem swapped based on reactant connectivity. Swapping them.")
+        donor_idx, acceptor_idx = acceptor_idx, donor_idx
+    elif not donor_bonded and not acceptor_bonded:
+        logger.warning(f"Neither identified Donor {donor_idx} nor Acceptor {acceptor_idx} seem bonded to Hydrogen {hydrogen_idx} in reactants. Check atom mapping.")
+
     logger.info(f"H-Abstraction Coordinate Identification for {rxn.label}:")
     logger.info(f"  Hydrogen Atom Index: {hydrogen_idx + 1} (0-indexed: {hydrogen_idx})")
     logger.info(f"  Donor Atom Index (Breaking Bond): {donor_idx + 1} (0-indexed: {donor_idx})")
