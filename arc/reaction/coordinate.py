@@ -60,6 +60,11 @@ def identify_h_abstraction_coordinate(rxn: 'ARCReaction') -> Optional[Dict]:
     donor_idx = breaking_bond[0] if breaking_bond[1] == hydrogen_idx else breaking_bond[1]
     acceptor_idx = forming_bond[0] if forming_bond[1] == hydrogen_idx else forming_bond[1]
 
+    logger.info(f"H-Abstraction Coordinate Identification for {rxn.label}:")
+    logger.info(f"  Hydrogen Atom Index: {hydrogen_idx + 1} (0-indexed: {hydrogen_idx})")
+    logger.info(f"  Donor Atom Index (Breaking Bond): {donor_idx + 1} (0-indexed: {donor_idx})")
+    logger.info(f"  Acceptor Atom Index (Forming Bond): {acceptor_idx + 1} (0-indexed: {acceptor_idx})")
+
     return {
         'donor_idx': donor_idx,
         'hydrogen_idx': hydrogen_idx,
