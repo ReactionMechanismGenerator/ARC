@@ -57,6 +57,12 @@ servers = {
         'un': '<username>',
         'key': 'path_to_rsa_key',
     },
+    'zeus': {
+        'cluster_soft': 'PBS',
+        'address': 'zeus.technion.ac.il',
+        'un': 'calvin.p',
+        'key': '/home/calvin/.ssh/id_ed25519',
+    },
     'local': {
         'cluster_soft': 'HTCondor',
         'un': '<username>',
@@ -71,7 +77,7 @@ servers = {
 # Keeping this dictionary empty will cause ARC to scan for software on the servers defined above
 global_ess_settings = {
     'cfour': 'local',
-    'gaussian': ['local', 'server2'],
+    'gaussian': ['local', 'server2', 'zeus'],
     'gcn': 'local',
     'mockter': 'local',
     'molpro': ['local', 'server2'],

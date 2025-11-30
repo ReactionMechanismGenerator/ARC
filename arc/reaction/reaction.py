@@ -101,6 +101,7 @@ class ARCReaction(object):
                  species_list: Optional[List[ARCSpecies]] = None,
                  preserve_param_in_scan: Optional[list] = None,
                  kinetics: Dict[str, Union[float, Tuple[float, str]]] = None,
+                 constraint_scan: bool = False,
                  ):
         self.arrow = ' <=> '
         self.plus = ' + '
@@ -119,6 +120,7 @@ class ARCReaction(object):
         self._atom_map = None
         self._charge = charge
         self._multiplicity = multiplicity
+        self.constraint_scan = constraint_scan
         if reaction_dict is not None:
             # Reading from a dictionary
             self.from_dict(reaction_dict=reaction_dict, species_list=species_list)
@@ -291,6 +293,8 @@ class ARCReaction(object):
         reaction_dict['label'] = self.label
         if self.ts_label is not None:
             reaction_dict['ts_label'] = self.ts_label
+        if self.constraint_scan:
+            reaction_dict['constraint_scan'] = self.constraint_scan
         return reaction_dict
 
     def from_dict(self,
@@ -309,6 +313,7 @@ class ARCReaction(object):
         if 'family' in reaction_dict and reaction_dict['family'] is not None:
             self.family = reaction_dict['family']
         self.family_own_reverse = reaction_dict['family_own_reverse'] if 'family_own_reverse' in reaction_dict else False
+        self.constraint_scan = reaction_dict['constraint_scan'] if 'constraint_scan' in reaction_dict else False
         self.set_label_reactants_products(species_list)
         if not (len(self.reactants) * len(self.products)):
             raise InputError(f'Cannot determine reactants and/or products labels for reaction {self.label}')

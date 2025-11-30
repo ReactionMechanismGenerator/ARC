@@ -46,6 +46,7 @@ from arc.job.trsh import (scan_quality_check,
                           trsh_scan_job,
                           )
 from arc.level import Level
+from arc.reaction.coordinate import identify_reaction_coordinate, create_constraint_scan_input
 from arc.species.species import (ARCSpecies,
                                  are_coords_compliant_with_graph,
                                  determine_rotor_symmetry,
@@ -730,6 +731,16 @@ class Scheduler(object):
                                 self.check_scan_job(label=label, job=job)
                             elif successful_server_termination and job.job_status[1]['status'] == 'errored':
                                  self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level)
+                            self.timer = False
+                            break
+                    elif 'constraint_scan' in job_name:
+                        job = self.job_dict[label]['constraint_scan'][job_name]
+                        if not (job.job_id in self.server_job_ids and job.job_id not in self.completed_incore_jobs):
+                            successful_server_termination = self.end_job(job=job, label=label, job_name=job_name)
+                            if successful_server_termination and job.job_status[1]['status'] == 'done':
+                                self.process_constraint_scan_results(label=label, job=job)
+                            elif successful_server_termination and job.job_status[1]['status'] == 'errored':
+                                logger.error(f'Constraint scan job for {label} errored. Cannot create TS guess from scan.')
                             self.timer = False
                             break
                     elif 'irc' in job_name:
@@ -3002,8 +3013,23 @@ class Scheduler(object):
             else:
                 self.run_composite_job(label)
         elif not self.species_dict[label].ts_guess_priority:
+            # Check if constraint_scan is enforced by the user for this reaction
+            rxn = self.rxn_dict[self.species_dict[label].rxn_index]
+            if getattr(rxn, 'constraint_scan', False) and not getattr(self.species_dict[label], 'constraint_scan_attempted', False):
+                logger.info(f'User requested constraint scan for {label} if initial guess fails. Running scan...')
+                self.species_dict[label].constraint_scan_attempted = True
+                self.run_constraint_scan_for_ts(label)
+                return
+
             # No viable TS guess selected (e.g., only a failed user guess). Fall back to automated TS guessing.
             if self.species_dict[label].tsg_spawned and self.species_dict[label].ts_guesses_exhausted:
+                # NEW: Try constraint scan as last resort
+                if not getattr(self.species_dict[label], 'constraint_scan_attempted', False):
+                    logger.info(f'All TS guesses for {label} exhausted. Attempting constraint scan fallback...')
+                    self.species_dict[label].constraint_scan_attempted = True
+                    success = self.run_constraint_scan_for_ts(label)
+                    if success:
+                        return
                 logger.info(f'All TS guesses for {label} were already generated and exhausted; '
                             f'not spawning another round.')
                 return
@@ -3012,6 +3038,210 @@ class Scheduler(object):
             if self.species_dict[label].rxn_index in self.rxn_dict:
                 self.rxn_dict[self.species_dict[label].rxn_index].ts_species.tsg_spawned = False
             self.spawn_ts_jobs()
+
+    def run_constraint_scan_for_ts(self, label: str) -> bool:
+        """
+        Run a constraint scan along the reaction coordinate to find TS guess.
+        
+        Steps:
+        1. Identify reaction coordinate (D-H-A atoms)
+        2. Create constraint scan job
+        3. Parse results to find maximum
+        4. Create new TS guess from maximum
+        5. Optimize as TS
+        
+        Args:
+            label (str): The TS species label.
+            
+        Returns:
+            bool: True if constraint scan was successfully initiated, False otherwise.
+        """
+        # Get reaction object
+        if label not in self.species_dict or not self.species_dict[label].is_ts:
+            logger.error(f'Species {label} is not a TS, cannot run constraint scan.')
+            return False
+        
+        rxn_index = self.species_dict[label].rxn_index
+        if rxn_index not in self.rxn_dict:
+            logger.error(f'No reaction found for TS {label}')
+            return False
+        
+        rxn = self.rxn_dict[rxn_index]
+        
+        # Identify reaction coordinate
+        coord_info = identify_reaction_coordinate(rxn)
+        if coord_info is None:
+            logger.warning(f'Could not identify reaction coordinate for {label}. '
+                          f'Constraint scan fallback not available.')
+            return False
+        
+        logger.info(f'Identified reaction coordinate for {label}: '
+                    f'D={coord_info.get("donor_idx")}, H={coord_info.get("hydrogen_idx")}, '
+                    f'A={coord_info.get("acceptor_idx")}')
+        
+        # Create initial geometry from reactants
+        initial_xyz = self._create_reactant_complex_geometry(label)
+        if initial_xyz is None:
+            logger.error(f'Could not create reactant complex geometry for {label}')
+            return False
+        
+        # Store coord_info in the species for later use
+        self.species_dict[label].constraint_scan_coord_info = coord_info
+        
+        # Run constraint scan job
+        logger.info(f'Starting constraint scan for {label}...')
+        self.run_job(
+            label=label,
+            xyz=initial_xyz,
+            level_of_theory=self.ts_guess_level,
+            job_type='constraint_scan',
+        )
+        
+        return True
+
+    def _create_reactant_complex_geometry(self, label: str) -> Optional[dict]:
+        """
+        Create an initial geometry with reactants in close proximity.
+        This is the starting point for the constraint scan.
+        
+        Args:
+            label (str): The TS species label.
+            
+        Returns:
+            Optional[dict]: XYZ dict with reactants positioned close together, or None if failed.
+        """
+        rxn_index = self.species_dict[label].rxn_index
+        if rxn_index not in self.rxn_dict:
+            return None
+        
+        rxn = self.rxn_dict[rxn_index]
+        
+        # For now, use a simple approach: take the first conformer of each reactant
+        # and place them at a reasonable distance
+        
+        # TODO: Implement more sophisticated geometry generation
+        # Options:
+        # 1. Use molecular mechanics to pre-position reactants
+        # 2. Use heuristics based on reaction family
+        # 3. Use RMG's TS geometry estimation
+        
+        # For H-abstraction: R-H + X·
+        # Position X· near the H atom at ~2.5 Angstrom
+        
+        if not rxn.r_species or len(rxn.r_species) < 2:
+            logger.error(f'Reaction {rxn_index} does not have sufficient reactants')
+            return None
+        
+        # Get geometries from reactant species
+        # Assume reactants are already optimized and available in species_dict
+        reactant_labels = [r.label for r in rxn.r_species]
+        
+        # For simplicity, concatenate reactant XYZs
+        # This is a naive approach - actual implementation should be more sophisticated
+        combined_coords = []
+        combined_symbols = []
+        
+        for r_label in reactant_labels:
+            if r_label not in self.species_dict:
+                logger.error(f'Reactant {r_label} not found in species_dict')
+                return None
+            
+            r_species = self.species_dict[r_label]
+            r_xyz = r_species.get_xyz()
+            
+            if r_xyz is None or 'coords' not in r_xyz:
+                logger.error(f'No geometry available for reactant {r_label}')
+                return None
+            
+            combined_symbols.extend(r_xyz['symbols'])
+            combined_coords.extend(r_xyz['coords'])
+        
+        # Create combined XYZ
+        combined_xyz = {
+            'symbols': tuple(combined_symbols),
+            'isotopes': tuple([None] * len(combined_symbols)),
+            'coords': tuple(combined_coords)
+        }
+        
+        logger.info(f'Created initial reactant complex geometry for {label} with {len(combined_symbols)} atoms')
+        
+        return combined_xyz
+
+    def process_constraint_scan_results(self, label: str, job) -> bool:
+        """
+        Process constraint scan results and create TS guess from maximum.
+        
+        Args:
+            label (str): The TS species label.
+            job: The completed constraint scan job.
+            
+        Returns:
+            bool: True if successfully processed, False otherwise.
+        """
+        from arc.species.species import TSGuess
+        
+        logger.info(f'Processing constraint scan results for {label}...')
+        
+        # Parse scan energies using the parser
+        try:
+            # Get the parser for this job
+            from arc.parser.factory import parser_factory
+            job_parser = parser_factory(job.software, job.local_path_to_output_file)
+            
+            if job_parser is None:
+                logger.error(f'Could not create parser for constraint scan job')
+                return False
+            
+            # Parse energies
+            energies, _ = job_parser.parse_1d_scan_energies()
+            
+            if energies is None or len(energies) == 0:
+                logger.error(f'Could not parse constraint scan energies for {label}')
+                return False
+            
+            # Find maximum energy point
+            max_idx = energies.index(max(energies))
+            max_energy = max(energies)
+            logger.info(f'Maximum energy found at scan point {max_idx} '
+                        f'with relative energy {max_energy:.2f} kJ/mol')
+            
+            # Parse scan conformers
+            scan_conformers = job_parser.parse_scan_conformers()
+            
+            if scan_conformers is None or scan_conformers.empty:
+                logger.error(f'Could not parse scan geometries for {label}')
+                return False
+            
+            # Extract geometry at maximum
+            max_geometry = scan_conformers.iloc[max_idx]['xyz']
+            
+            # Create new TS guess from this geometry
+            new_tsg = TSGuess(
+                method='constraint_scan',
+                xyz=max_geometry,
+                index=len(self.species_dict[label].ts_guesses),
+                success=True,
+                energy=None,  # Will be calculated during opt
+            )
+            
+            self.species_dict[label].ts_guesses.append(new_tsg)
+            self.species_dict[label].chosen_ts = new_tsg.index
+            self.species_dict[label].ts_guesses_exhausted = False
+            
+            # Now run TS optimization from this guess
+            logger.info(f'Created TS guess {new_tsg.index} from constraint scan maximum. '
+                        f'Starting TS optimization for {label}...')
+            
+            if not self.composite_method:
+                self.run_opt_job(label, fine=self.fine_only)
+            else:
+                self.run_composite_job(label)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f'Error processing constraint scan results for {label}: {e}')
+            return False
 
     def check_sp_job(self,
                      label: str,

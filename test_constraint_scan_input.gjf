@@ -1,0 +1,28 @@
+%chk=check.chk
+%mem=4GB
+%nprocshared=4
+
+#P B3LYP/6-31G(d) Opt=(ModRedundant, CalcFC, NoEigenTest, MaxStep=5) integral=(grid=ultrafine, Acc2E=12) scf=(tight, direct)
+
+Test constraint scan for H-abstraction: CH4 + OH -> CH3 + H2O
+
+0 2
+C   0.000000    0.000000    0.000000
+H   0.000000    0.000000    1.089000
+H   1.027479    0.000000   -0.363000
+H  -0.513739   -0.889981   -0.363000
+H  -0.513739    0.889981   -0.363000
+O   2.500000    0.000000    0.000000
+H   3.000000    0.000000    0.500000
+
+
+B 6 3 F
+
+--Link1--
+%chk=check.chk
+%mem=4GB
+%nprocshared=4
+
+#P B3LYP/6-31G(d) Opt=ModRedundant Geom=AllCheck Guess=Read integral=(grid=ultrafine, Acc2E=12) scf=(tight, direct)
+
+B 1 3 S 10 0.100

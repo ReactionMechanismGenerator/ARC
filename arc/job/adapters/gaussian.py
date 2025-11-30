@@ -353,6 +353,41 @@ class GaussianAdapter(JobAdapter):
             for scan in scans_strings:
                 input_dict['scan'] += f'D {scan} S {int(360 / self.scan_res)} {self.scan_res:.1f}\n'
 
+        elif self.job_type == 'constraint_scan':
+            # Constraint scan for TS search
+            # Get constraint information from species
+            coord_info = None
+            if hasattr(self.species[0], 'constraint_scan_coord_info'):
+                coord_info = self.species[0].constraint_scan_coord_info
+            
+            if coord_info is None:
+                raise ValueError(f'Constraint scan job {self.job_name} requires coord_info in species')
+            
+            donor = coord_info.get('donor_idx')
+            hydrogen = coord_info.get('hydrogen_idx')
+            acceptor = coord_info.get('acceptor_idx')
+            nsteps = self.args.get('scan_nsteps', 25)
+            stepsize = self.args.get('scan_stepsize', 0.05)
+            
+            if donor is None or hydrogen is None or acceptor is None:
+                raise ValueError('Constraint scan requires donor, hydrogen, and acceptor indices')
+            
+            # Use ModRedundant for constraint scan
+            input_dict['job_type_1'] = f'opt=(modredundant, calcfc, noeigentest, maxStep=5) ' \
+                                       f'integral=(grid=ultrafine, {integral_algorithm})'
+            if input_dict['trsh']:
+                input_dict['trsh'] += ' '
+            input_dict['trsh'] += 'scf=(tight, direct)'
+            
+            # Create constraint scan input using the coordinate module
+            from arc.reaction.coordinate import create_constraint_scan_input
+            input_dict['scan'] = create_constraint_scan_input(
+                coord_info=coord_info,
+                nsteps=nsteps,
+                stepsize=stepsize,
+                scan_type='distance'
+            )
+
         elif self.job_type == 'irc':
             if self.fine:
                 # Note that the Acc2E argument is not available in Gaussian03

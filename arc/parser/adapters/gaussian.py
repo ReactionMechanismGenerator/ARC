@@ -338,7 +338,12 @@ class GaussianParser(ESSAdapter, ABC):
         angle = []
 
         scan_pivot_atoms = self.load_scan_pivot_atoms()
-        internal_coord = f"D({','.join(str(i) for i in scan_pivot_atoms)})"
+        if len(scan_pivot_atoms) == 2:
+            internal_coord = f"R({','.join(str(i) for i in scan_pivot_atoms)})"
+        elif len(scan_pivot_atoms) == 3:
+            internal_coord = f"A({','.join(str(i) for i in scan_pivot_atoms)})"
+        else:
+            internal_coord = f"D({','.join(str(i) for i in scan_pivot_atoms)})"
 
         with open(self.log_file_path, 'r') as f:
             for line in f:
@@ -367,12 +372,41 @@ class GaussianParser(ESSAdapter, ABC):
         if not vlist:
             return None, None
 
+        scan_args = parse_scan_args(self.log_file_path)
+        
         if rigid_scan:
             try:
                 scan_angle_resolution_deg = self.load_scan_angle()
             except AttributeError:
                 return None, None
             angle = [i * scan_angle_resolution_deg for i in range(len(vlist))]
+        elif scan_args and scan_args.get('step') and scan_args.get('step_size'):
+             # Relaxed scan with known step size
+             # Try to find initial value
+             initial_val = 0.0
+             with open(self.log_file_path, 'r') as f:
+                 for line in f:
+                     if internal_coord in line and 'Scan' not in line:
+                         try:
+                             initial_val = float(line.strip().split()[3])
+                             break 
+                         except (IndexError, ValueError): pass
+             
+             # If vlist has more entries than steps + 1, it likely includes previous job steps (Link0)
+             # The scan steps are likely the LAST (step + 1) entries.
+             expected_points = scan_args['step'] + 1
+             if len(vlist) >= expected_points:
+                 # Assuming the scan corresponds to the last points
+                 # We generate angles for the scan points
+                 scan_angles = [initial_val + i * scan_args['step_size'] for i in range(expected_points)]
+                 
+                 # For the previous points, we just replicate the initial val or leave them (but we need equal length)
+                 # A simple heuristic: padding the beginning
+                 padding = [initial_val] * (len(vlist) - expected_points)
+                 angle = padding + scan_angles
+             else:
+                 # Fallback if vlist is shorter (e.g. crashed)
+                 angle = [initial_val + i * scan_args['step_size'] for i in range(len(vlist))]
         else:
             angle = np.array(angle, float)
             if len(angle) != len(vlist):
@@ -772,8 +806,10 @@ class GaussianParser(ESSAdapter, ABC):
                 if reached_input_spec_section:
                     terms = line.split()
                     if len(terms) == 0:
-                        # finished reading specs
-                        break
+                        # finished reading specs for this section, continue searching
+                        reached_input_spec_section = False
+                        line = f.readline()
+                        continue
                     if terms[0] == 'D':
                         action_index = 5  # dihedral angle with four terms
                     elif terms[0] == 'A':
@@ -975,30 +1011,33 @@ def parse_scan_args(file_path: str) -> dict:
                  'step': 0, 'step_size': 0, 'n_atom': 0}
     try:
         # g09, g16
-        scan_blk = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
-                                    'Isotopes and Nuclear Properties', regex=False)[0][1:-1]
+        scan_blks = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
+                                     'Isotopes and Nuclear Properties', regex=False, block_count=-1)
     except IndexError:  # Cannot find any block
         # g03
         scan_blk_1 = parse_str_blocks(file_path, 'The following ModRedundant input section has been read:',
                                       'GradGradGradGrad', regex=False)[0][1:-2]
         scan_blk_2 = parse_str_blocks(file_path, 'NAtoms=',
                                       'One-electron integrals computed', regex=False)[0][:1]
-        scan_blk = scan_blk_1 + scan_blk_2
+        scan_blks = [scan_blk_1 + scan_blk_2]
+    
     scan_pat = r'[DBA]?(\s+\d+){2,4}\s+S\s+\d+[\s\d.]+'
     frz_pat = r'[DBA]?(\s+\d+){2,4}\s+F'
     value_pat = r'[\d.]+'
-    for line in scan_blk:
-        if re.search(scan_pat, line.strip()):
-            values = re.findall(value_pat, line)
-            scan_len = len(values) - 2  # atom indexes + step + stepsize
-            scan_args['scan'] = [int(values[i]) for i in range(scan_len)]
-            scan_args['step'] = int(values[-2])
-            scan_args['step_size'] = float(values[-1])
-        if re.search(frz_pat, line.strip()):
-            values = re.findall(value_pat, line)
-            scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
-        if 'NAtoms' in line:
-            scan_args['n_atom'] = int(line.split()[1])
+    
+    for scan_blk in scan_blks:
+        for line in scan_blk:
+            if re.search(scan_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_len = len(values) - 2  # atom indexes + step + stepsize
+                scan_args['scan'] = [int(values[i]) for i in range(scan_len)]
+                scan_args['step'] = int(values[-2])
+                scan_args['step_size'] = float(values[-1])
+            if re.search(frz_pat, line.strip()):
+                values = re.findall(value_pat, line)
+                scan_args['freeze'].append([int(values[i]) for i in range(len(values))])
+            if 'NAtoms' in line:
+                scan_args['n_atom'] = int(line.split()[1])
     return scan_args
 
 
