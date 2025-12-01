@@ -732,7 +732,31 @@ class Scheduler(object):
                             if successful_server_termination and job.job_status[1]['status'] == 'done':
                                 self.process_constraint_scan_results(label=label, job=job)
                             elif successful_server_termination and job.job_status[1]['status'] == 'errored':
-                                logger.error(f'Constraint scan job for {label} errored. Cannot create TS guess from scan.')
+                                # Check if we should retry with swapped donor/acceptor
+                                if not hasattr(self.species_dict[label], 'constraint_scan_retries'):
+                                    self.species_dict[label].constraint_scan_retries = 0
+                                
+                                if self.species_dict[label].constraint_scan_retries == 0:
+                                    logger.warning(f'Constraint scan job for {label} errored. '
+                                                   f'Swapping Donor/Acceptor and retrying...')
+                                    
+                                    # Swap donor and acceptor
+                                    coord_info = self.species_dict[label].constraint_scan_coord_info
+                                    coord_info['donor_idx'], coord_info['acceptor_idx'] = \
+                                        coord_info['acceptor_idx'], coord_info['donor_idx']
+                                    
+                                    self.species_dict[label].constraint_scan_retries += 1
+                                    
+                                    # Re-submit job (skip run_constraint_scan_for_ts to avoid re-identification)
+                                    self.run_job(
+                                        label=label,
+                                        xyz=job.xyz,
+                                        level_of_theory=self.ts_guess_level,
+                                        job_type='constraint_scan',
+                                    )
+                                else:
+                                    logger.error(f'Constraint scan job for {label} errored (retry failed). '
+                                                 f'Cannot create TS guess from scan.')
                             self.timer = False
                             break
                     elif 'scan' in job_name and 'directed' not in job_name:

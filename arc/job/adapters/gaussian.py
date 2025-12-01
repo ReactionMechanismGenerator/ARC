@@ -373,7 +373,7 @@ class GaussianAdapter(JobAdapter):
                 raise ValueError('Constraint scan requires donor, hydrogen, and acceptor indices')
             
             # Use ModRedundant for constraint scan
-            input_dict['job_type_1'] = f'opt=(modredundant, calcfc, noeigentest, maxStep=5) ' \
+            input_dict['job_type_1'] = f'opt=(modredundant, calcfc, noeigentest, maxStep=5, MaxCycle=200) ' \
                                        f'integral=(grid=ultrafine, {integral_algorithm})'
             if input_dict['trsh']:
                 input_dict['trsh'] += ' '
