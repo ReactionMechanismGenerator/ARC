@@ -8,12 +8,14 @@ This module contains unit tests of the arc.reaction.reaction module
 from itertools import permutations
 import os
 import shutil
+import tempfile
 import time
 import unittest
 
 from arc.common import ARC_PATH, almost_equal_lists, read_yaml_file
 from arc.exceptions import ReactionError
 from arc.main import ARC
+from arc.level import Level
 from arc.reaction.reaction import ARCReaction, remove_dup_species
 from arc.scheduler import Scheduler
 from arc.species import ARCSpecies
@@ -1031,6 +1033,41 @@ H       1.12853146   -0.86793870    0.06973060"""
                   )
         self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses), 2)
         self.assertEqual(len(arc_object.reactions[0].ts_species.ts_guesses[1].initial_xyz['symbols']), 19)
+
+    def test_ts_guess_metadata_sets_priority_and_checkfile(self):
+        """TS user guess metadata should propagate to the TS species."""
+        job_types = {'opt': False, 'fine': False, 'freq': False, 'irc': False, 'sp': False, 'rotors': False,
+                     'conf_opt': False, 'conf_sp': False, 'bde': False, 'onedmin': False, 'orbitals': False}
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkfile_path = os.path.join(tmp_dir, 'ts.chk')
+            with open(checkfile_path, 'w') as f:
+                f.write('')
+            ts_guess = {'xyz': self.h2_xyz, 'checkfile': checkfile_path, 'priority': True, 'xyz_is_final': True}
+            reactant = ARCSpecies(label='H2_r', multiplicity=1, xyz=self.h2_xyz, smiles='[H][H]')
+            product = ARCSpecies(label='H2_p', multiplicity=1, xyz=self.h2_xyz, smiles='[H][H]')
+            rxn = ARCReaction(r_species=[reactant], p_species=[product], ts_xyz_guess=[ts_guess])
+            Scheduler(project='ts_meta',
+                      species_list=[reactant, product],
+                      rxn_list=[rxn],
+                      ess_settings=dict(),
+                      project_directory=tmp_dir,
+                      conformer_opt_level=None,
+                      conformer_sp_level=None,
+                      opt_level=Level('wb97xd/6-31g(d)'),
+                      freq_level=Level('wb97xd/6-31g(d)'),
+                      sp_level=Level('wb97xd/6-31g(d)'),
+                      scan_level=None,
+                      ts_guess_level=Level('wb97xd/6-31g(d)'),
+                      job_types=job_types,
+                      ts_adapters=['heuristics'],
+                      testing=True,
+                      )
+            ts_species = rxn.ts_species
+            self.assertTrue(ts_species.ts_guess_priority)
+            self.assertTrue(ts_species.xyz_is_final)
+            self.assertIsNotNone(ts_species.final_xyz)
+            self.assertEqual(ts_species.checkfile, checkfile_path)
+            self.assertEqual(ts_species.initial_xyz, ts_species.final_xyz)
 
     def test_get_rxn_smiles(self):
         """Tests the get_rxn_smiles method"""

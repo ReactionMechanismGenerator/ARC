@@ -4,7 +4,7 @@ A module for representing a reaction.
 
 from typing import Dict, List, Optional, Tuple, Union
 
-from arc.common import get_element_mass, get_logger
+from arc.common import get_element_mass, get_logger, globalize_path
 from arc.exceptions import ReactionError, InputError
 from arc.family.family import ReactionFamily, get_reaction_family_products
 from arc.molecule.resonance import generate_resonance_structures_safely
@@ -657,6 +657,33 @@ class ARCReaction(object):
 
             self.done_opt_r_n_p = all(_has_usable_xyz(spc) for spc in self.r_species + self.p_species)
 
+    @staticmethod
+    def parse_ts_xyz_guess_entry(entry: Union[dict, str],
+                                 project_directory: Optional[str] = None,
+                                 ) -> Tuple[Union[dict, str], Optional[str], bool, bool]:
+        """
+        Extract xyz data and optional metadata from a TS user-guess entry.
+
+        Args:
+            entry (Union[dict, str]): Either a raw xyz definition (string or ARC xyz dict), or a dictionary with an
+                                      ``xyz`` key and optional ``checkfile``, ``priority``, and ``xyz_is_final`` keys.
+            project_directory (str, optional): Project directory used to globalize relative paths.
+
+        Returns:
+            Tuple[Union[dict, str], Optional[str], bool, bool]:
+                The xyz payload, checkfile path (if provided), priority flag, and xyz_is_final flag.
+        """
+        checkfile, priority, xyz_is_final = None, False, False
+        xyz = entry
+        if isinstance(entry, dict) and 'xyz' in entry:
+            xyz = entry['xyz']
+            checkfile = entry.get('checkfile')
+            priority = bool(entry.get('priority', False))
+            xyz_is_final = bool(entry.get('xyz_is_final', False))
+        if checkfile is not None and project_directory:
+            checkfile = globalize_path(string=checkfile, project_directory=project_directory)
+        return xyz, checkfile, priority, xyz_is_final
+
     def check_atom_balance(self,
                            ts_xyz: Optional[dict] = None,
                            raise_error: bool = True,
@@ -700,7 +727,10 @@ class ARCReaction(object):
 
         if r_well:
             for xyz_guess in self.ts_xyz_guess:
-                balanced_xyz_guess *= check_atom_balance(entry_1=xyz_guess, entry_2=r_well)
+                xyz_guess_value, _, _, _ = self.parse_ts_xyz_guess_entry(
+                    xyz_guess, project_directory=getattr(self, 'project_directory', None)
+                )
+                balanced_xyz_guess *= check_atom_balance(entry_1=xyz_guess_value, entry_2=r_well)
 
             if p_well:
                 balanced_wells = check_atom_balance(entry_1=r_well, entry_2=p_well)

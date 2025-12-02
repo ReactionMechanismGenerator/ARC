@@ -435,14 +435,26 @@ class Scheduler(object):
                 rxn.ts_species = ts_species
                 # 3. Generate TSGuess objects for all methods, start with the user guesses
                 for i, user_guess in enumerate(rxn.ts_xyz_guess):  # This is a list of user guesses, could be empty.
-                    ts_species.ts_guesses.append(
-                        TSGuess(method=f'user guess {i}',
-                                xyz=user_guess,
-                                index=len(rxn.ts_species.ts_guesses),
-                                success=True,
-                                project_directory=self.project_directory,
-                                )
+                    xyz_guess, checkfile, priority_flag, xyz_is_final = rxn.parse_ts_xyz_guess_entry(
+                        user_guess, project_directory=self.project_directory
                     )
+                    ts_guess_obj = TSGuess(method=f'user guess {i}',
+                                           xyz=xyz_guess,
+                                           index=len(rxn.ts_species.ts_guesses),
+                                           success=True,
+                                           project_directory=self.project_directory,
+                                           )
+                    ts_species.ts_guesses.append(ts_guess_obj)
+                    if checkfile is not None:
+                        ts_species.checkfile = checkfile
+                    if priority_flag:
+                        ts_species.ts_guess_priority = True
+                    if xyz_is_final:
+                        ts_species.xyz_is_final = True
+                        if ts_species.initial_xyz is None:
+                            ts_species.initial_xyz = ts_guess_obj.initial_xyz
+                        if ts_species.final_xyz is None:
+                            ts_species.final_xyz = ts_guess_obj.initial_xyz
                 rxn.check_atom_balance()
                 rxn.check_done_opt_r_n_p()
             logger.info('\n\n')
