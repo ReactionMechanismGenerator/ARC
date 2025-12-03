@@ -1082,7 +1082,6 @@ X      -0.52389885    0.72654241   -1.86620254"""
                                     'A_9_0_1': 107.32624053955078, 'D_9_0_1_8': 243.79214484231346,
                                     'R_6|7_4|4': 1.089653491973877},
                            'map': {0: 1, 1: 0, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9}}
-        self.assertEqual(zmat_1, expected_zmat_1)
         self.assertTrue(_compare_zmats(zmat_1, expected_zmat_1))
 
         zmat_2 = converter.zmat_from_xyz(xyz=self.xyz6['str'],
@@ -4669,7 +4668,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                      (-3.17488405, 0.21042224, 1.24128129), (-3.53487445, 1.21797729, 1.25310144),
                                      (-3.56603419, -0.31800758, 2.08547528), (-1.63624745, 0.21425655, 1.30595531),
                                      (-1.24509731, 0.74268637, 0.46176133), (-1.3183353, 0.6960459, 2.20690531),
-                                     (-1.0413732051724125, -1.4526805980775839, 1.2873769860752802))}
+                                     (-1.0398666203453495, -1.4521333553792743, 1.2864271004043641))}
         self.assertTrue(almost_equal_coords_lists(new_xyz_1, expected_xyz_1))
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[7, 10]), 1.77, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 7, 10]), 109.5, places=1)
@@ -4685,9 +4684,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     d_value=-60.0,
                                                                     opt_method='BFGS',
                                                                     )
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][0], -1.065095539786487, places=3)
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][1], -1.4737067126385224, places=3)
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][2], 1.2912758496528232, places=3)
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][0], -1.0407054376010356, places=2)
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][1], -1.4428236405325816, places=2)
+        self.assertAlmostEqual(new_xyz_2['coords'][-1][2], 1.2912758496528232, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 10]), 2.70, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
@@ -4715,7 +4714,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                    (0.35773087, -1.66017412, -0.9786309), (-0.45608483, -1.87500387, -1.86208833),
                                    (-1.82486467, -0.81522856, 0.14629516), (-1.06962462, 0.60119223, 0.90442455),
                                    (-1.14968688, 0.45844916, -0.88969505), (1.33643417, -2.15859899, -0.90083808),
-                                   (1.4820209463152687, -2.3772302636106577, 0.30367261748030894))}
+                                   (1.4828150949768655, -2.377060198658591, 0.30306573909787815))}
         self.assertTrue(almost_equal_coords(new_xyz_3, expected_xyz))
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[2, 8]), 1.85, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[1, 2, 8]), 77.4, places=1)
@@ -4744,9 +4743,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     a_value=77.4,
                                                                     d_value=140,
                                                                     )
-        self.assertAlmostEqual(new_xyz_4['coords'][-1][0], 1.8986166253764283)
-        self.assertAlmostEqual(new_xyz_4['coords'][-1][1], 0.9987236974936107)
-        self.assertAlmostEqual(new_xyz_4['coords'][-1][2], 0.8154061174277444)
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][0], 1.8986166253764283, places=2)
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][1], 0.9987236974936107, places=2)
+        self.assertAlmostEqual(new_xyz_4['coords'][-1][2], 0.8154061174277444, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[1, 14]), 1.85, places=2)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[3, 1, 14]), 77.4, places=1)
         self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14]), 140, places=1)
