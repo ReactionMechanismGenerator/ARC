@@ -289,6 +289,7 @@ class ARCSpecies(object):
                               simultaneously in a single ESS input file.
         gen_res_structures (bool): Whether to generate resonance structures for the species.
         symmetry_number (int): The external symmetry number of the species, calculated from mol_list.
+        index (int): An optional index for the species.
     """
 
     def __init__(self,
@@ -370,6 +371,7 @@ class ARCSpecies(object):
         self.label = label
         self.gen_res_structures = gen_res_structures
         self.symmetry_number = None
+        self.index = None
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -683,6 +685,8 @@ class ARCSpecies(object):
             species_dict['arkane_file'] = self.arkane_file
         if not self.consider_all_diastereomers:
             species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
+        if self.index is not None:
+            species_dict['index'] = self.index
         if self.is_ts:
             if len(self.ts_guesses):
                 species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
@@ -835,6 +839,7 @@ class ARCSpecies(object):
         self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict \
             else False if self.is_ts else None
         self.adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
+        self.index = species_dict['index'] if 'index' in species_dict else None
         if self.is_ts:
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
