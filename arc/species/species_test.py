@@ -2767,6 +2767,20 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         self.assertEqual(len(s), 2)
         self.assertIn(self.spc1, s)
 
+    def test_species_indexing(self):
+        """Test species indexing in ARCSpecies."""
+        spc_a = ARCSpecies(label='spc_a', smiles='C')
+        spc_b = ARCSpecies(label='spc_b', smiles='CC')
+        spc_c = ARCSpecies(label='spc_c', smiles='CCC')
+
+        species_list = [spc_a, spc_b, spc_c]
+        for index, spc in enumerate(species_list):
+            spc.index = index
+
+        self.assertEqual(spc_a.index, 0)
+        self.assertEqual(spc_b.index, 1)
+        self.assertEqual(spc_c.index, 2)
+
 
 class TestTSGuess(unittest.TestCase):
     """
