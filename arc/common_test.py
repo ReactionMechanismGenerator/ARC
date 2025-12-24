@@ -1391,6 +1391,19 @@ class TestCommon(unittest.TestCase):
             with self.assertRaises(ValueError):
                 common.calculate_arrhenius_rate_coefficient(A=1e12, n=0.5, Ea=10, T=bad_T, Ea_units='kJ/mol')
 
+    def test_fill_in_the_blanks(self):
+        """Test the fill_in_the_blanks() function"""
+        ex1 = "name"
+        ex2 = "name1 name2"
+        ex3 = "name 1 name2"
+        ex4 = "name 1  name2"
+        ex5 = "/home/user/Code/ARC/Projects/project name/calcs/file.sh"
+        self.assertEqual(common.fill_in_the_blanks(ex1), "name")
+        self.assertEqual(common.fill_in_the_blanks(ex2), "name1\\ name2")
+        self.assertEqual(common.fill_in_the_blanks(ex3), "name\\ 1\\ name2")
+        self.assertEqual(common.fill_in_the_blanks(ex4), "name\\ 1\\ \\ name2")
+        self.assertEqual(common.fill_in_the_blanks(ex5), "/home/user/Code/ARC/Projects/project\\ name/calcs/file.sh")
+
     @classmethod
     def tearDownClass(cls):
         """
