@@ -2392,3 +2392,21 @@ def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom
     direction = np.random.uniform(-1.0, 1.0, 3)  # Random direction
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
+
+def order_xyz_by_atom_map(xyz: dict,
+                          atom_map: list,
+                          ) -> dict:
+    """
+    Order xyz coordinates according to the atom map.
+
+    Args:
+        xyz (dict): The xyz coordinates.
+        atom_map (list): The atom map.
+
+    Returns:
+        dict: The ordered xyz coordinates.
+    """
+    symbols = [xyz['symbols'][i] for i in atom_map]
+    isotopes = [xyz['isotopes'][i] for i in atom_map] if 'isotopes' in xyz else None
+    coords = [xyz['coords'][i] for i in atom_map]
+    return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
