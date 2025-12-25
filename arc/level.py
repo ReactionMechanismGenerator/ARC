@@ -83,10 +83,11 @@ class Level(object):
                      or solvation_scheme_level.solvation_scheme_level is not None):
             raise ValueError('Cannot represent a solvation_scheme_level which itself has solvation attributes.')
         self.solvation_scheme_level = solvation_scheme_level
-        if self.solvation_method is not None and self.solvent is None:
-            raise ValueError(f'Cannot represent a level of theory with a solvation method ("{self.solvation_method}") '
-                             f'that lacks a solvent.')
-
+        if (self.solvation_method is None) != (self.solvent is None):
+            raise ValueError(
+                'Both solvation method and solvent must be defined together, or both must be None. '
+                f'Got solvation method = "{self.solvation_method}", solvent = "{self.solvent}".'
+            )
         self.args = args or {'keyword': dict(), 'block': dict()}
 
         if self.repr is not None:
