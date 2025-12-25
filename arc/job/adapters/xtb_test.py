@@ -96,7 +96,7 @@ H      -0.20775137    1.01509427    0.05730382""")],
         cls.job_9 = xTBAdapter(execution_type='queue',
                                job_type='opt',
                                project='test_9',
-                               level=Level(method='xtb', solvent='water'),
+                               level=Level(method='xtb', solvent='water', solvation_method="alpb"),
                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_9'),
                                species=[ARCSpecies(label='spc2', smiles='CC[O]')],
                                )
