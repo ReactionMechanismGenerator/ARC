@@ -324,7 +324,26 @@ class xTBAdapter(JobAdapter):
                                          executable='/bin/bash')
 
         # If Sella crashed, Python’s traceback is in stderr
-        real_errors = [line for line in stderr if not line.strip().lower().startswith('warning:') and line.strip()]
+        ignore_keywords = [
+                           'futurewarning:', 
+                           'userwarning:', 
+                           'deprecationwarning:', 
+                           'warnings.warn('
+                           ]
+        real_errors = []
+        for line in stderr:
+            line_lower = line.strip().lower()
+            if not line_lower:
+                continue
+            if line_lower.startswith('warning:'):
+                continue
+            if any(keyword in line_lower for keyword in ignore_keywords):
+                continue
+            if line.startswith('  warnings.warn'):
+                continue
+                
+            real_errors.append(line)
+        
         if real_errors:
             raise InputError(
                 "Sella run failed.\n\n"
