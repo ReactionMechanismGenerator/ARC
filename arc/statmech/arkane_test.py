@@ -154,8 +154,8 @@ class TestArkaneAdapter(unittest.TestCase):
         input_path = os.path.join(statmech_dir, 'input.py')
         expected_lines = ["#!/usr/bin/env python",
                           "title = 'Arkane kinetics calculation'",
-                          "        structure=SMILES('C[NH]'))",
-                          "        structure=SMILES('[CH2]N'))",
+                          "        structure=SMILES('C[NH]'), spinMultiplicity=2)",
+                          "        structure=SMILES('[CH2]N'), spinMultiplicity=2)",
                           "    label='CH3NH <=> CH2NH2',",
                           "    reactants=['CH3NH'],",
                           "    products=['CH2NH2'],",
