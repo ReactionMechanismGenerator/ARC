@@ -224,7 +224,11 @@ class OrcaParser(ESSAdapter, ABC):
                 if 'Zero point energy' in line:
                     # Example: Zero point energy      ...    0.025410 Eh
                     try:
-                        zpe = float(line.split()[-2])
+                        parts = line.split()
+                        if 'Eh' in parts:
+                            zpe = float(parts[parts.index('Eh') - 1])
+                        else:
+                            zpe = float(parts[-2])
                         break
                     except (ValueError, IndexError):
                         continue
