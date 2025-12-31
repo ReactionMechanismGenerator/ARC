@@ -9,8 +9,6 @@ import os
 import shutil
 import unittest
 
-from rmgpy.data.kinetics import KineticsFamily
-
 from arc.common import ARC_PATH, almost_equal_coords
 from arc.job.adapters.ts.linear import (LinearAdapter,
                                         average_zmat_params,
@@ -20,7 +18,6 @@ from arc.job.adapters.ts.linear import (LinearAdapter,
                                         interpolate_isomerization,
                                         )
 from arc.reaction import ARCReaction
-from arc.rmgdb import make_rmg_database_object, load_families_only
 from arc.species.converter import str_to_xyz, xyz_to_str
 from arc.species.species import ARCSpecies
 from arc.species.zmat import _compare_zmats
@@ -37,8 +34,6 @@ class TestHeuristicsAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.rmgdb = make_rmg_database_object()
-        load_families_only(cls.rmgdb)
 
         cls.rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CPD', smiles='C1C=CC=C1',
                                                       xyz="""C      -1.11689933   -0.16076292   -0.17157587
@@ -74,7 +69,6 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                              H      -0.53390611   -2.06386676   -0.83047533
                                                              H      -0.42088759   -4.06846526   -2.17670487
                                                              H       1.36205133   -3.75009763   -2.57288841""")])
-        cls.rxn_1.determine_family(rmg_database=cls.rmgdb)
 
         cls.rxn_2 = ARCReaction(r_species=[ARCSpecies(label='CCONO', smiles='CCON=O',
                                                       xyz="""C      -1.36894499    0.07118059   -0.24801399
@@ -98,7 +92,6 @@ class TestHeuristicsAdapter(unittest.TestCase):
                                                              H      -1.41423043    0.87863077    0.42354512
                                                              H       1.02430791    0.21530309    0.12674144
                                                              H       0.27058353   -0.73979548    1.43184405""")])
-        cls.rxn_2.determine_family(rmg_database=cls.rmgdb)
 
     def test_average_zmat_params(self):
         """Test the average_zmat_params() function."""
@@ -191,7 +184,7 @@ class TestHeuristicsAdapter(unittest.TestCase):
         rxn_1.p_species[1].e0 = 200.3
         rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True)
         rxn_1.ts_species.e0 = 391.6
-        self.assertAlmostEquals(get_rxn_weight(rxn_1), 0.3417832)
+        self.assertAlmostEqual(get_rxn_weight(rxn_1), 0.3417832)
 
     def test_interpolate_isomerization_intra_h_migration(self):
         """Test the interpolate_isomerization() function for intra H migration reactions."""
@@ -429,8 +422,8 @@ class TestHeuristicsAdapter(unittest.TestCase):
             print(xyz_to_str(ts_xyz))
         self.assertTrue(almost_equal_coords(ts_xyzs[0], expected_ts_xyz))  # vectors.py:91: VectorsError
 
-    def test_interpolate_isomerization_Concered_Intra_diels_alder_mono_cyclic_1_2_shiftH(self):
-        """Test the interpolate_isomerization() function for Concered_Intra_diels_alder_mono-cyclic_1,2_shiftH reactions."""
+    def test_interpolate_isomerization_Concerted_Intra_diels_alder_mono_cyclic_1_2_shiftH(self):
+        """Test the interpolate_isomerization() function for Concerted_Intra_diels_alder_mono-cyclic_1,2_shiftH reactions."""
         r_xyz = """C       3.25931086   -0.62469725   -0.85172041
                    C       2.21431341   -0.47587355   -0.28012458
                    C       0.97982054   -0.30103766    0.40159285
@@ -1121,7 +1114,7 @@ H       1.61593633   -0.33730052   -2.83543977"""
                          ('C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H'))
 
     def test_linear_adapter_2(self):
-        self.rxn_2.family = KineticsFamily(label='intra_NO2_ONO_conversion')
+        self.rxn_2.family = 'intra_NO2_ONO_conversion'
         self.rxn_2.atom_map = [0, 1, 3, 2, 4, 5, 7, 6, 9, 8]
         self.assertEqual(self.rxn_2.family.label, 'intra_NO2_ONO_conversion')
         linear_2 = LinearAdapter(job_type='tsg',
