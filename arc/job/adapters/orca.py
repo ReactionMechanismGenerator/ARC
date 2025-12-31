@@ -285,7 +285,7 @@ class OrcaAdapter(JobAdapter):
             input_dict['method_class'] = 'KS'
             # DFT grid must be the same for both opt and freq
             if self.fine:
-                self.add_to_args(val='defgrid4', key1='keyword')
+                self.add_to_args(val='defgrid3', key1='keyword')
             else:
                 self.add_to_args(val='defgrid3', key1='keyword')
         elif self.level.method_type == 'wavefunction':
