@@ -1,0 +1,189 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docker image &mdash; ARC 1.1.0 Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=fc837d61"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Running ARC" href="running.html" />
+    <link rel="prev" title="Installation instructions" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ARC
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation instructions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Docker image</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#aliases-in-interactive-shells">Aliases in interactive shells</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="running.html">Running ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced.html">Advanced Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="output.html">Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">ARC’s API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tools.html">Standalone tools</a></li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="release.html">Release notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contribute.html">Contribute</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cite.html">How to cite ARC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="licence.html">Licence</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ARC</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Docker image</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/docker.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="docker-image">
+<span id="docker"></span><h1>Docker image<a class="headerlink" href="#docker-image" title="Link to this heading"></a></h1>
+<p>The published Docker image includes ARC and RMG along with convenience entrypoints.
+Bind-mount your working directory and pass an input file path that exists inside
+the container. For best write access on bind mounts, pass your host UID/GID as
+<code class="docutils literal notranslate"><span class="pre">PUID</span></code>/<code class="docutils literal notranslate"><span class="pre">PGID</span></code> (the entrypoint remaps the <code class="docutils literal notranslate"><span class="pre">mambauser</span></code> account).</p>
+<p>Run ARC non-interactively:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
+    -v &quot;$PWD:/work&quot; -w /work \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
+    laxzal/arc:latest arc my_case/input.yml
+</pre></div>
+</div>
+<p>Run RMG non-interactively:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
+    -v &quot;$PWD:/work&quot; -w /work \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
+    laxzal/arc:latest rmg my_case/input.py
+</pre></div>
+</div>
+<p>Manual RMG invocation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
+    -v &quot;$PWD:/work&quot; -w /work \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
+    laxzal/arc:latest \
+    micromamba run -n rmg_env python /home/mambauser/Code/RMG-Py/rmg.py my_case/input.py
+</pre></div>
+</div>
+<p>Manual ARC invocation:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm \
+    -v &quot;$PWD:/work&quot; -w /work \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
+    laxzal/arc:latest \
+    micromamba run -n arc_env python /home/mambauser/Code/ARC/ARC.py my_case/input.yml
+</pre></div>
+</div>
+<p>Open an interactive shell:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>docker run --rm -it \
+    -v &quot;$PWD:/work&quot; -w /work \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
+    laxzal/arc:latest
+</pre></div>
+</div>
+<p>For job submission, the scheduler client tools must be available in the container
+or accessed via SSH on a remote host.</p>
+<section id="aliases-in-interactive-shells">
+<h2>Aliases in interactive shells<a class="headerlink" href="#aliases-in-interactive-shells" title="Link to this heading"></a></h2>
+<p>When you open an interactive shell, the image provides these aliases:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">rc</span>              <span class="c1"># reload ~/.bashrc</span>
+<span class="n">rce</span><span class="p">,</span> <span class="n">erc</span>        <span class="c1"># edit ~/.bashrc with nano</span>
+
+<span class="n">mamba</span><span class="p">,</span> <span class="n">conda</span>    <span class="c1"># micromamba</span>
+<span class="n">deact</span>           <span class="c1"># micromamba deactivate</span>
+
+<span class="n">rmge</span><span class="p">,</span> <span class="n">arce</span>      <span class="c1"># activate rmg_env / arc_env</span>
+
+<span class="n">rmgcode</span>         <span class="c1"># cd to /home/mambauser/Code/RMG-Py</span>
+<span class="n">dbcode</span>          <span class="c1"># cd to /home/mambauser/Code/RMG-database</span>
+<span class="n">arcode</span>          <span class="c1"># cd to /home/mambauser/Code/ARC</span>
+
+<span class="n">rmg</span>             <span class="c1"># run RMG with input.py, tee logs</span>
+<span class="n">arkane</span>          <span class="c1"># run Arkane with input.py, tee logs</span>
+<span class="n">arc</span>             <span class="c1"># run ARC with input.yml, tee logs</span>
+<span class="n">arcrestart</span>      <span class="c1"># run ARC with restart.yml, tee logs</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation instructions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="running.html" class="btn btn-neutral float-right" title="Running ARC" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2025, Alon Grinberg Dana.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
