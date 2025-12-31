@@ -23,7 +23,7 @@ jobs:
           path: ARC
 
       - name: Clean Ubuntu Image
-        uses: kfir4444/free-disk-space@main
+        uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
           android: true
