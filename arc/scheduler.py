@@ -989,7 +989,10 @@ class Scheduler(object):
                         self.running_jobs[label].pop(self.running_jobs[label].index(job_name))
                     return False
 
-        RETRY_COUNT, RETRY_SLEEP_SECONDS = 5, 10
+        if job.job_status[0] == 'running':
+            return False
+
+        RETRY_COUNT, RETRY_SLEEP_SECONDS = 6, 30
         i = RETRY_COUNT
         while i and not os.path.isfile(job.local_path_to_output_file):
             i -= 1
