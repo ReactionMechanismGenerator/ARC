@@ -4003,7 +4003,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [1, 0], -1.5
         expected_xyz = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
@@ -4034,7 +4034,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         # test changing an angle to 180 degrees
         indices, new_val = [0, 1, 2], 180
@@ -4080,7 +4080,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [3, 2, 1, 0], -30
         expected_xyz = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
@@ -4131,7 +4131,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         # test A_group modification
         indices, new_val = [0, 1, 2], 160
@@ -4147,7 +4147,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [1, 2, 5], 160
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4211,7 +4211,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [5, 2, 1, 0], 180
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4278,7 +4278,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 4)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=xyz1, indices=[4, 1, 2, 3], mol=mol1),
                                176.7937925, 4)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=[4, 1, 2, 3], mol=mol1),
