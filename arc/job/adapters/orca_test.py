@@ -12,7 +12,11 @@ import shutil
 import unittest
 
 from arc.common import ARC_PATH
-from arc.job.adapters.orca import OrcaAdapter
+from arc.job.adapters.orca import (OrcaAdapter,
+                                   _format_orca_basis,
+                                   _format_orca_basis_token,
+                                   _format_orca_method,
+                                   )
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
 from arc.species import ARCSpecies
@@ -172,6 +176,28 @@ H      -0.53338088   -0.77135867   -0.54806440
 *
 """
         self.assertEqual(content_3, job_3_expected_input_file)
+
+    def test_format_orca_method(self):
+        """Test ORCA method formatting helper."""
+        self.assertEqual(_format_orca_method('wb97xd3'), 'wb97x-d3')
+        self.assertEqual(_format_orca_method('wb97xd'), 'wb97xd')
+        self.assertEqual(_format_orca_method('B3LYP'), 'B3LYP')
+
+    def test_format_orca_basis_token(self):
+        """Test ORCA basis token formatting helper."""
+        self.assertEqual(_format_orca_basis_token('def2tzvp'), 'def2-tzvp')
+        self.assertEqual(_format_orca_basis_token('def2-TZVP'), 'def2-tzvp')
+        self.assertEqual(_format_orca_basis_token('def2tzvp/c'), 'def2-tzvp/c')
+        self.assertEqual(_format_orca_basis_token('def2-TZVP/C'), 'def2-tzvp/c')
+        self.assertEqual(_format_orca_basis_token('cc-pvtz'), 'cc-pvtz')
+
+    def test_format_orca_basis(self):
+        """Test ORCA basis formatting helper."""
+        self.assertEqual(_format_orca_basis('def2tzvp'), 'def2-tzvp')
+        self.assertEqual(_format_orca_basis('def2-TZVP'), 'def2-tzvp')
+        self.assertEqual(_format_orca_basis('def2tzvp/c'), 'def2-tzvp/c')
+        self.assertEqual(_format_orca_basis('def2tzvp def2tzvp/c'),
+                         'def2-tzvp def2-tzvp/c')
 
     def test_set_files(self):
         """Test setting files"""
