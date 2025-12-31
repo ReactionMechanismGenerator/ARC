@@ -32,6 +32,50 @@ if TYPE_CHECKING:
 
 logger = get_logger()
 
+ORCA_METHOD_ALIASES = {
+    'wb97xd': 'wb97x-d3',
+    'wb97x-d3': 'wb97x-d3',
+    'wb97xd3': 'wb97x-d3',
+}
+
+
+def _format_orca_method(method: str) -> str:
+    """
+    Convert ARC method names to ORCA-friendly labels when needed.
+    """
+    if not method:
+        return method
+    return ORCA_METHOD_ALIASES.get(method.lower(), method)
+
+
+def _format_orca_basis_token(token: str) -> str:
+    """
+    Convert def2 basis tokens to ORCA formatting (e.g., def2tzvp -> def2-TZVP).
+    """
+    if not token:
+        return token
+    parts = token.split('/')
+    base = parts[0]
+    if base.lower().startswith('def2'):
+        base_rest = base[4:]
+        if base_rest.startswith('-'):
+            base_rest = base_rest[1:]
+        if base_rest:
+            base = f"def2-{base_rest.lower()}"
+    if len(parts) > 1:
+        parts = [base] + [part.lower() for part in parts[1:]]
+        return '/'.join(parts)
+    return base
+
+
+def _format_orca_basis(basis: str) -> str:
+    """
+    Convert basis strings to ORCA-friendly labels where applicable.
+    """
+    if not basis:
+        return basis
+    return ' '.join(_format_orca_basis_token(token) for token in basis.split())
+
 default_job_settings, global_ess_settings, input_filenames, output_filenames, servers, submit_filenames = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['input_filenames'], \
     settings['output_filenames'], settings['servers'], settings['submit_filenames']
@@ -219,13 +263,13 @@ class OrcaAdapter(JobAdapter):
                     'keywords',
                     ]:
             input_dict[key] = ''
-        input_dict['auxiliary_basis'] = self.level.auxiliary_basis or ''
-        input_dict['basis'] = self.level.basis or ''
+        input_dict['auxiliary_basis'] = _format_orca_basis(self.level.auxiliary_basis or '')
+        input_dict['basis'] = _format_orca_basis(self.level.basis or '')
         input_dict['charge'] = self.charge
         input_dict['cpus'] = self.cpu_cores
         input_dict['label'] = self.species_label
         input_dict['memory'] = self.input_file_memory
-        input_dict['method'] = self.level.method
+        input_dict['method'] = _format_orca_method(self.level.method)
         input_dict['multiplicity'] = self.multiplicity
         input_dict['xyz'] = xyz_to_str(self.xyz)
 
@@ -241,9 +285,9 @@ class OrcaAdapter(JobAdapter):
             input_dict['method_class'] = 'KS'
             # DFT grid must be the same for both opt and freq
             if self.fine:
-                self.add_to_args(val='Grid6 NoFinalGrid', key1='keyword')
+                self.add_to_args(val='defgrid4', key1='keyword')
             else:
-                self.add_to_args(val='Grid5 NoFinalGrid', key1='keyword')
+                self.add_to_args(val='defgrid3', key1='keyword')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:
@@ -263,11 +307,8 @@ class OrcaAdapter(JobAdapter):
             opt_convergence_key = 'fine_opt_convergence' if self.fine else 'opt_convergence'
             opt_convergence = self.args['keyword'].get(opt_convergence_key, '').lower() or \
                 orca_default_options_dict['opt']['keyword'].get(opt_convergence_key, '').lower()
-            if not opt_convergence:
-                raise ValueError('Orca optimization convergence (NormalOpt or TightOpt) is not specified. '
-                                 'Please specify this variable either in the settings.py as default options '
-                                 'or in the input file as additional options.')
-            self.add_to_args(val=opt_convergence, key1='keyword')
+            if opt_convergence:
+                self.add_to_args(val=opt_convergence, key1='keyword')
             if not self.is_ts:
                 input_dict['job_type_1'] = 'Opt'
             else:
