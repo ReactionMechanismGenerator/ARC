@@ -10,13 +10,10 @@ from arc.common import almost_equal_coords, get_logger
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
-from arc.mapping.engine import (get_atom_indices_of_labeled_atoms_in_an_rmg_reaction,
-                                get_rmg_reactions_from_arc_reaction,
-                                )
 from arc.plotter import save_geo
 from arc.species.converter import order_xyz_by_atom_map, zmat_to_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
-from arc.species.zmat import check_ordered_zmats, get_atom_order, update_zmat_by_xyz, xyz_to_zmat
+from arc.species.zmat import check_ordered_zmats, update_zmat_by_xyz, xyz_to_zmat
 
 if TYPE_CHECKING:
     from arc.level import Level
@@ -61,7 +58,7 @@ class LinearAdapter(JobAdapter):
         job_num (int, optional): Used as the entry number in the database, as well as in ``job_name``.
         job_server_name (str, optional): Job's name on the server (e.g., 'a103').
         job_status (list, optional): The job's server and ESS statuses.
-        level (Level, optionnal): The level of theory to use.
+        level (Level, optional): The level of theory to use.
         max_job_time (float, optional): The maximal allowed job time on the server in hours (can be fractional).
         reactions (List[ARCReaction], optional): Entries are ARCReaction instances, used for TS search methods.
         rotor_index (int, optional): The 0-indexed rotor number (key) in the species.rotors_dict dictionary.
@@ -315,11 +312,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     weight = get_rxn_weight(rxn) if use_weights else 0.5
     if weight is None:
         return None
-    rmg_reactions = get_rmg_reactions_from_arc_reaction(arc_reaction=rxn) or list()
     ts_xyzs = list()
-    for rmg_reaction in rmg_reactions:
-        r_label_dict = get_atom_indices_of_labeled_atoms_in_an_rmg_reaction(arc_reaction=rxn,
-                                                                            rmg_reaction=rmg_reaction)[0]
+    for product_dict in rxn.product_dicts:
+        r_label_dict = product_dict['r_label_map']
         if r_label_dict is None:
             continue
         expected_breaking_bonds, expected_forming_bonds = rxn.get_expected_changing_bonds(r_label_dict=r_label_dict)
@@ -404,7 +399,7 @@ def get_rxn_weight(rxn: 'ARCReaction') -> Optional[float]:
     Returns:
         float: The reaction weight.
     """
-    reactants, products = rxn.get_reactants_and_products(arc=True, return_copies=False)
+    reactants, products = rxn.get_reactants_and_products(return_copies=False)
     r_e0 = [r.e0 for r in reactants]
     p_e0 = [p.e0 for p in products]
     ts_e0 = rxn.ts_species.e0
