@@ -200,6 +200,7 @@ default_levels_of_theory = {'conformer': 'wb97xd/def2svp',  # it's recommended t
 # Orca
 # ARC accepts all the Orca options listed in the dictionary below. For specifying additional Orca options, please see
 # documentation and Orca manual.
+orca_nprocs = 1
 orca_default_options_dict = {
     'opt': {'keyword': {'opt_convergence': '',
                         'fine_opt_convergence': 'TightOpt'}},

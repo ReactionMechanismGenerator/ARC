@@ -89,9 +89,9 @@ class TestOrcaAdapter(unittest.TestCase):
         job_1_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
-%maxcore 1792
+%maxcore 14336
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500
@@ -116,9 +116,9 @@ H      -0.53338088   -0.77135867   -0.54806440
         job_2_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
-%maxcore 1792
+%maxcore 14336
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500
@@ -150,9 +150,9 @@ H      -0.53338088   -0.77135867   -0.54806440
         job_3_expected_input_file = """!uHF dlpno-ccsd(t) def2-tzvp def2-tzvp/c tightscf normalpno
 !sp 
 
-%maxcore 1792
+%maxcore 14336
 %pal # job parallelization settings
-nprocs 8
+nprocs 1
 end
 %scf # recommended SCF settings
 MaxIter 500

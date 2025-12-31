@@ -390,6 +390,11 @@ end
         from the respective entry in inputs.py
         If ``'make_x'`` is ``True``, the file will be made executable.
         """
+        orca_nprocs = settings.get('orca_nprocs', None)
+        if orca_nprocs is not None:
+            max_cpu = servers[self.server].get('cpus', None) if self.server is not None else None
+            self.cpu_cores = min(int(orca_nprocs), max_cpu) if max_cpu is not None else int(orca_nprocs)
+            self.set_cpu_and_mem()
         # 1. ** Upload **
         # 1.1. submit file
         if self.execution_type != 'incore':
