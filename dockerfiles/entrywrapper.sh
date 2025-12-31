@@ -1,9 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 0) Only try chown if we're root (bind-mounts may be root-owned)
-if [[ "$(id -u)" -eq 0 ]] && [[ ! -O /home/mambauser/Code ]]; then
-  chown -R mambauser:mambauser /home/mambauser/Code || true
+# 0) If root, optionally remap mambauser UID/GID for bind mounts, then drop privileges.
+if [[ "$(id -u)" -eq 0 ]]; then
+  if [[ -n "${PGID:-}" ]]; then
+    existing_group=""
+    if getent group "$PGID" >/dev/null; then
+      existing_group="$(getent group "$PGID" | cut -d: -f1)"
+    fi
+    if [[ -n "$existing_group" && "$existing_group" != "mambauser" ]]; then
+      echo "Error: requested PGID '$PGID' is already in use by group '$existing_group', cannot remap mambauser group." >&2
+      exit 1
+    fi
+    groupmod -g "$PGID" mambauser
+  fi
+  if [[ -n "${PUID:-}" ]]; then
+    current_uid="$(id -u mambauser)"
+    if [[ "$PUID" != "$current_uid" ]]; then
+      if getent passwd "$PUID" >/dev/null; then
+        echo "Error: Cannot remap mambauser to UID '$PUID' because it is already in use by another user." >&2
+        exit 1
+      fi
+      usermod -u "$PUID" mambauser
+    fi
+  fi
+
+  if [[ -d /home/mambauser/Code ]]; then
+    if ! chown -R mambauser:mambauser /home/mambauser/Code; then
+      echo "warning: failed to change ownership of /home/mambauser/Code to mambauser:mambauser (read-only mount or permission issue?)" >&2
+    fi
+  fi
+  if [[ -d /work ]]; then
+    if ! chown -R mambauser:mambauser /work; then
+      echo "warning: failed to change ownership of /work to mambauser:mambauser (read-only mount or permission issue?)" >&2
+    fi
+  fi
+
+  if [[ "${ENTRYWRAPPER_AS_USER:-0}" != "1" ]]; then
+    exec runuser -u mambauser -- env ENTRYWRAPPER_AS_USER=1 /usr/local/bin/entrywrapper.sh "$@"
+  fi
 fi
 
 # If running non-interactively at container root and /work exists; it will go there
