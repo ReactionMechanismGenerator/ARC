@@ -119,6 +119,20 @@ class TestARCSpecies(unittest.TestCase):
                           'isotopes': (14, 1, 14, 1),
                           'symbols': ('N', 'N', 'H', 'H')}
 
+        cls.water = ARCSpecies(label='H2O', smiles='O', xyz="""O      -0.00032700    0.39565700    0.00000000
+        H      -0.75690800   -0.19845300    0.00000000
+        H       0.75723500   -0.19720400    0.00000000""")
+
+        cls.ethanol = ARCSpecies(label='alcohol', smiles='OCC', xyz="""O       1.19051468    0.74721872    0.55745278
+                C       0.42396685   -0.33421819    0.04897215
+                C      -0.98542075    0.14578863   -0.22414249
+                H       2.08706846    0.40878057    0.72232827
+                H       0.41841326   -1.14061638    0.78839856
+                H       0.89171403   -0.69551584   -0.87175392
+                H      -0.97955985    0.96896352   -0.94625607
+                H      -1.44657152    0.52976777    0.69182626
+                H      -1.60463449   -0.66494303   -0.61804700""")
+
     def test_from_yml_file(self):
         """Test that an ARCSpecies object can successfully be loaded from an Arkane YAML file"""
         n4h6_adj_list = """1  N u0 p1 c0 {2,S} {3,S} {4,S}
@@ -1232,6 +1246,15 @@ H      -1.67091600   -1.35164600   -0.93286400"""
         self.assertEqual(spc_1_copy.get_xyz()['symbols'], spc_1.get_xyz()['symbols'])
         self.assertEqual(spc_1_copy.mol.to_smiles(), spc_1.mol.to_smiles())
         atom_labels = [atom.label for atom in spc_1_copy.mol.atoms]
+
+    def test_is_water(self):
+        """Test the ARCSpecies.is_water() method."""
+        water = self.water
+        self.assertTrue(water.is_water())
+        methane_species = ARCSpecies(label='methane', smiles='C')
+        self.assertFalse(methane_species.is_water())
+        ethanol = self.ethanol
+        self.assertFalse(ethanol.is_water())
 
     def test_mol_dict_repr_round_trip(self):
         """Test that a Molecule object survives the as_dict() and from_dict() round trip with emphasis on atom IDs."""
