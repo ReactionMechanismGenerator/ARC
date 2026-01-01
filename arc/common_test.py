@@ -35,7 +35,7 @@ class TestCommon(unittest.TestCase):
         """Remove the globalized restart-paths artifact written by
         :meth:`test_globalize_paths`.
 
-        Called from BOTH ``setUpClass`` (defensive — wipes a stale
+        Called from BOTH ``setUpClass`` (defensive: wipes a stale
         artifact left behind by a previously interrupted run) and
         ``tearDownClass`` (the normal cleanup path).  This makes the
         cleanup self-healing: a Ctrl+C, ``kill``, or hard error during
@@ -1120,6 +1120,7 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_angle_in_180_range(-270), 90)
         self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
         self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=2), -5.36)
 
     def test_signed_angular_diff(self):
         """Test the signed angular difference between two angles"""
