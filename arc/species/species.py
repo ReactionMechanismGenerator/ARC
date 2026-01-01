@@ -631,6 +631,22 @@ class ARCSpecies(object):
         species_dict = self.as_dict(reset_atom_ids=True)
         return ARCSpecies(species_dict=species_dict)
 
+    def is_water(self) -> bool:
+        """
+        Check whether this species is a water molecule (H2O).
+        """
+        if self.mol is None:
+            return False
+        if len(self.mol.atoms) != 3:
+            return False
+        o_count, h_count = 0, 0
+        for atom in self.mol.atoms:
+            if atom.is_oxygen():
+                o_count += 1
+            elif atom.is_hydrogen():
+                h_count += 1
+        return o_count == 1 and h_count == 2
+
     def as_dict(self,
                 reset_atom_ids: bool = False,
                 ) -> dict:
