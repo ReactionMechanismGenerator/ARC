@@ -1120,6 +1120,7 @@ class TestCommon(unittest.TestCase):
         self.assertEqual(common.get_angle_in_180_range(-270), 90)
         self.assertAlmostEqual(common.get_angle_in_180_range(45.5), 45.5, places=7)
         self.assertAlmostEqual(common.get_angle_in_180_range(719.9), -0.1, places=7)
+        self.assertAlmostEqual(common.get_angle_in_180_range(-5.364589, round_to=2), -5.36)
 
     def test_signed_angular_diff(self):
         """Test the signed angular difference between two angles"""
