@@ -2298,16 +2298,16 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">add_atom_to_xyz_using_internal_coords</span><span class="p">(</span><span class="n">xyz</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">dict</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span>
                                           <span class="n">element</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
                                           <span class="n">r_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                                          <span class="n">a_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
-                                          <span class="n">d_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span>
+                                          <span class="n">a_indices</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">],</span>
+                                          <span class="n">d_indices</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">tuple</span><span class="p">,</span> <span class="nb">list</span><span class="p">],</span>
                                           <span class="n">r_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                                           <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                                           <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-                                          <span class="n">opt_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span>
+                                          <span class="n">opt_methods</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                                           <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Add an atom to XYZ. The new atom may have random r, a, and d index parameters</span>
-<span class="sd">    (not necessarily defined for the same respective atoms).</span>
+<span class="sd">    Add an atom to an XYZ structure based on distance, angle, and dihedral constraints.</span>
+<span class="sd">    The new atom may have random r, a, and d index parameters (not necessarily defined for the same respective atoms).</span>
 <span class="sd">    This function will compute the coordinates for the new atom.</span>
 <span class="sd">    This function assumes that the original xyz has at least 3 atoms.</span>
 
@@ -2315,79 +2315,111 @@
 <span class="sd">        xyz (dict): The xyz coordinates to process in a dictionary format.</span>
 <span class="sd">        element (str): The chemical element of the atom to add.</span>
 <span class="sd">        r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.</span>
-<span class="sd">        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.</span>
-<span class="sd">        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        a_indices (Union[tuple, list]): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.</span>
+<span class="sd">        d_indices (Union[tuple, list]): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.</span>
 <span class="sd">        r_value (float): The value of the R-X distance parameter, r.</span>
 <span class="sd">        a_value (float): The value of the A-B-X angle parameter, a.</span>
 <span class="sd">        d_value (float): The value of the L-M-N-X dihedral angle parameter, d.</span>
-<span class="sd">        opt_method (str, optional): The optimization method to use for finding the new atom&#39;s coordinates.</span>
-<span class="sd">                                    Additional options include &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
+<span class="sd">        opt_methods (List[str], optional): The optimization method to use for finding the new atom&#39;s coordinates.</span>
+<span class="sd">                                           Options include &#39;SLSQP&#39;, &#39;Nelder-Mead&#39;, &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        Optional[dict]: The updated xyz coordinates.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">best_guesses</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
     <span class="n">xyz</span> <span class="o">=</span> <span class="n">check_xyz_dict</span><span class="p">(</span><span class="n">xyz</span><span class="p">)</span>
+    <span class="n">opt_methods</span> <span class="o">=</span> <span class="p">[</span><span class="n">opt_methods</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">opt_methods</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">else</span> <span class="n">opt_methods</span>
+    <span class="n">opt_methods</span> <span class="o">=</span> <span class="n">opt_methods</span> <span class="ow">or</span> <span class="p">[</span><span class="s1">&#39;SLSQP&#39;</span><span class="p">,</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span> <span class="s1">&#39;BFGS&#39;</span><span class="p">]</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">calculate_errors</span><span class="p">(</span><span class="n">result_coords</span><span class="p">):</span>
-        <span class="n">r_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">result_coords</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">]))</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span> <span class="o">-</span> <span class="n">r_value</span><span class="p">)</span>
-        <span class="n">a_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">angle_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">a_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
-        <span class="n">d_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dihedral_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span> <span class="n">d_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Calculate constraint errors for distance, angle, and dihedral&quot;&quot;&quot;</span>
+        <span class="n">r_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">result_coords</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">]))</span> <span class="o">-</span> <span class="n">r_value</span><span class="p">)</span>
+        <span class="n">a_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">angle_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">a_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
+        <span class="n">d_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dihedral_constraint</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">]],</span> <span class="n">d_value</span><span class="p">)(</span><span class="o">*</span><span class="n">result_coords</span><span class="p">))</span>
         <span class="k">return</span> <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">meets_precision</span><span class="p">(</span><span class="n">result_coords</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Check if all constraints meet precision requirements&quot;&quot;&quot;</span>
         <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span> <span class="o">=</span> <span class="n">calculate_errors</span><span class="p">(</span><span class="n">result_coords</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">r_error</span> <span class="o">&lt;</span> <span class="n">DIST_PRECISION</span> <span class="ow">and</span> <span class="n">a_error</span> <span class="o">&lt;</span> <span class="n">ANGL_PRECISION</span> <span class="ow">and</span> <span class="n">d_error</span> <span class="o">&lt;</span> <span class="n">ANGL_PRECISION</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">average_best_guesses_from_all_methods</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">best_guesses</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">)</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">guess_xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">guess_xyz</span> <span class="ow">in</span> <span class="n">best_guesses</span> <span class="k">if</span> <span class="n">guess_xyz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="n">guess_functions</span> <span class="o">=</span> <span class="p">[</span>
         <span class="n">generate_initial_guess_r_a</span><span class="p">,</span>
         <span class="n">generate_midpoint_initial_guess</span><span class="p">,</span>
         <span class="n">generate_perpendicular_initial_guess</span><span class="p">,</span>
         <span class="n">generate_bond_length_initial_guess</span><span class="p">,</span>
-        <span class="n">generate_random_initial_guess</span><span class="p">,</span>
         <span class="n">generate_shifted_initial_guess</span><span class="p">,</span>
+        <span class="n">average_best_guesses_from_all_methods</span><span class="p">,</span>
     <span class="p">]</span>
 
-    <span class="n">closest_result</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">closest_error</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span>
+    <span class="n">best_error</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span>
+    <span class="n">best_guess_and_errors</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">()</span>
 
-    <span class="k">for</span> <span class="n">attempt</span><span class="p">,</span> <span class="n">guess_func</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">guess_functions</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
-        <span class="n">initial_guess</span> <span class="o">=</span> <span class="n">guess_func</span><span class="p">(</span>
-            <span class="n">atom_r_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">],</span>
-            <span class="n">r_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
-            <span class="n">atom_a_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
-            <span class="n">atom_b_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
-            <span class="n">a_value</span><span class="o">=</span><span class="n">a_value</span>
-        <span class="p">)</span>
-
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">updated_xyz</span> <span class="o">=</span> <span class="n">_add_atom_to_xyz_using_internal_coords</span><span class="p">(</span>
-                <span class="n">xyz</span><span class="p">,</span> <span class="n">element</span><span class="p">,</span> <span class="n">r_index</span><span class="p">,</span> <span class="n">a_indices</span><span class="p">,</span> <span class="n">d_indices</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">a_value</span><span class="p">,</span> <span class="n">d_value</span><span class="p">,</span> <span class="n">initial_guess</span><span class="p">,</span> <span class="n">opt_method</span><span class="p">,</span>
+    <span class="k">for</span> <span class="n">opt_method</span> <span class="ow">in</span> <span class="n">opt_methods</span><span class="p">:</span>
+        <span class="n">best_guess</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">guess_func</span> <span class="ow">in</span> <span class="n">guess_functions</span><span class="p">:</span>
+            <span class="n">initial_guess</span> <span class="o">=</span> <span class="n">guess_func</span><span class="p">(</span>
+                <span class="n">atom_r_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">r_index</span><span class="p">],</span>
+                <span class="n">r_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
+                <span class="n">atom_a_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                <span class="n">atom_b_coord</span><span class="o">=</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+                <span class="n">a_value</span><span class="o">=</span><span class="n">a_value</span><span class="p">,</span>
             <span class="p">)</span>
-            <span class="n">new_coord</span> <span class="o">=</span> <span class="n">updated_xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 
-            <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span> <span class="o">=</span> <span class="n">calculate_errors</span><span class="p">(</span><span class="n">new_coord</span><span class="p">)</span>
-            <span class="n">total_error</span> <span class="o">=</span> <span class="n">r_error</span> <span class="o">+</span> <span class="n">a_error</span> <span class="o">+</span> <span class="n">d_error</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">updated_xyz</span> <span class="o">=</span> <span class="n">_add_atom_to_xyz_using_internal_coords</span><span class="p">(</span>
+                    <span class="n">xyz</span><span class="p">,</span> <span class="n">element</span><span class="p">,</span> <span class="n">r_index</span><span class="p">,</span> <span class="n">a_indices</span><span class="p">,</span> <span class="n">d_indices</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">a_value</span><span class="p">,</span> <span class="n">d_value</span><span class="p">,</span> <span class="n">initial_guess</span><span class="p">,</span> <span class="n">opt_method</span><span class="p">)</span>
+                <span class="n">new_coord</span> <span class="o">=</span> <span class="n">updated_xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">r_error</span><span class="p">,</span> <span class="n">a_error</span><span class="p">,</span> <span class="n">d_error</span> <span class="o">=</span> <span class="n">calculate_errors</span><span class="p">(</span><span class="n">new_coord</span><span class="p">)</span>
+                <span class="n">total_error</span> <span class="o">=</span> <span class="n">r_error</span> <span class="o">+</span> <span class="n">a_error</span> <span class="o">+</span> <span class="n">d_error</span>
 
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempt </span><span class="si">{</span><span class="n">attempt</span><span class="si">}</span><span class="s2">: r_error=</span><span class="si">{</span><span class="n">r_error</span><span class="si">}</span><span class="s2">, a_error=</span><span class="si">{</span><span class="n">a_error</span><span class="si">}</span><span class="s2">, d_error=</span><span class="si">{</span><span class="n">d_error</span><span class="si">}</span><span class="s2">, total_error=</span><span class="si">{</span><span class="n">total_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">meets_precision</span><span class="p">(</span><span class="n">new_coord</span><span class="p">):</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Precision criteria met. Returning result.&quot;</span><span class="p">)</span>
+                    <span class="k">return</span> <span class="n">updated_xyz</span>
 
-            <span class="k">if</span> <span class="n">meets_precision</span><span class="p">(</span><span class="n">new_coord</span><span class="p">):</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Precision criteria met. Returning result.&quot;</span><span class="p">)</span>
-                <span class="k">return</span> <span class="n">updated_xyz</span>
+                <span class="k">if</span> <span class="n">total_error</span> <span class="o">&lt;</span> <span class="n">best_error</span><span class="p">:</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Updating closest result. Previous best_error=</span><span class="si">{</span><span class="n">best_error</span><span class="si">}</span><span class="s2">, new total_error=</span><span class="si">{</span><span class="n">total_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">best_error</span> <span class="o">=</span> <span class="n">total_error</span>
+                    <span class="n">best_guess</span> <span class="o">=</span> <span class="n">updated_xyz</span>
+                    <span class="n">best_guess_and_errors</span><span class="p">[</span><span class="n">best_error</span><span class="p">]</span> <span class="o">=</span> <span class="n">best_guess</span>
 
-            <span class="k">if</span> <span class="n">total_error</span> <span class="o">&lt;</span> <span class="n">closest_error</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Updating closest result. Previous closest_error=</span><span class="si">{</span><span class="n">closest_error</span><span class="si">}</span><span class="s2">, new total_error=</span><span class="si">{</span><span class="n">total_error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-                <span class="n">closest_result</span> <span class="o">=</span> <span class="n">updated_xyz</span>
-                <span class="n">closest_error</span> <span class="o">=</span> <span class="n">total_error</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Optimization failed with </span><span class="si">{</span><span class="n">guess_func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">best_guesses</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">best_guess</span><span class="p">)</span>
 
-        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempt </span><span class="si">{</span><span class="n">attempt</span><span class="si">}</span><span class="s2"> with </span><span class="si">{</span><span class="n">guess_func</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> failed due to exception: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-    <span class="k">if</span> <span class="n">closest_result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Returning closest result as no guess met precision criteria.&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">closest_result</span>
-
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No valid solution was found.&quot;</span><span class="p">)</span>
-    <span class="k">return</span> <span class="kc">None</span></div>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No valid solution was found, returning the closest solution after brute force modifications.&quot;</span><span class="p">)</span>
+    <span class="n">lowest_key</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">best_guess_and_errors</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">lowest_key</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">key</span> <span class="o">&lt;</span> <span class="n">lowest_key</span><span class="p">:</span>
+            <span class="n">lowest_key</span> <span class="o">=</span> <span class="n">key</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">best_guess_and_errors</span><span class="p">[</span><span class="n">lowest_key</span><span class="p">]</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">modify_coords</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                        <span class="n">indices</span><span class="o">=</span><span class="p">[</span><span class="n">r_index</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span>
+                        <span class="n">new_value</span><span class="o">=</span><span class="n">r_value</span><span class="p">,</span>
+                        <span class="n">modification_type</span><span class="o">=</span><span class="s1">&#39;atom&#39;</span><span class="p">,</span>
+                        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="p">)</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">modify_coords</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                        <span class="n">indices</span><span class="o">=</span><span class="p">[</span><span class="n">a_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span>
+                        <span class="n">new_value</span><span class="o">=</span><span class="n">a_value</span><span class="p">,</span>
+                        <span class="n">modification_type</span><span class="o">=</span><span class="s1">&#39;atom&#39;</span><span class="p">,</span>
+                        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="p">)</span>
+    <span class="n">xyz</span> <span class="o">=</span> <span class="n">modify_coords</span><span class="p">(</span><span class="n">coords</span><span class="o">=</span><span class="n">xyz</span><span class="p">,</span>
+                        <span class="n">indices</span><span class="o">=</span><span class="p">[</span><span class="n">d_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">d_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">d_indices</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">xyz</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span><span class="p">],</span>
+                        <span class="n">new_value</span><span class="o">=</span><span class="n">d_value</span><span class="p">,</span>
+                        <span class="n">modification_type</span><span class="o">=</span><span class="s1">&#39;atom&#39;</span><span class="p">,</span>
+                        <span class="n">index</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">xyz</span></div>
 
 
 
@@ -2400,10 +2432,12 @@
                                            <span class="n">a_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                                            <span class="n">d_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
                                            <span class="n">initial_guess</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-                                           <span class="n">opt_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span>
+                                           <span class="n">opt_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;SLSQP&#39;</span><span class="p">,</span>
                                            <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Add an atom to XYZ. The new atom may have random r, a, and d index parameters</span>
+<span class="sd">    Optimize the placement of a new atom in an XYZ structure while satisfying</span>
+<span class="sd">    distance, angle, and dihedral constraints.</span>
+<span class="sd">    The new atom may have random r, a, and d index parameters</span>
 <span class="sd">    (not necessarily defined for the same respective atoms).</span>
 <span class="sd">    This function will compute the coordinates for the new atom.</span>
 <span class="sd">    This function assumes that the original xyz has at least 3 atoms.</span>
@@ -2419,7 +2453,7 @@
 <span class="sd">        d_value (float): The value of the L-M-N-X dihedral angle parameter, d.</span>
 <span class="sd">        initial_guess (np.ndarray): The initial guess for the new atom&#39;s coordinates.</span>
 <span class="sd">        opt_method (str, optional): The optimization method to use for finding the new atom&#39;s coordinates.</span>
-<span class="sd">                                    Additional options include &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
+<span class="sd">                                    Additional options include &#39;Nelder-Mead&#39;, &#39;trust-constr&#39; and &#39;BFGS&#39;.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        dict: The updated xyz coordinates.</span>
@@ -2495,7 +2529,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">angle_constraint</span><span class="p">(</span><span class="n">atom_a</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">atom_b</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">,</span> <span class="n">angle</span><span class="p">:</span> <span class="nb">float</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate the angle constraint for a new atom with two other atoms in Cartesian space.</span>
-<span class="sd">    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)</span>
+<span class="sd">    This constants atom X to a circle defined by a certain height on a cone (looking for half angle).</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        atom_a (tuple): Cartesian coordinates of the first reference atom (A).</span>
@@ -2630,6 +2664,7 @@
     <span class="k">return</span> <span class="n">X_position</span></div>
 
 
+
 <div class="viewcode-block" id="generate_midpoint_initial_guess">
 <a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_midpoint_initial_guess">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">generate_midpoint_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
@@ -2638,6 +2673,7 @@
     <span class="n">direction</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">-</span> <span class="n">midpoint</span>
     <span class="n">direction</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">midpoint</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">direction</span></div>
+
 
 
 <div class="viewcode-block" id="generate_perpendicular_initial_guess">
@@ -2655,15 +2691,12 @@
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">perpendicular_vector</span></div>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">generate_random_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
-    <span class="n">perturbation</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
-    <span class="n">base_guess</span> <span class="o">=</span> <span class="n">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">base_guess</span> <span class="o">+</span> <span class="n">perturbation</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">generate_shifted_initial_guess</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">):</span>
     <span class="n">shift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">])</span>  <span class="c1"># A deterministic shift</span>
     <span class="n">base_guess</span> <span class="o">=</span> <span class="n">generate_initial_guess_r_a</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">,</span> <span class="n">r_value</span><span class="p">,</span> <span class="n">atom_a_coord</span><span class="p">,</span> <span class="n">atom_b_coord</span><span class="p">,</span> <span class="n">a_value</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">base_guess</span> <span class="o">+</span> <span class="n">shift</span>
+
 
 <div class="viewcode-block" id="generate_bond_length_initial_guess">
 <a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.generate_bond_length_initial_guess">[docs]</a>
@@ -2672,6 +2705,30 @@
     <span class="n">direction</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># Random direction</span>
     <span class="n">direction</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span>  <span class="c1"># Normalize to unit vector</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atom_r_coord</span><span class="p">)</span> <span class="o">+</span> <span class="n">r_value</span> <span class="o">*</span> <span class="n">direction</span></div>
+
+
+
+<div class="viewcode-block" id="sorted_distances_of_atom">
+<a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.sorted_distances_of_atom">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sorted_distances_of_atom</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">atom_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Given XYZ coordinates of a molecule and an atom index, return a list of</span>
+<span class="sd">    (other_atom_index, distance) tuples sorted from closest to farthest,</span>
+<span class="sd">    excluding the atom itself.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        xyz_dict (dict): The XYZ coordinates of the molecule.</span>
+<span class="sd">        atom_index (int): Index of the reference atom.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List[Tuple[int, float]]: Sorted list of (atom index, distance) tuples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d_matrix</span> <span class="o">=</span> <span class="n">xyz_to_dmat</span><span class="p">(</span><span class="n">xyz_dict</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">atom_index</span> <span class="o">&gt;=</span> <span class="n">d_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Atom index </span><span class="si">{</span><span class="n">atom_index</span><span class="si">}</span><span class="s2"> out of range for distance matrix of size </span><span class="si">{</span><span class="n">d_matrix</span><span class="w"> </span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+    <span class="n">distances</span> <span class="o">=</span> <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="n">d_matrix</span><span class="p">[</span><span class="n">atom_index</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="n">atom_index</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span></div>
 
 </pre></div>
 

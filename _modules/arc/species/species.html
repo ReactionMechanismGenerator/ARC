@@ -719,6 +719,25 @@
         <span class="k">return</span> <span class="n">ARCSpecies</span><span class="p">(</span><span class="n">species_dict</span><span class="o">=</span><span class="n">species_dict</span><span class="p">)</span></div>
 
 
+<div class="viewcode-block" id="ARCSpecies.is_water">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.is_water">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_water</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check whether this species is a water molecule (H2O).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">o_count</span><span class="p">,</span> <span class="n">h_count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">atom</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">atom</span><span class="o">.</span><span class="n">is_oxygen</span><span class="p">():</span>
+                <span class="n">o_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="n">atom</span><span class="o">.</span><span class="n">is_hydrogen</span><span class="p">():</span>
+                <span class="n">h_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">o_count</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">h_count</span> <span class="o">==</span> <span class="mi">2</span></div>
+
+
 <div class="viewcode-block" id="ARCSpecies.as_dict">
 <a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.as_dict">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">as_dict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
