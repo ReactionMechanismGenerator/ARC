@@ -2039,16 +2039,16 @@ def ics_to_scan_constraints(ics: list,
 def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
                                           element: str,
                                           r_index: int,
-                                          a_indices: tuple,
-                                          d_indices: tuple,
+                                          a_indices: Union[tuple, list],
+                                          d_indices: Union[tuple, list],
                                           r_value: float,
                                           a_value: float,
                                           d_value: float,
-                                          opt_method: str = 'Nelder-Mead',
+                                          opt_methods: Optional[Union[str, List[str]]] = None,
                                           ) -> Optional[dict]:
     """
-    Add an atom to XYZ. The new atom may have random r, a, and d index parameters
-    (not necessarily defined for the same respective atoms).
+    Add an atom to an XYZ structure based on distance, angle, and dihedral constraints.
+    The new atom may have random r, a, and d index parameters (not necessarily defined for the same respective atoms).
     This function will compute the coordinates for the new atom.
     This function assumes that the original xyz has at least 3 atoms.
 
@@ -2056,79 +2056,111 @@ def add_atom_to_xyz_using_internal_coords(xyz: Union[dict, str],
         xyz (dict): The xyz coordinates to process in a dictionary format.
         element (str): The chemical element of the atom to add.
         r_index (int): The index of an atom R to define the distance parameter R-X w.r.t the newly added atom, X.
-        a_indices (tuple): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
-        d_indices (tuple): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
+        a_indices (Union[tuple, list]): The indices of two atoms, A and B, to define the angle A-B-X parameter w.r.t the newly added atom, X.
+        d_indices (Union[tuple, list]): The indices of three atoms, L M and N, to define the dihedral angle L-M-N-X parameter w.r.t the newly added atom, X.
         r_value (float): The value of the R-X distance parameter, r.
         a_value (float): The value of the A-B-X angle parameter, a.
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
-        opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
-                                    Additional options include 'trust-constr' and 'BFGS'.
+        opt_methods (List[str], optional): The optimization method to use for finding the new atom's coordinates.
+                                           Options include 'SLSQP', 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
     Returns:
         Optional[dict]: The updated xyz coordinates.
     """
+    best_guesses = list()
     xyz = check_xyz_dict(xyz)
+    opt_methods = [opt_methods] if isinstance(opt_methods, str) else opt_methods
+    opt_methods = opt_methods or ['SLSQP', 'Nelder-Mead', 'BFGS']
 
     def calculate_errors(result_coords):
-        r_error = np.abs(np.sqrt(np.sum((np.array(result_coords) - np.array(xyz['coords'][r_index]))**2)) - r_value)
-        a_error = np.sqrt(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
-        d_error = np.sqrt(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords))
+        """Calculate constraint errors for distance, angle, and dihedral"""
+        r_error = np.abs(np.linalg.norm(np.array(result_coords) - np.array(xyz['coords'][r_index])) - r_value)
+        a_error = np.abs(angle_constraint(xyz['coords'][a_indices[0]], xyz['coords'][a_indices[1]], a_value)(*result_coords))
+        d_error = np.abs(dihedral_constraint(xyz['coords'][d_indices[0]], xyz['coords'][d_indices[1]], xyz['coords'][d_indices[2]], d_value)(*result_coords))
         return r_error, a_error, d_error
 
     def meets_precision(result_coords):
+        """Check if all constraints meet precision requirements"""
         r_error, a_error, d_error = calculate_errors(result_coords)
         return r_error < DIST_PRECISION and a_error < ANGL_PRECISION and d_error < ANGL_PRECISION
+
+    def average_best_guesses_from_all_methods(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
+        if not best_guesses:
+            return generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
+        coords = np.array(
+            [guess_xyz['coords'][-1] for guess_xyz in best_guesses if guess_xyz is not None]
+        )
+        return np.mean(coords, axis=0)
 
     guess_functions = [
         generate_initial_guess_r_a,
         generate_midpoint_initial_guess,
         generate_perpendicular_initial_guess,
         generate_bond_length_initial_guess,
-        generate_random_initial_guess,
         generate_shifted_initial_guess,
+        average_best_guesses_from_all_methods,
     ]
 
-    closest_result = None
-    closest_error = float('inf')
+    best_error = float('inf')
+    best_guess_and_errors = dict()
 
-    for attempt, guess_func in enumerate(guess_functions, start=1):
-        initial_guess = guess_func(
-            atom_r_coord=xyz['coords'][r_index],
-            r_value=r_value,
-            atom_a_coord=xyz['coords'][a_indices[0]],
-            atom_b_coord=xyz['coords'][a_indices[1]],
-            a_value=a_value
-        )
-
-        try:
-            updated_xyz = _add_atom_to_xyz_using_internal_coords(
-                xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method,
+    for opt_method in opt_methods:
+        best_guess = None
+        for guess_func in guess_functions:
+            initial_guess = guess_func(
+                atom_r_coord=xyz['coords'][r_index],
+                r_value=r_value,
+                atom_a_coord=xyz['coords'][a_indices[0]],
+                atom_b_coord=xyz['coords'][a_indices[1]],
+                a_value=a_value,
             )
-            new_coord = updated_xyz['coords'][-1]
 
-            r_error, a_error, d_error = calculate_errors(new_coord)
-            total_error = r_error + a_error + d_error
+            try:
+                updated_xyz = _add_atom_to_xyz_using_internal_coords(
+                    xyz, element, r_index, a_indices, d_indices, r_value, a_value, d_value, initial_guess, opt_method)
+                new_coord = updated_xyz['coords'][-1]
+                r_error, a_error, d_error = calculate_errors(new_coord)
+                total_error = r_error + a_error + d_error
 
-            print(f"Attempt {attempt}: r_error={r_error}, a_error={a_error}, d_error={d_error}, total_error={total_error}")
+                if meets_precision(new_coord):
+                    print("Precision criteria met. Returning result.")
+                    return updated_xyz
 
-            if meets_precision(new_coord):
-                print("Precision criteria met. Returning result.")
-                return updated_xyz
+                if total_error < best_error:
+                    print(f"Updating closest result. Previous best_error={best_error}, new total_error={total_error}")
+                    best_error = total_error
+                    best_guess = updated_xyz
+                    best_guess_and_errors[best_error] = best_guess
 
-            if total_error < closest_error:
-                print(f"Updating closest result. Previous closest_error={closest_error}, new total_error={total_error}")
-                closest_result = updated_xyz
-                closest_error = total_error
+            except Exception as e:
+                print(f"Optimization failed with {guess_func.__name__}: {e}")
+        best_guesses.append(best_guess)
 
-        except Exception as e:
-            print(f"Attempt {attempt} with {guess_func.__name__} failed due to exception: {e}")
-
-    if closest_result is not None:
-        print("Returning closest result as no guess met precision criteria.")
-        return closest_result
-
-    print("No valid solution was found.")
-    return None
+    print("No valid solution was found, returning the closest solution after brute force modifications.")
+    lowest_key = None
+    for key, val in best_guess_and_errors.items():
+        if lowest_key is None or key < lowest_key:
+            lowest_key = key
+    xyz = best_guess_and_errors[lowest_key]
+    xyz = modify_coords(coords=xyz,
+                        indices=[r_index, len(xyz['coords']) - 1],
+                        new_value=r_value,
+                        modification_type='atom',
+                        index=0,
+                        )
+    xyz = modify_coords(coords=xyz,
+                        indices=[a_indices[0], a_indices[1], len(xyz['coords']) - 1],
+                        new_value=a_value,
+                        modification_type='atom',
+                        index=0,
+                        )
+    xyz = modify_coords(coords=xyz,
+                        indices=[d_indices[0], d_indices[1], d_indices[2], len(xyz['coords']) - 1],
+                        new_value=d_value,
+                        modification_type='atom',
+                        index=0,
+                        )
+    return xyz
 
 
 def _add_atom_to_xyz_using_internal_coords(xyz: dict,
@@ -2140,10 +2172,12 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
                                            a_value: float,
                                            d_value: float,
                                            initial_guess: np.ndarray,
-                                           opt_method: str = 'Nelder-Mead',
+                                           opt_method: str = 'SLSQP',
                                            ) -> dict:
     """
-    Add an atom to XYZ. The new atom may have random r, a, and d index parameters
+    Optimize the placement of a new atom in an XYZ structure while satisfying
+    distance, angle, and dihedral constraints.
+    The new atom may have random r, a, and d index parameters
     (not necessarily defined for the same respective atoms).
     This function will compute the coordinates for the new atom.
     This function assumes that the original xyz has at least 3 atoms.
@@ -2159,7 +2193,7 @@ def _add_atom_to_xyz_using_internal_coords(xyz: dict,
         d_value (float): The value of the L-M-N-X dihedral angle parameter, d.
         initial_guess (np.ndarray): The initial guess for the new atom's coordinates.
         opt_method (str, optional): The optimization method to use for finding the new atom's coordinates.
-                                    Additional options include 'trust-constr' and 'BFGS'.
+                                    Additional options include 'Nelder-Mead', 'trust-constr' and 'BFGS'.
 
     Returns:
         dict: The updated xyz coordinates.
@@ -2230,7 +2264,7 @@ def distance_constraint(reference_coord: tuple, distance: float):
 def angle_constraint(atom_a: tuple, atom_b: tuple, angle: float):
     """
     Generate the angle constraint for a new atom with two other atoms in Cartesian space.
-    This constants atom X to a circle defined by a certain hight on a cone (looking for half angle)
+    This constants atom X to a circle defined by a certain height on a cone (looking for half angle).
 
     Args:
         atom_a (tuple): Cartesian coordinates of the first reference atom (A).
@@ -2358,12 +2392,14 @@ def generate_initial_guess_r_a(atom_r_coord: tuple,
     X_position = np.array(atom_r_coord) + r_value * X_direction
     return X_position
 
+
 def generate_midpoint_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess midway between the two reference atoms."""
     midpoint = (np.array(atom_a_coord) + np.array(atom_b_coord)) / 2.0
     direction = np.array(atom_r_coord) - midpoint
     direction /= np.linalg.norm(direction)
     return midpoint + r_value * direction
+
 
 def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess that is perpendicular to the plane defined by the reference atoms."""
@@ -2377,18 +2413,36 @@ def generate_perpendicular_initial_guess(atom_r_coord, r_value, atom_a_coord, at
     perpendicular_vector /= np.linalg.norm(perpendicular_vector)
     return np.array(atom_r_coord) + r_value * perpendicular_vector
 
-def generate_random_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
-    perturbation = np.random.uniform(-0.1, 0.1, 3)
-    base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
-    return base_guess + perturbation
 
 def generate_shifted_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     shift = np.array([0.1, -0.1, 0.1])  # A deterministic shift
     base_guess = generate_initial_guess_r_a(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value)
     return base_guess + shift
 
+
 def generate_bond_length_initial_guess(atom_r_coord, r_value, atom_a_coord, atom_b_coord, a_value):
     """Generate an initial guess considering only the bond length to the reference atom."""
     direction = np.random.uniform(-1.0, 1.0, 3)  # Random direction
     direction /= np.linalg.norm(direction)  # Normalize to unit vector
     return np.array(atom_r_coord) + r_value * direction
+
+
+def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int, float]]:
+    """
+    Given XYZ coordinates of a molecule and an atom index, return a list of
+    (other_atom_index, distance) tuples sorted from closest to farthest,
+    excluding the atom itself.
+
+    Args:
+        xyz_dict (dict): The XYZ coordinates of the molecule.
+        atom_index (int): Index of the reference atom.
+
+    Returns:
+        List[Tuple[int, float]]: Sorted list of (atom index, distance) tuples.
+    """
+    d_matrix = xyz_to_dmat(xyz_dict)
+    if atom_index >= d_matrix.shape[0]:
+        raise IndexError(f"Atom index {atom_index} out of range for distance matrix of size {d_matrix .shape[0]}.")
+
+    distances = [(i, d_matrix[atom_index, i]) for i in range(d_matrix.shape[0]) if i != atom_index]
+    return sorted(distances, key=lambda x: x[1])
