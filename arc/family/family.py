@@ -789,7 +789,9 @@ def get_recipe_actions(groups_as_lines: List[str]) -> List[List[str]]:
             j = 0
             while '])' not in groups_as_lines[i + 1 + j]:
                 if "['" in groups_as_lines[i + 1 + j]:
-                    actions.append(ast.literal_eval(groups_as_lines[i + 1 + j].strip())[0])
+                    line = groups_as_lines[i + 1 + j].strip()
+                    if not line.startswith('#'):
+                        actions.append(ast.literal_eval(line)[0])
                 j += 1
             break
     return actions

@@ -6,10 +6,11 @@ import copy
 import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
-from arc.common import almost_equal_coords, get_logger
+from arc.common import almost_equal_coords, get_angle_in_180_range, get_logger
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
+from arc.mapping.driver import map_rxn
 from arc.plotter import save_geo
 from arc.species.converter import order_xyz_by_atom_map, zmat_to_xyz
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
@@ -20,7 +21,9 @@ if TYPE_CHECKING:
     from arc.reaction import ARCReaction
 
 
-DIHEDRAL_INCREMENT = 30
+BASE_WEIGHT_GRID = (0.35, 0.50, 0.65)
+HAMMOND_DELTA = 0.10
+WEIGHT_ROUND = 3
 
 logger = get_logger()
 
@@ -205,9 +208,8 @@ class LinearAdapter(JobAdapter):
 
         self.reactions = [self.reactions] if not isinstance(self.reactions, list) else self.reactions
         for rxn in self.reactions:
-            family_label = rxn.family.label
-            if family_label not in supported_families or not rxn.is_unimolecular():
-                logger.warning(f'The heuristics TS search adapter does not support the {family_label} reaction family.')
+            if rxn.family not in supported_families or not rxn.is_unimolecular():
+                logger.warning(f'The linear TS search adapter does not support the {rxn.family} reaction family.')
                 continue
             if any(spc.get_xyz() is None for spc in rxn.r_species + rxn.p_species):
                 logger.warning(f'The linear TS search adapter cannot process a reaction if 3D coordinates of '
@@ -219,19 +221,14 @@ class LinearAdapter(JobAdapter):
                                                           charge=rxn.charge,
                                                           multiplicity=rxn.multiplicity,
                                                           )
-
-            t0_0 = datetime.datetime.now()
-            xyzs_0 = interpolate(rxn=rxn, use_weights=False)
-            t_ex_0 = datetime.datetime.now() - t0_0
-
-            t0_1 = datetime.datetime.now()
-            xyzs_1 = interpolate(rxn=rxn, use_weights=True)
-            t_ex_1 = datetime.datetime.now() - t0_1
-
-            index = 0
-            for xyzs, t0, t_ex in zip([xyzs_0, xyzs_1], [t0_0, t0_1], [t_ex_0, t_ex_1]):
-                if xyzs is None or not len(xyzs):
+            weights = get_weight_grid(rxn)
+            for w_i, w in enumerate(weights):
+                t0 = datetime.datetime.now()
+                xyzs = interpolate(rxn=rxn, weight=w)
+                t_ex = datetime.datetime.now() - t0
+                if not xyzs:
                     continue
+
                 for xyz in xyzs:
                     if colliding_atoms(xyz):
                         continue
@@ -239,27 +236,29 @@ class LinearAdapter(JobAdapter):
                     for other_tsg in rxn.ts_species.ts_guesses:
                         if almost_equal_coords(xyz, other_tsg.initial_xyz):
                             if 'linear' not in other_tsg.method.lower():
-                                other_tsg.method += f' and Linear {index}'
+                                other_tsg.method += f' and Linear (w={w:.2f})'
                             unique = False
                             break
+
                     if unique:
-                        ts_guess = TSGuess(method=f'linear {index}',
+                        method = f'linear w={w:.2f}'
+                        ts_guess = TSGuess(method=method,
                                            index=len(rxn.ts_species.ts_guesses),
-                                           method_index=index,
+                                           method_index=w_i,
                                            t0=t0,
                                            execution_time=t_ex,
                                            success=True,
-                                           family=family_label,
+                                           family=rxn.family,
                                            xyz=xyz,
                                            )
                         rxn.ts_species.ts_guesses.append(ts_guess)
+
                         save_geo(xyz=xyz,
                                  path=self.local_path,
-                                 filename=f'Linear {index}',
+                                 filename=f'Linear w={w:.2f}',
                                  format_='xyz',
-                                 comment=f'Linear {index}, family: {family_label}',
+                                 comment=f'Linear w={w:.2f}, family: {rxn.family}',
                                  )
-                    index += 1
 
             if len(self.reactions) < 5:
                 successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'linear' in tsg.method])
@@ -267,7 +266,6 @@ class LinearAdapter(JobAdapter):
                     logger.info(f'Linear successfully found {successes} TS guesses for {rxn.label}.')
                 else:
                     logger.info(f'Linear did not find any successful TS guesses for {rxn.label}.')
-
         self.final_time = datetime.datetime.now()
 
     def execute_queue(self):
@@ -279,41 +277,40 @@ class LinearAdapter(JobAdapter):
 
 
 def interpolate(rxn: 'ARCReaction',
-                use_weights: bool = False,
-                ) -> Optional[dict]:
+                weight: float = 0.5,
+                ) -> Optional[List[dict]]:
     """
     Search for a TS by interpolating internal coords.
 
     Args:
         rxn (ARCReaction): The reaction to process.
-        use_weights (bool, optional): Whether to use the well energies to determine relative interpolation weights.
+        weight (float): Interpolation weight (0=reactant-like, 1=product-like).
 
     Returns:
-        Optional[dict]: The XYZ coordinates guess.
+        Optional[List[dict]]: The XYZ coordinates guess.
     """
     if rxn.is_isomerization():
-        return interpolate_isomerization(rxn=rxn, use_weights=use_weights)
+        return interpolate_isomerization(rxn=rxn, weight=weight)
     return None
 
 
 def interpolate_isomerization(rxn: 'ARCReaction',
-                              use_weights: bool = False,
+                              weight: float = 0.5,
                               ) -> Optional[List[dict]]:
     """
     Search for a TS of an isomerization reaction by interpolating internal coords.
 
     Args:
         rxn (ARCReaction): The reaction to process.
-        use_weights (bool, optional): Whether to use the well energies to determine relative interpolation weights.
+        weight (float): Interpolation weight (0=reactant-like, 1=product-like).
 
     Returns:
         Optional[List[dict]]: The XYZ coordinates guesses.
     """
-    weight = get_rxn_weight(rxn) if use_weights else 0.5
-    if weight is None:
+    if not (0.0 <= weight <= 1.0):
         return None
-    ts_xyzs = list()
-    for product_dict in rxn.product_dicts:
+    ts_xyzs: List[dict] = list()
+    for i, product_dict in enumerate(rxn.product_dicts):
         r_label_dict = product_dict['r_label_map']
         if r_label_dict is None:
             continue
@@ -326,7 +323,13 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                              constraints=get_r_constraints(expected_breaking_bonds=expected_breaking_bonds,
                                                            expected_forming_bonds=expected_forming_bonds),
                              )
-        ordered_p_xyz = order_xyz_by_atom_map(xyz=rxn.p_species[0].get_xyz(), atom_map=rxn.atom_map)
+        atom_map = map_rxn(rxn=rxn, product_dict_index_to_try=i)
+        print(f'i: {i},\natom_map: {[i+1 for i in atom_map]}\nproduct_dict: {product_dict}\n\n')
+        if atom_map is None:
+            continue
+        ordered_p_xyz = order_xyz_by_atom_map(xyz=rxn.p_species[0].get_xyz(), atom_map=atom_map)
+        # print(f'r_zmat: {r_zmat}')
+        # print(f'ordered_p_xyz: {ordered_p_xyz}')
         p_zmat = update_zmat_by_xyz(zmat=r_zmat, xyz=ordered_p_xyz)
         ts_zmat = average_zmat_params(zmat_1=r_zmat, zmat_2=p_zmat, weight=weight)
 
@@ -369,7 +372,11 @@ def average_zmat_params(zmat_1: dict,
                         weight: float = 0.5,
                         ) -> Optional[dict]:
     """
-    Average internal coordinates using a weight.
+    Interpolate internal coordinates using a weight.
+    Bond lengths/angles are interpolated linearly.
+    Dihedrals (D* / DX* in the coords template) are interpolated on a circle
+    using the shortest signed difference in (-180, 180].
+    Dihedrals are typically named like 'D_...' (real atoms) or 'DX_...' (dummy X dihedral).
 
     Args:
         zmat_1 (dict): ZMat 1.
@@ -380,59 +387,160 @@ def average_zmat_params(zmat_1: dict,
     Returns:
         Optional[dict]: The weighted average ZMat.
     """
-    if not check_ordered_zmats(zmat_1, zmat_2) or weight < 0 or weight > 1:
+    if not check_ordered_zmats(zmat_1, zmat_2) or not (0.0 <= weight <= 1.0):
         return None
+    if 'vars' not in zmat_1 or 'vars' not in zmat_2 or 'coords' not in zmat_1 or 'coords' not in zmat_2:
+        return None
+
+    dihedral_vars = set()
+    for row in zmat_1['coords']:
+        # row is a tuple like (Rvar, Avar, Dvar) or (None,None,None) for first atom
+        if isinstance(row, (tuple, list)) and len(row) == 3:
+            dvar = row[2]
+            if isinstance(dvar, str) and (dvar.startswith('D_') or dvar.startswith('DX_')):
+                dihedral_vars.add(dvar)
+
     ts_zmat = copy.deepcopy(zmat_1)
     ts_zmat['vars'] = dict()
-    for key in zmat_1['vars'].keys():
-        ts_zmat['vars'][key] = zmat_1['vars'][key] + weight * (zmat_2['vars'][key] - zmat_1['vars'][key])
+
+    for key, a in zmat_1['vars'].items():
+        if key not in zmat_2['vars']:
+            return None
+        b = zmat_2['vars'][key]
+        if key in dihedral_vars:
+            ts_zmat['vars'][key] = interp_dihedral_deg(a, b, w=weight)
+        else:
+            ts_zmat['vars'][key] = a + weight * (b - a)
+
     return ts_zmat
 
 
-def get_rxn_weight(rxn: 'ARCReaction') -> Optional[float]:
+def get_rxn_weight(rxn: 'ARCReaction',
+                   w_min: float = 0.30,
+                   w_max: float = 0.70,
+                   delta_e_sat: float = 150.0,
+                   reorg_energy: Optional[Union[float, Tuple[float, float]]] = None,
+                   ) -> Optional[float]:
     """
-    Get ratio between the activation energy (reactants to TS) to the overall energy path (reactants to TS to products).
+    Estimate an interpolation weight w (0=reactant-like, 1=product-like) using reaction thermochemistry only.
+
+    Chemically motivated model:
+        Use a Hammond/Leffler parameter (alpha) via a Marcus-like relation:
+            alpha ≈ 0.5 + ΔE / (2*λ)
+        where λ is an effective "reorganization energy" scale (same units as ΔE).
+        We then clamp alpha into [w_min, w_max].
+
+    Defaults:
+        By default we choose λ so that |ΔE| = delta_e_sat maps to the extrema w_min / w_max.
 
     Args:
-        rxn (ARCReaction): The reaction to process.
+        rxn: The reaction to process.
+        w_min: Minimum allowed weight (reactant-like limit), in [0, 0.5].
+        w_max: Maximum allowed weight (product-like limit), in [0.5, 1].
+        delta_e_sat: Magnitude of reaction energy for considering the TS fully shifted to the extrema (kJ/mol).
+        reorg_energy:
+            Either:
+              - None (derive λ from delta_e_sat and (w_min,w_max)),
+              - a single float λ used for both signs,
+              - a tuple (λ_exo, λ_endo) to allow asymmetry.
 
     Returns:
-        float: The reaction weight.
+        The estimated weight, or None if energies are unavailable.
     """
+    if w_min > w_max:
+        w_min, w_max = w_max, w_min
+    if not (0.0 <= w_min <= 0.5 <= w_max <= 1.0):
+        raise ValueError(f"Invalid bounds: w_min={w_min}, w_max={w_max}. "
+                         f"Require w_min in [0,0.5] and w_max in [0.5,1].")
+    if delta_e_sat <= 0.0:
+        raise ValueError(f"delta_e_sat must be > 0, got {delta_e_sat}")
+
     reactants, products = rxn.get_reactants_and_products(return_copies=False)
-    r_e0 = [r.e0 for r in reactants]
-    p_e0 = [p.e0 for p in products]
-    ts_e0 = rxn.ts_species.e0
-    if any(entry is None for entry in r_e0 + p_e0 + [ts_e0]):
-        r_ee = [r.e_elect for r in reactants]
-        p_ee = [p.e_elect for p in products]
-        ts_ee = rxn.ts_species.e_elect
-        if any(entry is None for entry in r_e0 + p_e0 + [ts_e0]):
+    r_e0 = [spc.e0 for spc in reactants]
+    p_e0 = [spc.e0 for spc in products]
+    if all(e is not None for e in (r_e0 + p_e0)):
+        r_e = r_e0
+        p_e = p_e0
+    else:
+        r_ee = [spc.e_elect for spc in reactants]
+        p_ee = [spc.e_elect for spc in products]
+        if not all(e is not None for e in (r_ee + p_ee)):
             return None
-        return get_weight(r_ee, p_ee, ts_ee)
-    return get_weight(r_e0, p_e0, ts_e0)
+        r_e = r_ee
+        p_e = p_ee
+
+    delta_e = sum(p_e) - sum(r_e)
+    if abs(delta_e) < 1e-3:
+        return 0.5
+
+    if reorg_energy is None:
+        lam_endo = delta_e_sat / (2.0 * (w_max - 0.5)) if (w_max - 0.5) > 0 else float('inf')
+        lam_exo  = delta_e_sat / (2.0 * (0.5 - w_min)) if (0.5 - w_min) > 0 else float('inf')
+    elif isinstance(reorg_energy, tuple):
+        if len(reorg_energy) != 2:
+            raise ValueError(f"reorg_energy tuple must be (lambda_exo, lambda_endo), got {reorg_energy}")
+        lam_exo, lam_endo = float(reorg_energy[0]), float(reorg_energy[1])
+    else:
+        lam_exo = lam_endo = float(reorg_energy)
+
+    if lam_exo <= 0.0 or lam_endo <= 0.0:
+        raise ValueError(f"Reorganization energies must be > 0. Got lambda_exo={lam_exo}, lambda_endo={lam_endo}")
+
+    lam = lam_endo if delta_e > 0.0 else lam_exo
+
+    w = 0.5 + delta_e / (2.0 * lam)
+    if w < w_min:
+        return w_min
+    if w > w_max:
+        return w_max
+    return w
 
 
-def get_weight(r_e: List[Optional[float]],
-               p_e: List[Optional[float]],
-               ts_e: Optional[float],
-               ) -> Optional[float]:
+def get_weight_grid(rxn: 'ARCReaction',
+                    include_hammond: bool = True,
+                    base_grid: Tuple[float, ...] = BASE_WEIGHT_GRID,
+                    hammond_delta: float = HAMMOND_DELTA,
+                    ) -> List[float]:
     """
-    Get the path ratio of reactants-TS to reactants-TS-products.
-
-    Args:
-        r_e (List[float]): Reactant energies.
-        p_e (List[float]): Product energies.
-        ts_e: TS energy.
+    Generate a small set of interpolation weights to try.
+    Always includes a symmetric grid around 0.5, and optionally also tries
+    a Hammond/Marcus-biased guess ± delta.
 
     Returns:
-        Optional[float]: The reaction path ratio.
+        List[float]: Sorted unique weights in [0, 1].
     """
-    if any(entry is None for entry in r_e + p_e + [ts_e]):
-        return None
-    r_to_ts = ts_e - sum(r_e)
-    p_to_ts = ts_e - sum(p_e)
-    return r_to_ts / (r_to_ts + p_to_ts)
+    weights: List[float] = list(base_grid)
+
+    if include_hammond:
+        w0 = get_rxn_weight(rxn)
+        if w0 is not None:
+            weights.extend([w0 - hammond_delta, w0, w0 + hammond_delta])
+    uniq = {round(_clip01(w), WEIGHT_ROUND) for w in weights}
+    return sorted(uniq)
+
+
+def interp_dihedral_deg(a: float, b: float, w: float = 0.5) -> float:
+    """
+    Interpolate dihedral angles in degrees along the shortest signed difference in (-180, 180].
+    E.g., the distance between -179 and 179 is 2 degrees, not 358.
+
+    Args:
+        a (float): The first angle in degrees.
+        b (float): The second angle in degrees.
+        w (float, optional): The weight between 0 and 1.
+
+    Returns:
+        float: The interpolated angle in degrees.
+    """
+    a = get_angle_in_180_range(a, round_to=None)
+    b = get_angle_in_180_range(b, round_to=None)
+    d = get_angle_in_180_range(b - a, round_to=None)
+    return get_angle_in_180_range(a + w * d, round_to=2)
+
+
+def _clip01(x: float) -> float:
+    """Clip a float to the [0, 1] range."""
+    return max(0.0, min(1.0, x))
 
 
 register_job_adapter('linear', LinearAdapter)
