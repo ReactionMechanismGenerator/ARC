@@ -84,6 +84,10 @@ To specify a composite method, simply define something like::
 
     level_of_theory: CBS-QB3
 
+Note: Do not include year suffixes in ``level_of_theory`` (e.g., ``wb97xd32023``). Year suffixes are
+for Arkane database matching only and are not valid QC methods. If you need a specific correction year,
+set ``arkane_level_of_theory`` with a ``year`` value instead.
+
 Note that for composite methods the ``freq_level`` and ``scan_level`` may have different
 default values than for non-composite methods (defined in settings.py). Note: an independent
 frequencies calculation job is automatically executed after a composite job just so that the Hamiltonian will
