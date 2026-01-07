@@ -56,6 +56,7 @@ class TestParser(unittest.TestCase):
         ch2o_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'formaldehyde_freq_terachem_output.out')
         ncc_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'ethylamine_freq_terachem_output.out')
         orca_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_example_freq.log')
+        orca_ts_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_neg_freq_ts.out')
         dual_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'dual_freq_output.out')
         co2_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
         ts_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3_xtb.out')
@@ -72,6 +73,7 @@ class TestParser(unittest.TestCase):
         ch2o_terachem_output_freqs = parser.parse_frequencies(log_file_path=ch2o_path_terachem_output)  # TeraChem
         ncc_terachem_output_freqs = parser.parse_frequencies(log_file_path=ncc_path_terachem_output)  # TeraChem
         orca_freqs = parser.parse_frequencies(log_file_path=orca_path)  # Orca
+        orca_ts_freqs = parser.parse_frequencies(log_file_path=orca_ts_path)  # Orca TS (imaginary mode)
         dual_freqs = parser.parse_frequencies(log_file_path=dual_freq_path)  # Gaussian
         co2_xtb_freqs = parser.parse_frequencies(log_file_path=co2_xtb_freqs_path)
         ts_xtb_freqs = parser.parse_frequencies(log_file_path=ts_xtb_freqs_path)
@@ -106,6 +108,10 @@ class TestParser(unittest.TestCase):
                                                  3087.60678739, 3447.41720077, 3529.23879182], np.float64))
         np.testing.assert_almost_equal(orca_freqs,
                                        np.array([1151.03, 1250.19, 1526.12, 1846.4, 3010.49, 3070.82], np.float64))
+        np.testing.assert_almost_equal(orca_ts_freqs,
+                                       np.array([-1271.62, 9.95, 340.56, 351.84, 723.13, 895.07, 1159.62, 1269.11,
+                                                 1377.92, 1448.9, 1461.05, 3090.01, 3217.06, 3220.87, 3812.33],
+                                                np.float64))
         np.testing.assert_almost_equal(dual_freqs,
                                        np.array([-1617.8276, 56.9527, 76.681, 121.4038, 182.1572, 194.9796,
                                                  202.4056, 209.9621, 273.506, 342.468, 431.985, 464.0768,
