@@ -135,6 +135,8 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')")
         self.assertEqual(_level_to_str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
+        self.assertEqual(_level_to_str(Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2023)),
+                         "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')")
 
     def test_section_contains_key(self):
         """Test the _section_contains_key function"""
@@ -163,7 +165,21 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
                                                     freq_scale_factor=1.0),
-                         "LevelOfTheory(method='cbs-qb3',software='gaussian')")
+                         "LevelOfTheory(method='cbsqb32023',software='gaussian')")
+
+    def test_get_arkane_model_chemistry_year_not_found(self):
+        """Test warnings when a requested year is not found in the Arkane database."""
+        level = Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2099)
+        with self.assertLogs('arc', level='WARNING') as cm:
+            model_chemistry = get_arkane_model_chemistry(sp_level=level, freq_scale_factor=1.0)
+        self.assertIsNone(model_chemistry)
+        self.assertTrue(any('available years' in msg for msg in cm.output))
+
+    def test_get_arkane_model_chemistry_latest_year(self):
+        """Test selecting the latest available year when no year is specified."""
+        model_chemistry = get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
+                                                     freq_scale_factor=1.0)
+        self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb32023',software='gaussian')")
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
