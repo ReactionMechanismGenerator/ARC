@@ -119,6 +119,13 @@ class TestLevel(unittest.TestCase):
                          "dlpno-ccsd(t)/def2-tzvp, auxiliary_basis: def2-tzvp/c, solvation_method: smd, "
                          "solvent: water, solvation_scheme_level: 'apfd/def2-tzvp, software: gaussian', software: orca")
 
+    def test_year_validation(self):
+        """Test year validation for Level"""
+        with self.assertRaises(ValueError):
+            Level(method='b97d3', basis='def2tzvp', year=23)
+        level = Level(method='b97d3', basis='def2tzvp', year=2023)
+        self.assertEqual(level.year, 2023)
+
     def test_ess_methods_yml(self):
         """Test reading the ess_methods.yml file"""
         ess_methods = read_yaml_file(path=os.path.join(ARC_PATH, 'data', 'ess_methods.yml'))
