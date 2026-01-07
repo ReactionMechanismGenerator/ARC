@@ -357,6 +357,10 @@ def determine_ess_status(output_path: str,
                     keywords = ['Input']
                     error = f'The multiplicity and charge combination for species {species_label} are wrong.'
                     break
+                elif 'ORCA_SYM' in line and 'Inconsistent atom assignment' in line:
+                    keywords = ['SymThresh']
+                    error = 'Inconsistent atom assignment in Orca symmetry detection.'
+                    break
                 elif 'UNRECOGNIZED OR DUPLICATED KEYWORD' in line:
                     # e.g., UNRECOGNIZED OR DUPLICATED KEYWORD(S) IN SIMPLE INPUT LINE
                     keywords = ['Syntax']
@@ -1049,8 +1053,16 @@ def trsh_ess_job(label: str,
             if not couldnt_trsh:
                 memory = estimated_mem_per_core * cpu_cores  # total memory for all cpu cores
                 memory = np.ceil(memory / 1024 + 5)  # convert MB to GB, add 5 extra GB (be conservative)
-                logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
-                            f'and {cpu_cores} cpu cores.')
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} using {memory} GB total memory '
+                        f'and {cpu_cores} cpu cores.')
+        elif 'SymThresh' in job_status['keywords'] and 'SymThresh=0.01' not in ess_trsh_methods:
+            logger.info(f'Troubleshooting {job_type} job in {software} for {label} by loosening symmetry '
+                        f'threshold to 0.01 due to a symmetry error.')
+            ess_trsh_methods.append('SymThresh=0.01')
+            trsh_keyword = {'block': """%sym
+ SymThresh 0.01
+end
+"""}
         elif 'cpu' in job_status['keywords']:
             # Reduce cpu allocation.
             try:

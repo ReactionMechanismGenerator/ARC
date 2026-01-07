@@ -310,6 +310,8 @@ class OrcaAdapter(JobAdapter):
             if opt_convergence:
                 self.add_to_args(val=opt_convergence, key1='keyword')
             if not self.is_ts:
+                self.add_to_args(val='UseSym', key1='keyword')
+            if not self.is_ts:
                 input_dict['job_type_1'] = 'Opt'
             else:
                 input_dict['job_type_1'] = 'OptTS'
