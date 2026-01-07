@@ -33,8 +33,6 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 ORCA_METHOD_ALIASES = {
-    'wb97xd': 'wb97x-d3',
-    'wb97x-d3': 'wb97x-d3',
     'wb97xd3': 'wb97x-d3',
 }
 
@@ -45,12 +43,14 @@ def _format_orca_method(method: str) -> str:
     """
     if not method:
         return method
+    if method.lower() == 'wb97xd':
+        logger.warning('ORCA does not support wb97xd; use wb97x or wb97x-d3.')
     return ORCA_METHOD_ALIASES.get(method.lower(), method)
 
 
 def _format_orca_basis_token(token: str) -> str:
     """
-    Convert def2 basis tokens to ORCA formatting (e.g., def2tzvp -> def2-TZVP).
+    Convert def2 basis tokens to ORCA formatting (e.g., def2tzvp -> def2-tzvp).
     """
     if not token:
         return token
@@ -287,7 +287,7 @@ class OrcaAdapter(JobAdapter):
             if self.fine:
                 self.add_to_args(val='defgrid3', key1='keyword')
             else:
-                self.add_to_args(val='defgrid3', key1='keyword')
+                self.add_to_args(val='defgrid2', key1='keyword')
         elif self.level.method_type == 'wavefunction':
             input_dict['method_class'] = 'HF'
             if 'dlpno' in self.level.method:

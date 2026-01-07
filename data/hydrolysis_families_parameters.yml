@@ -1,0 +1,52 @@
+# Configuration file for hydrolysis reaction parameters
+# The parameters are taken from
+#Leen Fahoum and Alon Grinberg Dana,“Automated Reaction Transition State Search for Neutral Hydrolysis Reactions.”
+
+
+# Family sets definition
+family_sets:
+  set_1:
+    - carbonyl_based_hydrolysis
+    - ether_hydrolysis
+  set_2:
+    - nitrile_hydrolysis
+
+# Family-specific parameters for different reaction types
+family_parameters:
+  # Set 1 Families
+  ether_hydrolysis:
+    stretch: 1.5
+    r_value: [2.14, 1.1, 0.97]
+    a_value: [66, 72.8, 107]
+    d_values:
+      - [101.8, 0.3, 102.2]
+      - [-101.8, 0.3, 102.2]
+      - [101.8, 0.3, -102.2]
+      - [-101.8, 0.3, -102.2]
+
+  carbonyl_based_hydrolysis:
+    stretch: 1.3
+    r_value: [1.85, 1.21, 0.97]
+    a_value: [77, 76, 112]
+    d_values:
+      - [140, 1.64, 103]
+      - [-140, 1.64, 103]
+      - [140, 1.64, -103]
+      - [-140, 1.64, -103]
+      
+  # Set 2 Families
+  nitrile_hydrolysis:
+    stretch: 1.04
+    r_value: [1.8, 1.3, 0.97]
+    a_value: [97, 58, 114]
+    d_values:
+      - [174, -0.0154, 104]
+      - [-174, -0.0154, 104]
+      - [174, -0.0154, -104]
+      - [-174, -0.0154, -104]
+  
+# General reference information
+units:
+  distances: Angstroms
+  angles: degrees
+  stretching_factors: dimensionless

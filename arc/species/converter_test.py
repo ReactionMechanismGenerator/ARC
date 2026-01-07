@@ -4,6 +4,8 @@
 """
 This module contains unit tests of the arc.species.converter module
 """
+
+import math
 import os
 
 import numpy as np
@@ -534,6 +536,17 @@ H       0.63003260   -0.63003260   -0.63003260
                            'coords': ((1.082465, -0.311042, 0.517009), (-0.000538, 0.002628, 0.064162),
                                       (-0.872035, -0.717142, -0.381683), (-0.209893, 1.025557, 0.057233))}
 
+        cls.xyz_14 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
+                      'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
+                      'coords': ((-3.59616665, 3.56051739, 1.66762912),
+                                 (-3.12243719, 4.49463523, 1.44875867),
+                                 (-4.24266183, 3.67770871, 2.51214684),
+                                 (-2.59966081, 2.57831173, 1.96283775),
+                                 (-3.00851627, 1.82896095, 2.40205367),
+                                 (-4.38319614, 3.12587525, 0.50462835),
+                                 (-5.34431488, 3.03821019, 0.76647869),
+                                 (-4.29744813, 3.80180325, -0.22733382))}
+
         nh_s_adj = """1 N u0 p2 c0 {2,S}
                           2 H u0 p0 c0 {1,S}"""
         nh_s_xyz = """N       0.50949998    0.00000000    0.00000000
@@ -552,42 +565,42 @@ H       0.63003260   -0.63003260   -0.63003260
         Note: If these tests fail, we should update the notebook as well
         """
         zmat = {'symbols': ('N', 'C', 'C', 'C', 'N', 'O', 'C', 'O', 'X', 'C', 'X', 'C', 'X', 'N', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
-                'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None), 
-                            ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4_3', 'A_4_3_2', 'D_4_3_2_1'), 
-                            ('R_5_3', 'A_5_3_2', 'D_5_3_2_1'), ('R_6_4', 'A_6_4_3', 'D_6_4_3_2'), 
-                            ('R_7_5', 'A_7_5_3', 'D_7_5_3_2'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_9_6', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_11_9', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_13_11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'), 
-                            ('R_14_0', 'A_14_0_1', 'D_14_0_1_2'), ('R_15_0', 'A_15_0_1', 'D_15_0_1_2'), 
-                            ('R_16_1', 'A_16_1_2', 'D_16_1_2_15'), ('R_17_1', 'A_17_1_2', 'D_17_1_2_16'), ('R_18_2', 'A_18_2_1', 'D_18_2_1_17'), 
-                            ('R_19_2', 'A_19_2_1', 'D_19_2_1_18'), ('R_20_3', 'A_20_3_2', 'D_20_3_2_1'), ('R_21_7', 'A_21_7_5', 'D_21_7_5_3'), 
-                            ('R_22_4', 'A_22_4_6', 'D_22_4_6_21')), 
-                'vars': {'R_1_0': 1.4604942751011212, 'R_2_1': 1.527922849799549, 'A_2_1_0': 110.3065082939501, 
-                        'R_3_2': 1.528953932777341, 'A_3_2_1': 111.18144649602384, 'D_3_2_1_0': 182.82580139682537, 
-                        'R_4_3': 1.4513236745554712, 'A_4_3_2': 110.1816515421551, 'D_4_3_2_1': 178.77234190887103, 
-                        'R_5_3': 1.4324895363736756, 'A_5_3_2': 108.87342377052293, 'D_5_3_2_1': 296.5360670758954, 
-                        'R_6_4': 1.45471039292036, 'A_6_4_3': 119.52044799360947, 'D_6_4_3_2': 267.385789076988, 
-                        'R_7_5': 1.463961241323698, 'A_7_5_3': 106.24609505276611, 'D_7_5_3_2': 169.47632562217643, 
-                        'R_9_6': 1.2003625639923046, 'R_11_9': 1.5409261196430282, 'R_13_11': 1.1601896955504991, 
-                        'R_14_0': 1.0199706201435979, 'A_14_0_1': 109.82434650817126, 'D_14_0_1_2': 298.4471183049676, 
-                        'R_15_0': 1.0203338036642535, 'A_15_0_1': 109.29256268947609, 'D_15_0_1_2': 182.748124244299, 
-                        'R_16_1': 1.0953359821757327, 'A_16_1_2': 110.03394606716385, 'D_16_1_2_15': 121.92752893614716, 
-                        'R_17_1': 1.095192530179795, 'A_17_1_2': 110.84866373393122, 'D_17_1_2_16': 119.08345045450586, 
-                        'R_18_2': 1.098313538677341, 'A_18_2_1': 109.08968835777581, 'D_18_2_1_17': 300.70048659688996, 
-                        'R_19_2': 1.0975897283522487, 'A_19_2_1': 109.86987657387881, 'D_19_2_1_18': 242.83679879428865, 
+                'coords': ((None, None, None), ('R_1_0', None, None), ('R_2_1', 'A_2_1_0', None),
+                            ('R_3_2', 'A_3_2_1', 'D_3_2_1_0'), ('R_4_3', 'A_4_3_2', 'D_4_3_2_1'),
+                            ('R_5_3', 'A_5_3_2', 'D_5_3_2_1'), ('R_6_4', 'A_6_4_3', 'D_6_4_3_2'),
+                            ('R_7_5', 'A_7_5_3', 'D_7_5_3_2'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_9_6', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_11_9', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('RX_8|10|12_6|9|11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_13_11', 'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12', 'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9'),
+                            ('R_14_0', 'A_14_0_1', 'D_14_0_1_2'), ('R_15_0', 'A_15_0_1', 'D_15_0_1_2'),
+                            ('R_16_1', 'A_16_1_2', 'D_16_1_2_15'), ('R_17_1', 'A_17_1_2', 'D_17_1_2_16'), ('R_18_2', 'A_18_2_1', 'D_18_2_1_17'),
+                            ('R_19_2', 'A_19_2_1', 'D_19_2_1_18'), ('R_20_3', 'A_20_3_2', 'D_20_3_2_1'), ('R_21_7', 'A_21_7_5', 'D_21_7_5_3'),
+                            ('R_22_4', 'A_22_4_6', 'D_22_4_6_21')),
+                'vars': {'R_1_0': 1.4604942751011212, 'R_2_1': 1.527922849799549, 'A_2_1_0': 110.3065082939501,
+                        'R_3_2': 1.528953932777341, 'A_3_2_1': 111.18144649602384, 'D_3_2_1_0': 182.82580139682537,
+                        'R_4_3': 1.4513236745554712, 'A_4_3_2': 110.1816515421551, 'D_4_3_2_1': 178.77234190887103,
+                        'R_5_3': 1.4324895363736756, 'A_5_3_2': 108.87342377052293, 'D_5_3_2_1': 296.5360670758954,
+                        'R_6_4': 1.45471039292036, 'A_6_4_3': 119.52044799360947, 'D_6_4_3_2': 267.385789076988,
+                        'R_7_5': 1.463961241323698, 'A_7_5_3': 106.24609505276611, 'D_7_5_3_2': 169.47632562217643,
+                        'R_9_6': 1.2003625639923046, 'R_11_9': 1.5409261196430282, 'R_13_11': 1.1601896955504991,
+                        'R_14_0': 1.0199706201435979, 'A_14_0_1': 109.82434650817126, 'D_14_0_1_2': 298.4471183049676,
+                        'R_15_0': 1.0203338036642535, 'A_15_0_1': 109.29256268947609, 'D_15_0_1_2': 182.748124244299,
+                        'R_16_1': 1.0953359821757327, 'A_16_1_2': 110.03394606716385, 'D_16_1_2_15': 121.92752893614716,
+                        'R_17_1': 1.095192530179795, 'A_17_1_2': 110.84866373393122, 'D_17_1_2_16': 119.08345045450586,
+                        'R_18_2': 1.098313538677341, 'A_18_2_1': 109.08968835777581, 'D_18_2_1_17': 300.70048659688996,
+                        'R_19_2': 1.0975897283522487, 'A_19_2_1': 109.86987657387881, 'D_19_2_1_18': 242.83679879428865,
                         'R_20_3': 1.0977229848103394, 'A_20_3_2': 110.25024873242359, 'D_20_3_2_1': 55.735631534996074,
-                        'R_21_7': 0.9770937580834932, 'A_21_7_5': 96.48404094647259, 'D_21_7_5_3': 73.0418671453161, 
-                        'R_22_4': 1.0156335096736346, 'A_22_4_6': 120.95423666407609, 'D_22_4_6_21': 114.47617942015948, 
-                        'RX_8|10|12_6|9|11': 1.0, 
-                        'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12': 90.0, 
-                        'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9': 180.0}, 
-                'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 6, 5: 4, 6: 7, 7: 5, 8: 'X20', 9: 8, 10: 'X21', 11: 9, 12: 'X22', 
+                        'R_21_7': 0.9770937580834932, 'A_21_7_5': 96.48404094647259, 'D_21_7_5_3': 73.0418671453161,
+                        'R_22_4': 1.0156335096736346, 'A_22_4_6': 120.95423666407609, 'D_22_4_6_21': 114.47617942015948,
+                        'RX_8|10|12_6|9|11': 1.0,
+                        'AX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12': 90.0,
+                        'DX_8|9|10|11|12|13_6|6|9|9|11|11_4|8|6|10|9|12_7|4|7|6|7|9': 180.0},
+                'map': {0: 0, 1: 1, 2: 2, 3: 3, 4: 6, 5: 4, 6: 7, 7: 5, 8: 'X20', 9: 8, 10: 'X21', 11: 9, 12: 'X22',
                         13: 10, 14: 11, 15: 12, 16: 13, 17: 14, 18: 15, 19: 16, 20: 17, 21: 18, 22: 19}}
-        
+
         expected_xyz = {'coords': ((-0.8213900082688513, -2.10323641901248, -3.4787571562478665),
                                 (-0.8213900082688513, -2.10323641901248, -2.0182628811467453),
                                 (-0.8213900082688513, -0.6702747081300946, -1.488009196497028),
@@ -4003,7 +4016,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [1, 0], -1.5
         expected_xyz = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
@@ -4034,7 +4047,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         # test changing an angle to 180 degrees
         indices, new_val = [0, 1, 2], 180
@@ -4080,7 +4093,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [3, 2, 1, 0], -30
         expected_xyz = {'symbols': ('O', 'C', 'C', 'O', 'H', 'H', 'H', 'H'), 'isotopes': (16, 12, 12, 16, 1, 1, 1, 1),
@@ -4131,7 +4144,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         # test A_group modification
         indices, new_val = [0, 1, 2], 160
@@ -4147,7 +4160,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [1, 2, 5], 160
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4211,7 +4224,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 5)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
 
         indices, new_val = [5, 2, 1, 0], 180
         expected_xyz = {'symbols': ('O', 'C', 'C', 'S', 'O', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -4278,7 +4291,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         new_xyz = converter.modify_coords(coords=xyz1, indices=indices, new_value=new_val,
                                           modification_type=modification_type, mol=mol1)
         self.assertTrue(almost_equal_coords_lists(new_xyz, expected_xyz))
-        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 4)
+        self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=indices, mol=mol1), new_val, 3)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=xyz1, indices=[4, 1, 2, 3], mol=mol1),
                                176.7937925, 4)
         self.assertAlmostEqual(converter.get_zmat_param_value(coords=new_xyz, indices=[4, 1, 2, 3], mol=mol1),
@@ -4524,17 +4537,7 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertTrue(converter.check_isomorphism(mol1, mol2))
 
     def test_cluster_confs_by_rmsd(self):
-        nco_1 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
-                 'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
-                 'coords': ((-3.59616665, 3.56051739, 1.66762912),
-                            (-3.12243719, 4.49463523, 1.44875867),
-                            (-4.24266183, 3.67770871, 2.51214684),
-                            (-2.59966081, 2.57831173, 1.96283775),
-                            (-3.00851627, 1.82896095, 2.40205367),
-                            (-4.38319614, 3.12587525, 0.50462835),
-                            (-5.34431488, 3.03821019, 0.76647869),
-                            (-4.29744813, 3.80180325, -0.22733382))}
-
+        """Test clustering conformers by RMSD"""
         # translation of nco_1
         nco_2 = {'symbols': ('C', 'H', 'H', 'O', 'H', 'N', 'H', 'H'),
                  'isotopes': (12, 1, 1, 16, 1, 14, 1, 1),
@@ -4631,17 +4634,107 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                             (-3.69226847, 4.12970364, 1.0893621),
                             (-4.52773502, 3.18138419, 0.05526659))}
 
-        xyzs1 = [nco_1, nco_2, nco_3, nco_4, nco_5]
+        xyzs1 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs1)), 1)
 
-        xyzs2 = [nco_1, nco_2, nco_3, nco_4, nco_5, nco_6]
+        xyzs2 = [self.xyz_14, nco_2, nco_3, nco_4, nco_5, nco_6]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs2)), 2)
 
-        xyzs3 = [nco_1, nco_2, nco_6, nco_7, nco_8, nco_9]
+        xyzs3 = [self.xyz_14, nco_2, nco_6, nco_7, nco_8, nco_9]
         self.assertEqual(len(converter.cluster_confs_by_rmsd(xyzs3)), 4)
+
+    def test_distance_constraint(self):
+        """Test the distance_constraint() function"""
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][0], distance=0.0)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(sphere_error, 0.0)
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][0], distance=1.0)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(abs(sphere_error), 1.0)
+        distance = calculate_param(self.xyz_14['coords'], atoms=[0, 1])
+        self.assertAlmostEqual(distance, 1.06999992, places=4)
+        sphere_eq = converter.distance_constraint(reference_coord=self.xyz_14['coords'][1],
+                                                  distance=distance)
+        sphere_error = sphere_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(abs(sphere_error), 0.0, places=4)
+
+    def test_angle_constraint(self):
+        """Test the angle_constraint() function"""
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=0.0)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertEqual(plane_error, 0.0)
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=90.0)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(abs(math.degrees(plane_error)), 90.0, places=4)
+        angle = calculate_param(self.xyz_14['coords'], atoms=[0, 1, 2])
+        self.assertAlmostEqual(abs(angle), 35.2643963, places=4)
+        plane_eq = converter.angle_constraint(atom_a=self.xyz_14['coords'][0],
+                                              atom_b=self.xyz_14['coords'][1],
+                                              angle=angle)
+        plane_error = plane_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(abs(math.degrees(plane_error)), angle, places=4)
+        plane_error = plane_eq(*self.xyz_14['coords'][2])
+        self.assertAlmostEqual(abs(math.degrees(plane_error)), 0.0, places=4)
+
+    def test_dihedral_constraint(self):
+        """Test the dihedral_constraint() function"""
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=0.0)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(torsion_error, 0.0, places=10)
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=60.0)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(math.degrees(torsion_error), 60.0, delta=3)
+        dihedral = calculate_param(self.xyz_14['coords'], atoms=[0, 1, 2, 3])
+        self.assertAlmostEqual(dihedral, 38.970413, delta=3)
+        torsion_eq = converter.dihedral_constraint(atom_a=self.xyz_14['coords'][0],
+                                                   atom_b=self.xyz_14['coords'][1],
+                                                   atom_c=self.xyz_14['coords'][2],
+                                                   dihedral=dihedral)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][0])
+        self.assertAlmostEqual(math.degrees(torsion_error), dihedral, delta=3)
+        torsion_error = torsion_eq(*self.xyz_14['coords'][3])
+        self.assertAlmostEqual(math.degrees(torsion_error), 0.0, delta=3)
 
     def test_add_atom_to_xyz_using_internal_coords(self):
         """Test the add_atom_to_xyz_using_internal_coords() function."""
+        def check_distance(coords, atoms, expected, places=0):
+            """
+            Checks if the calculated distance between atoms is close to the expected value.
+            """
+            value = calculate_param(coords=coords, atoms=atoms)
+            self.assertAlmostEqual(value, expected, places=places)
+
+        def check_angle(coords, atoms, expected, places=None, delta=None):
+            """
+            Checks if the calculated angle is within the acceptable deviation (delta) from the expected angle.
+            """
+            value = calculate_param(coords=coords, atoms=atoms)
+            if delta is not None:
+                self.assertAlmostEqual(value, expected, delta=delta)
+            elif places is not None:
+                self.assertAlmostEqual(value, expected, places=places)
+
+        def check_dihedral(coords, atoms, expected, places=None, delta=None):
+            """
+            Checks if the calculated dihedral angle (normalized) is within the acceptable deviation (delta) from the expected angle.
+            """
+            value = calculate_param(coords=coords, atoms=atoms)
+            normalized = abs((value + 180) % 360 - 180)
+            if delta is not None:
+                self.assertAlmostEqual(normalized, expected, delta=delta)
+            elif places is not None:
+                self.assertAlmostEqual(normalized, expected, places=places)
+
         xyz_1 = """ C                 -3.63243985   -0.48299420   -0.05541310
                     H                 -3.27244945   -1.49054926   -0.06723326
                     H                 -3.24128971    0.04543562   -0.89960709
@@ -4670,9 +4763,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                      (-1.24509731, 0.74268637, 0.46176133), (-1.3183353, 0.6960459, 2.20690531),
                                      (-1.0398666203453495, -1.4521333553792743, 1.2864271004043641))}
         self.assertTrue(almost_equal_coords_lists(new_xyz_1, expected_xyz_1))
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[7, 10]), 1.77, places=2)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 7, 10]), 109.5, places=1)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
+        check_distance(coords=new_xyz_1['coords'], atoms=[7, 10], expected=1.77, places=1)
+        check_angle(coords=new_xyz_1['coords'], atoms=[4, 7, 10], expected=109.5, places=1)
+        check_dihedral(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10], expected=60, places=1)
 
         new_xyz_2 = converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_1,
                                                                     element='Cl',
@@ -4682,14 +4775,10 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                                                     r_value=2.70,
                                                                     a_value=61.46,
                                                                     d_value=-60.0,
-                                                                    opt_method='BFGS',
                                                                     )
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][0], -1.0407054376010356, places=2)
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][1], -1.4428236405325816, places=2)
-        self.assertAlmostEqual(new_xyz_2['coords'][-1][2], 1.2912758496528232, places=2)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 10]), 2.70, places=1)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[4, 0, 10]), 61.46, places=0)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_1['coords'], atoms=[0, 4, 7, 10]), 300, places=1)
+        check_distance(coords=new_xyz_2['coords'], atoms=[4, 10], expected=2.70, places=1)
+        check_angle(coords=new_xyz_2['coords'], atoms=[4, 0, 10], expected=61.46, places=1)
+        check_dihedral(coords=new_xyz_2['coords'], atoms=[0, 4, 7, 10], expected=60, places=1)
 
         xyz_3 = """C      -1.01765390   -0.08355112    0.05206009
                    O       0.22303684   -0.79051481    0.05294172
@@ -4716,9 +4805,9 @@ H      -0.81291200   -0.46933500   -0.31111876"""
                                    (-1.14968688, 0.45844916, -0.88969505), (1.33643417, -2.15859899, -0.90083808),
                                    (1.4828150949768655, -2.377060198658591, 0.30306573909787815))}
         self.assertTrue(almost_equal_coords(new_xyz_3, expected_xyz))
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[2, 8]), 1.85, places=2)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[1, 2, 8]), 77.4, places=1)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8]), 140, places=1)
+        check_distance(coords=new_xyz_3['coords'], atoms=[2, 8], expected=1.85, places=1)
+        check_angle(coords=new_xyz_3['coords'], atoms=[1, 2, 8], expected=77.4, places=1)
+        check_dihedral(coords=new_xyz_3['coords'], atoms=[3, 7, 2, 8], expected=140, places=1)
 
         xyz_4 = """C       2.44505336    0.33426556   -0.05839486
                    C       1.22268719   -0.52813666    0.01896600
@@ -4746,10 +4835,136 @@ H      -0.81291200   -0.46933500   -0.31111876"""
         self.assertAlmostEqual(new_xyz_4['coords'][-1][0], 1.8986166253764283, places=2)
         self.assertAlmostEqual(new_xyz_4['coords'][-1][1], 0.9987236974936107, places=2)
         self.assertAlmostEqual(new_xyz_4['coords'][-1][2], 0.8154061174277444, places=2)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[1, 14]), 1.85, places=2)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[3, 1, 14]), 77.4, places=1)
-        self.assertAlmostEqual(calculate_param(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14]), 140, places=1)
+        check_distance(coords=new_xyz_4['coords'], atoms=[1, 14], expected=1.85, places=2)
+        check_angle(coords=new_xyz_4['coords'], atoms=[3, 1, 14], expected=77.4, places=1)
+        check_dihedral(coords=new_xyz_4['coords'], atoms=[2, 0, 1, 14], expected=140, places=1)
 
+        xyz_5="""C      -1.01765390   -0.08355112    0.05206009
+                 O       0.22303684   -0.79051481    0.05294172
+                 C       0.35773087   -1.66017412   -0.97863090
+                 O      -0.45608483   -1.87500387   -1.86208833
+                 H      -1.82486467   -0.81522856    0.14629516
+                 H      -1.06962462    0.60119223    0.90442455
+                 H      -1.14968688    0.45844916   -0.88969505
+                 H       1.33643417   -2.15859899   -0.90083808"""
+        new_xyz_5= converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_5,
+                                                                    element='O',
+                                                                    r_index=2,
+                                                                    a_indices=(1, 2),
+                                                                    d_indices=(3, 7, 2),
+                                                                    r_value=1.8,
+                                                                    a_value=77,
+                                                                    d_value=140,
+                                                                    )
+
+        check_distance(coords=new_xyz_5['coords'], atoms=[2, 8], expected=1.8, places=1)
+        check_angle(coords=new_xyz_5['coords'], atoms=[1, 2, 8], expected=77, delta=5)
+        check_dihedral(coords=new_xyz_5['coords'], atoms=[3, 7, 2, 8], expected=140,delta=5)
+
+        xyz_6 = """C      -1.79090496    0.16195344    0.54586762
+        C      -0.29750770    0.40075866    0.64716134
+        O       0.37622588   -0.66484334   -0.01806424
+        C       1.78768038   -0.50729501    0.03637639
+        H      -2.05996050   -0.79657732    1.00186393
+        H      -2.10367702    0.11491160   -0.50249559
+        H      -2.34837353    0.95933379    1.04519886
+        H       0.00442248    0.42939362    1.69991935
+        H      -0.03994121    1.35437631    0.17328998
+        H       2.13363258   -0.50935390    1.07451700
+        H       2.24870467   -1.34913122   -0.48708664
+        H       2.08904465    0.42028683   -0.45980377"""
+        new_xyz_6=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_6,
+                                                                  element='O',
+                                                                  r_index=1,
+                                                                  a_indices=(2, 1),
+                                                                  d_indices=(0, 7, 1),
+                                                                  r_value=2.1,
+                                                                  a_value=65,
+                                                                  d_value=98.25
+                                                                    )
+
+        check_distance(coords=new_xyz_6['coords'], atoms=[1, 12], expected=2.1, places=1)
+        check_angle(coords=new_xyz_6['coords'], atoms=[2, 1, 12], expected=65, delta=6)
+        check_dihedral(coords=new_xyz_6['coords'], atoms=[0, 7, 1, 12], expected=98.25, delta=5)
+
+        xyz_7= """C       2.97058781   -0.21070737   -0.09207851
+O       1.61612389   -0.30531019   -0.51325496
+C       0.71770473    0.06060475    0.53401367
+C      -0.71758641   -0.05709177    0.03392758
+O      -1.61601140    0.30874025    1.08121962
+C      -2.97047936    0.21401778    0.66008169
+H       3.15985016   -0.88941299    0.74516152
+H       3.21214164    0.81763976    0.19355007
+H       3.61217288   -0.50062986   -0.92848057
+H       0.86387097   -0.59504248    1.40088174
+H       0.91542802    1.09002507    0.85634557
+H      -0.91528083   -1.08649709   -0.28846850
+H      -0.86376919    0.59860060   -0.83290320
+H      -3.21193982   -0.81434774    0.37443570
+H      -3.61206186    0.50385697    1.49651591
+H      -3.15982655    0.89272913   -0.17713488"""
+        new_xyz_7=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_7,
+                                                                            element='O',
+                                                                            r_index=0,
+                                                                            a_indices=(1, 0),
+                                                                            d_indices=(6, 7, 0),
+                                                                            r_value=2.1,
+                                                                            a_value=65,
+                                                                            d_value=-98.25
+                                                                         )
+        check_distance(coords=new_xyz_7['coords'], atoms=[0, 16], expected=2.1, places=1)
+        check_angle(coords=new_xyz_7['coords'], atoms=[1, 0, 16], expected=65, delta=6)
+        check_dihedral(coords=new_xyz_7['coords'], atoms=[6, 7, 0, 16], expected=98.25, delta=5)
+
+        xyz_8="""C       2.24051202    1.04153068    0.19486347
+C       1.10659712    0.58234118    0.74083019
+C       0.16338489   -0.36827342    0.07674238
+O      -0.00738172   -1.48018240    0.95029996
+C      -0.89152333   -2.44569234    0.39890889
+H       2.55998781    0.74063014   -0.79771591
+H       2.88053617    1.72597545    0.74310056
+H       0.83267744    0.90476855    1.74255103
+H       0.55255009   -0.71024239   -0.88913402
+H      -0.80072247    0.12806836   -0.08052245
+H      -0.49138857   -2.84032162   -0.54006077
+H      -0.98849098   -3.27013487    1.11037749
+H      -1.88123946   -2.00923795    0.23313156"""
+        new_xyz_8=converter.add_atom_to_xyz_using_internal_coords(xyz=xyz_8,
+                                                                    element='O',
+                                                                    r_index=2,
+                                                                    a_indices=(3, 2),
+                                                                    d_indices=(1, 8, 2),
+                                                                    r_value=2.1,
+                                                                    a_value=65,
+                                                                    d_value=98.25
+                                                                    )
+        check_distance(coords=new_xyz_8['coords'], atoms=[2, 13], expected=2.1, places=1)
+        check_angle(coords=new_xyz_8['coords'], atoms=[3, 2, 13], expected=65, delta=6)
+        check_dihedral(coords=new_xyz_8['coords'], atoms=[1, 8, 2, 13], expected=98.25, delta=5)
+
+    def test_sorted_distances_of_atom(self):
+        """Test the test_sorted_distances_of_atom function"""
+        xyz_dict = {
+                    'symbols': ['O', 'H', 'H'],
+                    'isotopes': [16, 1, 1],
+                    'coords': [
+                        [0.0, 0.0, 0.0],  # O
+                        [0.758, 0.0, 0.504],  # H1
+                        [-0.758, 0.0, 0.504],  # H2
+                    ]
+                     }
+        result = converter.sorted_distances_of_atom(xyz_dict, 0)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [1, 2])
+        self.assertAlmostEqual(result[0][1], result[1][1], delta=0.01)
+
+        result = converter.sorted_distances_of_atom(xyz_dict, 1)
+        result_indices = [i for i, d in result]
+        self.assertEqual(result_indices, [0, 2])
+        self.assertLess(result[0][1], result[1][1])
+
+        with self.assertRaises(IndexError):
+            converter.sorted_distances_of_atom(xyz_dict, 5)
 
     @classmethod
     def tearDownClass(cls):

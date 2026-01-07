@@ -209,6 +209,16 @@ H      -1.16115119    0.31478894   -0.81506145
         self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
         self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
 
+    def test_save_irc_traj_animation(self):
+        """Test the save_irc_traj_animation function"""
+        irc_f_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')
+        irc_r_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')
+        out_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_animation.out')
+        self.assertFalse(os.path.isfile(out_path))
+        plotter.save_irc_traj_animation(irc_f_path, irc_r_path, out_path)
+        self.assertTrue(os.path.isfile(out_path))
+
+
     @classmethod
     def tearDownClass(cls):
         """A function that is run ONCE after all unit tests in this class."""
@@ -218,7 +228,9 @@ H      -1.16115119    0.31478894   -0.81506145
         files_to_remove = [os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt'),
                            os.path.join(ARC_PATH, 'arc', 'testing', 'water.log'),
                            os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log'),
-                           os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log'),]
+                           os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log'),
+                           os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_animation.out'),
+                           ]
         for file_path in files_to_remove:
             if os.path.isfile(file_path):
                 os.remove(file_path)

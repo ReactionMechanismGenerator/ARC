@@ -26,7 +26,6 @@ logger = get_logger()
 default_job_settings, global_ess_settings, rotor_scan_resolution = \
     settings['default_job_settings'], settings['global_ess_settings'], settings['rotor_scan_resolution']
 
-
 ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              '1,2_Insertion_CO': ['kinbot'],
                              '1,2_Insertion_carbene': ['kinbot'],
@@ -43,6 +42,9 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm'],
                              'Diels_alder_addition': ['kinbot'],
                              'H_Abstraction': ['heuristics', 'autotst'],
+                             'carbonyl_based_hydrolysis': ['heuristics'],
+                             'ether_hydrolysis': ['heuristics'],
+                             'nitrile_hydrolysis': ['heuristics'],
                              'HO2_Elimination_from_PeroxyRadical': ['kinbot'],
                              'Intra_2+2_cycloaddition_Cd': ['gcn', 'xtb_gsm'],
                              'Intra_5_membered_conjugated_C=C_C=C_addition': ['gcn', 'xtb_gsm'],
@@ -117,7 +119,7 @@ def _initialize_adapter(obj: 'JobAdapter',
                         times_rerun: int = 0,
                         torsions: Optional[List[List[int]]] = None,
                         tsg: Optional[int] = None,
-                        xyz: Optional[Union[dict,List[dict]]] = None,
+                        xyz: Optional[Union[dict, List[dict]]] = None,
                         ):
     """
     A common Job adapter initializer function.
@@ -161,7 +163,7 @@ def _initialize_adapter(obj: 'JobAdapter',
     obj.job_num = job_num
     obj.job_server_name = job_server_name
     obj.job_status = job_status \
-        or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
+                     or ['initializing', {'status': 'initializing', 'keywords': list(), 'error': '', 'line': ''}]
     obj.job_type = job_type if isinstance(job_type, str) else job_type[0]  # always a string
     obj.job_types = job_type if isinstance(job_type, list) else [job_type]  # always a list
     # When restarting ARC and re-setting the jobs, ``level`` is a string, convert it to a Level object instance
@@ -211,7 +213,7 @@ def _initialize_adapter(obj: 'JobAdapter',
             obj.is_ts = obj.species[0].is_ts
             obj.species_label = list()
             for spc in obj.species:
-                obj.charge.append(spc.charge) 
+                obj.charge.append(spc.charge)
                 obj.multiplicity.append(spc.multiplicity)
                 obj.species_label.append(spc.label)
     elif obj.reactions is not None:
@@ -286,9 +288,9 @@ def is_species_restricted(obj: 'JobAdapter',
         bool: Whether to run as restricted (``True``) or not (``False``).
     """
 
-    if obj.level.method_type in ['force_field','composite','semiempirical']:
+    if obj.level.method_type in ['force_field', 'composite', 'semiempirical']:
         return True
-    
+
     multiplicity = obj.multiplicity if species is None else species.multiplicity
     number_of_radicals = obj.species[0].number_of_radicals if species is None else species.number_of_radicals
     species_label = obj.species[0].label if species is None else species.label
@@ -322,7 +324,8 @@ def check_argument_consistency(obj: 'JobAdapter'):
                 raise NotImplementedError(f'The {obj.job_adapter} job adapter does not support ESS scans.')
     if obj.job_type == 'scan' and divmod(360, obj.scan_res)[1]:
         raise ValueError(f'Got an illegal rotor scan resolution of {obj.scan_res}.')
-    if obj.job_type == 'scan' and ((not obj.species[0].rotors_dict or obj.rotor_index is None) and obj.torsions is None):
+    if obj.job_type == 'scan' and (
+            (not obj.species[0].rotors_dict or obj.rotor_index is None) and obj.torsions is None):
         # If this is a scan job type and species.rotors_dict is empty (e.g., via pipe), then torsions must be set up.
         raise ValueError('Either torsions or a species rotors_dict along with a rotor_index argument '
                          'must be specified for an ESS scan job.')
@@ -406,7 +409,7 @@ def update_input_dict_with_args(args: dict,
                 else:
                     if 'keywords' not in input_dict.keys():
                         input_dict['keywords'] = ''
-                # Check if input_dict['keywords'] already contains a value
+                    # Check if input_dict['keywords'] already contains a value
                     if input_dict['keywords']:
                         input_dict['keywords'] += f' {value}'
                     else:
@@ -443,6 +446,7 @@ def update_input_dict_with_args(args: dict,
                             input_dict[key] += f'{value}'
 
     return input_dict
+
 
 def input_dict_strip(input_dict: dict) -> dict:
     """
@@ -535,6 +539,7 @@ def which(command: Union[str, list],
         return bool(ans)
     else:
         return ans
+
 
 def combine_parameters(input_dict: dict, terms: list) -> Tuple[dict, List]:
     """
