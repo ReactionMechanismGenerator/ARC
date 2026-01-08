@@ -492,8 +492,19 @@ def set_job_args(args: Optional[dict],
                 else:
                     for sub_key, val in trsh_args[key].items():
                         if sub_key in merged[key] and merged[key][sub_key]:
-                            joiner = '\n' if key == 'block' else ' '
-                            merged[key][sub_key] = f'{merged[key][sub_key]}{joiner}{val}'
+                            if key == 'block':
+                                # Avoid duplicate blocks when troubleshooting adds the same block.
+                                if val in merged[key][sub_key]:
+                                    continue
+                                joiner = '\n'
+                                merged[key][sub_key] = f'{merged[key][sub_key]}{joiner}{val}'
+                            else:
+                                # Avoid duplicate keywords; only append missing tokens.
+                                existing_tokens = set(merged[key][sub_key].split())
+                                new_tokens = [tok for tok in val.split() if tok not in existing_tokens]
+                                if not new_tokens:
+                                    continue
+                                merged[key][sub_key] = f"{merged[key][sub_key]} {' '.join(new_tokens)}"
                         else:
                             merged[key][sub_key] = val
         if 'trsh' in trsh_args and trsh_args['trsh']:

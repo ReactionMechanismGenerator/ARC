@@ -168,11 +168,11 @@ class TestJobCommon(unittest.TestCase):
 
         level = Level(repr='CBS-QB3')
         level.args = {'keyword': {'general': 'tightscf'}, 'block': {'general': 'b1'}}
-        args = common.set_job_args(args={'keyword': {'general': 'defgrid2'}, 'block': {'general': 'b2'}},
+        args = common.set_job_args(args={'keyword': {'general': 'defgrid2 tightscf'}, 'block': {'general': 'b1'}},
                                    level=level,
                                    job_name='j1')
         self.assertEqual(args['keyword']['general'], 'tightscf defgrid2')
-        self.assertEqual(args['block']['general'], 'b1\nb2')
+        self.assertEqual(args['block']['general'], 'b1')
 
     def test_which(self):
         """Test the which() function"""
