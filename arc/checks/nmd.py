@@ -54,6 +54,9 @@ def analyze_ts_normal_mode_displacement(reaction: 'ARCReaction',
     except NotImplementedError:
         logger.warning(f'Could not parse frequencies for TS {reaction.ts_species.label}.')
         return None
+    if freqs is None or normal_mode_disp is None:
+        logger.warning(f'Normal mode displacement not available for TS {reaction.ts_species.label}.')
+        return None
 
     amplitude_list = [amplitude] if isinstance(amplitude, (float, int)) else amplitude
     weights_array = get_weights_from_xyz(xyz=ts_xyz, weights=weights)

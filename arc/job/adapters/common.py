@@ -3,6 +3,7 @@ This module contains functions which are shared across multiple Job modules.
 As such, it should not import any other ARC modules to avoid circular imports.
 """
 
+import copy
 import datetime
 import os
 import shutil
@@ -479,11 +480,41 @@ def set_job_args(args: Optional[dict],
     Returns:
         dict: The initialized job specific arguments.
     """
-    # Ignore user-specified additional job arguments when troubleshooting.
+    def _merge_args(user_args: dict, trsh_args: dict) -> dict:
+        merged = copy.deepcopy(user_args) if user_args else {}
+        for key in ['keyword', 'block', 'trsh']:
+            if key not in merged:
+                merged[key] = {} if key != 'trsh' else {}
+        for key in ['keyword', 'block']:
+            if key in trsh_args and trsh_args[key]:
+                if not merged.get(key):
+                    merged[key] = copy.deepcopy(trsh_args[key])
+                else:
+                    for sub_key, val in trsh_args[key].items():
+                        if sub_key in merged[key] and merged[key][sub_key]:
+                            joiner = '\n' if key == 'block' else ' '
+                            merged[key][sub_key] = f'{merged[key][sub_key]}{joiner}{val}'
+                        else:
+                            merged[key][sub_key] = val
+        if 'trsh' in trsh_args and trsh_args['trsh']:
+            if not merged.get('trsh'):
+                merged['trsh'] = copy.deepcopy(trsh_args['trsh'])
+            elif isinstance(merged['trsh'], dict) and isinstance(trsh_args['trsh'], dict):
+                merged['trsh'].update(trsh_args['trsh'])
+            elif isinstance(merged['trsh'], list) and isinstance(trsh_args['trsh'], list):
+                merged['trsh'].extend([val for val in trsh_args['trsh'] if val not in merged['trsh']])
+            else:
+                merged['trsh'] = copy.deepcopy(trsh_args['trsh'])
+        for key, val in trsh_args.items():
+            if key not in merged:
+                merged[key] = copy.deepcopy(val)
+        return merged
+
     if args is not None and args and any(val for val in args.values()) \
             and level is not None and level.args and any(val for val in level.args.values()):
-        logger.warning(f'When troubleshooting {job_name}, ARC ignores the following user-specified options:\n'
+        logger.warning(f'When troubleshooting {job_name}, ARC merges the following user-specified options:\n'
                        f'{pformat(level.args)}')
+        args = _merge_args(level.args, args)
     elif not args and level is not None:
         args = level.args
     for key in ['keyword', 'block', 'trsh']:

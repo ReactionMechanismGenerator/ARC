@@ -161,8 +161,90 @@ class OrcaParser(ESSAdapter, ABC):
         Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
-        # Not implemented for Orca.
-        return None, None
+        freqs = self.parse_frequencies()
+        if freqs is None:
+            return None, None
+
+        mode_data = {}
+
+        with open(self.log_file_path, 'r') as f:
+            lines = f.readlines()
+
+        in_normal_modes = False
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if 'NORMAL MODES' in line:
+                in_normal_modes = True
+                i += 1
+                continue
+            if not in_normal_modes:
+                i += 1
+                continue
+            if 'IR SPECTRUM' in line or 'THERMOCHEMISTRY' in line:
+                break
+
+            stripped = line.strip()
+            if not stripped:
+                i += 1
+                continue
+
+            tokens = stripped.split()
+            if tokens and all(tok.isdigit() for tok in tokens):
+                mode_ids = [int(tok) for tok in tokens]
+                for mode_id in mode_ids:
+                    mode_data.setdefault(mode_id, [])
+                i += 1
+                while i < len(lines):
+                    row = lines[i].strip()
+                    if not row:
+                        break
+                    row_tokens = row.split()
+                    if row_tokens and all(tok.isdigit() for tok in row_tokens):
+                        # Next header starts here; let the outer loop process it.
+                        break
+                    if not row_tokens or not row_tokens[0].isdigit():
+                        break
+                    if len(row_tokens) < 1 + len(mode_ids):
+                        i += 1
+                        continue
+                    try:
+                        values = [float(val) for val in row_tokens[1:1 + len(mode_ids)]]
+                    except ValueError:
+                        i += 1
+                        continue
+                    for mode_id, val in zip(mode_ids, values):
+                        mode_data[mode_id].append(val)
+                    i += 1
+                continue
+            i += 1
+
+        if not mode_data:
+            return None, None
+
+        mode_ids = sorted(mode_data.keys())
+        total_modes = len(mode_ids)
+        n_zero_modes = total_modes - len(freqs)
+        if n_zero_modes < 0:
+            return None, None
+
+        first_mode = mode_ids[0]
+        coord_count = len(mode_data[first_mode])
+        if coord_count == 0 or coord_count % 3 != 0:
+            return None, None
+        n_atoms = coord_count // 3
+
+        displacements = []
+        for mode_id in mode_ids[n_zero_modes:]:
+            coords = mode_data[mode_id]
+            if len(coords) != n_atoms * 3:
+                return None, None
+            displacements.append(np.array(coords, dtype=np.float64).reshape((n_atoms, 3)))
+
+        if not displacements:
+            return None, None
+
+        return freqs, np.array(displacements, dtype=np.float64)
 
     def parse_t1(self) -> Optional[float]:
         """

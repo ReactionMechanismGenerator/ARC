@@ -56,6 +56,7 @@ class TestParser(unittest.TestCase):
         ch2o_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'formaldehyde_freq_terachem_output.out')
         ncc_path_terachem_output = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'ethylamine_freq_terachem_output.out')
         orca_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_example_freq.log')
+        orca_ts_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_neg_freq_ts.out')
         dual_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'dual_freq_output.out')
         co2_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
         ts_xtb_freqs_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3_xtb.out')
@@ -72,6 +73,7 @@ class TestParser(unittest.TestCase):
         ch2o_terachem_output_freqs = parser.parse_frequencies(log_file_path=ch2o_path_terachem_output)  # TeraChem
         ncc_terachem_output_freqs = parser.parse_frequencies(log_file_path=ncc_path_terachem_output)  # TeraChem
         orca_freqs = parser.parse_frequencies(log_file_path=orca_path)  # Orca
+        orca_ts_freqs = parser.parse_frequencies(log_file_path=orca_ts_path)  # Orca TS (imaginary mode)
         dual_freqs = parser.parse_frequencies(log_file_path=dual_freq_path)  # Gaussian
         co2_xtb_freqs = parser.parse_frequencies(log_file_path=co2_xtb_freqs_path)
         ts_xtb_freqs = parser.parse_frequencies(log_file_path=ts_xtb_freqs_path)
@@ -106,6 +108,10 @@ class TestParser(unittest.TestCase):
                                                  3087.60678739, 3447.41720077, 3529.23879182], np.float64))
         np.testing.assert_almost_equal(orca_freqs,
                                        np.array([1151.03, 1250.19, 1526.12, 1846.4, 3010.49, 3070.82], np.float64))
+        np.testing.assert_almost_equal(orca_ts_freqs,
+                                       np.array([-1271.60, 13.91, 340.56, 351.83, 723.12, 895.09, 1159.66, 1269.11,
+                                                 1377.88, 1448.88, 1461.08, 3090.01, 3217.06, 3220.87, 3812.34],
+                                                np.float64))
         np.testing.assert_almost_equal(dual_freqs,
                                        np.array([-1617.8276, 56.9527, 76.681, 121.4038, 182.1572, 194.9796,
                                                  202.4056, 209.9621, 273.506, 342.468, 431.985, 464.0768,
@@ -313,6 +319,15 @@ class TestParser(unittest.TestCase):
              [[0.13, 0.26, -0.13],  [0., 0.03, -0.02], [-0., 0., -0.], [0., 0.01, -0.], [-0.49, -0.23, 0.33],
               [0.03, -0.68, 0.15], [0., -0.08, 0.06], [-0., -0., -0.], [0.01, -0., -0.], [0., -0.02, 0.02]]], np.float64)
         np.testing.assert_almost_equal(normal_modes_disp, expected_normal_modes_disp_3)
+
+        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'orca_neg_freq_ts.out')
+        freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=freq_path)
+        expected_freqs = np.array([-1271.60, 13.91, 340.56, 351.83, 723.12, 895.09, 1159.66, 1269.11, 1377.88,
+                                   1448.88, 1461.08, 3090.01, 3217.06, 3220.87, 3812.34], np.float64)
+        np.testing.assert_almost_equal(freqs, expected_freqs)
+        self.assertEqual(normal_modes_disp.shape, (len(expected_freqs), 7, 3))
+        np.testing.assert_almost_equal(normal_modes_disp[0][0],
+                                       np.array([0.086018, -0.013461, 0.012105], np.float64))
 
         path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'output.yml')
         freqs, normal_modes_disp = parser.parse_normal_mode_displacement(log_file_path=path)
