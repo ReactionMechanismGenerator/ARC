@@ -267,6 +267,11 @@ def submit_job(path: str,
                        )
         elif cluster_soft.lower() == 'pbs' and any('qsub: Illegal attribute or resource value' in err_line for err_line in stderr):
             raise ValueError(f'Got the following error when trying to submit job:\n{stderr}. Please check your submit script')
+        elif cluster_soft.lower() == 'pbs' and (
+                any('Please do NOT submit jobs on compute nodes' in err_line for err_line in stderr)
+                or any('Jobs should be submitted on login server' in err_line for err_line in stderr)
+        ):
+            raise ValueError('PBS job submission attempted from a compute node. Submit jobs from the login server.')
     if not len(stdout) or recursion:
         return None, None
     if len(stderr) > 0 or len(stdout) == 0:
