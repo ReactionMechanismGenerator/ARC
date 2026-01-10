@@ -1992,7 +1992,6 @@ class Scheduler(object):
                     return False
                 tsg.energy = energy
                 tsg.opt_xyz = xyz
-                tsg.index = i
                 if energy is not None:
                     logger.debug(f'Energy for TSGuess {i} of {label} is {energy:.2f}')
                 else:
