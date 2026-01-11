@@ -8,6 +8,7 @@ import os
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 from ase import Atoms
+from scipy.spatial.transform import Rotation
 from openbabel import openbabel as ob
 from openbabel import pybel
 from rdkit import Chem
@@ -2446,3 +2447,25 @@ def sorted_distances_of_atom(xyz_dict: dict, atom_index: int) -> List[Tuple[int,
 
     distances = [(i, d_matrix[atom_index, i]) for i in range(d_matrix.shape[0]) if i != atom_index]
     return sorted(distances, key=lambda x: x[1])
+
+
+def kabsch(xyz1: dict, xyz2: dict) -> float:
+    """
+    Return the kabsch similarity score between two sets of Cartesian coordinates in Ångstrom.
+    The algorithm requires the atoms to be ordered the same in both sets of coordinates.
+    This will not be directly useful for comparing two conformers of the same species,
+    but could be used to compare two different species with the same atom types and counts. (e.g., isomers, reactants and products, etc.).
+
+    Args:
+        xyz1 (dict): The first set of Cartesian coordinates.
+        xyz2 (dict): The second set of Cartesian coordinates.
+
+    Returns:
+        float: The Kabsch similarity score in Ångstrom.
+    """
+    if xyz1["symbols"] != xyz2["symbols"]:
+        raise ValueError("The two xyz coordinates must have the same atom symbols to compute Kabsch score.")
+    xyz1, xyz2 = translate_to_center_of_mass(xyz1), translate_to_center_of_mass(xyz2)
+    coords1, coords2 = np.array(xyz1['coords']), np.array(xyz2['coords'])
+    _, score = Rotation.align_vectors(coords1, coords2)
+    return score
