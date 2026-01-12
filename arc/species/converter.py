@@ -38,9 +38,6 @@ from arc.species.zmat import (KEY_FROM_LEN,
                               zmat_to_coords,
                               xyz_to_zmat)
 
-if TYPE_CHECKING:
-    from arc.species.species import ARCSpecies
-
 
 ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
