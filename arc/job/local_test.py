@@ -9,6 +9,7 @@ import datetime
 import os
 import shutil
 import unittest
+from unittest.mock import patch
 
 import arc.job.local as local
 from arc.common import ARC_PATH
@@ -95,6 +96,16 @@ class TestLocal(unittest.TestCase):
                   ]
         running_job_ids = local.parse_running_jobs_ids(stdout, cluster_soft='htcondor')
         self.assertEqual(running_job_ids, ['11224', '11225', '11226', '11227', '11228', '11229', '11230', '11231'])
+
+    def test_submit_job_pbs_compute_node_error(self):
+        """Test submit_job() error handling for PBS compute node submissions."""
+        stderr = ['qsub: Unauthorized Request: Please do NOT submit jobs on compute nodes!',
+                  'Jobs should be submitted on login server, i.e. ZEUS.']
+        with patch('arc.job.local.execute_command', side_effect=[([], stderr), ([], stderr)]):
+            with patch('time.sleep', return_value=None):
+                with self.assertRaises(ValueError) as cm:
+                    local.submit_job(path='.', cluster_soft='pbs', submit_cmd='qsub', submit_filename='submit.sh')
+        self.assertIn('compute node', str(cm.exception))
 
 
 if __name__ == '__main__':

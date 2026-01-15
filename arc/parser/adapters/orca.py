@@ -139,7 +139,8 @@ class OrcaParser(ESSAdapter, ABC):
                     if len(parts) >= 2 and parts[0].rstrip(':').isdigit():
                         try:
                             freq = float(parts[1])
-                            if freq > 0:
+                            # Keep negative freqs (imaginary modes), drop exact zeros (translations/rotations).
+                            if abs(freq) > 0.0:
                                 frequencies.append(freq)
                             found_freqs = True
                         except ValueError:
