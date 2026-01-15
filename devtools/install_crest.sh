@@ -37,18 +37,26 @@ else
     $COMMAND_PKG env create -n crest_env -f "$ENV_FILE" -y
 fi
 
-if [ "$COMMAND_PKG" = "micromamba" ]; then
-    micromamba activate crest_env
-else
-    conda activate crest_env
-fi
-
 echo ">>> Checking CREST installation..."
 
-if crest --version &> /dev/null; then
-    version_output=$(crest --version 2>&1 | head -n 1)
+if [ "$COMMAND_PKG" = "micromamba" ]; then
+    CREST_RUNNER="micromamba run -n crest_env"
+    CREST_LISTER="micromamba list -n crest_env"
+else
+    CREST_RUNNER="conda run -n crest_env"
+    CREST_LISTER="conda list -n crest_env"
+fi
+
+if ! $CREST_LISTER crest 2>/dev/null | awk 'NR>2 {print $2; exit}' | grep -q "^2\\.12$"; then
+    echo "❌ CREST package mismatch in crest_env (expected 2.12)."
+    exit 1
+fi
+
+if $CREST_RUNNER crest --version &> /dev/null; then
+    version_output=$($CREST_RUNNER crest --version 2>&1)
     echo "$version_output"
-    if ! grep -q "2\\.12" <<< "$version_output"; then
+    installed_version=$(printf '%s' "$version_output" | tr '\n' ' ' | sed -n 's/.*Version[[:space:]]\+\([0-9.][0-9.]*\).*/\1/p')
+    if [ "$installed_version" != "2.12" ]; then
         echo "❌ CREST version mismatch (expected 2.12)."
         exit 1
     fi
@@ -57,7 +65,5 @@ else
     echo "❌ CREST is not found in PATH. Please check the environment."
     exit 1
 fi
-
-$COMMAND_PKG deactivate
 
 echo "✅ Done installing CREST (crest_env)."
