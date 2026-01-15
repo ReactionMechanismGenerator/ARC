@@ -27,9 +27,25 @@ from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
+from arc.job.adapters.ts.crest import (
+    convert_xyz_to_df,
+    crest_available,
+    crest_ts_conformer_search,
+    get_h_abs_atoms,
+    monitor_crest_jobs,
+    process_completed_jobs,
+    submit_crest_jobs,
+)
 from arc.plotter import save_geo
 from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
                                    add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom)
+from arc.species.converter import (
+    compare_zmats,
+    relocate_zmat_dummy_atoms_to_the_end,
+    str_to_xyz,
+    zmat_from_xyz,
+    zmat_to_xyz,
+)
 from arc.mapping.engine import map_two_species
 from arc.molecule.molecule import Molecule
 from arc.species.species import ARCSpecies, TSGuess, SpeciesError, colliding_atoms
@@ -258,36 +274,45 @@ class HeuristicsAdapter(JobAdapter):
                                             multiplicity=rxn.multiplicity,
                                             )
 
-            xyzs = list()
+            xyzs = []
             tsg, families = None, None
             if rxn.family == 'H_Abstraction':
                 tsg = TSGuess(method='Heuristics')
                 tsg.tic()
-                xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment)
+                xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment, path=self.local_path)
                 tsg.tok()
 
             if rxn.family in FAMILY_SETS['hydrolysis_set_1'] or rxn.family in FAMILY_SETS['hydrolysis_set_2']:
                 try:
                     tsg = TSGuess(method='Heuristics')
                     tsg.tic()
-                    xyzs, families, indices = hydrolysis(reaction=rxn)
+                    hydro_xyzs, families, _ = hydrolysis(reaction=rxn)
                     tsg.tok()
-                    if not xyzs:
+                    if not hydro_xyzs:
                         logger.warning(f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.')
                         continue
+                    xyzs = [{"xyz": xyz, "method": "Heuristics"} for xyz in hydro_xyzs]
                 except ValueError:
                     continue
 
-            for method_index, xyz in enumerate(xyzs):
+            for method_index, xyz_entry in enumerate(xyzs):
+                if isinstance(xyz_entry, dict):
+                    xyz = xyz_entry.get("xyz")
+                    method_label = xyz_entry.get("method", "Heuristics")
+                else:
+                    xyz = xyz_entry
+                    method_label = "Heuristics"
+                if xyz is None:
+                    continue
                 unique = True
                 for other_tsg in rxn.ts_species.ts_guesses:
                     if almost_equal_coords(xyz, other_tsg.initial_xyz):
-                        if 'heuristics' not in other_tsg.method.lower():
-                            other_tsg.method += ' and Heuristics'
+                        if method_label.lower() not in other_tsg.method.lower():
+                            other_tsg.method += f' and {method_label}'
                         unique = False
                         break
                 if unique:
-                    ts_guess = TSGuess(method='Heuristics',
+                    ts_guess = TSGuess(method=method_label,
                                        index=len(rxn.ts_species.ts_guesses),
                                        method_index=method_index,
                                        t0=tsg.t0,
@@ -299,15 +324,18 @@ class HeuristicsAdapter(JobAdapter):
                     rxn.ts_species.ts_guesses.append(ts_guess)
                     save_geo(xyz=xyz,
                              path=self.local_path,
-                             filename=f'Heuristics_{method_index}',
+                             filename=f'{method_label}_{method_index}',
                              format_='xyz',
-                             comment=f'Heuristics {method_index}, family: {rxn.family}',
+                             comment=f'{method_label} {method_index}, family: {rxn.family}',
                              )
 
             if len(self.reactions) < 5:
-                successes = len([tsg for tsg in rxn.ts_species.ts_guesses if tsg.success and 'heuristics' in tsg.method])
+                successes = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
+                crest_successes = len([tsg for tsg in successes if 'crest' in tsg.method.lower()])
                 if successes:
-                    logger.info(f'Heuristics successfully found {successes} TS guesses for {rxn.label}.')
+                    logger.info(f'Heuristics successfully found {len(successes)} TS guesses for {rxn.label}.')
+                    if crest_successes:
+                        logger.info(f'CREST contributed {crest_successes} TS guesses for {rxn.label}.')
                 else:
                     logger.info(f'Heuristics did not find any successful TS guesses for {rxn.label}.')
 
@@ -859,6 +887,7 @@ def h_abstraction(reaction: 'ARCReaction',
                   r2_stretch: float = 1.2,
                   a2: float = 180,
                   dihedral_increment: Optional[int] = None,
+                  path: str = ""
                   ) -> List[dict]:
     """
     Generate TS guesses for reactions of the RMG ``H_Abstraction`` family.
@@ -873,9 +902,12 @@ def h_abstraction(reaction: 'ARCReaction',
         dihedral_increment (int, optional): The dihedral increment to use for B-H-A-C and D-B-H-C dihedral scans.
 
     Returns: List[dict]
-        Entries are Cartesian coordinates of TS guesses for all reactions.
+        Entries hold Cartesian coordinates of TS guesses and the generating method label.
     """
     xyz_guesses = list()
+    crest_paths = list()
+    all_zmats = list()
+    use_crest = crest_available()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
@@ -921,7 +953,7 @@ def h_abstraction(reaction: 'ARCReaction',
             d2_d3_product = [(None, None)]
 
         zmats = list()
-        for d2, d3 in d2_d3_product:
+        for iteration, (d2, d3) in enumerate(d2_d3_product):
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -952,7 +984,54 @@ def h_abstraction(reaction: 'ARCReaction',
                 else:
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
-                    xyz_guesses.append(xyz_guess)
+                    all_zmats.append(zmat_guess)
+                    xyz_guesses.append({"xyz": xyz_guess, "method": "Heuristics"})
+
+                if use_crest:
+                    xyz_guess_crest = xyz_guess.copy()
+                    if isinstance(xyz_guess_crest, dict):
+                        df_dmat = convert_xyz_to_df(xyz_guess_crest)
+                    elif isinstance(xyz_guess_crest, str):
+                        xyz = str_to_xyz(xyz_guess_crest)
+                        df_dmat = convert_xyz_to_df(xyz)
+                    elif isinstance(xyz_guess_crest, list):
+                        xyz_temp = "\n".join(xyz_guess_crest)
+                        xyz_to_dmat = str_to_xyz(xyz_temp)
+                        df_dmat = convert_xyz_to_df(xyz_to_dmat)
+                    else:
+                        df_dmat = None
+
+                    if df_dmat is not None:
+                        try:
+                            h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
+                            crest_path = crest_ts_conformer_search(
+                                xyz_guess_crest,
+                                h_abs_atoms_dict["A"],
+                                h_abs_atoms_dict["H"],
+                                h_abs_atoms_dict["B"],
+                                path=path,
+                                xyz_crest_int=iteration,
+                            )
+                            crest_paths.append(crest_path)
+                        except (ValueError, KeyError) as e:
+                            logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
+
+    if use_crest and crest_paths:
+        crest_jobs = submit_crest_jobs(crest_paths)
+        monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
+        xyz_guesses_crest = process_completed_jobs(crest_jobs)
+        for xyz_guess_crest in xyz_guesses_crest:
+            zmat_guess = zmat_from_xyz(xyz_guess_crest, is_ts=True)
+            is_unique = True  # Assume the current Z-matrix is unique
+            for existing_zmat_guess in all_zmats:
+                if compare_zmats(existing_zmat_guess, zmat_guess):
+                    is_unique = False  # Found a match, mark as not unique
+                    break  # Exit this inner loop only
+            if is_unique:
+                # If no match was found, append to lists
+                all_zmats.append(zmat_guess)
+                xyz_guesses.append({"xyz": xyz_guess_crest, "method": "CREST"})
+
     return xyz_guesses
 
 

@@ -54,12 +54,20 @@ Install dependencies
 
      conda activate arc_env
 
-- Install the latest **DEVELOPER** version of RMG (which has Arkane).
-  It is recommended to follow RMG's `Developer installation by source using Anaconda
+- RMG-Py/Arkane is required: ARC relies on it for thermochemistry, kinetics parsing, conformer handling, and file formats.
+  Without RMG-Py, many ARC workflows (e.g., thermo, Arkane post‑processing) will not run.
+  You can either install RMG-Py manually following the `Developer install guide
   <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
-  #for-developers-installation-by-source-using-anaconda-environment>`_ instructions.
-  Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
-- Type ``make install-all`` under the ARC repository folder to install the following 3rd party repositories:
+  #for-developers-installation-by-source-using-anaconda-environment>`_ or let the ARC installers handle it automatically
+  (see below). Ensure RMG-Py is on ``PATH`` and ``PYTHONPATH`` (or use the conda hook option below) so ARC can import it.
+- Run ``make install`` under the ARC repository folder to install ARC plus RMG-Py/RMG-database (default bashrc/``PATH`` wiring),
+  PyRDL, and external tools (CREST, AutoTST, KinBot, TS-GCN, xTB, Sella, TorchANI, OpenBabel).
+  Use ``make install-lite`` (no externals) or call ``bash devtools/install_all.sh --no-rmg`` if you want to skip RMG.
+  These installers pin known-good versions (e.g., CREST 2.12) and set up per-tool conda environments where appropriate.
+  Additional installer knobs:
+
+  * ``bash devtools/install_all.sh --rmg-conda`` installs RMG-Py into a conda env and adds activation hooks (vs the default bashrc PATH/PYTHONPATH wiring).
+  * ``--no-ext`` skips external tools; ``--no-arc`` skips ARC env creation/compile (useful in CI); ``--no-clean`` retains conda/mamba caches.
   `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_
   (`West et al. <https://doi.org/10.1021/acs.jpca.7b07361>`_),
   `KinBot <https://github.com/zadorlab/KinBot>`_

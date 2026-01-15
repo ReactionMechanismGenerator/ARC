@@ -176,21 +176,34 @@ fi
 
 ACTIVE_RE="^[[:space:]]*[^#].*${RMG_PY_PATH//\//\\/}"   # uncommented, contains path
 COMMENT_RE="^[[:space:]]*#.*${RMG_PY_PATH//\//\\/}"     # commented-out, contains path
-NEW_LINE='export PATH="$PATH:'"$RMG_PY_PATH"'"'
 
 
-# If PATH_ADD is true, add RMG-Py to PATH
+# If PATH_ADD is true, add RMG-Py to PATH/PYTHONPATH via bashrc
 if [ "$MODE" == path ]; then
     if grep -Eq "$ACTIVE_RE" "$RC"; then
         printf 'ℹ️  RMG-Py already active in %s\n' "$RC"
 
     elif grep -Eq "$COMMENT_RE" "$RC"; then
-        printf '✅  Found commented entry; adding new active line\n'
-        printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
+        printf '✅  Found commented entry; adding new active block\n'
+        cat <<EOF >> "$RC"
+
+# RMG-Py added on $(date +%F)
+export RMG_PY_PATH="$RMG_PY_PATH"
+case ":\$PATH:" in *":\$RMG_PY_PATH:"*) ;; *) export PATH="\$PATH:\$RMG_PY_PATH" ;; esac
+case "\${PYTHONPATH:+:\$PYTHONPATH:}" in *":\$RMG_PY_PATH:"*) ;; \
+  *) export PYTHONPATH="\${PYTHONPATH:+\$PYTHONPATH:}\$RMG_PY_PATH" ;; esac
+EOF
 
     else
-        printf '✅  No entry found; adding new active line\n'
-        printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
+        printf '✅  No entry found; adding new active block\n'
+        cat <<EOF >> "$RC"
+
+# RMG-Py added on $(date +%F)
+export RMG_PY_PATH="$RMG_PY_PATH"
+case ":\$PATH:" in *":\$RMG_PY_PATH:"*) ;; *) export PATH="\$PATH:\$RMG_PY_PATH" ;; esac
+case "\${PYTHONPATH:+:\$PYTHONPATH:}" in *":\$RMG_PY_PATH:"*) ;; \
+  *) export PYTHONPATH="\${PYTHONPATH:+\$PYTHONPATH:}\$RMG_PY_PATH" ;; esac
+EOF
     fi
 elif [ "$MODE" == conda ]; then
     # conda envs already have the RMG_PY_PATH in PATH, so no need to add it
