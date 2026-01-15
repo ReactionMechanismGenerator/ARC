@@ -19,12 +19,6 @@ from arc.reaction import ARCReaction
 from arc.species.converter import xyz_from_data
 from arc.species.species import ARCSpecies, TSGuess, colliding_atoms
 
-HAS_AUTOTST = True
-try:
-    from autotst.reaction import Reaction as AutoTST_Reaction
-except (ImportError, ModuleNotFoundError):
-    HAS_AUTOTST = False
-
 if TYPE_CHECKING:
     from arc.level import Level
 
@@ -218,9 +212,10 @@ class AutoTSTAdapter(JobAdapter):
         """
         Execute a job incore.
         """
-        if not HAS_AUTOTST:
-            raise ModuleNotFoundError(f'Could not import AutoTST, make sure it is properly installed.\n'
-                                      f'See {self.url} for more information, or use the Makefile provided with ARC.')
+        if not AUTOTST_PYTHON or not os.path.isfile(AUTOTST_PYTHON):
+            raise FileNotFoundError('AutoTST python executable was not found. '
+                                    'Make sure the tst_env exists and AUTOTST_PYTHON is configured. '
+                                    f'See {self.url} for more information, or use the Makefile provided with ARC.')
         self._log_job_execution()
         self.initial_time = self.initial_time if self.initial_time else datetime.datetime.now()
 
