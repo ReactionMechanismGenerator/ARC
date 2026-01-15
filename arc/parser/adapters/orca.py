@@ -139,7 +139,8 @@ class OrcaParser(ESSAdapter, ABC):
                     if len(parts) >= 2 and parts[0].rstrip(':').isdigit():
                         try:
                             freq = float(parts[1])
-                            if freq > 0:
+                            # Keep negative freqs (imaginary modes), drop exact zeros (translations/rotations).
+                            if abs(freq) > 0.0:
                                 frequencies.append(freq)
                             found_freqs = True
                         except ValueError:
@@ -224,7 +225,11 @@ class OrcaParser(ESSAdapter, ABC):
                 if 'Zero point energy' in line:
                     # Example: Zero point energy      ...    0.025410 Eh
                     try:
-                        zpe = float(line.split()[-2])
+                        parts = line.split()
+                        if 'Eh' in parts:
+                            zpe = float(parts[parts.index('Eh') - 1])
+                        else:
+                            zpe = float(parts[-2])
                         break
                     except (ValueError, IndexError):
                         continue

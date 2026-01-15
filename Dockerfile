@@ -91,5 +91,9 @@ COPY --chown=mambauser:mambauser dockerfiles/docker_tests /home/mambauser/Code/A
 COPY --chmod=755  dockerfiles/entrywrapper.sh  /usr/local/bin/entrywrapper.sh
 COPY --chmod=644  dockerfiles/aliases.sh       /etc/profile.d/aliases.sh
 COPY --chmod=755  dockerfiles/aliases_print.sh /usr/local/bin/aliases
+RUN touch /home/mambauser/.bashrc && \
+    grep -qxF 'source /etc/profile.d/aliases.sh' /home/mambauser/.bashrc || \
+    echo 'source /etc/profile.d/aliases.sh' >> /home/mambauser/.bashrc
 
+USER root
 ENTRYPOINT ["/usr/local/bin/entrywrapper.sh"]

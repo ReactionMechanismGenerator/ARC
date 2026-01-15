@@ -12,6 +12,9 @@ Note:
     We don't expect it to work smoothly on Windows machines.
 
 Note:
+    For a containerized setup, see the :ref:`Docker image <docker>` documentation.
+
+Note:
     These installation instructions assume you already have access to a server with a cluster scheduling software
     (ARC currently supports SGE, Slurm, PBS, and HTCondor) and with properly installed electronic structure software
     (ARC currently supports Gaussian, QChem, Molpro, TeraChem, Orca, and Psi4). We further assume that you have

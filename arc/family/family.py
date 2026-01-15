@@ -588,11 +588,12 @@ def get_all_families(rmg_family_set: Union[List[str], str] = 'default',
                     rmg_families.extend(list(families))
         else:
             rmg_families = list(family_sets[rmg_family_set]) \
-                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else rmg_family_set
+                if isinstance(rmg_family_set, str) and rmg_family_set in family_sets else [rmg_family_set]
     if consider_arc_families:
-        arc_families = [os.path.splitext(family)[0] for family in os.listdir(ARC_FAMILIES_PATH)]
-    rmg_families = [rmg_families] if isinstance(rmg_families, str) else rmg_families
-    arc_families = [arc_families] if isinstance(arc_families, str) else arc_families
+        for family in os.listdir(ARC_FAMILIES_PATH):
+            if family.startswith('.') or family.startswith('_'):
+                continue
+            arc_families.append(os.path.splitext(family)[0])
     return rmg_families + arc_families if rmg_families is not None else arc_families
 
 
@@ -862,3 +863,18 @@ def isomorphic_products(rxn: 'ARCReaction',
     """
     p_species = rxn.get_reactants_and_products(return_copies=True)[1]
     return check_product_isomorphism(products, p_species)
+
+def check_family_name(family: str
+                      ) -> bool:
+    """
+    Check whether the family name is defined.
+
+    Args:
+        family (str): The family name.
+
+    Returns:
+        bool: Whether the family is defined.
+    """
+    if not isinstance(family, str) and family is not None:
+        raise TypeError("Family name must be a string or None.")
+    return family in get_all_families() or family is None

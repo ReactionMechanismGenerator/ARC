@@ -287,6 +287,7 @@ class ARCSpecies(object):
         multi_species: (str): The multi-species set this species belongs to. Used for running a set of species
                               simultaneously in a single ESS input file.
         symmetry_number (int): The external symmetry number of the species, calculated from mol_list.
+        index (int): An optional index for the species.
     """
 
     def __init__(self,
@@ -366,6 +367,7 @@ class ARCSpecies(object):
         self.project_directory = project_directory
         self.label = label
         self.symmetry_number = None
+        self.index = None
 
         if species_dict is not None:
             # Reading from a dictionary (it's possible that the dict contains only a 'yml_path' argument, check first)
@@ -629,6 +631,22 @@ class ARCSpecies(object):
         species_dict = self.as_dict(reset_atom_ids=True)
         return ARCSpecies(species_dict=species_dict)
 
+    def is_water(self) -> bool:
+        """
+        Check whether this species is a water molecule (H2O).
+        """
+        if self.mol is None:
+            return False
+        if len(self.mol.atoms) != 3:
+            return False
+        o_count, h_count = 0, 0
+        for atom in self.mol.atoms:
+            if atom.is_oxygen():
+                o_count += 1
+            elif atom.is_hydrogen():
+                h_count += 1
+        return o_count == 1 and h_count == 2
+
     def as_dict(self,
                 reset_atom_ids: bool = False,
                 ) -> dict:
@@ -678,6 +696,8 @@ class ARCSpecies(object):
             species_dict['arkane_file'] = self.arkane_file
         if not self.consider_all_diastereomers:
             species_dict['consider_all_diastereomers'] = self.consider_all_diastereomers
+        if self.index is not None:
+            species_dict['index'] = self.index
         if self.is_ts:
             if len(self.ts_guesses):
                 species_dict['ts_guesses'] = [tsg.as_dict() for tsg in self.ts_guesses]
@@ -827,6 +847,7 @@ class ARCSpecies(object):
         self.ts_conf_spawned = species_dict['ts_conf_spawned'] if 'ts_conf_spawned' in species_dict \
             else False if self.is_ts else None
         self.adjlist = species_dict['adjlist'] if 'adjlist' in species_dict else None
+        self.index = species_dict['index'] if 'index' in species_dict else None
         if self.is_ts:
             self.ts_number = species_dict['ts_number'] if 'ts_number' in species_dict else None
             self.ts_guesses_exhausted = species_dict['ts_guesses_exhausted'] if 'ts_guesses_exhausted' in species_dict else False
