@@ -95,9 +95,23 @@ Another example::
 
 specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets,
 ``aug-cc-pVTZ/C`` and ``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
+You can also provide a 4-digit ``year`` to distinguish method variants (e.g., ``b97d3`` vs ``b97d32023``)::
+
+    sp_level: {'method': 'b97d3',
+               'basis': 'def2tzvp',
+               'year': 2023}
+
+Equivalent ``input.yml`` form::
+
+    sp_level:
+      method: b97d3
+      basis: def2tzvp
+      year: 2023
+
+If ``year`` is omitted, ARC will match the newest available entry for that method/basis in the Arkane database.
 
 
-THe following are examples for **equivalent** definitions::
+The following are examples for **equivalent** definitions::
 
     opt_level = 'apfd/def2tzvp'
     opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
@@ -137,6 +151,10 @@ is equivalent to::
     freq_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     scan_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+
+Note: Year suffixes in the method (e.g., ``wb97xd32023``) are meant for Arkane database matching
+and are not valid QC methods. Do not include year suffixes in ``level_of_theory``; instead, set
+``arkane_level_of_theory`` with a ``year`` value if you need a specific correction year.
 
 Note: If ``level_of_theory`` does not contain any deliminator (neither ``//`` nor ``\/``), it is interpreted as a
 composite method.
