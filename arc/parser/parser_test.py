@@ -967,6 +967,39 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(expected_labels, ic_values.index.to_list())
         self.assertEqual(expected_values, ic_values.value.to_list())
 
+    def test_parse_active_space(self):
+        """Test parsing active space information"""
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out')
+        active = parser.parse_active_space(sp_path=path,
+                                           species=ARCSpecies(label='mehylamine', smiles='CN'))
+        self.assertEqual(active, {'e_o': (14, 7), 'occ': [7, 2], 'closed': [5, 2]})
+
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'H_CCSD.out')
+        active = parser.parse_active_space(sp_path=path,
+                                           species=ARCSpecies(label='H', smiles='[H]'))
+        self.assertEqual(active, {'e_o': (1, 1)})
+
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'ONHO(T)_sp_CCSD(T).out')
+        active = parser.parse_active_space(sp_path=path,
+                                           species=ARCSpecies(label='ONHO', smiles='[O]N[O]'))
+        self.assertEqual(active, {'e_o': (18, 10), 'occ': [13], 'closed': [8]})
+
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'TS_x118_sp_CCSD(T).out')
+        active = parser.parse_active_space(sp_path=path,
+                                           species=ARCSpecies(label='x118', is_ts=True,
+                                                              xyz="""N      -0.0   -1.36720300    0.15499300
+                                                                           O      -0.0   -1.10333100   -0.98685800
+                                                                           H      -0.0   -0.28110100    0.76732400
+                                                                           O       0.0    0.97476200    0.91364300
+                                                                           O       0.0    1.44007500   -0.27062400"""))
+        self.assertEqual(active, {'e_o': (24, 13), 'occ': [14, 3], 'closed': [9, 2]})
+
+        path = os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'N_CCSD.out')
+        active = parser.parse_active_space(sp_path=path,
+                                           species=ARCSpecies(label='N', is_ts=False,
+                                                              xyz="""N      0.0   0.0    0.0"""))
+        self.assertEqual(active, {'e_o': (5, 4), 'occ': [3, 1, 1, 0, 1, 0, 0, 0], 'closed': [1, 0, 0, 0, 0, 0, 0, 0]})
+
 
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
