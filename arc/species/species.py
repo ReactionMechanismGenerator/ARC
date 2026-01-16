@@ -50,6 +50,7 @@ from arc.species.converter import (check_isomorphism,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
                                    xyz_to_str,
+                                   kabsch,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
@@ -2134,6 +2135,51 @@ class ARCSpecies(object):
             for atom2, bond12 in atom1.edges.items():
                 bonds.append(tuple(sorted((self.mol.atoms.index(atom1), self.mol.atoms.index(atom2)))))
         return list(set(bonds))
+    
+    def translate_to_indices(self, indices: list) -> dict:
+        """
+        Translate the species according to given indices.
+
+        Args:
+            indices (list): A list of atom indices to translate the species.
+
+        Returns:
+            dict: The translated species in xyz dict format.
+        
+        """
+        xyz = self.get_xyz()
+        n_atoms = len(xyz['symbols'])
+        
+        if any((i < 0 or i >= n_atoms) for i in indices):
+            raise SpeciesError(f'Indices {indices} are out of bounds for species {self.label} with {n_atoms} atoms.')
+
+        if (len(set(indices)) != len(indices)):
+            raise SpeciesError(f'Indices {indices} contain duplicates for species {self.label}.')
+        
+        new_xyz = dict()
+        for key in xyz:
+            new_xyz[key] = tuple(xyz[key][i] for i in indices)
+        return new_xyz
+    
+    def kabsch(self, other: 'ARCSpecies', map_: list) -> float:
+        """
+        Calculate the Kabsch RMSD between this species and another species.
+
+        Args:
+            other (ARCSpecies): The other species to compare to.
+            map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., )
+        Returns:
+            float: The Kabsch RMSD value.
+        """
+        if not isinstance(other, ARCSpecies):
+            raise SpeciesError(f'Other must be an ARCSpecies instance, got {type(other)}.\n'
+                               f'If you meant to use the XYZ coordinates directly, use arc.species.converter.kabsch.')
+
+        if len(map_) != self.number_of_atoms:
+            raise SpeciesError(f'The map_ list must have the same length as the number of atoms in {self.label} '
+                               f'({self.number_of_atoms}), got {len(map_)}.')
+
+        return kabsch(self.get_xyz(), other.translate_to_indices(map_))
 
 
 class TSGuess(object):

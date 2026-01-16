@@ -9,6 +9,7 @@ import math
 import os
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 import unittest
 
 from ase import Atoms
@@ -4965,6 +4966,70 @@ H      -1.88123946   -2.00923795    0.23313156"""
 
         with self.assertRaises(IndexError):
             converter.sorted_distances_of_atom(xyz_dict, 5)
+
+    def test_kabsch(self):
+        """Test the kabsch function"""
+        xyz1 = {'symbols': ('O', 'H', 'H'), 'isotopes': (16, 1, 1),
+                'coords': ((0.0, 0.0, 0.0),
+                           (0.0, 0.757, 0.586),
+                           (0.0, -0.757, 0.586))}
+        xyz2 = converter.translate_xyz(xyz1, (10.0, 0.0, 0.0))
+        score = converter.kabsch(xyz1, xyz2)
+        self.assertAlmostEqual(score, 0.0, places=5)
+
+        r = Rotation.from_quat([0, 0, np.sin(np.pi/4), np.cos(np.pi/4)])
+        self.assertAlmostEqual(converter.kabsch(xyz1, converter.xyz_from_data(coords=r.apply(np.array(xyz1["coords"])), symbols=xyz1["symbols"], isotopes=xyz1["isotopes"])), 0.0, places=5)
+        xyz2 = {i:v for i, v in xyz1.items()}
+        xyz2['symbols'] = ('O', 'H', 'H', 'H')
+        with self.assertRaises(ValueError):
+            converter.kabsch(xyz1, xyz2)
+
+        # Wildtype test: Aspirin (21 atoms)
+        aspirin_xyz = {
+            'symbols': ('O', 'C', 'O', 'C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'C', 'O', 'O', 'C', 'H', 'H', 'H', 'H'),
+            'isotopes': (16, 12, 16, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 12, 16, 16, 12, 1, 1, 1, 1),
+            'coords': ((-2.6373, 1.2580, -0.2078),
+                       (-1.7770, 0.3860, -0.0632),
+                       (-2.1558, -0.8741, 0.1691),
+                       (-0.3592, 0.7788, -0.1627),
+                       (0.6120, -0.2186, -0.0163),
+                       (1.9423, 0.1873, -0.1118),
+                       (2.2874, 1.5173, -0.3475),
+                       (1.3090, 2.4837, -0.4907),
+                       (-0.0249, 2.1150, -0.3989),
+                       (2.6841, -0.5841, 0.0004),
+                       (3.3216, 1.8105, -0.4206),
+                       (1.5971, 3.5230, -0.6740),
+                       (-0.7675, 2.8711, -0.5103),
+                       (0.1843, -1.6369, 0.2443),
+                       (0.8550, -2.5186, 0.7303),
+                       (-1.1095, -1.8841, -0.1121),
+                       (-1.6441, -3.2084, 0.0818),
+                       (-2.6718, -3.1782, -0.2678),
+                       (-1.0850, -3.8967, -0.5484),
+                       (-1.6041, -3.4832, 1.1345),
+                       (-3.5658, 0.9859, -0.1477))
+        }
+
+        # Case 1: Pure rotation (should be 0.0)
+        # Rotate 90 degrees about the z-axis, then 45 degrees about the y-axis
+        r = Rotation.from_euler('zy', [90, 45], degrees=True)
+        rotated_coords = r.apply(np.array(aspirin_xyz["coords"]))
+        aspirin_rotated_xyz = converter.xyz_from_data(coords=rotated_coords,
+                                                      symbols=aspirin_xyz["symbols"],
+                                                      isotopes=aspirin_xyz["isotopes"])
+        score = converter.kabsch(aspirin_xyz, aspirin_rotated_xyz)
+        self.assertAlmostEqual(score, 0.0, places=4)
+
+        # Case 2: Random structural perturbation (should not be 0.0)
+        # Add random noise to coordinates
+        rng = np.random.RandomState(42)
+        perturbed_coords = np.array(aspirin_xyz["coords"]) + 0.1 * rng.rand(*np.array(aspirin_xyz["coords"]).shape)
+        aspirin_perturbed_xyz = converter.xyz_from_data(coords=perturbed_coords,
+                                                        symbols=aspirin_xyz["symbols"],
+                                                        isotopes=aspirin_xyz["isotopes"])
+        score = converter.kabsch(aspirin_xyz, aspirin_perturbed_xyz)
+        self.assertGreater(score, 0.01)
 
     @classmethod
     def tearDownClass(cls):
