@@ -430,22 +430,6 @@ for path in rmg_db_candidates:
         break
 
 
-crest_path1 = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(sys.executable))),
-                                'crest_env', 'bin', 'crest')
-crest_path2 = os.path.join(home, 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
-crest_path3 = os.path.join(home, 'miniconda3', 'envs', 'crest_env', 'bin', 'crest')
-crest_path4 = os.path.join(home, '.conda', 'envs', 'crest_env', 'bin', 'crest')
-crest_path5 = os.path.join('/Local/ce_dana', 'anaconda3', 'envs', 'crest_env', 'bin', 'crest')
-crest_path6 = os.path.join(home, 'mambaforge', 'envs', 'crest_env', 'bin', 'crest')
-crest_path7 = os.path.join(home, 'micromamba', 'envs', 'crest_env', 'bin', 'crest')
-# Binary path for CREST
-
-
-for crest_path in [crest_path1, crest_path2, crest_path3, crest_path4, crest_path5, crest_path6, crest_path7]:
-    if os.path.isfile(crest_path):
-        # check if using micromamba, mambaforge, anaconda3, miniconda3, or .conda
-        break
-# If the path (environment) does not exist, then we use the binary
 
 def parse_version(folder_name):
     """

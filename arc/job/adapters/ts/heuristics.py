@@ -34,11 +34,11 @@ from arc.job.adapters.ts.crest import (
     submit_crest_jobs,
 )
 from arc.plotter import save_geo
-from arc.species.converter import (compare_zmats, relocate_zmat_dummy_atoms_to_the_end, zmat_from_xyz, zmat_to_xyz,
-                                   add_atom_to_xyz_using_internal_coords, sorted_distances_of_atom)
 from arc.species.converter import (
+    add_atom_to_xyz_using_internal_coords,
     compare_zmats,
     relocate_zmat_dummy_atoms_to_the_end,
+    sorted_distances_of_atom,
     str_to_xyz,
     zmat_from_xyz,
     zmat_to_xyz,
@@ -307,7 +307,7 @@ class HeuristicsAdapter(JobAdapter):
 
             if len(self.reactions) < 5:
                 successes = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
-                crest_successes = len([tsg for tsg in successes if 'crest' in tsg.method.lower()])
+                crest_successes = sum(1 for tsg in successes if 'crest' in tsg.method.lower())
                 if successes:
                     logger.info(f'Heuristics successfully found {len(successes)} TS guesses for {rxn.label}.')
                     if crest_successes:
@@ -881,7 +881,7 @@ def h_abstraction(reaction: 'ARCReaction',
         Entries hold Cartesian coordinates of TS guesses and the generating method label.
     """
     xyz_guesses = list()
-    crest_paths = list()
+    crest_job_dirs = []
     all_zmats = list()
     use_crest = crest_available()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
@@ -968,19 +968,19 @@ def h_abstraction(reaction: 'ARCReaction',
                     if isinstance(xyz_guess_crest, dict):
                         df_dmat = convert_xyz_to_df(xyz_guess_crest)
                     elif isinstance(xyz_guess_crest, str):
-                        xyz = str_to_xyz(xyz_guess_crest)
-                        df_dmat = convert_xyz_to_df(xyz)
+                        xyz_dict = str_to_xyz(xyz_guess_crest)
+                        df_dmat = convert_xyz_to_df(xyz_dict)
                     elif isinstance(xyz_guess_crest, list):
                         xyz_temp = "\n".join(xyz_guess_crest)
-                        xyz_to_dmat = str_to_xyz(xyz_temp)
-                        df_dmat = convert_xyz_to_df(xyz_to_dmat)
+                        xyz_dict = str_to_xyz(xyz_temp)
+                        df_dmat = convert_xyz_to_df(xyz_dict)
                     else:
                         df_dmat = None
 
                     if df_dmat is not None:
                         try:
                             h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                            crest_path = crest_ts_conformer_search(
+                            crest_job_dir = crest_ts_conformer_search(
                                 xyz_guess_crest,
                                 h_abs_atoms_dict["A"],
                                 h_abs_atoms_dict["H"],
@@ -988,12 +988,12 @@ def h_abstraction(reaction: 'ARCReaction',
                                 path=path,
                                 xyz_crest_int=iteration,
                             )
-                            crest_paths.append(crest_path)
+                            crest_job_dirs.append(crest_job_dir)
                         except (ValueError, KeyError) as e:
                             logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
 
-    if use_crest and crest_paths:
-        crest_jobs = submit_crest_jobs(crest_paths)
+    if use_crest and crest_job_dirs:
+        crest_jobs = submit_crest_jobs(crest_job_dirs)
         monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
         xyz_guesses_crest = process_completed_jobs(crest_jobs)
         for xyz_guess_crest in xyz_guesses_crest:

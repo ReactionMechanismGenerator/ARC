@@ -74,8 +74,11 @@ def reorder_xyz_string(xyz_str: str,
         xyz_str = '\n'.join(xyz_str)
     if not isinstance(xyz_str, str):
         raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
-    if project_directory is not None and os.path.isfile(os.path.join(project_directory, xyz_str)):
-        xyz_str = os.path.join(project_directory, xyz_str)    
+    if project_directory is not None:
+        file_path = os.path.join(project_directory, xyz_str)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as f:
+                xyz_str = f.read()
     
 
     BOHR_TO_ANGSTROM = 0.529177
@@ -136,7 +139,11 @@ def str_to_str(*args, **kwargs) -> str:
     """
     Backwards compatible wrapper for reorder_xyz_string.
     """
-    warnings.warn("str_to_str was renamed to reorder_xyz_string", DeprecationWarning)
+    warnings.warn(
+        "str_to_str was renamed to reorder_xyz_string and will be removed in a future ARC release",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return reorder_xyz_string(*args, **kwargs)
 
 

@@ -19,6 +19,8 @@ from arc.species.converter import reorder_xyz_string, str_to_xyz, xyz_to_dmat, x
 
 logger = get_logger()
 
+MAX_CHECK_INTERVAL_SECONDS = 100
+
 try:
     CREST_PATH = settings["CREST_PATH"]
     CREST_ENV_PATH = settings["CREST_ENV_PATH"]
@@ -106,7 +108,7 @@ def crest_ts_conformer_search(
         "coords.ref",
         "--cinp constraints.inp",
         "--noreftopo",
-        f'-T {local_server.get("cpus", 8)}',
+        f"-T {cpus}",
     ]
     command = " ".join(commands)
 
@@ -219,7 +221,7 @@ def monitor_crest_jobs(crest_jobs: dict, check_interval: int = 300) -> None:
                     all_done = False
         if all_done:
             break
-        time.sleep(min(check_interval, 100))
+        time.sleep(min(check_interval, MAX_CHECK_INTERVAL_SECONDS))
 
 
 def process_completed_jobs(crest_jobs: dict) -> list:
@@ -374,5 +376,3 @@ def get_h_abs_atoms(dataframe: pd.DataFrame) -> dict:
             }
         else:
             raise ValueError("No valid hydrogen atom found.")
-
-    return {}
