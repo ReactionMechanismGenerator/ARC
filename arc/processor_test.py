@@ -10,7 +10,7 @@ import shutil
 import unittest
 
 import arc.processor as processor
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 
@@ -53,7 +53,7 @@ class TestProcessor(unittest.TestCase):
                             p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')],
                             kinetics={'A': 7.18e5, 'n': 2.05, 'Ea': 151.88},
                             )
-        output_directory = os.path.join(ARC_PATH, 'arc', 'testing', 'process_kinetics')
+        output_directory = os.path.join(ARC_TESTING_PATH, 'process_kinetics')
         reactions_to_compare = processor.compare_rates(rxns_for_kinetics_lib=[rxn_1, rxn_2],
                                                        output_directory=output_directory,
                                                        )
@@ -69,7 +69,7 @@ class TestProcessor(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        directories = [os.path.join(ARC_PATH, 'arc', 'testing', 'process_kinetics'),
+        directories = [os.path.join(ARC_TESTING_PATH, 'process_kinetics'),
                       ]
         for dir_path in directories:
             if os.path.isdir(dir_path):

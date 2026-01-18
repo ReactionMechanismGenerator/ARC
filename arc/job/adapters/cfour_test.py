@@ -10,7 +10,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.cfour import CFourAdapter
 from arc.level import Level
 from arc.settings.settings import input_filenames, output_filenames
@@ -45,7 +45,7 @@ class TestCFourAdapter(unittest.TestCase):
                                  job_type='sp',
                                  level=Level(method='CCSD(T)', basis='cc-pVTZ'),
                                  project='test',
-                                 project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_CFourAdapter'),
+                                 project_directory=os.path.join(ARC_TESTING_PATH, 'test_CFourAdapter'),
                                  species=[ARCSpecies(label='spc1', xyz=xyz)],
                                  testing=True,
                                  )
@@ -144,7 +144,7 @@ R8=0.9724
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_CFourAdapter'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_CFourAdapter'), ignore_errors=True)
 
 
 if __name__ == '__main__':

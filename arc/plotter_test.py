@@ -10,7 +10,7 @@ import shutil
 import unittest
 
 import arc.plotter as plotter
-from arc.common import ARC_PATH, read_yaml_file, safe_copy_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, read_yaml_file, safe_copy_file
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
@@ -70,7 +70,7 @@ H      -1.16115119    0.31478894   -0.81506145
         """Test the augment_arkane_yml_file_with_mol_repr() function"""
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
-        n4h6_yml_path = os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        n4h6_yml_path = os.path.join(ARC_TESTING_PATH, 'yml_testing', 'N4H6.yml')
         n4h6_yml_path_copy = os.path.join(project_directory, 'Species', 'N4H6', 'N4H6.yml')
         os.makedirs(os.path.join(project_directory, 'Species', 'N4H6'), exist_ok=True)
         safe_copy_file(source=n4h6_yml_path, destination=n4h6_yml_path_copy)
@@ -113,7 +113,7 @@ H      -1.16115119    0.31478894   -0.81506145
 
     def test_log_bde_report(self):
         """Test the log_bde_report() function"""
-        path = os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt')
+        path = os.path.join(ARC_TESTING_PATH, 'bde_report_test.txt')
         bde_report = {'aniline': {(1, 2): 431.43, (5, 8): 465.36, (6, 9): 458.70, (3, 10): 463.16, (4, 11): 463.16,
                                   (7, 12): 458.70, (1, 13): 372.31, (1, 14): 372.31, (5, 6): 'N/A'}}
         xyz = """N       2.28116100   -0.20275000   -0.29653100
@@ -182,11 +182,11 @@ H      -1.16115119    0.31478894   -0.81506145
                                                              ARCSpecies(label='acetylene', smiles='C#C', multi_species='mltspc1'),
                                                              ARCSpecies(label='N-Valeric_Acid', smiles='CCCCC(O)=O', multi_species='mltspc1')],
                                                label='mltspc1',
-                                               path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
+                                               path=os.path.join(ARC_TESTING_PATH, 'mltspc_output.out'),
                                                )
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'water.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'acetylene.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'N-Valeric_Acid.log')))
 
     def test_delete_multi_species_output_file(self):
         """Test the delete_multi_species_output_file function"""
@@ -196,24 +196,24 @@ H      -1.16115119    0.31478894   -0.81506145
                         ARCSpecies(label='N-Valeric_Acid', smiles='CCCCC(O)=O', multi_species='mltspc1')]
         multi_species_path_dict = plotter.make_multi_species_output_file(species_list=species_list,
                                                                          label='mltspc1',
-                                                                         path=os.path.join(ARC_PATH, 'arc', 'testing', 'mltspc_output.out'),
+                                                                         path=os.path.join(ARC_TESTING_PATH, 'mltspc_output.out'),
                                                                          )
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'water.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'acetylene.log')))
+        self.assertTrue(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'N-Valeric_Acid.log')))
         plotter.delete_multi_species_output_file(species_list=species_list,
                                                  label='mltspc1',
                                                  multi_species_path_dict=multi_species_path_dict,
                                                  )
-        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'water.log')))
-        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log')))
-        self.assertFalse(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log')))
+        self.assertFalse(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'water.log')))
+        self.assertFalse(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'acetylene.log')))
+        self.assertFalse(os.path.isfile(os.path.join(ARC_TESTING_PATH, 'N-Valeric_Acid.log')))
 
     def test_save_irc_traj_animation(self):
         """Test the save_irc_traj_animation function"""
-        irc_f_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')
-        irc_r_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')
-        out_path = os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_animation.out')
+        irc_f_path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')
+        irc_r_path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')
+        out_path = os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_animation.out')
         self.assertFalse(os.path.isfile(out_path))
         plotter.save_irc_traj_animation(irc_f_path, irc_r_path, out_path)
         self.assertTrue(os.path.isfile(out_path))
@@ -225,11 +225,11 @@ H      -1.16115119    0.31478894   -0.81506145
         project = 'arc_project_for_testing_delete_after_usage'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         shutil.rmtree(project_directory, ignore_errors=True)
-        files_to_remove = [os.path.join(ARC_PATH, 'arc', 'testing', 'bde_report_test.txt'),
-                           os.path.join(ARC_PATH, 'arc', 'testing', 'water.log'),
-                           os.path.join(ARC_PATH, 'arc', 'testing', 'acetylene.log'),
-                           os.path.join(ARC_PATH, 'arc', 'testing', 'N-Valeric_Acid.log'),
-                           os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_animation.out'),
+        files_to_remove = [os.path.join(ARC_TESTING_PATH, 'bde_report_test.txt'),
+                           os.path.join(ARC_TESTING_PATH, 'water.log'),
+                           os.path.join(ARC_TESTING_PATH, 'acetylene.log'),
+                           os.path.join(ARC_TESTING_PATH, 'N-Valeric_Acid.log'),
+                           os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_animation.out'),
                            ]
         for file_path in files_to_remove:
             if os.path.isfile(file_path):

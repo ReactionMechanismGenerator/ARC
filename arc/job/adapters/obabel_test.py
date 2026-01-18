@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH, read_yaml_file
+from arc.common import ARC_TESTING_PATH, read_yaml_file
 from arc.job.adapters.obabel import OpenbabelAdapter
 from arc.level import Level
 from arc.settings.settings import ob_default_settings
@@ -30,14 +30,14 @@ class TestOpenbabelAdapter(unittest.TestCase):
         cls.job_1 = OpenbabelAdapter(execution_type='incore',
                                     job_type='sp',
                                     project='test_1',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OpenbabelAdapter_1'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_OpenbabelAdapter_1'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     level=Level(method="MMFF94")
                                     )
         cls.job_2 = OpenbabelAdapter(execution_type='incore',
                                     job_type='opt',
                                     project='test_2',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OpenbabelAdapter_2'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_OpenbabelAdapter_2'),
                                     species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                     level=Level(method="MMFF94s")
                                     )
@@ -53,7 +53,7 @@ class TestOpenbabelAdapter(unittest.TestCase):
         cls.job_3 = OpenbabelAdapter(execution_type='incore',
                                      job_type='opt',
                                      project='test_3',
-                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OpenbabelAdapter_3'),
+                                     project_directory=os.path.join(ARC_TESTING_PATH, 'test_OpenbabelAdapter_3'),
                                      species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                      constraints=[([1, 2, 3], 109), ([2, 3], 1.4), [(3, 2, 1, 5), 179.8]],
                                      level=Level(method="ghemical")
@@ -61,14 +61,14 @@ class TestOpenbabelAdapter(unittest.TestCase):
         cls.job_4 = OpenbabelAdapter(execution_type='incore',
                                      job_type='opt',
                                      project='test_4',
-                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OpenbabelAdapter_4'),
+                                     project_directory=os.path.join(ARC_TESTING_PATH, 'test_OpenbabelAdapter_4'),
                                      species=[ARCSpecies(label='EtOH', smiles='CCO', xyz=etoh_xyz)],
                                      level=Level(method="gaff")
                                      )
         cls.job_5 = OpenbabelAdapter(execution_type='incore',
                                      job_type='sp',
                                      project='test_9',
-                                     project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OpenbabelAdapter_5'),
+                                     project_directory=os.path.join(ARC_TESTING_PATH, 'test_OpenbabelAdapter_5'),
                                      species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                      level=Level(method="MMFF94s")
                                      )
@@ -159,7 +159,7 @@ H       1.22826000   -2.07823000   -0.45808000
         Delete all project directories created during these unit tests
         """
         for i in list(range(1, 6)):
-            path = os.path.join(ARC_PATH, 'arc', 'testing', f'test_OpenbabelAdapter_{i}')
+            path = os.path.join(ARC_TESTING_PATH, f'test_OpenbabelAdapter_{i}')
             shutil.rmtree(path, ignore_errors=True)
 
 if __name__ == '__main__':

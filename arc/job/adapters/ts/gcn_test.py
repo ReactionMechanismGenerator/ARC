@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 import arc.job.adapters.ts.gcn_ts as ts_gcn
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
@@ -27,7 +27,7 @@ class TestGCNAdapter(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        cls.output_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'GCN')
+        cls.output_dir = os.path.join(ARC_TESTING_PATH, 'GCN')
         if not os.path.isdir(cls.output_dir):
             os.makedirs(cls.output_dir)
         cls.rxn_1 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
@@ -90,7 +90,7 @@ class TestGCNAdapter(unittest.TestCase):
             os.remove(expected_ts_xyz_path)
         self.rxn_1.ts_species = ARCSpecies(label='TS', is_ts=True)
         ts_gcn.process_tsg(direction='R',
-                           ts_xyz=str_to_xyz(os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out')),
+                           ts_xyz=str_to_xyz(os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out')),
                            local_path=self.output_dir,
                            ts_species=self.rxn_1.ts_species,
                            tsg=TSGuess(method=f'GCN',
@@ -108,7 +108,7 @@ class TestGCNAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'GCN'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'GCN'), ignore_errors=True)
 
 
 if __name__ == '__main__':

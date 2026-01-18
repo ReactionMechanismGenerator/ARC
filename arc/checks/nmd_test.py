@@ -12,7 +12,7 @@ import shutil
 import numpy as np
 
 import arc.checks.nmd as nmd
-from arc.common import ARC_PATH, almost_equal_coords
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.molecule import Molecule
@@ -110,7 +110,7 @@ class TestNMD(unittest.TestCase):
                                          H      -0.004455   -0.848273   -0.183117
                                          H       1.142454   -0.914148    1.088425""")
         cls.rxn_2.ts_species = ARCSpecies(label='TS2', is_ts=True, xyz=cls.ts_2_xyz)
-        cls.freq_log_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'HO2+N2H4_H2O2+N2H3_freq.out')
+        cls.freq_log_path_2 = os.path.join(ARC_TESTING_PATH, 'freq', 'HO2+N2H4_H2O2+N2H3_freq.out')
 
         cls.displaced_xyz_3 = ({'symbols': ('C', 'N', 'H', 'H', 'H', 'H'), 'isotopes': (13, 14, 1, 1, 1, 1),
                                 'coords': ((1.09466418610, 0.4027481525, -0.40679594165),
@@ -228,7 +228,7 @@ class TestNMD(unittest.TestCase):
     def test_analyze_ts_normal_mode_displacement_simple_rxns(self):
         """Test the analyze_ts_normal_mode_displacement() function with simple reactions."""
         # CH4 + OH <=> CH3 + H2O
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_CH4_OH.log')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_1,
                                                         job=self.generic_job,
                                                         amplitude=0.25,
@@ -246,7 +246,7 @@ class TestNMD(unittest.TestCase):
         self.assertTrue(valid)
 
         # NH2 + N2H3 <=> NH + N2H4:
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH2+N2H3.out')
         rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH2', xyz="""N       0.00000000   -0.00000000    0.14115400
                                                                       H      -0.80516800    0.00000000   -0.49355600
                                                                       H       0.80516800   -0.00000000   -0.49355600"""),
@@ -278,7 +278,7 @@ class TestNMD(unittest.TestCase):
         self.assertTrue(valid)
 
         # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'composite',
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite',
                                                                   'TS_butylene_intra_H_migration.out')
         rxn_4 = ARCReaction(r_species=[
             ARCSpecies(label='butylene',
@@ -314,7 +314,7 @@ class TestNMD(unittest.TestCase):
         self.assertTrue(valid)
 
         # NCC + H <=> CH3CHNH2 + H2:
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2044.out')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2044.out')
         ea_xyz = """N                  1.27511929   -0.21413688   -0.09829069
                     C                  0.04568411    0.51479456    0.24529057
                     C                 -1.17314611   -0.39875221    0.01838707
@@ -345,7 +345,7 @@ class TestNMD(unittest.TestCase):
         self.assertTrue(valid)
 
         # NH3 + H <=> NH2 + H2
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH3+H=NH2+H2.out')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH3+H=NH2+H2.out')
 
         rxn_6 = ARCReaction(r_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='H', smiles='[H]')],
                             p_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='H2', smiles='[H][H]')])
@@ -356,7 +356,7 @@ class TestNMD(unittest.TestCase):
 
     def test_analyze_ts_normal_mode_displacement_correct_and_incorrect_data(self):
         """Test the analyze_ts_normal_mode_displacement() function with correct and incorrect TSs for iC3H7 <=> nC3H7."""
-        base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7')
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
         log_file_paths = {'iC3H7': os.path.join(base_path, 'iC3H7.gjf'),
                           'nC3H7': os.path.join(base_path, 'nC3H7.gjf'),
                           'TS1': os.path.join(base_path, 'TS1.log'),  # an iC3H7-like saddle point
@@ -411,7 +411,7 @@ class TestNMD(unittest.TestCase):
     def test_analyze_ts_normal_mode_displacement_for_hypervalence_nitrogen(self):
         """Test the analyze_ts_normal_mode_displacement() function for a hypervalence nitrogen."""
         # C2H5NO2 <=> C2H5ONO
-        self.generic_job.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_3,
                                                         job=self.generic_job,
                                                         amplitude=0.25,
@@ -561,7 +561,7 @@ class TestNMD(unittest.TestCase):
 
     def test_classic_intra_h_migration_through_all_major_functions(self):
         """Test the intermediate stages the nmd module takes for processing the classic intra H migration reaction."""
-        xyz_path = os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS3.log')
+        xyz_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS3.log')
         standard_ts_orientation_xyz = check_xyz_dict(xyz_path)
         freqs, nmd_array = parse_normal_mode_displacement(xyz_path)
         self.assertAlmostEqual(float(freqs[0]), -1927.862, 2)
@@ -626,9 +626,9 @@ class TestNMD(unittest.TestCase):
         self.assertAlmostEqual(reactive_bonds_diffs[1], 1.52941596, places=5)
 
         rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
-                                                xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'iC3H7.gjf'))],
+                                                xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'iC3H7.gjf'))],
                           p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
-                                                xyz=os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'nC3H7.gjf'))])
+                                                xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'nC3H7.gjf'))])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_path)
         r_bonds, _ = rxn.get_bonds(r_bonds_only=True)
         non_reactive_bonds = list()

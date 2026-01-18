@@ -11,7 +11,7 @@ import shutil
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
-from arc.common import ARC_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords_lists, initialize_job_types, read_yaml_file
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.plotter import save_conformers_file
@@ -132,9 +132,9 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_conformers(self):
         """Test the parse_conformer_energy() and determine_most_stable_conformer() methods"""
         label = 'methylamine'
-        self.job1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'methylamine_conformer_0.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_0.out')
         self.job1.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
-        self.job2.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'methylamine_conformer_1.out')
+        self.job2.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'methylamine_conformer_1.out')
         self.job2.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         self.sched1.job_dict[label] = dict()
         self.sched1.job_dict[label]['conf_opt'] = dict()
@@ -197,7 +197,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_check_negative_freq(self):
         """Test the check_negative_freq() method"""
         label = 'C2H6'
-        self.job3.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'C2H6_freq_QChem.out')
+        self.job3.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'C2H6_freq_QChem.out')
         self.job3.job_status = ['done', {'status': 'done', 'keywords': list(), 'error': '', 'line': ''}]
         vibfreqs = parser.parse_frequencies(log_file_path=self.job3.local_path_to_output_file)
         self.assertTrue(self.sched1.check_negative_freq(label=label, job=self.job3, vibfreqs=vibfreqs))
@@ -344,11 +344,11 @@ H      -1.82570782    0.42754384   -0.56130718"""
     def test_check_scan_job(self):
         """Test the check_scan_job() method."""
         self.job4.job_status[1]['status'] = 'done'
-        self.job4.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'N2O3.out')
+        self.job4.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'N2O3.out')
         self.sched3.check_scan_job(label='methylamine', job=self.job4)
         self.assertTrue(self.sched3.species_dict['methylamine'].rotors_dict[self.job4.rotor_index]['success'])
 
-        self.job4.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'l103_err.out')
+        self.job4.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'l103_err.out')
         self.job4.job_status[1]['status'] = 'errored'
         self.job4.job_status[1]['error'] = 'Internal coordinate error'
         self.sched3.check_scan_job(label='methylamine', job=self.job4)
@@ -636,23 +636,23 @@ H      -1.82570782    0.42754384   -0.56130718"""
                             'checkfile': '/storage/ce_dana/alongd/runs/ARC/debug13/calcs/TSs/TS0/opt_a24061/check.chk'},
              'done_opt_r_n_p': True, 'family': 'intra_H_migration', 'family_own_reverse': True, 'ts_label': 'TS0'}
         rxn = ARCReaction(reaction_dict=rxn_dict)
-        output = {'nC3H7': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                      'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
-                                      'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+        output = {'nC3H7': {'paths': {'geo': os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out'),
+                                      'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'nC3H7.out'),
+                                      'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out'),
                                       'composite': ''},
                             'restart': '', 'convergence': True,
                             'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
-                  'iC3H7': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                      'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
-                                      'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+                  'iC3H7': {'paths': {'geo': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
+                                      'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
+                                      'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
                                       'composite': ''},
                             'restart': '', 'convergence': True,
                             'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
                             },
-                  'TS0': {'paths': {'geo': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                    'freq': os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
-                                    'sp': os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                  'TS0': {'paths': {'geo': os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out'),
+                                    'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out'),
+                                    'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out'),
                                     'composite': ''},
                           'restart': '', 'convergence': True,
                           'job_types': {'conf_opt': True, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True, 'rotors': True, 'irc': True, 'fine': True},
@@ -662,11 +662,11 @@ H      -1.82570782    0.42754384   -0.56130718"""
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry'), exist_ok=True)
         os.makedirs(os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry'), exist_ok=True)
-        shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
+        shutil.copy(src=os.path.join(ARC_TESTING_PATH, 'freq', 'nC3H7.out'),
                     dst=os.path.join(project_directory, 'output', 'Species', 'nC3H7', 'geometry', 'freq.out'))
-        shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
+        shutil.copy(src=os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
                     dst=os.path.join(project_directory, 'output', 'Species', 'iC3H7', 'geometry', 'freq.out'))
-        shutil.copy(src=os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
+        shutil.copy(src=os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out'),
                     dst=os.path.join(project_directory, 'output', 'rxns', 'TS0', 'geometry', 'freq.out'))
         sched = Scheduler(project='test_rxn_e0_check',
                           ess_settings=self.ess_settings,
@@ -691,7 +691,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                                            'Projects',
                                                            'arc_project_for_testing_delete_after_usage6'),
                             )
-        job_1.local_path_to_output_file = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
+        job_1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         check_ts(reaction=rxn, verbose=True, job=job_1, checks=['NMD'])
         self.assertEqual(rxn.ts_species.ts_checks, {'E0': None, 'e_elect': True, 'IRC': None, 'freq': True, 'NMD': False, 'warnings': ''})
 
@@ -715,13 +715,13 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           testing=True,
                           )
         sched.post_sp_actions(label='formaldehyde',
-                              sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'formaldehyde_sp_terachem_output.out'))
+                              sp_path=os.path.join(ARC_TESTING_PATH, 'sp', 'formaldehyde_sp_terachem_output.out'))
         self.assertTrue(os.path.isfile(e_elect_summary_path))
         content = read_yaml_file(e_elect_summary_path)
         self.assertEqual(content, {'formaldehyde': -300621.95378630824})
 
         sched.post_sp_actions(label='mehylamine',
-                              sp_path=os.path.join(ARC_PATH, 'arc', 'testing', 'sp', 'mehylamine_CCSD(T).out'))
+                              sp_path=os.path.join(ARC_TESTING_PATH, 'sp', 'mehylamine_CCSD(T).out'))
         content = read_yaml_file(e_elect_summary_path)
         self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
         shutil.rmtree(project_directory, ignore_errors=True)
@@ -737,7 +737,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
             self.assertTrue(species_has_property((species_output_dict)))
             species_output_dict = {'paths': {property_: True, 'composite': True}}
             self.assertTrue(species_has_property((species_output_dict)))
-        yml_path=os.path.join(ARC_PATH, 'arc', 'testing', 'yml_testing', 'N4H6.yml')
+        yml_path=os.path.join(ARC_TESTING_PATH, 'yml_testing', 'N4H6.yml')
         species_output_dict = {'paths': {'geo': False, 'sp': False, 'freq': False, 'composite': False}}
         self.assertTrue(species_has_freq(species_output_dict=species_output_dict, yml_path=yml_path))
         self.assertTrue(species_has_geo(species_output_dict=species_output_dict, yml_path=yml_path))

@@ -51,7 +51,7 @@ class TestCommon(unittest.TestCase):
 
     def test_read_yaml_file(self):
         """Test the read_yaml_file() function"""
-        restart_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo', 'restart.yml')
+        restart_path = os.path.join(common.ARC_TESTING_PATH, 'restart', '1_restart_thermo', 'restart.yml')
         input_dict = common.read_yaml_file(restart_path)
         self.assertIsInstance(input_dict, dict)
         self.assertTrue('reactions' in input_dict)
@@ -869,7 +869,7 @@ class TestCommon(unittest.TestCase):
 
     def test_globalize_paths(self):
         """Test modifying a file's contents to correct absolute file paths"""
-        project_directory = os.path.join(common.ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths')
+        project_directory = os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths')
         restart_path = os.path.join(project_directory, 'restart_paths.yml')
         common.globalize_paths(file_path=restart_path, project_directory=project_directory)
         globalized_restart_path = os.path.join(project_directory, 'restart_paths_globalized.yml')
@@ -1217,8 +1217,8 @@ class TestCommon(unittest.TestCase):
 
     def test_safe_copy_file(self):
         """tests the safe_copy_file() function."""
-        source_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb.out')
-        destination_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'freq', 'CO2_xtb_copy.out')
+        source_path = os.path.join(common.ARC_TESTING_PATH, 'freq', 'CO2_xtb.out')
+        destination_path = os.path.join(common.ARC_TESTING_PATH, 'freq', 'CO2_xtb_copy.out')
         common.safe_copy_file(source=source_path, destination=destination_path)
         self.assertTrue(os.path.isfile(destination_path))
         # Check that no error is being raised if we attempt to copy to the same destination.
@@ -1396,7 +1396,7 @@ class TestCommon(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
-        globalized_restart_path = os.path.join(common.ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths',
+        globalized_restart_path = os.path.join(common.ARC_TESTING_PATH, 'restart', '4_globalized_paths',
                                                'restart_paths_globalized.yml')
         if os.path.isfile(globalized_restart_path):
             os.remove(path=globalized_restart_path)
