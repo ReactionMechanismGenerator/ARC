@@ -264,6 +264,7 @@ def determine_ess_status(output_path: str,
             done = False
             for i, line in enumerate(reverse_lines):
                 if 'ORCA TERMINATED NORMALLY' in line:
+                    scf_energy_initial_iteration = None
                     # not done yet, things can still go wrong (e.g., SCF energy might blow up)
                     for j, info in enumerate(forward_lines):
                         if 'Starting incremental Fock matrix formation' in info:
@@ -274,21 +275,24 @@ def determine_ess_status(output_path: str,
                             # this value is very close to the scf energy at last iteration and is easier to parse
                             scf_energy_last_iteration = float(forward_lines[j + 3].split()[3])
                             break
-                    # Check if final SCF energy makes sense
-                    scf_energy_ratio = scf_energy_last_iteration / scf_energy_initial_iteration
-                    scf_energy_ratio_threshold = 2  # it is rare that this ratio > 2
-                    if scf_energy_ratio > scf_energy_ratio_threshold:
-                        keywords = ['SCF']
-                        error = f'The SCF energy seems diverged during iterations. SCF energy after initial ' \
-                                f'iteration is {scf_energy_initial_iteration}. SCF energy after final iteration ' \
-                                f'is {scf_energy_last_iteration}. The ratio between final and initial SCF energy ' \
-                                f'is {scf_energy_ratio}. This ratio is greater than the default threshold of ' \
-                                f'{scf_energy_ratio_threshold}. Please consider using alternative methods or larger ' \
-                                f'basis sets.'
-                        line = ''
-                    else:
+                    if scf_energy_initial_iteration is not None:
+                        # Check if final SCF energy makes sense
+                        scf_energy_ratio = scf_energy_last_iteration / scf_energy_initial_iteration
+                        scf_energy_ratio_threshold = 2  # it is rare that this ratio > 2
+                        if scf_energy_ratio > scf_energy_ratio_threshold:
+                            keywords = ['SCF']
+                            error = f'The SCF energy seems diverged during iterations. SCF energy after initial ' \
+                                    f'iteration is {scf_energy_initial_iteration}. SCF energy after final iteration ' \
+                                    f'is {scf_energy_last_iteration}. The ratio between final and initial SCF energy ' \
+                                    f'is {scf_energy_ratio}. This ratio is greater than the default threshold of ' \
+                                    f'{scf_energy_ratio_threshold}. Please consider using alternative methods or larger ' \
+                                    f'basis sets.'
+                            line = ''
+                        else:
+                            done = True
+                        break
+                    if scf_energy_initial_iteration is None:
                         done = True
-                    break
                 elif 'ORCA finished by error termination in SCF' in line:
                     keywords = ['SCF']
                     for j, info in enumerate(reverse_lines):
