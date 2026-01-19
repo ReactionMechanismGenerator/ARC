@@ -50,7 +50,10 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Advanced Features</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#flexible-coordinates-xyz-input">Flexible coordinates (xyz) input</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#specify-a-specific-job-type-to-execute">Specify a specific job type to execute</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#levels-of-theory">Levels of theory</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#levels-of-theory">Levels of theory</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#active-space-determination">Active Space Determination</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#adaptive-levels-of-theory">Adaptive levels of theory</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#control-job-memory-allocation">Control job memory allocation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#using-a-fine-dft-grid-for-optimization">Using a fine DFT grid for optimization</a></li>
@@ -272,6 +275,48 @@ dictionary format with <code class="docutils literal notranslate"><span class="p
 </pre></div>
 </div>
 <p>will append <code class="docutils literal notranslate"><span class="pre">iop(99/33=1)</span></code> to the respective Gaussian job input file.</p>
+<p>To request a multireference calculation, such as MRCI, one can specify any of the following examples:</p>
+<ul>
+<li><p>A “simple” MRCI computation (text example):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sp_level</span> <span class="o">=</span> <span class="s1">&#39;MRCI/cc-pVTZ&#39;</span>
+</pre></div>
+</div>
+</li>
+</ul>
+<blockquote>
+<div><ul class="simple">
+<li><p>Adding explicitly correlated calculations (F12) which provide improvement of the basis set convergence.</p></li>
+</ul>
+</div></blockquote>
+<p>Only available through Molpro (dictionary example):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sp_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;MRCI-F12&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;cc-pVTZ-F12}</span>
+</pre></div>
+</div>
+<p>Users can also specify a chain of jobs to be performed (supported in Molpro and Orca) so that the MRCI
+calculation uses the orbitals of the previous job. For example, to perform a MRCI calculation on CASSCF orbitals,
+one can specify:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sp_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;MP2_CASSCF_MRCI&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;aug-cc-pVTZ&#39;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>This chain, seperated by underscores, will perform an HF calculation (by default, no need to specify),
+an MP2 calculation, then a CASSCF calculation, and finally an MRCI calculation on CASSCF orbitals.
+Note that requesting an MRCI job will cause ARC to first automatically spawn a Molpro CCSD/cc-pVDZ job to identify
+the active space for the MRCI calculation. If the subsequent job is spawned in Orca, the active space will be used.
+If the subsequent MRCI job is spawned in Molpro, the entire space is currently considered (the active space is not
+determined explicitly). It is therefore recommended to set the <code class="docutils literal notranslate"><span class="pre">levels_ess</span></code> dict in settings so that “MRCI” jobs
+will be executed in Orca, and “F12” and “CCSD” jobs will be executed in Molpro.</p>
+<section id="active-space-determination">
+<h3>Active Space Determination<a class="headerlink" href="#active-space-determination" title="Link to this heading"></a></h3>
+<p>ARC extracts active space parameters from Molpro CCSD output files to guide subsequent calculations.</p>
+<ul>
+<li><p><strong>Active Electrons:</strong> Calculated by subtracting the net charge and core electrons (estimated as 2 per heavy atom) from the total nuclear charge.</p>
+<div class="math">
+<p><img src="_images/math/465b34285162376bd5961bb8d754432f6f5d222c.png" alt="N_{active} = Z_{total} - Q_{net} - (2 \times N_{heavy})"/></p>
+</div></li>
+<li><p><strong>Active Orbitals:</strong> Determined by summing the counts of “closed-shell” and “active” orbitals reported in the output.</p></li>
+</ul>
+<p>The method returns a dictionary containing the <code class="docutils literal notranslate"><span class="pre">'e_o'</span></code> tuple (electrons, orbitals) alongside lists of occupied (<code class="docutils literal notranslate"><span class="pre">'occ'</span></code>) and closed-shell (<code class="docutils literal notranslate"><span class="pre">'closed'</span></code>) orbitals per irreducible representation.</p>
+</section>
 </section>
 <section id="adaptive-levels-of-theory">
 <h2>Adaptive levels of theory<a class="headerlink" href="#adaptive-levels-of-theory" title="Link to this heading"></a></h2>

@@ -261,7 +261,15 @@
 <span class="sd">        fragments (Optional[List[List[int]]]):</span>
 <span class="sd">            Fragments represented by this species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
-<span class="sd">        occ (int, optional): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.</span>
+<span class="sd">        active (dict, optional): The active orbitals. Possible keys are:</span>
+<span class="sd">                                 &#39;occ&#39; (List[int]): The occupied orbitals.</span>
+<span class="sd">                                 &#39;closed&#39; (List[int]): The closed-shell orbitals.</span>
+<span class="sd">                                 &#39;frozen&#39; (List[int]): The frozen orbitals.</span>
+<span class="sd">                                 &#39;core&#39; (List[int]): The core orbitals.</span>
+<span class="sd">                                 &#39;e_o&#39; (Tuple[int, int]): The number of active electrons, determined by the total number</span>
+<span class="sd">                                 of electrons minus the core electrons (2 e&#39;s per heavy atom), and the number of active</span>
+<span class="sd">                                 orbitals, determined by the number of closed-shell orbitals and active orbitals</span>
+<span class="sd">                                 (w/o core orbitals).</span>
 <span class="sd">        irc_label (str, optional): The label of an original ``ARCSpecies`` object (a TS) for which an IRC job was spawned.</span>
 <span class="sd">                                   The present species object instance represents a geometry optimization job of the IRC</span>
 <span class="sd">                                   result in one direction.</span>
@@ -363,7 +371,7 @@
 <span class="sd">        fragments (Optional[List[List[int]]]):</span>
 <span class="sd">            Fragments represented by this species, i.e., as in a VdW well or a TS.</span>
 <span class="sd">            Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.</span>
-<span class="sd">        occ (int): The number of occupied orbitals (core + val) from a molpro CCSD sp calc.</span>
+<span class="sd">        active (dict): The active orbitals. See description in Args.</span>
 <span class="sd">        irc_label (str): The label of an original ``ARCSpecies`` object (a TS)  for which an IRC job was spawned.</span>
 <span class="sd">                         The present species object instance represents a geometry optimization job of the IRC</span>
 <span class="sd">                         result in one direction. If a species is a transition state, then this attribute contains the</span>
@@ -376,6 +384,7 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">active</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">adjlist</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span><span class="p">,</span>
                  <span class="n">bdes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">bond_corrections</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -397,7 +406,6 @@
                  <span class="n">multiplicity</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">multi_species</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">number_of_radicals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="n">occ</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">optical_isomers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">preserve_param_in_scan</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
                  <span class="n">run_time</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">datetime</span><span class="o">.</span><span class="n">timedelta</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -436,7 +444,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">number_of_radicals</span> <span class="o">=</span> <span class="n">number_of_radicals</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">external_symmetry</span> <span class="o">=</span> <span class="n">external_symmetry</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">irc_label</span> <span class="o">=</span> <span class="n">irc_label</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">occ</span> <span class="o">=</span> <span class="n">occ</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">active</span> <span class="o">=</span> <span class="n">active</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">optical_isomers</span> <span class="o">=</span> <span class="n">optical_isomers</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">charge</span> <span class="o">=</span> <span class="n">charge</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">run_time</span> <span class="o">=</span> <span class="n">run_time</span>
@@ -858,8 +866,8 @@
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;zmat&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">zmat</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkfile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;checkfile&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">checkfile</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">occ</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;occ&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">occ</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">active</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;active&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">active</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;most_stable_conformer&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">most_stable_conformer</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cheap_conformer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -920,7 +928,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">e_elect</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;e_elect&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;e_elect&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">e0</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;e0&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;e0&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">tsg_spawned</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;tsg_spawned&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;tsg_spawned&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">False</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">occ</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;occ&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;occ&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">active</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;active&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;active&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">arkane_file</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;arkane_file&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;arkane_file&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">yml_path</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;yml_path&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;yml_path&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">rxn_label</span> <span class="o">=</span> <span class="n">species_dict</span><span class="p">[</span><span class="s1">&#39;rxn_label&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;rxn_label&#39;</span> <span class="ow">in</span> <span class="n">species_dict</span> <span class="k">else</span> <span class="kc">None</span>

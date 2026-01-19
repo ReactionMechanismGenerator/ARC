@@ -349,6 +349,7 @@
             <span class="n">done</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reverse_lines</span><span class="p">):</span>
                 <span class="k">if</span> <span class="s1">&#39;ORCA TERMINATED NORMALLY&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                    <span class="n">scf_energy_initial_iteration</span> <span class="o">=</span> <span class="kc">None</span>
                     <span class="c1"># not done yet, things can still go wrong (e.g., SCF energy might blow up)</span>
                     <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">info</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">forward_lines</span><span class="p">):</span>
                         <span class="k">if</span> <span class="s1">&#39;Starting incremental Fock matrix formation&#39;</span> <span class="ow">in</span> <span class="n">info</span><span class="p">:</span>
@@ -359,21 +360,24 @@
                             <span class="c1"># this value is very close to the scf energy at last iteration and is easier to parse</span>
                             <span class="n">scf_energy_last_iteration</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">forward_lines</span><span class="p">[</span><span class="n">j</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">3</span><span class="p">])</span>
                             <span class="k">break</span>
-                    <span class="c1"># Check if final SCF energy makes sense</span>
-                    <span class="n">scf_energy_ratio</span> <span class="o">=</span> <span class="n">scf_energy_last_iteration</span> <span class="o">/</span> <span class="n">scf_energy_initial_iteration</span>
-                    <span class="n">scf_energy_ratio_threshold</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c1"># it is rare that this ratio &gt; 2</span>
-                    <span class="k">if</span> <span class="n">scf_energy_ratio</span> <span class="o">&gt;</span> <span class="n">scf_energy_ratio_threshold</span><span class="p">:</span>
-                        <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SCF&#39;</span><span class="p">]</span>
-                        <span class="n">error</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;The SCF energy seems diverged during iterations. SCF energy after initial &#39;</span> \
-                                <span class="sa">f</span><span class="s1">&#39;iteration is </span><span class="si">{</span><span class="n">scf_energy_initial_iteration</span><span class="si">}</span><span class="s1">. SCF energy after final iteration &#39;</span> \
-                                <span class="sa">f</span><span class="s1">&#39;is </span><span class="si">{</span><span class="n">scf_energy_last_iteration</span><span class="si">}</span><span class="s1">. The ratio between final and initial SCF energy &#39;</span> \
-                                <span class="sa">f</span><span class="s1">&#39;is </span><span class="si">{</span><span class="n">scf_energy_ratio</span><span class="si">}</span><span class="s1">. This ratio is greater than the default threshold of &#39;</span> \
-                                <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">scf_energy_ratio_threshold</span><span class="si">}</span><span class="s1">. Please consider using alternative methods or larger &#39;</span> \
-                                <span class="sa">f</span><span class="s1">&#39;basis sets.&#39;</span>
-                        <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
-                    <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">scf_energy_initial_iteration</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="c1"># Check if final SCF energy makes sense</span>
+                        <span class="n">scf_energy_ratio</span> <span class="o">=</span> <span class="n">scf_energy_last_iteration</span> <span class="o">/</span> <span class="n">scf_energy_initial_iteration</span>
+                        <span class="n">scf_energy_ratio_threshold</span> <span class="o">=</span> <span class="mi">2</span>  <span class="c1"># it is rare that this ratio &gt; 2</span>
+                        <span class="k">if</span> <span class="n">scf_energy_ratio</span> <span class="o">&gt;</span> <span class="n">scf_energy_ratio_threshold</span><span class="p">:</span>
+                            <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SCF&#39;</span><span class="p">]</span>
+                            <span class="n">error</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;The SCF energy seems diverged during iterations. SCF energy after initial &#39;</span> \
+                                    <span class="sa">f</span><span class="s1">&#39;iteration is </span><span class="si">{</span><span class="n">scf_energy_initial_iteration</span><span class="si">}</span><span class="s1">. SCF energy after final iteration &#39;</span> \
+                                    <span class="sa">f</span><span class="s1">&#39;is </span><span class="si">{</span><span class="n">scf_energy_last_iteration</span><span class="si">}</span><span class="s1">. The ratio between final and initial SCF energy &#39;</span> \
+                                    <span class="sa">f</span><span class="s1">&#39;is </span><span class="si">{</span><span class="n">scf_energy_ratio</span><span class="si">}</span><span class="s1">. This ratio is greater than the default threshold of &#39;</span> \
+                                    <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">scf_energy_ratio_threshold</span><span class="si">}</span><span class="s1">. Please consider using alternative methods or larger &#39;</span> \
+                                    <span class="sa">f</span><span class="s1">&#39;basis sets.&#39;</span>
+                            <span class="n">line</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">done</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="k">break</span>
+                    <span class="k">if</span> <span class="n">scf_energy_initial_iteration</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                         <span class="n">done</span> <span class="o">=</span> <span class="kc">True</span>
-                    <span class="k">break</span>
                 <span class="k">elif</span> <span class="s1">&#39;ORCA finished by error termination in SCF&#39;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
                     <span class="n">keywords</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SCF&#39;</span><span class="p">]</span>
                     <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">info</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reverse_lines</span><span class="p">):</span>
