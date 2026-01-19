@@ -24,22 +24,12 @@ from arc.common import almost_equal_coords, get_logger, is_angle_linear, is_xyz_
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
-from arc.job.adapters.ts.crest import (
-    convert_xyz_to_df,
-    crest_available,
-    crest_ts_conformer_search,
-    get_h_abs_atoms,
-    monitor_crest_jobs,
-    process_completed_jobs,
-    submit_crest_jobs,
-)
 from arc.plotter import save_geo
 from arc.species.converter import (
     add_atom_to_xyz_using_internal_coords,
     compare_zmats,
     relocate_zmat_dummy_atoms_to_the_end,
     sorted_distances_of_atom,
-    str_to_xyz,
     zmat_from_xyz,
     zmat_to_xyz,
 )
@@ -307,11 +297,8 @@ class HeuristicsAdapter(JobAdapter):
 
             if len(self.reactions) < 5:
                 successes = [tsg for tsg in rxn.ts_species.ts_guesses if tsg.success]
-                crest_successes = sum(1 for tsg in successes if 'crest' in tsg.method.lower())
                 if successes:
                     logger.info(f'Heuristics successfully found {len(successes)} TS guesses for {rxn.label}.')
-                    if crest_successes:
-                        logger.info(f'CREST contributed {crest_successes} TS guesses for {rxn.label}.')
                 else:
                     logger.info(f'Heuristics did not find any successful TS guesses for {rxn.label}.')
 
@@ -881,9 +868,6 @@ def h_abstraction(reaction: 'ARCReaction',
         Entries hold Cartesian coordinates of TS guesses and the generating method label.
     """
     xyz_guesses = list()
-    crest_job_dirs = []
-    all_zmats = list()
-    use_crest = crest_available()
     dihedral_increment = dihedral_increment or DIHEDRAL_INCREMENT
     reactants_reversed, products_reversed = are_h_abs_wells_reversed(rxn=reaction, product_dict=reaction.product_dicts[0])
     for product_dict in reaction.product_dicts:
@@ -929,7 +913,7 @@ def h_abstraction(reaction: 'ARCReaction',
             d2_d3_product = [(None, None)]
 
         zmats = list()
-        for iteration, (d2, d3) in enumerate(d2_d3_product):
+        for d2, d3 in d2_d3_product:
             xyz_guess = None
             try:
                 xyz_guess = combine_coordinates_with_redundant_atoms(
@@ -960,53 +944,7 @@ def h_abstraction(reaction: 'ARCReaction',
                 else:
                     # This TS is unique, and has no atom collisions.
                     zmats.append(zmat_guess)
-                    all_zmats.append(zmat_guess)
                     xyz_guesses.append({"xyz": xyz_guess, "method": "Heuristics"})
-
-                if use_crest:
-                    xyz_guess_crest = xyz_guess.copy()
-                    if isinstance(xyz_guess_crest, dict):
-                        df_dmat = convert_xyz_to_df(xyz_guess_crest)
-                    elif isinstance(xyz_guess_crest, str):
-                        xyz_dict = str_to_xyz(xyz_guess_crest)
-                        df_dmat = convert_xyz_to_df(xyz_dict)
-                    elif isinstance(xyz_guess_crest, list):
-                        xyz_temp = "\n".join(xyz_guess_crest)
-                        xyz_dict = str_to_xyz(xyz_temp)
-                        df_dmat = convert_xyz_to_df(xyz_dict)
-                    else:
-                        df_dmat = None
-
-                    if df_dmat is not None:
-                        try:
-                            h_abs_atoms_dict = get_h_abs_atoms(df_dmat)
-                            crest_job_dir = crest_ts_conformer_search(
-                                xyz_guess_crest,
-                                h_abs_atoms_dict["A"],
-                                h_abs_atoms_dict["H"],
-                                h_abs_atoms_dict["B"],
-                                path=path,
-                                xyz_crest_int=iteration,
-                            )
-                            crest_job_dirs.append(crest_job_dir)
-                        except (ValueError, KeyError) as e:
-                            logger.error(f"Could not determine the H abstraction atoms, got:\n{e}")
-
-    if use_crest and crest_job_dirs:
-        crest_jobs = submit_crest_jobs(crest_job_dirs)
-        monitor_crest_jobs(crest_jobs)  # Keep checking job statuses until complete
-        xyz_guesses_crest = process_completed_jobs(crest_jobs)
-        for xyz_guess_crest in xyz_guesses_crest:
-            zmat_guess = zmat_from_xyz(xyz_guess_crest, is_ts=True)
-            is_unique = True  # Assume the current Z-matrix is unique
-            for existing_zmat_guess in all_zmats:
-                if compare_zmats(existing_zmat_guess, zmat_guess):
-                    is_unique = False  # Found a match, mark as not unique
-                    break  # Exit this inner loop only
-            if is_unique:
-                # If no match was found, append to lists
-                all_zmats.append(zmat_guess)
-                xyz_guesses.append({"xyz": xyz_guess_crest, "method": "CREST"})
 
     return xyz_guesses
 

@@ -97,6 +97,7 @@ class JobEnum(str, Enum):
     # TS search methods
     autotst = 'autotst'  # AutoTST, 10.1021/acs.jpca.7b07361, 10.26434/chemrxiv.13277870.v2
     heuristics = 'heuristics'  # ARC's heuristics
+    crest = 'crest'  # CREST conformer/TS search
     kinbot = 'kinbot'  # KinBot, 10.1016/j.cpc.2019.106947
     gcn = 'gcn'  # Graph neural network for isomerization, https://doi.org/10.1021/acs.jpclett.0c00500
     user = 'user'  # user guesses
