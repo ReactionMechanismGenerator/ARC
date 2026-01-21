@@ -686,9 +686,9 @@ def _section_contains_key(file_path: str, section_start: str, section_end: str, 
     return False
 
 
-def _get_qm_corrections_file() -> str:
+def _get_qm_corrections_files() -> List[str]:
     """
-    Return the quantum corrections data.py path, preferring ARC-local data.
+    Return quantum corrections data.py paths, preferring ARC-local data.
 
     Preference order:
       1) ARC-local database/data directories (if present)
@@ -700,11 +700,9 @@ def _get_qm_corrections_file() -> str:
         os.path.join(ARC_PATH, 'arc', 'data', 'input', 'quantum_corrections', 'data.py'),
         os.path.join(ARC_PATH, 'arc', 'data', 'quantum_corrections', 'data.py'),
         os.path.join(ARC_PATH, 'data', 'quantum_corrections.py'),
+        os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
     ]
-    for path in candidates:
-        if os.path.isfile(path):
-            return path
-    return os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
+    return [path for path in candidates if os.path.isfile(path)]
 
 
 def _normalize_method(method: str) -> str:
@@ -957,11 +955,15 @@ def get_arkane_model_chemistry(sp_level: 'Level',
 
     if sp_level.method_type == 'composite':
         # Composite Gaussian methods: prefer best year match from DB, fall back to normalized LevelOfTheory.
-        best_energy = _find_best_level_key_for_sp_level(
-            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
-        )
+        best_energy = None
+        for qm_corr_file in qm_corr_files:
+            best_energy = _find_best_level_key_for_sp_level(
+                sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+            )
+            if best_energy is not None:
+                break
         if best_energy is None:
-            years = _available_years_for_level(sp_level, qm_corr_file, atom_energies_start, atom_energies_end)
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
             if getattr(sp_level, 'year', None) is not None:
                 logger.warning(
                     f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
@@ -979,11 +981,15 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     # ---- Case 1: User supplied explicit frequency scale factor ----
     # We only need an energy level (AEC entry in atom_energies)
     if freq_scale_factor is not None:
-        best_energy = _find_best_level_key_for_sp_level(
-            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
-        )
+        best_energy = None
+        for qm_corr_file in qm_corr_files:
+            best_energy = _find_best_level_key_for_sp_level(
+                sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+            )
+            if best_energy is not None:
+                break
         if best_energy is None:
-            years = _available_years_for_level(sp_level, qm_corr_file, atom_energies_start, atom_energies_end)
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
             if getattr(sp_level, 'year', None) is not None:
                 logger.warning(
                     f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
@@ -1004,16 +1010,21 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     if freq_level is None:
         raise ValueError("freq_level required when freq_scale_factor isn't provided")
 
-    best_energy = _find_best_level_key_for_sp_level(
-        sp_level, qm_corr_file, atom_energies_start, atom_energies_end
-    )
-    best_freq = _find_best_level_key_for_sp_level(
-        freq_level, qm_corr_file, freq_dict_start, freq_dict_end
-    )
+    best_energy = None
+    best_freq = None
+    for qm_corr_file in qm_corr_files:
+        best_energy = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+        )
+        best_freq = _find_best_level_key_for_sp_level(
+            freq_level, qm_corr_file, freq_dict_start, freq_dict_end
+        )
+        if best_energy is not None and best_freq is not None:
+            break
 
     if best_energy is None or best_freq is None:
         if best_energy is None:
-            years = _available_years_for_level(sp_level, qm_corr_file, atom_energies_start, atom_energies_end)
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
             if getattr(sp_level, 'year', None) is not None:
                 logger.warning(
                     f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
@@ -1026,7 +1037,7 @@ def get_arkane_model_chemistry(sp_level: 'Level',
                     f"Specify a year to select a matching entry."
                 )
         if best_freq is None:
-            years = _available_years_for_level(freq_level, qm_corr_file, freq_dict_start, freq_dict_end)
+            years = _available_years_for_level(freq_level, qm_corr_files[-1], freq_dict_start, freq_dict_end)
             if getattr(freq_level, 'year', None) is not None:
                 logger.warning(
                     f"No Arkane frequency correction entry found for year {freq_level.year} at {freq_level.simple()}; "
@@ -1077,12 +1088,17 @@ def check_arkane_bacs(sp_level: 'Level',
         bac_section_start = "pbac = {"
         bac_section_end = "mbac = {"
 
-    best_aec_key = _find_best_level_key_for_sp_level(
-        sp_level, qm_corr_file, atom_energies_start, atom_energies_end
-    )
-    best_bac_key = _find_best_level_key_for_sp_level(
-        sp_level, qm_corr_file, bac_section_start, bac_section_end
-    )
+    best_aec_key = None
+    best_bac_key = None
+    for qm_corr_file in qm_corr_files:
+        best_aec_key = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+        )
+        best_bac_key = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, bac_section_start, bac_section_end
+        )
+        if best_aec_key is not None and best_bac_key is not None:
+            break
 
     has_aec = best_aec_key is not None
     has_bac = best_bac_key is not None
@@ -1093,8 +1109,8 @@ def check_arkane_bacs(sp_level: 'Level',
 
     if not has_encorr:
         year_note = ""
-        aec_years = _available_years_for_level(sp_level, qm_corr_file, atom_energies_start, atom_energies_end)
-        bac_years = _available_years_for_level(sp_level, qm_corr_file, bac_section_start, bac_section_end)
+        aec_years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
+        bac_years = _available_years_for_level(sp_level, qm_corr_files[-1], bac_section_start, bac_section_end)
         if getattr(sp_level, 'year', None) is not None:
             year_note = (
                 f" Available AEC years: {_format_years(aec_years)}; "
