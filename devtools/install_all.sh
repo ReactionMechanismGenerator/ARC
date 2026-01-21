@@ -97,8 +97,11 @@ else
     echo ":information_source:  CI detected or --no-arc flag set. Skip cleaning ARC installation."
 fi
 
-# 3) PyRDL (depends on ARC)
-if [[ $ARC_INSTALLED == true ]]; then
+# 3) PyRDL (needs arc_env, but not ARC install)
+if [[ "${CI:-false}" == "true" ]]; then
+    echo "=== Installing PyRDL (CI) ==="
+    bash devtools/install_pyrdl.sh
+elif [[ $ARC_INSTALLED == true ]]; then
     echo "=== Installing PyRDL ==="
     bash devtools/install_pyrdl.sh
 else
