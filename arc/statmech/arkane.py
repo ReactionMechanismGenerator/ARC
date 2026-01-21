@@ -686,6 +686,27 @@ def _section_contains_key(file_path: str, section_start: str, section_end: str, 
     return False
 
 
+def _get_qm_corrections_file() -> str:
+    """
+    Return the quantum corrections data.py path, preferring ARC-local data.
+
+    Preference order:
+      1) ARC-local database/data directories (if present)
+      2) RMG-database
+    """
+    candidates = [
+        os.path.join(ARC_PATH, 'arc', 'database', 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(ARC_PATH, 'arc', 'database', 'quantum_corrections', 'data.py'),
+        os.path.join(ARC_PATH, 'arc', 'data', 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(ARC_PATH, 'arc', 'data', 'quantum_corrections', 'data.py'),
+        os.path.join(ARC_PATH, 'data', 'quantum_corrections.py'),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
+
+
 def _normalize_method(method: str) -> str:
     """
     Normalize method names for comparison:
@@ -908,7 +929,8 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     """
     Get Arkane model chemistry string with database validation.
 
-    Reads RMG's quantum_corrections/data.py as plain text, searches for
+    Reads quantum_corrections/data.py as plain text (prefers ARC-local overrides,
+    then RMG-database), searches for
     LevelOfTheory(...) keys, and matches:
       - method:   ignoring hyphens and optional 4-digit year suffix
       - basis:    ignoring hyphens and spaces
@@ -1035,7 +1057,8 @@ def check_arkane_bacs(sp_level: 'Level',
     """
     Check that Arkane has AECs and BACs for the given sp level of theory.
 
-    Uses plain-text parsing of quantum_corrections/data.py, matching LevelOfTheory
+    Uses plain-text parsing of quantum_corrections/data.py (prefers ARC-local overrides,
+    then RMG-database), matching LevelOfTheory
     keys by:
       - method base (ignore hyphens + optional year)
       - basis (normalized)
