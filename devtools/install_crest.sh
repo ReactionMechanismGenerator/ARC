@@ -47,11 +47,6 @@ else
     CREST_LISTER="conda list -n crest_env"
 fi
 
-if ! $CREST_LISTER crest 2>/dev/null | awk 'NR>2 {print $2; exit}' | grep -q "^2\\.12$"; then
-    echo "❌ CREST package mismatch in crest_env (expected 2.12)."
-    exit 1
-fi
-
 if $CREST_RUNNER crest --version &> /dev/null; then
     version_output=$($CREST_RUNNER crest --version 2>&1)
     echo "$version_output"
