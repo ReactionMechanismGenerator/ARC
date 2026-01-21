@@ -39,6 +39,7 @@ dependencies:
   - conda-forge::pytables
   - conda-forge::pytest
   - conda-forge::pytest-cov
+  - conda-forge::pytest-xdist
   - conda-forge::pyyaml
   - conda-forge::rdkit >=2025.03
   - conda-forge::scipy
