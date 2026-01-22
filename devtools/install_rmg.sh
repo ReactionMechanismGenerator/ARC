@@ -104,10 +104,10 @@ fi
 
 if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     echo ">>> Updating existing environment: $ENV_NAME"
-    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune
+    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune --strict-channel-priority
 else
     echo ">>> Creating new environment: $ENV_NAME"
-    $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y
+    $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y --strict-channel-priority
 fi
 
 ###############################################################################
