@@ -154,8 +154,9 @@ is equivalent to::
     sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
 
 Note: Year suffixes in the method (e.g., ``wb97xd32023``) are meant for Arkane database matching
-and are not valid QC methods. Do not include year suffixes in ``level_of_theory``; instead, set
-``arkane_level_of_theory`` with a ``year`` value if you need a specific correction year.
+and are not valid QC methods. Do not include year suffixes in ``level_of_theory``; instead, specify a
+``year`` key on ``sp_level`` if you need a specific correction year. ``arkane_level_of_theory`` can still
+be used to explicitly override Arkane behavior.
 
 Note: If ``level_of_theory`` does not contain any deliminator (neither ``//`` nor ``\/``), it is interpreted as a
 composite method.

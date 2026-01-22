@@ -688,18 +688,9 @@ def _section_contains_key(file_path: str, section_start: str, section_end: str, 
 
 def _get_qm_corrections_files() -> List[str]:
     """
-    Return quantum corrections data.py paths, preferring ARC-local data.
-
-    Preference order:
-      1) ARC-local database/data directories (if present)
-      2) RMG-database
+    Return quantum corrections data.py paths from the RMG database.
     """
     candidates = [
-        os.path.join(ARC_PATH, 'arc', 'database', 'input', 'quantum_corrections', 'data.py'),
-        os.path.join(ARC_PATH, 'arc', 'database', 'quantum_corrections', 'data.py'),
-        os.path.join(ARC_PATH, 'arc', 'data', 'input', 'quantum_corrections', 'data.py'),
-        os.path.join(ARC_PATH, 'arc', 'data', 'quantum_corrections', 'data.py'),
-        os.path.join(ARC_PATH, 'data', 'quantum_corrections.py'),
         os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
     ]
     return [path for path in candidates if os.path.isfile(path)]
@@ -785,7 +776,7 @@ def _iter_level_keys_from_section(file_path: str,
 def _available_years_for_level(level: "Level",
                                file_path: str,
                                section_start: str,
-                               section_end: str) -> list[Optional[int]]:
+                               section_end: str) -> List[Optional[int]]:
     """
     Return a sorted list of available year suffixes for a given Level in a section.
     """
@@ -826,7 +817,7 @@ def _available_years_for_level(level: "Level",
     return sorted(years, key=lambda y: (-1 if y is None else y))
 
 
-def _format_years(years: list[Optional[int]]) -> str:
+def _format_years(years: List[Optional[int]]) -> str:
     """
     Format a list of years for logging.
     """
@@ -851,7 +842,14 @@ def _find_best_level_key_for_sp_level(level: "Level",
 
     target_method_norm = _normalize_method(level.method)
     target_base, method_year = _split_method_year(target_method_norm)
-    target_year = getattr(level, 'year', None) if getattr(level, 'year', None) is not None else method_year
+    explicit_year = getattr(level, 'year', None)
+    if explicit_year is not None and method_year is not None and explicit_year != method_year:
+        raise InputError(
+            f"Conflicting year specifications for level '{level}': "
+            f"explicit year={explicit_year}, method suffix year={method_year}. "
+            "Please remove the year suffix from the method name or update the 'year' attribute to match."
+        )
+    target_year = explicit_year if explicit_year is not None else method_year
     target_basis_norm = _normalize_basis(level.basis)
     target_software = level.software.lower() if level.software else None
 
@@ -933,14 +931,16 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     """
     Get Arkane model chemistry string with database validation.
 
-    Reads quantum_corrections/data.py as plain text (prefers ARC-local overrides,
-    then RMG-database), searches for
+    Reads quantum_corrections/data.py as plain text, searches for
     LevelOfTheory(...) keys, and matches:
       - method:   ignoring hyphens and optional 4-digit year suffix
       - basis:    ignoring hyphens and spaces
 
-    If multiple entries only differ by year, the one with the *latest* year
-    is chosen (year=0 if no year in that entry).
+    When a year is explicitly specified in the Level, only entries with that exact
+    year are matched. If no year is specified and an entry without a year exists,
+    that entry is used. Only when no year is specified and no no-year entry exists,
+    if multiple entries differ only by year, the one with the *latest* year is
+    chosen (treating entries with no year as year=0).
 
     Args:
         sp_level (Level): Level of theory for energy.
@@ -981,7 +981,8 @@ def get_arkane_model_chemistry(sp_level: 'Level',
                     f"available years: {_format_years(years)}. "
                     f"Specify a year to select a matching entry."
                 )
-            return _level_to_str(sp_level)
+            # No matching AEC level in Arkane DB for this composite method
+            return None
         return best_energy
 
     # ---- Case 1: User supplied explicit frequency scale factor ----
@@ -1074,8 +1075,7 @@ def check_arkane_bacs(sp_level: 'Level',
     """
     Check that Arkane has AECs and BACs for the given sp level of theory.
 
-    Uses plain-text parsing of quantum_corrections/data.py (prefers ARC-local overrides,
-    then RMG-database), matching LevelOfTheory
+    Uses plain-text parsing of quantum_corrections/data.py, matching LevelOfTheory
     keys by:
       - method base (ignore hyphens + optional year)
       - basis (normalized)
