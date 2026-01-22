@@ -856,6 +856,7 @@ def _find_best_level_key_for_sp_level(level: "Level",
     target_software = level.software.lower() if level.software else None
 
     best_key = None
+    best_year = None
 
     for lot_str in _iter_level_keys_from_section(file_path, section_start, section_end):
         params = _parse_lot_params(lot_str)
@@ -890,10 +891,16 @@ def _find_best_level_key_for_sp_level(level: "Level",
                 continue
             best_key = lot_str
             break
-        else:
-            if cand_year is None:
+
+        # No target year specified: pick the latest year if present, otherwise fall back to no-year entry.
+        if cand_year is None:
+            if best_year is None:
                 best_key = lot_str
-                break
+            continue
+
+        if best_year is None or cand_year > best_year:
+            best_year = cand_year
+            best_key = lot_str
 
     return best_key
 
