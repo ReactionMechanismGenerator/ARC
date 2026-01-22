@@ -892,11 +892,10 @@ def _find_best_level_key_for_sp_level(level: "Level",
             best_key = lot_str
             break
 
-        # No target year specified: pick the latest year if present, otherwise fall back to no-year entry.
+        # No target year specified: prefer no-year entry; if absent, pick latest year.
         if cand_year is None:
-            if best_year is None:
-                best_key = lot_str
-            continue
+            best_key = lot_str
+            break
 
         if best_year is None or cand_year > best_year:
             best_year = cand_year

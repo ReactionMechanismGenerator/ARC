@@ -165,7 +165,7 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
                                                     freq_scale_factor=1.0),
-                         "LevelOfTheory(method='cbsqb32023',software='gaussian')")
+                         "LevelOfTheory(method='cbsqb3',software='gaussian')")
 
     def test_get_arkane_model_chemistry_year_not_found(self):
         """Test warnings when a requested year is not found in the Arkane database."""
@@ -179,7 +179,7 @@ class TestArkaneAdapter(unittest.TestCase):
         """Test selecting the latest available year when no year is specified."""
         model_chemistry = get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
                                                      freq_scale_factor=1.0)
-        self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb32023',software='gaussian')")
+        self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb3',software='gaussian')")
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""

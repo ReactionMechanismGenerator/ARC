@@ -108,7 +108,8 @@ Equivalent ``input.yml`` form::
       basis: def2tzvp
       year: 2023
 
-If ``year`` is omitted, ARC will match the newest available entry for that method/basis in the Arkane database.
+If ``year`` is omitted, ARC will prefer the no-year Arkane entry for that method/basis. If none exists,
+ARC will fall back to the latest available year in the Arkane database.
 
 
 The following are examples for **equivalent** definitions::
