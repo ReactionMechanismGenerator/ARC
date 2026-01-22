@@ -111,32 +111,17 @@ jobs:
           ref: v2.0.6
           fetch-depth: 1
 
-      # ────────── Conda package cache ──────────
-      - name: Cache Conda packages
-        id: cache-conda-pkgs
-        uses: actions/cache@v4
-        with:
-          path: ~/conda_pkgs_dir
-          key: ${{ runner.os }}-conda-0-${{ hashFiles('environment.yml') }}
-
       # ────────── Create / restore env ──────────
-      - name: Setup ARC Env
-        uses: conda-incubator/setup-miniconda@v3.2.0
+      - name: Set up micromamba (arc_env)
+        uses: mamba-org/setup-micromamba@v2
         with:
-          auto-update-conda: true
+          environment-name: arc_env
           environment-file: environment.yml
-          activate-environment: arc_env
-          miniconda-version: latest
-          conda-solver: libmamba
+          cache-environment: true
+          cache-downloads: true
+          generate-run-shell: true
 
       # ────────── Update env & save to cache ──────────
       - name: Update environment
-        run: conda env update -n arc_env -f environment.yml
-
-      - name: Cache ARC env
-        if: github.event_name == 'push'
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CONDA }}/envs
-          key: conda-${{ runner.os }}-${{ runner.arch }}-0
-
+        shell: micromamba-shell {0}
+        run: micromamba env update -n arc_env -f environment.yml
