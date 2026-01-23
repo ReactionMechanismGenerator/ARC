@@ -32,6 +32,7 @@ sphinxcontrib-jsmath
 # For running the unit tests
 pytest
 pytest-cov
+pytest-xdist
 coverage
 
 # For interactive use
