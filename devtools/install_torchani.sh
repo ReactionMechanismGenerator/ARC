@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 # Enable tracing of each command, but tee it to a logfile
 exec 3>&1 4>&2
