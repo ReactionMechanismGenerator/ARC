@@ -50,13 +50,13 @@ help:
 test: test-unittests
 
 test-unittests:
-	pytest arc/ --cov --cov-report=xml -ra -vv
+	pytest arc/ --cov --cov-report=xml -ra -vv -n auto
 
 test-functional:
-	pytest functional/ -ra -vv
+	pytest functional/ -ra -vv -n auto
 
 test-all:
-	pytest arc/ functional/ --cov --cov-report=xml -ra -vv
+	pytest arc/ functional/ --cov --cov-report=xml -ra -vv -n auto
 
 install-all: install
 

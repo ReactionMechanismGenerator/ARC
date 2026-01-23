@@ -114,7 +114,7 @@ jobs:
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest arc/ --cov --cov-report=xml -ra -vv
+          pytest arc/ --cov --cov-report=xml -ra -vv -n auto
 
       - name: Run Functional Tests
         shell: micromamba-shell {0}
@@ -122,7 +122,7 @@ jobs:
         run: |
           echo "Running Functional Tests from $(pwd)..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
-          pytest functional/ -ra -vv
+          pytest functional/ -ra -vv -n auto
 
       - name: Upload coverage data
         uses: codecov/codecov-action@v3
