@@ -16,6 +16,7 @@ from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
 from arc.statmech.arkane import _level_to_str, _section_contains_key, get_arkane_model_chemistry
+from arc.imports import settings
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -108,8 +109,22 @@ class TestArkaneAdapter(unittest.TestCase):
     def test_run_statmech_using_molecular_properties(self):
         """Test running statmech using molecular properties."""
         self.arkane_3.compute_thermo()
-        self.assertTrue(os.path.isfile(os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_3',
-                                                    'statmech', 'thermo', 'plots', 'iC3H7.pdf')))
+        plot_path = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_3',
+                                 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
+        if not os.path.isfile(plot_path):
+            log_dir = os.path.dirname(os.path.dirname(plot_path))
+            stdout_log = os.path.join(log_dir, 'stdout.log')
+            stderr_log = os.path.join(log_dir, 'stderr.log')
+            stdout_text = ''
+            stderr_text = ''
+            if os.path.isfile(stdout_log):
+                with open(stdout_log, 'r') as f:
+                    stdout_text = f.read()
+            if os.path.isfile(stderr_log):
+                with open(stderr_log, 'r') as f:
+                    stderr_text = f.read()
+            self.fail(f'Arkane did not generate {plot_path}.\nstdout.log:\n{stdout_text}\nstderr.log:\n{stderr_text}')
+        self.assertTrue(os.path.isfile(plot_path))
         self.assertAlmostEqual(self.ic3h7.e0, 6.75565e+07)
 
     def test_level_to_str(self):
@@ -123,7 +138,11 @@ class TestArkaneAdapter(unittest.TestCase):
 
     def test_section_contains_key(self):
         """Test the _section_contains_key function"""
-        file_path = os.path.join(os.path.dirname(ARC_PATH), 'RMG-database', 'input', 'quantum_corrections', 'data.py')
+        rmg_db_path = settings.get('RMG_DB_PATH')
+        file_path = os.path.join(rmg_db_path, 'input', 'quantum_corrections', 'data.py')
+        if not os.path.isfile(file_path):
+            file_path = os.path.join(rmg_db_path, 'quantum_corrections', 'data.py')
+        self.assertTrue(os.path.isfile(file_path), f'RMG quantum corrections file not found at {file_path}')
         self.assertTrue(_section_contains_key(file_path=file_path,
                                               section_start="atom_energies = {",
                                               section_end="pbac = {",
