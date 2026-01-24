@@ -109,4 +109,24 @@ folder. Various :ref:`standalone tools <tools>` in an iPython format are also av
 demonstrating different utilizations of the API.
 Users are of course directed to read :ref:`ARC's API <api>`.
 
+.. _arkane-standalone:
+
+Running Arkane independently
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ARC runs Arkane automatically for statmech, but you can also run Arkane on its own.
+Make sure RMG-Py and the RMG database are available, then run Arkane with your input file.
+
+Conda install (recommended)::
+
+    conda run -n rmg_env python -m arkane input.py
+
+Source install::
+
+    export RMG_PY_PATH=/path/to/RMG-Py
+    export RMG_DB_PATH=/path/to/RMG-database
+    python -m arkane input.py
+
+See the `Arkane`_ documentation for input file details.
+
 .. include:: links.txt

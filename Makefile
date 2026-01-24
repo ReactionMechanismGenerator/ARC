@@ -7,7 +7,7 @@
 DEVTOOLS_DIR := devtools
 
 .PHONY: all help clean test test-unittests test-functional test-all \
-        install-all install-ci install-pyrdl install-rmgdb install-autotst install-gcn \
+        install-all install-ci install-pyrdl install-rmg install-rmgdb install-autotst install-gcn \
         install-gcn-cpu install-kinbot install-sella install-xtb install-torchani install-ob \
         lite check-env compile
 
@@ -28,6 +28,7 @@ help:
 	@echo "  install          Install all external dependencies"
 	@echo "  install-ci       Install all external dependencies for CI (no clean)"
 	@echo "  install-pyrdl    Install PyRDL"
+	@echo "  install-rmg      Install RMG (default: packaged, override via RMG_ARGS=...)"
 	@echo "  install-rmgdb    Install RMG-database"
 	@echo "  install-autotst  Install AutoTST"
 	@echo "  install-gcn      Install TS-GCN (GPU)"
@@ -74,6 +75,9 @@ install-lite:
 
 install-pyrdl:
 	bash $(DEVTOOLS_DIR)/install_pyrdl.sh
+
+install-rmg:
+	bash $(DEVTOOLS_DIR)/install_rmg.sh $(RMG_ARGS)
 
 install-rmgdb:
 	bash $(DEVTOOLS_DIR)/install_rmgdb.sh
