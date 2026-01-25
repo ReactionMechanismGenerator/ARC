@@ -143,9 +143,33 @@ installation folder by, e.g., <code class="docutils literal notranslate"><span c
 </pre></div>
 </div>
 </li>
-<li><p>Install the latest <strong>DEVELOPER</strong> version of RMG (which has Arkane).
-It is recommended to follow RMG’s <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html#for-developers-installation-by-source-using-anaconda-environment">Developer installation by source using Anaconda</a> instructions.
-Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG’s documentation.</p></li>
+<li><p>Install RMG (choose one option):</p>
+<ul>
+<li><p>Use the installer script via Make (recommended). Default is the packaged release:</p>
+<p>make install-rmg</p>
+<p>To install from source instead:</p>
+<p>make install-rmg RMG_ARGS=–source</p>
+<p>Additional source options (examples):</p>
+<p>make install-rmg RMG_ARGS=”–source –conda”
+make install-rmg RMG_ARGS=”–source –pip”</p>
+<p>Optional extras (examples):</p>
+<p>make install-rmg RMG_ARGS=”–rms”
+make install-rmg RMG_ARGS=”–source –rms –ssh”</p>
+<p>See <code class="docutils literal notranslate"><span class="pre">devtools/install_rmg.sh</span> <span class="pre">--help</span></code> for all flags.</p>
+</li>
+<li><p>Source install RMG-Py + RMG-database manually, then set <cite>RMG_PY_PATH</cite> and <cite>RMG_DB_PATH</cite> in your shell or
+<cite>.arc/settings.py</cite>.</p></li>
+<li><p>Install the packaged RMG release (RMG-Py + RMG-database + Arkane) into a dedicated environment:</p>
+<dl class="simple">
+<dt>mamba create -n rmg_env -c rmg -c conda-forge python=3.9 conda-forge::numpy&gt;=1.10.0,&lt;2 </dt><dd><p>blas=*=openblas conda-forge::numdifftools rmg=3.3.0 connie::symmetry</p>
+</dd>
+</dl>
+<p>ARC runs Arkane automatically for statmech from this environment.
+ARC will locate the RMG database inside <cite>rmg_env</cite> by default. If you keep the database elsewhere,
+set <cite>RMG_DB_PATH</cite> in your shell or <cite>.arc/settings.py</cite>.</p>
+</li>
+</ul>
+</li>
 <li><p>Type <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">install-all</span></code> under the ARC repository folder to install the following 3rd party repositories:
 <a class="reference external" href="https://github.com/ReactionMechanismGenerator/AutoTST">AutoTST</a>
 (<a class="reference external" href="https://doi.org/10.1021/acs.jpca.7b07361">West et al.</a>),

@@ -54,11 +54,39 @@ Install dependencies
 
      conda activate arc_env
 
-- Install the latest **DEVELOPER** version of RMG (which has Arkane).
-  It is recommended to follow RMG's `Developer installation by source using Anaconda
-  <http://reactionmechanismgenerator.github.io/RMG-Py/users/rmg/installation/index.html
-  #for-developers-installation-by-source-using-anaconda-environment>`_ instructions.
-  Make sure to add RMG-Py to your PATH and PYTHONPATH variables as explained in RMG's documentation.
+- Install RMG (choose one option):
+
+  - Use the installer script via Make (recommended). Default is the packaged release::
+
+    make install-rmg
+
+    To install from source instead::
+
+    make install-rmg RMG_ARGS=--source
+
+    Additional source options (examples)::
+
+    make install-rmg RMG_ARGS="--source --conda"
+    make install-rmg RMG_ARGS="--source --pip"
+
+    Optional extras (examples)::
+
+    make install-rmg RMG_ARGS="--rms"
+    make install-rmg RMG_ARGS="--source --rms --ssh"
+
+    See ``devtools/install_rmg.sh --help`` for all flags.
+
+  - Source install RMG-Py + RMG-database manually, then set `RMG_PY_PATH` and `RMG_DB_PATH` in your shell or
+    `.arc/settings.py`.
+
+  - Install the packaged RMG release (RMG-Py + RMG-database + Arkane) into a dedicated environment::
+
+    mamba create -n rmg_env -c rmg -c conda-forge python=3.9 conda-forge::numpy>=1.10.0,<2 \
+        blas=*=openblas conda-forge::numdifftools rmg=3.3.0 connie::symmetry
+
+    ARC runs Arkane automatically for statmech from this environment.
+    ARC will locate the RMG database inside `rmg_env` by default. If you keep the database elsewhere,
+    set `RMG_DB_PATH` in your shell or `.arc/settings.py`.
 - Type ``make install-all`` under the ARC repository folder to install the following 3rd party repositories:
   `AutoTST <https://github.com/ReactionMechanismGenerator/AutoTST>`_
   (`West et al. <https://doi.org/10.1021/acs.jpca.7b07361>`_),

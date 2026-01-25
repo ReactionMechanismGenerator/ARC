@@ -48,6 +48,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Running ARC</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#using-an-input-file">Using an input file</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#using-the-api">Using the API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#running-arkane-independently">Running Arkane independently</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -179,6 +180,22 @@ has the benefit of displaying “live” and interactive
 folder. Various <a class="reference internal" href="tools.html#tools"><span class="std std-ref">standalone tools</span></a> in an iPython format are also available,
 demonstrating different utilizations of the API.
 Users are of course directed to read <a class="reference internal" href="api/index.html#api"><span class="std std-ref">ARC’s API</span></a>.</p>
+</section>
+<section id="running-arkane-independently">
+<span id="arkane-standalone"></span><h2>Running Arkane independently<a class="headerlink" href="#running-arkane-independently" title="Link to this heading"></a></h2>
+<p>ARC runs Arkane automatically for statmech, but you can also run Arkane on its own.
+Make sure RMG-Py and the RMG database are available, then run Arkane with your input file.</p>
+<p>Conda install (recommended):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">conda</span> <span class="n">run</span> <span class="o">-</span><span class="n">n</span> <span class="n">rmg_env</span> <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">arkane</span> <span class="nb">input</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>Source install:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">export</span> <span class="n">RMG_PY_PATH</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">RMG</span><span class="o">-</span><span class="n">Py</span>
+<span class="n">export</span> <span class="n">RMG_DB_PATH</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">RMG</span><span class="o">-</span><span class="n">database</span>
+<span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">arkane</span> <span class="nb">input</span><span class="o">.</span><span class="n">py</span>
+</pre></div>
+</div>
+<p>See the <a class="reference external" href="http://reactionmechanismgenerator.github.io/RMG-Py/users/arkane/input.html">Arkane</a> documentation for input file details.</p>
 </section>
 </section>
 

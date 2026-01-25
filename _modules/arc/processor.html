@@ -91,6 +91,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">arc.plotter</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plotter</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.common</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARC_PATH</span><span class="p">,</span> <span class="n">get_logger</span><span class="p">,</span> <span class="n">read_yaml_file</span><span class="p">,</span> <span class="n">save_yaml_file</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.imports</span><span class="w"> </span><span class="kn">import</span> <span class="n">settings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.local</span><span class="w"> </span><span class="kn">import</span> <span class="n">execute_command</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.statmech.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">statmech_factory</span>
@@ -334,11 +335,15 @@
     <span class="n">species_thermo_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">output_directory</span><span class="p">,</span> <span class="s1">&#39;RMG_thermo.yml&#39;</span><span class="p">)</span>
     <span class="n">save_yaml_file</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">species_thermo_path</span><span class="p">,</span>
                    <span class="n">content</span><span class="o">=</span><span class="p">[{</span><span class="s1">&#39;label&#39;</span><span class="p">:</span> <span class="n">spc</span><span class="o">.</span><span class="n">label</span><span class="p">,</span> <span class="s1">&#39;adjlist&#39;</span><span class="p">:</span> <span class="n">spc</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">to_adjacency_list</span><span class="p">()}</span> <span class="k">for</span> <span class="n">spc</span> <span class="ow">in</span> <span class="n">species_for_thermo_lib</span><span class="p">])</span>
+    <span class="n">env_name</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;RMG_ENV_NAME&#39;</span><span class="p">,</span> <span class="s1">&#39;rmg_env&#39;</span><span class="p">)</span>
+    <span class="n">rmg_db_path</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;RMG_DB_PATH&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
     <span class="n">commands</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;bash -lc &quot;set -euo pipefail; &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;export RMG_DB_PATH=</span><span class="se">\\</span><span class="s1">&quot;</span><span class="si">{</span><span class="n">rmg_db_path</span><span class="si">}</span><span class="se">\\</span><span class="s1">&quot;; &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;export RMG_DATABASE=</span><span class="se">\\</span><span class="s1">&quot;</span><span class="si">{</span><span class="n">rmg_db_path</span><span class="si">}</span><span class="se">\\</span><span class="s1">&quot;; &#39;</span>
                 <span class="s1">&#39;if command -v micromamba &gt;/dev/null 2&gt;&amp;1; then &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;    micromamba run -n rmg_env python </span><span class="si">{</span><span class="n">THERMO_SCRIPT_PATH</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">species_thermo_path</span><span class="si">}</span><span class="s1">; &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;    micromamba run -n </span><span class="si">{</span><span class="n">env_name</span><span class="si">}</span><span class="s1"> python </span><span class="si">{</span><span class="n">THERMO_SCRIPT_PATH</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">species_thermo_path</span><span class="si">}</span><span class="s1">; &#39;</span>
                 <span class="s1">&#39;elif command -v conda &gt;/dev/null 2&gt;&amp;1 || command -v mamba &gt;/dev/null 2&gt;&amp;1; then &#39;</span>
-                <span class="sa">f</span><span class="s1">&#39;    conda run -n rmg_env python </span><span class="si">{</span><span class="n">THERMO_SCRIPT_PATH</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">species_thermo_path</span><span class="si">}</span><span class="s1">; &#39;</span>
+                <span class="sa">f</span><span class="s1">&#39;    conda run -n </span><span class="si">{</span><span class="n">env_name</span><span class="si">}</span><span class="s1"> python </span><span class="si">{</span><span class="n">THERMO_SCRIPT_PATH</span><span class="si">}</span><span class="s1"> </span><span class="si">{</span><span class="n">species_thermo_path</span><span class="si">}</span><span class="s1">; &#39;</span>
                 <span class="s1">&#39;else &#39;</span>
                 <span class="s1">&#39;    echo </span><span class="se">\&#39;</span><span class="s1">❌ Micromamba/Mamba/Conda required</span><span class="se">\&#39;</span><span class="s1"> &gt;&amp;2; exit 1; &#39;</span>
                 <span class="s1">&#39;fi&quot;&#39;</span><span class="p">,</span>
@@ -391,7 +396,8 @@
                              <span class="s1">&#39;family&#39;</span><span class="p">:</span> <span class="n">rxn</span><span class="o">.</span><span class="n">family</span><span class="p">,</span>
                              <span class="p">}</span> <span class="k">for</span> <span class="n">rxn</span> <span class="ow">in</span> <span class="n">rxns_for_kinetics_lib</span><span class="p">],</span>
                    <span class="p">)</span>
-    <span class="n">env_name</span> <span class="o">=</span> <span class="s1">&#39;rmg_env&#39;</span>
+    <span class="n">env_name</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;RMG_ENV_NAME&#39;</span><span class="p">,</span> <span class="s1">&#39;rmg_env&#39;</span><span class="p">)</span>
+    <span class="n">rmg_db_path</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;RMG_DB_PATH&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span>
     <span class="n">shell_script</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;if command -v micromamba &amp;&gt; /dev/null; then</span>
 <span class="s2">    eval &quot;$(micromamba shell hook --shell=bash)&quot;</span>
 <span class="s2">    micromamba activate </span><span class="si">{</span><span class="n">env_name</span><span class="si">}</span>
@@ -404,6 +410,8 @@
 <span class="s2">else</span>
 <span class="s2">    exit 1</span>
 <span class="s2">fi</span>
+<span class="s2">export RMG_DB_PATH=&quot;</span><span class="si">{</span><span class="n">rmg_db_path</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="s2">export RMG_DATABASE=&quot;</span><span class="si">{</span><span class="n">rmg_db_path</span><span class="si">}</span><span class="s2">&quot;</span>
 <span class="s2">python </span><span class="si">{</span><span class="n">KINETICS_SCRIPT_PATH</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">reactions_kinetics_path</span><span class="si">}</span><span class="s2">   &gt; &gt;(tee -a stdout.log) 2&gt; &gt;(tee -a stderr.log &gt;&amp;2)</span>
 <span class="s2">&quot;&quot;&quot;</span>
     <span class="n">o</span><span class="p">,</span> <span class="n">e</span> <span class="o">=</span> <span class="n">execute_command</span><span class="p">(</span><span class="n">command</span><span class="o">=</span><span class="n">shell_script</span><span class="p">,</span>
