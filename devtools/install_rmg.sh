@@ -6,30 +6,38 @@ echo ">>> Starting RMG-Py installer..."
 ###############################################################################
 # CONFIGURATION
 ###############################################################################
-# default values
 # default values ────────────────────────────────────────────────────────────
-MODE=path           # {path|pip|conda}
+MODE=package        # {package|source}
+SOURCE_MODE=path    # {path|pip|conda} (only used when MODE=source)
 INSTALL_RMS=false
 USE_SSH=false
 ENV_NAME="rmg_env"
+RMG_VERSION="${RMG_VERSION:-3.3.0}"
 
-TEMP=$(getopt -o prsch --long pip,conda,rms,ssh,help -- "$@")
+TEMP=$(getopt -o prschS --long pip,conda,rms,ssh,source,help -- "$@")
 [[ $? -eq 0 ]] || { echo "Flag parsing failed"; exit 1; }
 eval set -- "$TEMP"
 while true; do
     case "$1" in
-        -p|--pip)    MODE=pip;   shift ;;
-        -c|--conda)  MODE=conda; shift ;;
+        -p|--pip)    MODE=source; SOURCE_MODE=pip; shift ;;
+        -c|--conda)  MODE=source; SOURCE_MODE=conda; shift ;;
         -r|--rms)    INSTALL_RMS=true; shift ;;
         -s|--ssh)    USE_SSH=true; shift ;;
+        -S|--source) MODE=source; shift ;;
         -h|--help)
 cat <<EOF
-Usage: $0 [--pip] [--conda] [--rms] [--ssh]
+Usage: $0 [--source] [--pip] [--conda] [--rms] [--ssh]
 
-  -p, --pip     install RMG-Py as an editable pip package
-  -c, --conda   export RMG-Py & database into the activation/deactivation hooks of a conda-like environment
+  default       install packaged RMG (RMG-Py + database + Arkane) into rmg_env
+  -S, --source  install RMG-Py from source and build in rmg_env
+  -p, --pip     (source) install RMG-Py as an editable pip package
+  -c, --conda   (source) export RMG-Py & database into conda activation/deactivation hooks
   -r, --rms     also install Reaction Mechanism Simulator
   -s, --ssh     clone via git@… instead of https://
+
+Notes:
+  - Examples: --source --conda | --source --pip | --rms | --source --rms --ssh
+  - Override rmg version with RMG_VERSION=3.3.0 (or similar) in the environment.
 EOF
             exit 0 ;;
         --) shift; break ;;
@@ -50,6 +58,23 @@ else
 fi
 
 echo "✔️ Using $COMMAND_PKG to manage environments"
+
+###############################################################################
+# Create/update rmg_env (package install)
+###############################################################################
+if [[ "$MODE" == "package" ]]; then
+    if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+        echo ">>> Updating existing environment: $ENV_NAME"
+        $COMMAND_PKG install -n "$ENV_NAME" -y -c rmg -c conda-forge \
+            "python=3.9" "conda-forge::numpy>=1.10.0,<2" "blas=*=openblas" "conda-forge::numdifftools" \
+            "rmg=${RMG_VERSION}" "connie::symmetry"
+    else
+        echo ">>> Creating new environment: $ENV_NAME"
+        $COMMAND_PKG create -n "$ENV_NAME" -y -c rmg -c conda-forge \
+            "python=3.9" "conda-forge::numpy>=1.10.0,<2" "blas=*=openblas" "conda-forge::numdifftools" \
+            "rmg=${RMG_VERSION}" "connie::symmetry"
+    fi
+fi
 
 ###############################################################################
 # Paths and clones
@@ -79,42 +104,43 @@ clone_repo () {
     git clone --depth 1 "$url" "$repo_name"
 }
 
-# ---------- actual clones ---------------------------------------------------
-clone_repo RMG-Py \
-           git@github.com:ReactionMechanismGenerator/RMG-Py.git \
-           https://github.com/ReactionMechanismGenerator/RMG-Py.git
+if [[ "$MODE" == "source" ]]; then
+    # ---------- actual clones ---------------------------------------------------
+    clone_repo RMG-Py \
+               git@github.com:ReactionMechanismGenerator/RMG-Py.git \
+               https://github.com/ReactionMechanismGenerator/RMG-Py.git
 
-clone_repo RMG-database \
-           git@github.com:ReactionMechanismGenerator/RMG-database.git \
-           https://github.com/ReactionMechanismGenerator/RMG-database.git
+    clone_repo RMG-database \
+               git@github.com:ReactionMechanismGenerator/RMG-database.git \
+               https://github.com/ReactionMechanismGenerator/RMG-database.git
 
-export RMG_PY_PATH=$CLONE_ROOT/RMG-Py
-export RMG_DB_PATH=$CLONE_ROOT/RMG-database
+    export RMG_PY_PATH=$CLONE_ROOT/RMG-Py
+    export RMG_DB_PATH=$CLONE_ROOT/RMG-database
 
+    ###############################################################################
+    # CREATE OR UPDATE rmg_env
+    ###############################################################################
+    cd "$RMG_PY_PATH"
 
-###############################################################################
-# CREATE OR UPDATE rmg_env
-###############################################################################
-cd "$RMG_PY_PATH"
+    if [[ ! -f environment.yml ]]; then
+        echo "❌ environment.yml not found in RMG-Py directory."
+        exit 1
+    fi
 
-if [[ ! -f environment.yml ]]; then
-    echo "❌ environment.yml not found in RMG-Py directory."
-    exit 1
+    if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+        echo ">>> Updating existing environment: $ENV_NAME"
+        $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune --strict-channel-priority
+    else
+      echo ">>> Creating new environment: $ENV_NAME"
+        $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y --strict-channel-priority
+    fi
+
+    ###############################################################################
+    # COMPILE RMG
+    ###############################################################################
+    echo "🔧 Compiling RMG-Py..."
+    $COMMAND_PKG run -n "$ENV_NAME" make -j"$(nproc)"
 fi
-
-if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-    echo ">>> Updating existing environment: $ENV_NAME"
-    $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune --strict-channel-priority
-else
-    echo ">>> Creating new environment: $ENV_NAME"
-    $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y --strict-channel-priority
-fi
-
-###############################################################################
-# COMPILE RMG
-###############################################################################
-echo "🔧 Compiling RMG-Py..."
-$COMMAND_PKG run -n "$ENV_NAME" make -j"$(nproc)"
 
 
 ###############################################################################
@@ -162,51 +188,53 @@ EOF
 
 
 ###############################################################################
-# UPDATE SHELL PATH
+# UPDATE SHELL PATH (source installs only)
 ###############################################################################
-case "$SHELL" in
-    */zsh) RC=~/.zshrc ;;
-    *)     RC=~/.bashrc ;;
-esac
+if [[ "$MODE" == "source" ]]; then
+    case "$SHELL" in
+        */zsh) RC=~/.zshrc ;;
+        *)     RC=~/.bashrc ;;
+    esac
 
-if [[ ! -f "$RC" ]]; then
-    echo "❌ Shell configuration file not found: $RC"
-    exit 1
-fi
-
-ACTIVE_RE="^[[:space:]]*[^#].*${RMG_PY_PATH//\//\\/}"   # uncommented, contains path
-COMMENT_RE="^[[:space:]]*#.*${RMG_PY_PATH//\//\\/}"     # commented-out, contains path
-NEW_LINE='export PATH="$PATH:'"$RMG_PY_PATH"'"'
-
-
-# If PATH_ADD is true, add RMG-Py to PATH
-if [ "$MODE" == path ]; then
-    if grep -Eq "$ACTIVE_RE" "$RC"; then
-        printf 'ℹ️  RMG-Py already active in %s\n' "$RC"
-
-    elif grep -Eq "$COMMENT_RE" "$RC"; then
-        printf '✅  Found commented entry; adding new active line\n'
-        printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
-
-    else
-        printf '✅  No entry found; adding new active line\n'
-        printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
+    if [[ ! -f "$RC" ]]; then
+        echo "❌ Shell configuration file not found: $RC"
+        exit 1
     fi
-elif [ "$MODE" == conda ]; then
-    # conda envs already have the RMG_PY_PATH in PATH, so no need to add it
-    add_rmg_hooks "$ENV_NAME"
-else
-    # pip install
-    $COMMAND_PKG run -n "$ENV_NAME" pip install -e "$RMG_PY_PATH"
-    echo "📦 RMG-Py installed via pip in $ENV_NAME"
-fi
 
-ARC_ENV=arc_env
-if [[ "$MODE" == "conda" ]]; then
-    echo "📦 Adding RMG hooks ARC to $ARC_ENV"
-    add_rmg_hooks "$ARC_ENV"
-else
-    echo "ℹ️  Skipping ARC hooks as ARC is not cloned or not in conda mode."
+    ACTIVE_RE="^[[:space:]]*[^#].*${RMG_PY_PATH//\//\\/}"   # uncommented, contains path
+    COMMENT_RE="^[[:space:]]*#.*${RMG_PY_PATH//\//\\/}"     # commented-out, contains path
+    NEW_LINE='export PATH="$PATH:'"$RMG_PY_PATH"'"'
+
+
+    # If PATH_ADD is true, add RMG-Py to PATH
+    if [ "$SOURCE_MODE" == path ]; then
+        if grep -Eq "$ACTIVE_RE" "$RC"; then
+            printf 'ℹ️  RMG-Py already active in %s\n' "$RC"
+
+        elif grep -Eq "$COMMENT_RE" "$RC"; then
+            printf '✅  Found commented entry; adding new active line\n'
+            printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
+
+        else
+            printf '✅  No entry found; adding new active line\n'
+            printf '\n# RMG-Py added on %s\n%s\n' "$(date +%F)" "$NEW_LINE" >> "$RC"
+        fi
+    elif [ "$SOURCE_MODE" == conda ]; then
+        # conda envs already have the RMG_PY_PATH in PATH, so no need to add it
+        add_rmg_hooks "$ENV_NAME"
+    else
+        # pip install
+        $COMMAND_PKG run -n "$ENV_NAME" pip install -e "$RMG_PY_PATH"
+        echo "📦 RMG-Py installed via pip in $ENV_NAME"
+    fi
+
+    ARC_ENV=arc_env
+    if [[ "$SOURCE_MODE" == "conda" ]]; then
+        echo "📦 Adding RMG hooks ARC to $ARC_ENV"
+        add_rmg_hooks "$ARC_ENV"
+    else
+        echo "ℹ️  Skipping ARC hooks as ARC is not cloned or not in conda mode."
+    fi
 fi
 
 
@@ -214,6 +242,16 @@ fi
 # INSTALL JULIA & RMS
 ###############################################################################
 if [ "$INSTALL_RMS" = true ]; then
+    if [[ -z "${RC:-}" ]]; then
+        case "$SHELL" in
+            */zsh) RC=~/.zshrc ;;
+            *)     RC=~/.bashrc ;;
+        esac
+        if [[ ! -f "$RC" ]]; then
+            echo "❌ Shell configuration file not found: $RC"
+            exit 1
+        fi
+    fi
     echo "📦 Installing RMS (Reaction Mechanism Simulator) in $ENV_NAME"
     # Check if juliaup is installed - juliaup &> /dev/null
     if ! command -v juliaup &> /dev/null; then
@@ -288,13 +326,14 @@ EOF
             ));
             using ReactionMechanismSimulator;
             Pkg.instantiate();
-        ' || echo "RMS install error – continuing anyway ¯\_(ツ)_/¯"   # conda-run executes in env :contentReference[oaicite:1]{index=1}
+        ' || echo "RMS install error – continuing anyway ¯\_(ツ)_/¯"   # conda-run executes in env
         echo "Checking if RMS is installed..."
-$COMMAND_PKG run -n "$ENV_NAME" python - <<'PY'
+ENV_NAME="$ENV_NAME" $COMMAND_PKG run -n "$ENV_NAME" python - <<'PY'
 from juliacall import Main
+import os
 import sys
 pk_ok = Main.seval('Base.identify_package("ReactionMechanismSimulator") !== nothing')
-print("RMS visible to Python in rmg_env" if pk_ok else "RMS NOT found")
+print(f"RMS visible to Python in {os.environ.get('ENV_NAME', 'rmg_env')}" if pk_ok else "RMS NOT found")
 sys.exit(0 if pk_ok else 1)
 PY
 fi

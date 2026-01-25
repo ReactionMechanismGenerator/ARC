@@ -8,6 +8,7 @@ from typing import Optional
 
 import arc.plotter as plotter
 from arc.common import ARC_PATH, get_logger, read_yaml_file, save_yaml_file
+from arc.imports import settings
 from arc.level import Level
 from arc.job.local import execute_command
 from arc.statmech.factory import statmech_factory
@@ -246,11 +247,15 @@ def compare_thermo(species_for_thermo_lib: list,
     species_thermo_path = os.path.join(output_directory, 'RMG_thermo.yml')
     save_yaml_file(path=species_thermo_path,
                    content=[{'label': spc.label, 'adjlist': spc.mol.copy(deep=True).to_adjacency_list()} for spc in species_for_thermo_lib])
+    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
+    rmg_db_path = settings.get('RMG_DB_PATH') or ""
     commands = ['bash -lc "set -euo pipefail; '
+                f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
+                f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
                 'if command -v micromamba >/dev/null 2>&1; then '
-                f'    micromamba run -n rmg_env python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                f'    micromamba run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
                 'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                f'    conda run -n rmg_env python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
+                f'    conda run -n {env_name} python {THERMO_SCRIPT_PATH} {species_thermo_path}; '
                 'else '
                 '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
                 'fi"',
@@ -300,7 +305,8 @@ def compare_rates(rxns_for_kinetics_lib: list,
                              'family': rxn.family,
                              } for rxn in rxns_for_kinetics_lib],
                    )
-    env_name = 'rmg_env'
+    env_name = settings.get('RMG_ENV_NAME', 'rmg_env')
+    rmg_db_path = settings.get('RMG_DB_PATH') or ""
     shell_script = f"""if command -v micromamba &> /dev/null; then
     eval "$(micromamba shell hook --shell=bash)"
     micromamba activate {env_name}
@@ -313,6 +319,8 @@ elif command -v conda &> /dev/null; then
 else
     exit 1
 fi
+export RMG_DB_PATH="{rmg_db_path}"
+export RMG_DATABASE="{rmg_db_path}"
 python {KINETICS_SCRIPT_PATH} {reactions_kinetics_path}   > >(tee -a stdout.log) 2> >(tee -a stderr.log >&2)
 """
     o, e = execute_command(command=shell_script,

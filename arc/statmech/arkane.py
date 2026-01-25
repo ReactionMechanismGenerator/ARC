@@ -24,7 +24,8 @@ if TYPE_CHECKING:
     from arc.species.species import ARCSpecies
 
 
-RMG_DB_PATH, RMG_PATH = settings['RMG_DB_PATH'], settings['RMG_PATH']
+RMG_DB_PATH = settings['RMG_DB_PATH']
+RMG_ENV_NAME = settings.get('RMG_ENV_NAME', 'rmg_env')
 logger = get_logger()
 
 
@@ -445,12 +446,15 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             clean_output_directory(os.path.join(self.output_directory, 'Species', species.label))
 
         script_path = os.path.join(ARC_PATH, 'arc', 'scripts', 'save_arkane_thermo.py')
+        rmg_db_path = RMG_DB_PATH or ""
         commands = [f'cd {statmech_dir}',
                     'bash -lc "set -euo pipefail; '
+                    f'export RMG_DB_PATH=\\"{rmg_db_path}\\"; '
+                    f'export RMG_DATABASE=\\"{rmg_db_path}\\"; '
                     'if command -v micromamba >/dev/null 2>&1; then '
-                    f'    micromamba run -n rmg_env python {script_path}; '
+                    f'    micromamba run -n {RMG_ENV_NAME} python {script_path}; '
                     'elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then '
-                    f'    conda run -n rmg_env python {script_path}; '
+                    f'    conda run -n {RMG_ENV_NAME} python {script_path}; '
                     'else '
                     '    echo \'❌ Micromamba/Mamba/Conda required\' >&2; exit 1; '
                     'fi"',
@@ -514,16 +518,18 @@ def run_arkane(statmech_dir: str) -> None:
     if not os.path.isfile(input_file):
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not contain an input.py file.')
         return
-    env_name = 'rmg_env'
-    arkane_cmd = f'python "{RMG_PATH}/Arkane.py" input.py'
+    rmg_db_path = RMG_DB_PATH or ""
+    arkane_cmd = 'python -m arkane input.py'
     arkane_cmd += ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
     shell_script = rf'''bash -lc 'set -euo pipefail
 cd "{statmech_dir}"
+export RMG_DB_PATH="{rmg_db_path}"
+export RMG_DATABASE="{rmg_db_path}"
 
 if command -v micromamba >/dev/null 2>&1; then
-    micromamba run -n {env_name} {arkane_cmd}
+    micromamba run -n {RMG_ENV_NAME} {arkane_cmd}
 elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
-    conda run -n {env_name} {arkane_cmd}
+    conda run -n {RMG_ENV_NAME} {arkane_cmd}
 else
     echo "❌ Micromamba/Mamba/Conda required" >&2
     exit 1
@@ -710,6 +716,8 @@ def get_arkane_model_chemistry(sp_level: 'Level',
         return f"LevelOfTheory(method='{sp_level.method}',software='gaussian')"
 
     qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
+    if not os.path.isfile(qm_corr_file):
+        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"
@@ -768,6 +776,8 @@ def check_arkane_bacs(sp_level: 'Level',
         bool: True if both AECs and BACs are available, False otherwise.
     """
     qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
+    if not os.path.isfile(qm_corr_file):
+        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"

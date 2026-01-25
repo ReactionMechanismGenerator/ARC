@@ -71,23 +71,6 @@ jobs:
           echo "::endgroup::"
           julia --version # Check that Julia is installed correctly
 
-      - name: Set RMG-Py + database in PATH and PYTHONPATH
-        shell: micromamba-shell {0}
-        working-directory: ARC
-        run: |
-          # bash devtools/install_rmg.sh
-          echo "RMG_PY_PATH=$(realpath ../RMG-Py)"       >> $GITHUB_ENV
-          echo "RMG_DB_PATH=$(realpath ../RMG-database)" >> $GITHUB_ENV
-          echo "PATH=$(realpath ../RMG-Py):$PATH"        >> $GITHUB_ENV
-          echo "PYTHONPATH=$(realpath ../RMG-Py):$PYTHONPATH" >> $GITHUB_ENV
-
-      - name: Cache RMG-Py source
-        uses: actions/cache@v4
-        with:
-          path: RMG-Py
-          key: ${{ runner.os }}-rmgpy-${{ hashFiles('ARC/devtools/install_rmg.sh') }}
-          restore-keys: ${{ runner.os }}-rmgpy-
-
       - name: Install all extras - CI
         shell: micromamba-shell {0}
         working-directory: ARC

@@ -12,6 +12,7 @@ from arc.common import is_equal_family_product_dicts
 from arc.family.family import (ReactionFamily,
                                ARC_FAMILIES_PATH,
                                RMG_DB_PATH,
+                               get_rmg_db_subpath,
                                add_labels_to_molecule,
                                check_product_isomorphism,
                                descent_complex_group,
@@ -50,8 +51,10 @@ class TestReactionFamily(unittest.TestCase):
 
     def test_rmgdb_path(self):
         """Test finding the RMG-database path"""
-        self.assertIn('RMG-database', RMG_DB_PATH)
         self.assertTrue(os.path.isdir(RMG_DB_PATH))
+        self.assertTrue(any(token in RMG_DB_PATH for token in ('RMG-database', 'rmgdatabase', 'rmg_database')))
+        self.assertTrue(os.path.isdir(os.path.join(RMG_DB_PATH, 'input'))
+                        or os.path.isdir(os.path.join(RMG_DB_PATH, 'kinetics')))
 
     def test_arc_families_path(self):
         """Test finding the ARC families folder path"""
@@ -920,14 +923,14 @@ H       1.24252625    0.91583948   -0.84155142"""
     def test_get_reactant_groups_from_template(self):
         """Test getting reactant groups from a template"""
         fam_1 = ReactionFamily('6_membered_central_C-C_shift')
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', fam_1.label, 'groups.py')
+        groups_path = get_rmg_db_subpath('kinetics', 'families', fam_1.label, 'groups.py', must_exist=True)
         with open(groups_path, 'r') as f:
             groups = f.readlines()
         reactants_1 = get_reactant_groups_from_template(groups)
         self.assertEqual(reactants_1, [['1_5_unsaturated_hexane']])
 
         fam_2 = ReactionFamily('H_Abstraction')
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', fam_2.label, 'groups.py')
+        groups_path = get_rmg_db_subpath('kinetics', 'families', fam_2.label, 'groups.py', must_exist=True)
         with open(groups_path, 'r') as f:
             groups = f.readlines()
         reactants_2 = get_reactant_groups_from_template(groups)
@@ -936,7 +939,7 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertEqual(reactants_2, expected_reactants)
 
         fam_3 = ReactionFamily('1,2-Birad_to_alkene')
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', fam_3.label, 'groups.py')
+        groups_path = get_rmg_db_subpath('kinetics', 'families', fam_3.label, 'groups.py', must_exist=True)
         with open(groups_path, 'r') as f:
             groups = f.readlines()
         reactants_3 = get_reactant_groups_from_template(groups)
@@ -988,7 +991,7 @@ H       1.24252625    0.91583948   -0.84155142"""
                                    ['LOSE_RADICAL', '*3', '1']])
 
         fam_1 = ReactionFamily('6_membered_central_C-C_shift')
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', fam_1.label, 'groups.py')
+        groups_path = get_rmg_db_subpath('kinetics', 'families', fam_1.label, 'groups.py', must_exist=True)
         with open(groups_path, 'r') as f:
             groups = f.readlines()
         actions = get_recipe_actions(groups)

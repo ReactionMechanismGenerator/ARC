@@ -5,6 +5,7 @@ You may keep a short version of this file in a local ".arc" folder under your ho
 Any definitions made to the local file will take precedence over this file.
 """
 
+import glob
 import os
 import string
 import sys
@@ -308,8 +309,25 @@ def find_executable(env_name, executable_name='python'):
         os.path.join(home, 'anaconda3', 'envs', env_name, 'bin', executable_name),
         os.path.join(home, 'miniconda3', 'envs', env_name, 'bin', executable_name),
         os.path.join(home, '.conda', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, 'micromamba', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, '.micromamba', 'envs', env_name, 'bin', executable_name),
+        os.path.join(home, '.local', 'share', 'mamba', 'envs', env_name, 'bin', executable_name),
         os.path.join('/Local/ce_dana', 'anaconda3', 'envs', env_name, 'bin', executable_name),
     ]
+    mamba_root = os.getenv('MAMBA_ROOT_PREFIX')
+    if mamba_root:
+        candidate_paths.append(os.path.join(mamba_root, 'envs', env_name, 'bin', executable_name))
+    conda_prefix = os.getenv('CONDA_PREFIX')
+    if conda_prefix:
+        candidate_paths.append(os.path.join(os.path.dirname(conda_prefix), 'envs', env_name, 'bin', executable_name))
+    conda_exe = os.getenv('CONDA_EXE')
+    if conda_exe:
+        conda_base = os.path.dirname(os.path.dirname(conda_exe))
+        candidate_paths.append(os.path.join(conda_base, 'envs', env_name, 'bin', executable_name))
+    conda_envs_path = os.getenv('CONDA_ENVS_PATH')
+    if conda_envs_path:
+        for path in conda_envs_path.split(os.pathsep):
+            candidate_paths.append(os.path.join(path, env_name, 'bin', executable_name))
     for path in candidate_paths:
         if os.path.isfile(path):
             return path
@@ -320,14 +338,40 @@ OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
 ARC_PYTHON = find_executable('arc_env')
+RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
 
 # Set RMG_DB_PATH with fallback methods
 rmg_db_candidates, rmg_candidates = list(), list()
 
+
+def add_rmg_db_candidates(prefix: str) -> None:
+    """Add RMG-database candidates relative to a conda/mamba env prefix."""
+    if not prefix:
+        return
+    rmg_db_candidates.extend([
+        os.path.join(prefix, 'share', 'RMG-database'),
+        os.path.join(prefix, 'share', 'rmg-database'),
+        os.path.join(prefix, 'share', 'rmg', 'database'),
+        os.path.join(prefix, 'share', 'rmg_database'),
+        os.path.join(prefix, 'share', 'RMG_database'),
+        os.path.join(prefix, 'share', 'rmgdatabase'),
+        os.path.join(prefix, 'share', 'RMGdatabase'),
+    ])
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'RMG-database')))
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'rmg-database')))
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'rmg_database')))
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'RMG_database')))
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'rmgdatabase')))
+    rmg_db_candidates.extend(glob.glob(os.path.join(prefix, 'lib', 'python*', 'site-packages', 'RMGdatabase')))
+    for candidate in glob.glob(os.path.join(prefix, 'share', '**', 'recommended.py'), recursive=True):
+        if candidate.endswith(os.path.join('input', 'kinetics', 'families', 'recommended.py')):
+            rmg_db_candidates.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(candidate)))))
+
 # Use exported RMG_PATH & RMG_DB_PATH if available
-exported_rmg_path, exported_rmg_db_path = os.getenv("RMG_PATH"), os.getenv("RMG_DB_PATH")
+exported_rmg_path = os.getenv("RMG_PATH")
+exported_rmg_db_path = os.getenv("RMG_DB_PATH") or os.getenv("RMG_DATABASE")
 if exported_rmg_path:
     rmg_candidates.append(exported_rmg_path)
 if exported_rmg_db_path:
@@ -339,7 +383,7 @@ if gw:
     rmg_db_candidates.append(os.path.join(gw, 'RMG-database'))
 
 for python_path in sys.path:
-    if 'RMG-database' in python_path:
+    if 'RMG-database' in python_path or 'rmgdatabase' in python_path or 'rmg_database' in python_path:
         rmg_db_candidates.append(python_path)
     if 'RMG-Py' in python_path:
         rmg_db_candidates.append(os.path.join(os.path.dirname(python_path), 'RMG-database'))
@@ -348,8 +392,22 @@ for p in sys.path:
     if 'RMG-Py' in p:
         rmg_candidates.append(p)
         rmg_db_candidates.append(os.path.join(os.path.dirname(p), 'RMG-database'))
-    if 'RMG-database' in p:
+    if 'RMG-database' in p or 'rmgdatabase' in p or 'rmg_database' in p:
         rmg_db_candidates.append(p)
+
+add_rmg_db_candidates(os.path.dirname(os.path.dirname(sys.executable)))
+if RMG_PYTHON:
+    add_rmg_db_candidates(os.path.dirname(os.path.dirname(RMG_PYTHON)))
+if os.getenv('MAMBA_ROOT_PREFIX'):
+    add_rmg_db_candidates(os.path.join(os.getenv('MAMBA_ROOT_PREFIX'), 'envs', 'rmg_env'))
+if os.getenv('CONDA_PREFIX'):
+    add_rmg_db_candidates(os.path.join(os.path.dirname(os.getenv('CONDA_PREFIX')), 'envs', 'rmg_env'))
+if os.getenv('CONDA_EXE'):
+    conda_base = os.path.dirname(os.path.dirname(os.getenv('CONDA_EXE')))
+    add_rmg_db_candidates(os.path.join(conda_base, 'envs', 'rmg_env'))
+if os.getenv('CONDA_ENVS_PATH'):
+    for path in os.getenv('CONDA_ENVS_PATH').split(os.pathsep):
+        add_rmg_db_candidates(os.path.join(path, 'rmg_env'))
 
 rmg_candidates.extend([
     os.path.join(home, 'Code', 'RMG-Py'),

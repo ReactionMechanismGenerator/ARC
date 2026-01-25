@@ -23,6 +23,23 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 logger = get_logger()
 
 
+def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
+    """Return a path under the RMG database, handling both source and packaged layouts."""
+    if RMG_DB_PATH is None:
+        if must_exist:
+            raise FileNotFoundError('RMG_DB_PATH is not set; cannot locate the RMG database.')
+        return os.path.join('input', *parts)
+    candidates = [
+        os.path.join(RMG_DB_PATH, 'input', *parts),
+        os.path.join(RMG_DB_PATH, *parts),
+    ]
+    if must_exist:
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+    return candidates[0]
+
+
 class ReactionFamily(object):
     """
     A class for representing a reaction family.
@@ -72,7 +89,7 @@ class ReactionFamily(object):
         Returns:
             List[str]: The groups file as a list of lines.
         """
-        groups_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', self.label, 'groups.py')
+        groups_path = get_rmg_db_subpath('kinetics', 'families', self.label, 'groups.py', must_exist=True)
         if not os.path.isfile(groups_path):
             if consider_arc_families:
                 groups_path = os.path.join(ARC_FAMILIES_PATH, f'{self.label}.py')
@@ -605,7 +622,7 @@ def get_rmg_recommended_family_sets() -> Dict[str, str]:
         Dict[str, str]: The recommended RMG family sets.
     """
     family_sets = dict()
-    recommended_path = os.path.join(RMG_DB_PATH, 'input', 'kinetics', 'families', 'recommended.py')
+    recommended_path = get_rmg_db_subpath('kinetics', 'families', 'recommended.py', must_exist=True)
     if not os.path.isfile(recommended_path):
         raise FileNotFoundError(f'Could not find the recommended RMG families file at {recommended_path}')
     with open(recommended_path, 'r') as f:

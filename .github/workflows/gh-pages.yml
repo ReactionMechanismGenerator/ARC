@@ -20,33 +20,16 @@ jobs:
           path: ARC
           fetch-depth: 1
 
-      # ── pull RMG sources ────────────────────────────────────────
-      - name: Checkout RMG‑Py
-        uses: actions/checkout@v4
-        with:
-          repository: ReactionMechanismGenerator/RMG-Py
-          path: RMG-Py
-          fetch-depth: 1
-
-      - name: Checkout RMG‑database
-        uses: actions/checkout@v4
-        with:
-          repository: ReactionMechanismGenerator/RMG-database
-          path: RMG-database
-          fetch-depth: 1
-
-      # ── build‑only env ───────────────────────────────────────────
+      # ── rmg_env for Arkane/database availability ───────────────
       - name: Set up micromamba (rmg_env)
         uses: mamba-org/setup-micromamba@v2
         with:
           environment-name: rmg_env
-          environment-file: RMG-Py/environment.yml
+          create-args: >-
+            -c rmg -c conda-forge python=3.9 numpy<2 rmg=3.3.0 connie::symmetry
           cache-environment: true
           cache-downloads: true
           generate-run-shell: false
-
-      - name: Build RMG‑Py in rmg_env
-        run: micromamba run -n rmg_env make -C RMG-Py -j"$(nproc)"
 
       # ── docs env (wrapper shell) ────────────────────────────────
       - name: Set up micromamba (arc_env)
@@ -77,9 +60,8 @@ jobs:
       # ── build HTML docs ─────────────────────────────────────────
       - name: Set env vars & Build docs
         run: |
-          export RMG_PATH="$GITHUB_WORKSPACE/RMG-Py"
-          export RMG_DB_PATH="$GITHUB_WORKSPACE/RMG-database"
-          export PYTHONPATH="$GITHUB_WORKSPACE/RMG-Py:$GITHUB_WORKSPACE/ARC:$PYTHONPATH"
+          export RMG_DB_PATH="$MAMBA_ROOT_PREFIX/envs/rmg_env/share/RMG-database"
+          export PYTHONPATH="$GITHUB_WORKSPACE/ARC:$PYTHONPATH"
           export PATH="$GITHUB_WORKSPACE/ARC:$PATH"
           make -C ARC/docs html
         shell: micromamba-shell {0}
