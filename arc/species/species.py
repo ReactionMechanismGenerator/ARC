@@ -46,10 +46,12 @@ from arc.species.converter import (check_isomorphism,
                                    order_atoms_in_mol_list,
                                    remove_dummies,
                                    rmg_mol_from_inchi,
+                                   sort_xyz_using_indices,
                                    str_to_xyz,
                                    translate_to_center_of_mass,
                                    xyz_from_data,
                                    xyz_to_str,
+                                   kabsch,
                                    )
 from arc.species.perceive import perceive_molecule_from_xyz, is_mol_valid
 from arc.species.vectors import calculate_angle, calculate_distance, calculate_dihedral_angle
@@ -2142,6 +2144,27 @@ class ARCSpecies(object):
             for atom2, bond12 in atom1.edges.items():
                 bonds.append(tuple(sorted((self.mol.atoms.index(atom1), self.mol.atoms.index(atom2)))))
         return list(set(bonds))
+    
+    def kabsch(self, other: 'ARCSpecies', map_: list) -> float:
+        """
+        Calculate the Kabsch RMSD between this species and another species.
+
+        Args:
+            other (ARCSpecies): The other species to compare to.
+            map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., if
+                         this species has atoms [A, B, C] and the other species has atoms [C, A, B], then map_ would be [1, 2, 0]
+        Returns:
+            float: The Kabsch RMSD value.
+        """
+        if not isinstance(other, ARCSpecies):
+            raise SpeciesError(f'Other must be an ARCSpecies instance, got {type(other)}.\n'
+                               f'If you meant to use the XYZ coordinates directly, use arc.species.converter.kabsch.')
+
+        if len(map_) != self.number_of_atoms:
+            raise SpeciesError(f'The map_ list must have the same length as the number of atoms in {self.label} '
+                               f'({self.number_of_atoms}), got {len(map_)}.')
+
+        return kabsch(self.get_xyz(), sort_xyz_using_indices(other.get_xyz(), map_))
 
 
 class TSGuess(object):

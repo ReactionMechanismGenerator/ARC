@@ -2804,6 +2804,45 @@ H      -1.47626400   -0.10694600   -1.88883800"""
         self.assertEqual(spc_b.index, 1)
         self.assertEqual(spc_c.index, 2)
 
+    def test_kabsch(self):
+        """Test the kabsch() method."""
+        # Test with self (RMSD should be 0)
+        rmsd = self.spc1.kabsch(self.spc1, [0, 1, 2, 3, 4, 5])
+        self.assertAlmostEqual(rmsd, 0.0, delta=1e-5)
+
+        # Test with a copy (RMSD should be 0)
+        spc1_copy = self.spc1.copy()
+        rmsd = self.spc1.kabsch(spc1_copy, [0, 1, 2, 3, 4, 5])
+        self.assertAlmostEqual(rmsd, 0.0, delta=1e-5)
+
+        # Test with shuffled atoms
+        # Create a shuffled version of spc1: swap first two C atoms
+        # spc1: C, C, O, H, H, H
+        # shuffled: C(1), C(0), O(2), H(3), H(4), H(5)
+        # xyz of spc1
+        xyz = self.spc1.get_xyz()
+        new_coords = (xyz['coords'][1], xyz['coords'][0]) + xyz['coords'][2:]
+        new_symbols = (xyz['symbols'][1], xyz['symbols'][0]) + xyz['symbols'][2:]
+        new_isotopes = (xyz['isotopes'][1], xyz['isotopes'][0]) + xyz['isotopes'][2:]
+        shuffled_xyz = {'symbols': new_symbols, 'isotopes': new_isotopes, 'coords': new_coords}
+        spc_shuffled = ARCSpecies(label='shuffled', xyz=shuffled_xyz, smiles='C=C[O]')
+        
+        # Map: we want to pull atoms from spc_shuffled to match spc1
+        # spc1[0] is C(0). In spc_shuffled, C(0) is at index 1.
+        # spc1[1] is C(1). In spc_shuffled, C(1) is at index 0.
+        # Rest are same.
+        map_indices = [1, 0, 2, 3, 4, 5]
+        rmsd = self.spc1.kabsch(spc_shuffled, map_indices)
+        self.assertAlmostEqual(rmsd, 0.0, delta=1e-5)
+
+        # Test exception
+        with self.assertRaises(SpeciesError):
+            self.spc1.kabsch("not a species", [])
+
+        # Test incorrect map_ length
+        with self.assertRaises(SpeciesError):
+            self.spc1.kabsch(self.spc1, [0, 1, 2])
+
 
 class TestTSGuess(unittest.TestCase):
     """
