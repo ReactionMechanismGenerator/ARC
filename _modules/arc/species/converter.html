@@ -91,6 +91,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.transform</span><span class="w"> </span><span class="kn">import</span> <span class="n">Rotation</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">openbabel</span> <span class="k">as</span> <span class="n">ob</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">openbabel</span><span class="w"> </span><span class="kn">import</span> <span class="n">pybel</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">rdkit</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chem</span>
@@ -2729,6 +2730,31 @@
 
     <span class="n">distances</span> <span class="o">=</span> <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="n">d_matrix</span><span class="p">[</span><span class="n">atom_index</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="n">atom_index</span><span class="p">]</span>
     <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span></div>
+
+
+
+<div class="viewcode-block" id="kabsch">
+<a class="viewcode-back" href="../../../api/converter.html#arc.species.converter.kabsch">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">kabsch</span><span class="p">(</span><span class="n">xyz1</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">xyz2</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the kabsch similarity score between two sets of Cartesian coordinates in Ångstrom.</span>
+<span class="sd">    The algorithm requires the atoms to be ordered the same in both sets of coordinates.</span>
+<span class="sd">    This will not be directly useful for comparing two conformers of the same species,</span>
+<span class="sd">    but could be used to compare two different species with the same atom types and counts. (e.g., isomers, reactants and products, etc.).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        xyz1 (dict): The first set of Cartesian coordinates.</span>
+<span class="sd">        xyz2 (dict): The second set of Cartesian coordinates.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        float: The Kabsch similarity score in Ångstrom.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">xyz1</span><span class="p">[</span><span class="s2">&quot;symbols&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">xyz2</span><span class="p">[</span><span class="s2">&quot;symbols&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;The two xyz coordinates must have the same atom symbols to compute Kabsch score.&quot;</span><span class="p">)</span>
+    <span class="n">xyz1</span><span class="p">,</span> <span class="n">xyz2</span> <span class="o">=</span> <span class="n">translate_to_center_of_mass</span><span class="p">(</span><span class="n">xyz1</span><span class="p">),</span> <span class="n">translate_to_center_of_mass</span><span class="p">(</span><span class="n">xyz2</span><span class="p">)</span>
+    <span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz1</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">xyz2</span><span class="p">[</span><span class="s1">&#39;coords&#39;</span><span class="p">])</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">score</span> <span class="o">=</span> <span class="n">Rotation</span><span class="o">.</span><span class="n">align_vectors</span><span class="p">(</span><span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">score</span></div>
 
 </pre></div>
 

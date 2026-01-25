@@ -129,10 +129,12 @@
                                    <span class="n">order_atoms_in_mol_list</span><span class="p">,</span>
                                    <span class="n">remove_dummies</span><span class="p">,</span>
                                    <span class="n">rmg_mol_from_inchi</span><span class="p">,</span>
+                                   <span class="n">sort_xyz_using_indices</span><span class="p">,</span>
                                    <span class="n">str_to_xyz</span><span class="p">,</span>
                                    <span class="n">translate_to_center_of_mass</span><span class="p">,</span>
                                    <span class="n">xyz_from_data</span><span class="p">,</span>
                                    <span class="n">xyz_to_str</span><span class="p">,</span>
+                                   <span class="n">kabsch</span><span class="p">,</span>
                                    <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.perceive</span><span class="w"> </span><span class="kn">import</span> <span class="n">perceive_molecule_from_xyz</span><span class="p">,</span> <span class="n">is_mol_valid</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.vectors</span><span class="w"> </span><span class="kn">import</span> <span class="n">calculate_angle</span><span class="p">,</span> <span class="n">calculate_distance</span><span class="p">,</span> <span class="n">calculate_dihedral_angle</span>
@@ -2322,6 +2324,30 @@
             <span class="k">for</span> <span class="n">atom2</span><span class="p">,</span> <span class="n">bond12</span> <span class="ow">in</span> <span class="n">atom1</span><span class="o">.</span><span class="n">edges</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                 <span class="n">bonds</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom1</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">mol</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">atom2</span><span class="p">)))))</span>
         <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">bonds</span><span class="p">))</span></div>
+
+    
+<div class="viewcode-block" id="ARCSpecies.kabsch">
+<a class="viewcode-back" href="../../../api/species.html#arc.species.species.ARCSpecies.kabsch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">kabsch</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s1">&#39;ARCSpecies&#39;</span><span class="p">,</span> <span class="n">map_</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the Kabsch RMSD between this species and another species.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            other (ARCSpecies): The other species to compare to.</span>
+<span class="sd">            map_ (list): A list of atom indices mapping atoms from this species to the other species. (i.e., if</span>
+<span class="sd">                         this species has atoms [A, B, C] and the other species has atoms [C, A, B], then map_ would be [1, 2, 0]</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            float: The Kabsch RMSD value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">ARCSpecies</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Other must be an ARCSpecies instance, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">other</span><span class="p">)</span><span class="si">}</span><span class="s1">.</span><span class="se">\n</span><span class="s1">&#39;</span>
+                               <span class="sa">f</span><span class="s1">&#39;If you meant to use the XYZ coordinates directly, use arc.species.converter.kabsch.&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">map_</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">number_of_atoms</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">SpeciesError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The map_ list must have the same length as the number of atoms in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">label</span><span class="si">}</span><span class="s1"> &#39;</span>
+                               <span class="sa">f</span><span class="s1">&#39;(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">number_of_atoms</span><span class="si">}</span><span class="s1">), got </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">map_</span><span class="p">)</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">kabsch</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">sort_xyz_using_indices</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">get_xyz</span><span class="p">(),</span> <span class="n">map_</span><span class="p">))</span></div>
 </div>
 
 

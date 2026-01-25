@@ -146,6 +146,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.is_linear"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.is_linear</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.is_monoatomic"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.is_monoatomic()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.is_water"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.is_water()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.kabsch"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.kabsch()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.label_atoms"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.label_atoms()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.make_ts_report"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.make_ts_report()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#arc.species.species.ARCSpecies.mol_from_xyz"><code class="docutils literal notranslate"><span class="pre">ARCSpecies.mol_from_xyz()</span></code></a></li>
@@ -1502,6 +1503,27 @@ relevant rotors info for the species, including directed and ND rotors.</p>
 <dt class="sig sig-object py" id="arc.species.species.ARCSpecies.is_water">
 <span class="sig-name descname"><span class="pre">is_water</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.is_water"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.is_water" title="Link to this definition"></a></dt>
 <dd><p>Check whether this species is a water molecule (H2O).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="arc.species.species.ARCSpecies.kabsch">
+<span class="sig-name descname"><span class="pre">kabsch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><span class="pre">ARCSpecies</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="reference internal" href="../_modules/arc/species/species.html#ARCSpecies.kabsch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#arc.species.species.ARCSpecies.kabsch" title="Link to this definition"></a></dt>
+<dd><p>Calculate the Kabsch RMSD between this species and another species.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>other</strong> (<a class="reference internal" href="#arc.species.species.ARCSpecies" title="arc.species.species.ARCSpecies"><em>ARCSpecies</em></a>) – The other species to compare to.</p></li>
+<li><p><strong>map</strong> (<em>list</em>) – A list of atom indices mapping atoms from this species to the other species. (i.e., if
+this species has atoms [A, B, C] and the other species has atoms [C, A, B], then <a href="#id2"><span class="problematic" id="id3">map_</span></a> would be [1, 2, 0]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The Kabsch RMSD value.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
