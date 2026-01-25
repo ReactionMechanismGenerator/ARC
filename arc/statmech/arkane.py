@@ -692,8 +692,16 @@ def _get_qm_corrections_files() -> List[str]:
     """
     candidates = [
         os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py'),
     ]
-    return [path for path in candidates if os.path.isfile(path)]
+    existing = [path for path in candidates if os.path.isfile(path)]
+    if not existing:
+        raise InputError(
+            "Could not locate Arkane quantum corrections data.py. "
+            f"Checked: {', '.join(candidates)}. "
+            "Please set RMG_DB_PATH to a valid RMG database."
+        )
+    return existing
 
 
 def _normalize_method(method: str) -> str:
@@ -950,9 +958,7 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     Returns:
         Optional[str]: Arkane-compatible model chemistry string.
     """
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    qm_corr_files = _get_qm_corrections_files()
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"
@@ -1081,9 +1087,7 @@ def check_arkane_bacs(sp_level: 'Level',
       - basis (normalized)
     and picking the latest year where multiple exist.
     """
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    qm_corr_files = _get_qm_corrections_files()
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"
