@@ -21,6 +21,7 @@ class TestRestart(unittest.TestCase):
     """
     Contains unit tests for restarting ARC.
     """
+    created_projects = set()
 
     @classmethod
     def setUpClass(cls):
@@ -38,6 +39,7 @@ class TestRestart(unittest.TestCase):
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo')
         restart_path = os.path.join(restart_dir, 'restart.yml')
         project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
+        self.created_projects.add(project)
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs', 'Species'), dirs_exist_ok=True)
@@ -135,6 +137,7 @@ class TestRestart(unittest.TestCase):
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate')
         restart_path = os.path.join(restart_dir, 'restart.yml')
         project = 'arc_project_for_testing_delete_after_usage_restart_rate_1'
+        self.created_projects.add(project)
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -156,6 +159,7 @@ class TestRestart(unittest.TestCase):
     def test_restart_rate_2(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
         project = 'arc_project_for_testing_delete_after_usage_restart_rate_2'
+        self.created_projects.add(project)
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '5_TS1')
         restart_path = os.path.join(base_path, 'restart.yml')
@@ -185,6 +189,7 @@ class TestRestart(unittest.TestCase):
         restart_dir   = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde')
         restart_path  = os.path.join(restart_dir, 'restart.yml')
         project = 'test_restart_bde'
+        self.created_projects.add(project)
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -216,6 +221,7 @@ class TestRestart(unittest.TestCase):
     def test_restart_sanitizes_ts_output(self):
         """Test sanitizing inconsistent TS output on restart."""
         project = 'arc_project_for_testing_delete_after_usage_restart_sanitize_ts'
+        self.created_projects.add(project)
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(project_directory, exist_ok=True)
         restart_path = os.path.join(project_directory, 'restart.yml')
@@ -240,6 +246,7 @@ class TestRestart(unittest.TestCase):
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
         input_dict['project'], input_dict['project_directory'] = project, project_directory
         with mock.patch('arc.scheduler.Scheduler.schedule_jobs', return_value=None), \
+                mock.patch('arc.scheduler.Scheduler.run_opt_job', return_value=None), \
                 mock.patch('arc.main.process_arc_project', return_value=None):
             arc1 = ARC(**input_dict)
             arc1.execute()
@@ -251,12 +258,13 @@ class TestRestart(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage_restart_thermo',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_1',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_2',
-                    'test_restart_bde',
-                    'arc_project_for_testing_delete_after_usage_restart_sanitize_ts',
-                    ]
+        projects = cls.created_projects or {
+            'arc_project_for_testing_delete_after_usage_restart_thermo',
+            'arc_project_for_testing_delete_after_usage_restart_rate_1',
+            'arc_project_for_testing_delete_after_usage_restart_rate_2',
+            'test_restart_bde',
+            'arc_project_for_testing_delete_after_usage_restart_sanitize_ts',
+        }
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
