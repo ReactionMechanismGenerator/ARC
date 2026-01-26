@@ -9,10 +9,11 @@ import os
 import shutil
 import unittest
 import warnings
+from unittest import mock
 
 from arc.molecule.molecule import Molecule
 
-from arc.common import ARC_PATH, read_yaml_file
+from arc.common import ARC_PATH, read_yaml_file, save_yaml_file
 from arc.main import ARC
 
 
@@ -212,6 +213,38 @@ class TestRestart(unittest.TestCase):
                       content['output']['spc']['paths']['freq'])
         self.assertNotIn('gpfs/workspace/users/user', content['output']['spc']['paths']['freq'])
 
+    def test_restart_sanitizes_ts_output(self):
+        """Test sanitizing inconsistent TS output on restart."""
+        project = 'arc_project_for_testing_delete_after_usage_restart_sanitize_ts'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        os.makedirs(project_directory, exist_ok=True)
+        restart_path = os.path.join(project_directory, 'restart.yml')
+        restart_dict = {
+            'project': project,
+            'project_directory': project_directory,
+            'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                          'rotors': False, 'irc': False, 'fine': False},
+            'species': [{'label': 'TS0', 'is_ts': True, 'multiplicity': 1, 'charge': 0}],
+            'output': {
+                'TS0': {
+                    'paths': {'geo': '', 'freq': '', 'sp': '', 'composite': ''},
+                    'restart': '',
+                    'convergence': True,
+                    'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                                  'rotors': False, 'irc': False, 'fine': False, 'composite': False},
+                }
+            },
+            'running_jobs': {'TS0': []},
+        }
+        save_yaml_file(path=restart_path, content=restart_dict)
+        input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
+        input_dict['project'], input_dict['project_directory'] = project, project_directory
+        with mock.patch('arc.scheduler.Scheduler.schedule_jobs', return_value=None), \
+                mock.patch('arc.main.process_arc_project', return_value=None):
+            arc1 = ARC(**input_dict)
+            arc1.execute()
+        self.assertFalse(arc1.scheduler.output['TS0']['convergence'])
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -222,6 +255,7 @@ class TestRestart(unittest.TestCase):
                     'arc_project_for_testing_delete_after_usage_restart_rate_1',
                     'arc_project_for_testing_delete_after_usage_restart_rate_2',
                     'test_restart_bde',
+                    'arc_project_for_testing_delete_after_usage_restart_sanitize_ts',
                     ]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
