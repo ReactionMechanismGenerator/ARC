@@ -12,6 +12,7 @@ import unittest
 
 from arc.exceptions import InputError
 from arc.common import ARC_PATH
+from arc.imports import settings
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
