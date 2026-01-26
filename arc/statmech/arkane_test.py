@@ -7,16 +7,30 @@ This module contains unit tests for ARC's statmech.arkane module
 
 import os
 import shutil
+import tempfile
 import unittest
 
+from arc.exceptions import InputError
 from arc.common import ARC_PATH
+from arc.imports import settings
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
-from arc.statmech.arkane import _level_to_str, _section_contains_key, get_arkane_model_chemistry
-from arc.imports import settings
+from arc.statmech.arkane import (
+    _available_years_for_level,
+    _find_best_level_key_for_sp_level,
+    _get_qm_corrections_files,
+    _level_to_str,
+    _normalize_basis,
+    _normalize_method,
+    _parse_lot_params,
+    _section_contains_key,
+    _split_method_year,
+    get_arkane_model_chemistry,
+)
+from unittest.mock import patch
 
 
 class TestEnumerationClasses(unittest.TestCase):
@@ -135,6 +149,8 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='b3lyp',basis='631g(d)',software='gaussian')")
         self.assertEqual(_level_to_str(Level(method='CCSD(T)-F12', basis='cc-pVTZ-F12')),
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
+        self.assertEqual(_level_to_str(Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2023)),
+                         "LevelOfTheory(method='b97d32023',basis='def2tzvp',software='gaussian')")
 
     def test_section_contains_key(self):
         """Test the _section_contains_key function"""
@@ -163,8 +179,121 @@ class TestArkaneAdapter(unittest.TestCase):
                          "LevelOfTheory(method='ccsd(t)f12',basis='ccpvtzf12',software='molpro')")
         self.assertEqual(get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
                                                     freq_scale_factor=1.0),
-                         "LevelOfTheory(method='cbs-qb3',software='gaussian')")
+                         "LevelOfTheory(method='cbsqb3',software='gaussian')")
 
+    def test_get_arkane_model_chemistry_year_not_found(self):
+        """Test warnings when a requested year is not found in the Arkane database."""
+        level = Level(method='b97d3', basis='def2tzvp', software='gaussian', year=2099)
+        with self.assertLogs('arc', level='WARNING') as cm:
+            model_chemistry = get_arkane_model_chemistry(sp_level=level, freq_scale_factor=1.0)
+        self.assertIsNone(model_chemistry)
+        self.assertTrue(any('available years' in msg for msg in cm.output))
+
+    def test_get_arkane_model_chemistry_latest_year(self):
+        """Test selecting the latest available year when no year is specified."""
+        model_chemistry = get_arkane_model_chemistry(sp_level=Level(method='CBS-QB3'),
+                                                     freq_scale_factor=1.0)
+        self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+
+    def test_level_helpers(self):
+        """Test helper functions for method/basis/year parsing."""
+        self.assertEqual(_normalize_method("DLPNO-CCSD(T)-F12"), "dlpnoccsd(t)f12")
+        self.assertEqual(_normalize_method("dlpnoccsd(t)f122023"), "dlpnoccsd(t)f122023")
+
+        base, year = _split_method_year("dlpnoccsd(t)f122023")
+        self.assertEqual(base, "dlpnoccsd(t)f12")
+        self.assertEqual(year, 2023)
+        base, year = _split_method_year("dlpnoccsd(t)f12")
+        self.assertEqual(base, "dlpnoccsd(t)f12")
+        self.assertIsNone(year)
+
+        self.assertEqual(_normalize_basis("cc-pVTZ-F12"), "ccpvtzf12")
+        self.assertEqual(_normalize_basis("ccpvtz f12"), "ccpvtzf12")
+
+        params = _parse_lot_params(
+            "LevelOfTheory(method='dlpnoccsd(t)f122023',basis='ccpvtzf12',software='orca')"
+        )
+        self.assertEqual(params["method"], "dlpnoccsd(t)f122023")
+        self.assertEqual(params["basis"], "ccpvtzf12")
+        self.assertEqual(params["software"], "orca")
+
+    def test_level_key_selection(self):
+        """Test matching of LevelOfTheory keys by year and no-year preference."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='cbsqb3',software='gaussian')\": {},",
+            "    \"LevelOfTheory(method='cbsqb32023',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            level = Level(method="CBS-QB3", software="gaussian")
+            best = _find_best_level_key_for_sp_level(level, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(best, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+
+            level_year = Level(method="CBS-QB3", software="gaussian", year=2023)
+            best_year = _find_best_level_key_for_sp_level(level_year, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(best_year, "LevelOfTheory(method='cbsqb32023',software='gaussian')")
+
+            years = _available_years_for_level(level, path, "atom_energies = {", "pbac = {")
+            self.assertEqual(years, [None, 2023])
+        finally:
+            os.remove(path)
+
+    def test_conflicting_year_spec(self):
+        """Test conflicting year in method suffix vs explicit year."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='b97d32023',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            level = Level(method="b97d32023", software="gaussian", year=2022)
+            with self.assertRaises(InputError):
+                _find_best_level_key_for_sp_level(level, path, "atom_energies = {", "pbac = {")
+        finally:
+            os.remove(path)
+
+    def test_qm_corrections_file_path(self):
+        """Test quantum corrections files are read from the RMG database path."""
+        with tempfile.TemporaryDirectory() as rmg_root:
+            rmg_qc = os.path.join(rmg_root, 'input', 'quantum_corrections', 'data.py')
+            os.makedirs(os.path.dirname(rmg_qc), exist_ok=True)
+            with open(rmg_qc, 'w') as f:
+                f.write('# rmg qc\n')
+
+            with patch('arc.statmech.arkane.RMG_DB_PATH', rmg_root):
+                paths = _get_qm_corrections_files()
+                self.assertTrue(paths)
+                self.assertEqual(paths[0], rmg_qc)
+
+    def test_get_arkane_model_chemistry_from_qm_file(self):
+        """Test reading LevelOfTheory keys from a quantum corrections file."""
+        section = '\n'.join([
+            'atom_energies = {',
+            "    \"LevelOfTheory(method='cbsqb3',software='gaussian')\": {},",
+            "}",
+            "pbac = {",
+        ])
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
+            f.write(section)
+            path = f.name
+        try:
+            with patch('arc.statmech.arkane._get_qm_corrections_files', return_value=[path]):
+                model_chemistry = get_arkane_model_chemistry(
+                    sp_level=Level(method='CBS-QB3'),
+                    freq_scale_factor=1.0,
+                )
+            self.assertEqual(model_chemistry, "LevelOfTheory(method='cbsqb3',software='gaussian')")
+        finally:
+            os.remove(path)
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
         statmech_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_input_tests_delete')

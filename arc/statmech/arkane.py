@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 from abc import ABC
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from mako.template import Template
 
@@ -53,7 +53,8 @@ bondCorrectionType = '${bac_type}'
 species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
         structure=SMILES('${spc['smiles']}'), spinMultiplicity=${spc['multiplicity']})
 % else:
-species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''})
+species('${spc['label']}', '${spc['path']}'${spc['pdep_data'] if 'pdep_data' in spc else ''},
+        spinMultiplicity=${spc['multiplicity']})
 % endif
 % endfor
 
@@ -327,8 +328,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                 species_list.append({'label': spc.label,
                                      'path': spc.yml_path or os.path.join(statmech_dir, 'species', f'{spc.label}.py'),
                                      'smiles': spc.mol.copy(deep=True).to_smiles() if not spc.is_ts else '',
-                                     'multiplicity': spc.multiplicity,
-                                     })
+                                     'multiplicity': spc.multiplicity})
         ts_list = [{'label': rxn.ts_species.label,
                      'path': rxn.ts_species.yml_path or os.path.join(statmech_dir, 'TSs', f'{rxn.ts_species.label}.py')}
                      for rxn in self.reactions] if self.reactions else list()
@@ -526,6 +526,13 @@ cd "{statmech_dir}"
 export RMG_DB_PATH="{rmg_db_path}"
 export RMG_DATABASE="{rmg_db_path}"
 
+# Limit BLAS thread counts so OpenBLAS/MKL cannot explode into 48 threads
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export MKL_DYNAMIC=FALSE
+
 if command -v micromamba >/dev/null 2>&1; then
     micromamba run -n {RMG_ENV_NAME} {arkane_cmd}
 elif command -v conda >/dev/null 2>&1 || command -v mamba >/dev/null 2>&1; then
@@ -679,6 +686,230 @@ def _section_contains_key(file_path: str, section_start: str, section_end: str, 
     return False
 
 
+def _get_qm_corrections_files() -> List[str]:
+    """
+    Return quantum corrections data.py paths from the RMG database.
+    """
+    candidates = [
+        os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py'),
+        os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py'),
+    ]
+    existing = [path for path in candidates if os.path.isfile(path)]
+    if not existing:
+        raise InputError(
+            "Could not locate Arkane quantum corrections data.py. "
+            f"Checked: {', '.join(candidates)}. "
+            "Please set RMG_DB_PATH to a valid RMG database."
+        )
+    return existing
+
+
+def _normalize_method(method: str) -> str:
+    """
+    Normalize method names for comparison:
+      - lowercase
+      - remove all hyphens
+
+    Examples:
+        "DLPNO-CCSD(T)-F12"    -> "dlpnoccsd(t)f12"
+        "dlpnoccsd(t)f122023"  -> "dlpnoccsd(t)f122023"
+    """
+    return method.lower().replace('-', '')
+
+
+def _split_method_year(method_norm: str) -> "Tuple[str, Optional[int]]":
+    """
+    Split a normalized method into (base_method, year).
+
+    Examples:
+        "dlpnoccsd(t)f122023" -> ("dlpnoccsd(t)f12", 2023)
+        "dlpnoccsd(t)f12"     -> ("dlpnoccsd(t)f12", None)
+    """
+    m = re.match(r"^(.*?)(\d{4})$", method_norm)
+    if not m:
+        return method_norm, None
+    base, year_str = m.groups()
+    return base, int(year_str)
+
+
+def _normalize_basis(basis: Optional[str]) -> Optional[str]:
+    """
+    Normalize basis names for comparison:
+      - lowercase
+      - remove hyphens and spaces
+
+    Examples:
+        "cc-pVTZ-F12" -> "ccpvtzf12"
+        "ccpvtzf12"   -> "ccpvtzf12"
+    """
+    if basis is None:
+        return None
+    return basis.replace('-', '').replace(' ', '').lower()
+
+
+def _parse_lot_params(lot_str: str) -> dict:
+    """
+    Parse method, basis, and software from a LevelOfTheory(...) string.
+
+    Example lot_str:
+        "LevelOfTheory(method='dlpnoccsd(t)f122023',basis='ccpvtzf12',software='orca')"
+    """
+    params = {'method': None, 'basis': None, 'software': None}
+    for key in params.keys():
+        m = re.search(rf"{key}='([^']+)'", lot_str)
+        if m:
+            params[key] = m.group(1)
+    return params
+
+
+def _iter_level_keys_from_section(file_path: str,
+                                  section_start: str,
+                                  section_end: str) -> list[str]:
+    """
+    Return all LevelOfTheory(...) key strings that appear as dictionary keys
+    in a given section of data.py.
+
+    These look like:
+        "LevelOfTheory(method='...',basis='...',software='...')" : { ... }
+    """
+    section = _extract_section(file_path, section_start, section_end)
+    if section is None:
+        return []
+
+    # Match things like: "LevelOfTheory(...)" : { ... }
+    pattern = r'"(LevelOfTheory\([^"]*\))"\s*:'
+    return re.findall(pattern, section, flags=re.DOTALL)
+
+
+def _available_years_for_level(level: "Level",
+                               file_path: str,
+                               section_start: str,
+                               section_end: str) -> List[Optional[int]]:
+    """
+    Return a sorted list of available year suffixes for a given Level in a section.
+    """
+    if level is None or level.method is None:
+        return []
+
+    target_method_norm = _normalize_method(level.method)
+    target_base, _ = _split_method_year(target_method_norm)
+    target_basis_norm = _normalize_basis(level.basis)
+    target_software = level.software.lower() if level.software else None
+
+    years = set()
+    for lot_str in _iter_level_keys_from_section(file_path, section_start, section_end):
+        params = _parse_lot_params(lot_str)
+        cand_method = params.get('method')
+        cand_basis = params.get('basis')
+        cand_sw = params.get('software')
+
+        if cand_method is None:
+            continue
+
+        cand_method_norm = _normalize_method(cand_method)
+        cand_base, cand_year = _split_method_year(cand_method_norm)
+
+        if cand_base != target_base:
+            continue
+        if target_basis_norm is not None:
+            cand_basis_norm = _normalize_basis(cand_basis)
+            if cand_basis_norm != target_basis_norm:
+                continue
+        if target_software is not None and cand_sw is not None:
+            if cand_sw.lower() != target_software:
+                continue
+
+        years.add(cand_year)
+
+    # Sort with None first to represent "no year suffix"
+    return sorted(years, key=lambda y: (-1 if y is None else y))
+
+
+def _format_years(years: List[Optional[int]]) -> str:
+    """
+    Format a list of years for logging.
+    """
+    if not years:
+        return "none"
+    return ", ".join("none" if y is None else str(y) for y in years)
+
+
+def _find_best_level_key_for_sp_level(level: "Level",
+                                      file_path: str,
+                                      section_start: str,
+                                      section_end: str) -> Optional[str]:
+    """
+    Given an ARC Level and a data.py section, find the LevelOfTheory(...) key string
+    that best matches the level's method/basis, allowing:
+      - hyphen-insensitive comparison
+      - an optional 4-digit year suffix in Arkane's method
+    and choose the *no-year* entry when no year is specified.
+    """
+    if level is None or level.method is None:
+        return None
+
+    target_method_norm = _normalize_method(level.method)
+    target_base, method_year = _split_method_year(target_method_norm)
+    explicit_year = getattr(level, 'year', None)
+    if explicit_year is not None and method_year is not None and explicit_year != method_year:
+        raise InputError(
+            f"Conflicting year specifications for level '{level}': "
+            f"explicit year={explicit_year}, method suffix year={method_year}. "
+            "Please remove the year suffix from the method name or update the 'year' attribute to match."
+        )
+    target_year = explicit_year if explicit_year is not None else method_year
+    target_basis_norm = _normalize_basis(level.basis)
+    target_software = level.software.lower() if level.software else None
+
+    best_key = None
+    best_year = None
+
+    for lot_str in _iter_level_keys_from_section(file_path, section_start, section_end):
+        params = _parse_lot_params(lot_str)
+        cand_method = params.get('method')
+        cand_basis = params.get('basis')
+        cand_sw = params.get('software')
+
+        if cand_method is None:
+            continue
+
+        cand_method_norm = _normalize_method(cand_method)
+        cand_base, cand_year = _split_method_year(cand_method_norm)
+
+        # method base must match
+        if cand_base != target_base:
+            continue
+
+        # basis must match (normalized), if we have one
+        if target_basis_norm is not None:
+            cand_basis_norm = _normalize_basis(cand_basis)
+            if cand_basis_norm != target_basis_norm:
+                continue
+
+        # if user specified software, prefer matching software;
+        # but don't *require* it to exist in data.py
+        if target_software is not None and cand_sw is not None:
+            if cand_sw.lower() != target_software:
+                continue
+
+        if target_year is not None:
+            if cand_year != target_year:
+                continue
+            best_key = lot_str
+            break
+
+        # No target year specified: prefer no-year entry; if absent, pick latest year.
+        if cand_year is None:
+            best_key = lot_str
+            break
+
+        if best_year is None or cand_year > best_year:
+            best_year = cand_year
+            best_key = lot_str
+
+    return best_key
+
+
 def _level_to_str(level: 'Level') -> str:
     """
     Convert Level to Arkane's LevelOfTheory string representation.
@@ -689,12 +920,16 @@ def _level_to_str(level: 'Level') -> str:
     Returns:
         str: LevelOfTheory string representation.
     """
-    parts = [f"method='{level.method}'"]
+    method = _normalize_method(level.method)
+    if getattr(level, 'year', None) is not None and not method.endswith(str(level.year)):
+        method = f"{method}{level.year}"
+
+    parts = [f"method='{method}'"]
     if level.basis:
-        parts.append(f"basis='{level.basis}'")
+        parts.append(f"basis='{_normalize_basis(level.basis)}'")
     if level.software:
-        parts.append(f"software='{level.software}'")
-    return f"LevelOfTheory({','.join(parts)})".replace('-','')
+        parts.append(f"software='{level.software.lower()}'")
+    return f"LevelOfTheory({','.join(parts)})".replace('-', '')
 
 
 def get_arkane_model_chemistry(sp_level: 'Level',
@@ -704,6 +939,17 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     """
     Get Arkane model chemistry string with database validation.
 
+    Reads quantum_corrections/data.py as plain text, searches for
+    LevelOfTheory(...) keys, and matches:
+      - method:   ignoring hyphens and optional 4-digit year suffix
+      - basis:    ignoring hyphens and spaces
+
+    When a year is explicitly specified in the Level, only entries with that exact
+    year are matched. If no year is specified and an entry without a year exists,
+    that entry is used. Only when no year is specified and no no-year entry exists,
+    if multiple entries differ only by year, the one with the *latest* year is
+    chosen (treating entries with no year as year=0).
+
     Args:
         sp_level (Level): Level of theory for energy.
         freq_level (Optional[Level]): Level of theory for frequencies.
@@ -712,52 +958,120 @@ def get_arkane_model_chemistry(sp_level: 'Level',
     Returns:
         Optional[str]: Arkane-compatible model chemistry string.
     """
-    if sp_level.method_type == 'composite':
-        return f"LevelOfTheory(method='{sp_level.method}',software='gaussian')"
-
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    qm_corr_files = _get_qm_corrections_files()
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"
     freq_dict_start = "freq_dict = {"
     freq_dict_end = "}"
 
-    sp_repr = _level_to_str(sp_level)
-    quoted_sp_repr = f'"{sp_repr}"'
-
-    if freq_scale_factor is not None:
-        found = _section_contains_key(file_path=qm_corr_file,
-                                      section_start=atom_energies_start,
-                                      section_end=atom_energies_end,
-                                      target=quoted_sp_repr)
-        if not found:
+    if sp_level.method_type == 'composite':
+        # Composite Gaussian methods: prefer best year match from DB, fall back to normalized LevelOfTheory.
+        best_energy = None
+        for qm_corr_file in qm_corr_files:
+            best_energy = _find_best_level_key_for_sp_level(
+                sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+            )
+            if best_energy is not None:
+                break
+        if best_energy is None:
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
+            if getattr(sp_level, 'year', None) is not None:
+                logger.warning(
+                    f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
+                    f"available years: {_format_years(years)}"
+                )
+            elif years:
+                logger.warning(
+                    f"No Arkane AEC entry found for {sp_level.simple()} without a year; "
+                    f"available years: {_format_years(years)}. "
+                    f"Specify a year to select a matching entry."
+                )
+            # No matching AEC level in Arkane DB for this composite method
             return None
-        return sp_repr
+        return best_energy
 
+    # ---- Case 1: User supplied explicit frequency scale factor ----
+    # We only need an energy level (AEC entry in atom_energies)
+    if freq_scale_factor is not None:
+        best_energy = None
+        for qm_corr_file in qm_corr_files:
+            best_energy = _find_best_level_key_for_sp_level(
+                sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+            )
+            if best_energy is not None:
+                break
+        if best_energy is None:
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
+            if getattr(sp_level, 'year', None) is not None:
+                logger.warning(
+                    f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
+                    f"available years: {_format_years(years)}"
+                )
+            elif years:
+                logger.warning(
+                    f"No Arkane AEC entry found for {sp_level.simple()} without a year; "
+                    f"available years: {_format_years(years)}. "
+                    f"Specify a year to select a matching entry."
+                )
+            # No matching AEC level in Arkane DB
+            return None
+        # modelChemistry = LevelOfTheory(...)
+        return best_energy
+
+    # ---- Case 2: CompositeLevelOfTheory (separate freq and energy levels) ----
     if freq_level is None:
         raise ValueError("freq_level required when freq_scale_factor isn't provided")
 
-    freq_repr = _level_to_str(freq_level)
-    quoted_freq_repr = f'"{freq_repr}"'
+    best_energy = None
+    best_freq = None
+    for qm_corr_file in qm_corr_files:
+        best_energy = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+        )
+        best_freq = _find_best_level_key_for_sp_level(
+            freq_level, qm_corr_file, freq_dict_start, freq_dict_end
+        )
+        if best_energy is not None and best_freq is not None:
+            break
 
-    found_sp = _section_contains_key(file_path=qm_corr_file,
-                                     section_start=atom_energies_start,
-                                     section_end=atom_energies_end,
-                                     target=quoted_sp_repr)
-    found_freq = _section_contains_key(file_path=qm_corr_file,
-                                       section_start=freq_dict_start,
-                                       section_end=freq_dict_end,
-                                       target=quoted_freq_repr)
-
-    if not found_sp or not found_freq:
+    if best_energy is None or best_freq is None:
+        if best_energy is None:
+            years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
+            if getattr(sp_level, 'year', None) is not None:
+                logger.warning(
+                    f"No Arkane AEC entry found for year {sp_level.year} at {sp_level.simple()}; "
+                    f"available years: {_format_years(years)}"
+                )
+            elif years:
+                logger.warning(
+                    f"No Arkane AEC entry found for {sp_level.simple()} without a year; "
+                    f"available years: {_format_years(years)}. "
+                    f"Specify a year to select a matching entry."
+                )
+        if best_freq is None:
+            years = _available_years_for_level(freq_level, qm_corr_files[-1], freq_dict_start, freq_dict_end)
+            if getattr(freq_level, 'year', None) is not None:
+                logger.warning(
+                    f"No Arkane frequency correction entry found for year {freq_level.year} at {freq_level.simple()}; "
+                    f"available years: {_format_years(years)}"
+                )
+            elif years:
+                logger.warning(
+                    f"No Arkane frequency correction entry found for {freq_level.simple()} without a year; "
+                    f"available years: {_format_years(years)}. "
+                    f"Specify a year to select a matching entry."
+                )
+        # If either is missing, cannot construct a valid composite model chemistry
         return None
 
-    return (f"CompositeLevelOfTheory(\n"
-            f"    freq={freq_repr},\n"
-            f"    energy={sp_repr}\n"
-            f")")
+    # These strings are LevelOfTheory(...) expressions usable directly in Arkane input
+    return (
+        "CompositeLevelOfTheory(\n"
+        f"    freq={best_freq},\n"
+        f"    energy={best_energy}\n"
+        ")"
+    )
 
 
 def check_arkane_bacs(sp_level: 'Level',
@@ -767,17 +1081,13 @@ def check_arkane_bacs(sp_level: 'Level',
     """
     Check that Arkane has AECs and BACs for the given sp level of theory.
 
-    Args:
-        sp_level (Level): Level of theory for energy.
-        bac_type (str): Type of bond additivity correction ('p' for Petersson, 'm' for Melius)
-        raise_error (bool): Whether to raise an error if AECs or BACs are missing.
-
-    Returns:
-        bool: True if both AECs and BACs are available, False otherwise.
+    Uses plain-text parsing of quantum_corrections/data.py, matching LevelOfTheory
+    keys by:
+      - method base (ignore hyphens + optional year)
+      - basis (normalized)
+    and picking the latest year where multiple exist.
     """
-    qm_corr_file = os.path.join(RMG_DB_PATH, 'input', 'quantum_corrections', 'data.py')
-    if not os.path.isfile(qm_corr_file):
-        qm_corr_file = os.path.join(RMG_DB_PATH, 'quantum_corrections', 'data.py')
+    qm_corr_files = _get_qm_corrections_files()
 
     atom_energies_start = "atom_energies = {"
     atom_energies_end = "pbac = {"
@@ -788,29 +1098,50 @@ def check_arkane_bacs(sp_level: 'Level',
         bac_section_start = "pbac = {"
         bac_section_end = "mbac = {"
 
-    sp_repr = _level_to_str(sp_level)
-    quoted_sp_repr = f'"{sp_repr}"'
+    best_aec_key = None
+    best_bac_key = None
+    for qm_corr_file in qm_corr_files:
+        best_aec_key = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, atom_energies_start, atom_energies_end
+        )
+        best_bac_key = _find_best_level_key_for_sp_level(
+            sp_level, qm_corr_file, bac_section_start, bac_section_end
+        )
+        if best_aec_key is not None and best_bac_key is not None:
+            break
 
-    has_aec = _section_contains_key(
-        file_path=qm_corr_file,
-        section_start=atom_energies_start,
-        section_end=atom_energies_end,
-        target=quoted_sp_repr,
-    )
-    has_bac = _section_contains_key(
-        file_path=qm_corr_file,
-        section_start=bac_section_start,
-        section_end=bac_section_end,
-        target=quoted_sp_repr,
-    )
+    has_aec = best_aec_key is not None
+    has_bac = best_bac_key is not None
     has_encorr = bool(has_aec and has_bac)
+
+    # For logging, prefer the matched key; fall back to the naive LevelOfTheory string
+    repr_level = best_aec_key if best_aec_key is not None else _level_to_str(sp_level)
+
     if not has_encorr:
-        mssg = f"Arkane does not have the required energy corrections for {sp_repr} (AEC: {has_aec}, BAC: {has_bac})"
+        year_note = ""
+        aec_years = _available_years_for_level(sp_level, qm_corr_files[-1], atom_energies_start, atom_energies_end)
+        bac_years = _available_years_for_level(sp_level, qm_corr_files[-1], bac_section_start, bac_section_end)
+        if getattr(sp_level, 'year', None) is not None:
+            year_note = (
+                f" Available AEC years: {_format_years(aec_years)}; "
+                f"available BAC years: {_format_years(bac_years)}."
+            )
+        elif aec_years or bac_years:
+            year_note = (
+                f" Available AEC years: {_format_years(aec_years)}; "
+                f"available BAC years: {_format_years(bac_years)}. "
+                f"Specify a year to select a matching entry."
+            )
+        mssg = (
+            f"Arkane does not have the required energy corrections for {repr_level} "
+            f"(AEC: {has_aec}, BAC: {has_bac}).{year_note}"
+        )
         if raise_error:
             raise ValueError(mssg)
         else:
             logger.warning(mssg)
     return has_encorr
+
 
 
 def parse_species_thermo(species, output_content: str) -> None:
