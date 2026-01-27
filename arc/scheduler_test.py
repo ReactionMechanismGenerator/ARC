@@ -837,8 +837,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                           )
         sched.species_dict['TS0'].ts_guesses_exhausted = True
         sched.species_dict['TS0'].chosen_ts = None
-        with mock.patch.object(Scheduler, 'determine_most_likely_ts_conformer', return_value=None), \
-                mock.patch.object(Scheduler, 'delete_all_species_jobs', return_value=None):
+        with mock.patch.object(Scheduler, 'determine_most_likely_ts_conformer', return_value=None):
             sched.switch_ts(label='TS0')
         self.assertFalse(sched.output['TS0']['convergence'])
         for key in ['opt', 'freq', 'sp', 'composite', 'fine']:
