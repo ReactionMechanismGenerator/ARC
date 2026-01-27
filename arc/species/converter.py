@@ -46,6 +46,9 @@ if TYPE_CHECKING:
 ob.obErrorLog.SetOutputLevel(0)
 logger = get_logger()
 
+DIST_PRECISION = 0.01  # Angstrom
+ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+
 def reorder_xyz_string(xyz_str: str,
                        reverse_atoms: bool = False,
                        units: str = 'angstrom',

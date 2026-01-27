@@ -24,12 +24,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from arc.common import (
     ARC_PATH,
     almost_equal_coords,
+    get_angle_in_180_range,
     get_logger,
     is_angle_linear,
     is_xyz_linear,
     key_by_val,
     read_yaml_file,
 )
+from arc.family import get_reaction_family_products
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
@@ -51,6 +53,11 @@ from arc.species.vectors import calculate_angle
 if TYPE_CHECKING:
     from arc.level import Level
     from arc.reaction import ARCReaction
+
+FAMILY_SETS = {
+    'hydrolysis_set_1': ['carbonyl_based_hydrolysis', 'ether_hydrolysis'],
+    'hydrolysis_set_2': ['nitrile_hydrolysis'],
+}
 
 DIHEDRAL_INCREMENT = 30
 
@@ -273,6 +280,21 @@ class HeuristicsAdapter(JobAdapter):
                 tsg.tic()
                 xyzs = h_abstraction(reaction=rxn, dihedral_increment=self.dihedral_increment, path=self.local_path)
                 tsg.tok()
+
+            if rxn.family in FAMILY_SETS['hydrolysis_set_1'] or rxn.family in FAMILY_SETS['hydrolysis_set_2']:
+                try:
+                    tsg = TSGuess(method='Heuristics')
+                    tsg.tic()
+                    xyzs_raw, families, indices = hydrolysis(reaction=rxn)
+                    tsg.tok()
+                    if not xyzs_raw:
+                        logger.warning(
+                            f'Heuristics TS search failed to generate any valid TS guesses for {rxn.label}.'
+                        )
+                        continue
+                    xyzs = [{'xyz': xyz, 'method': 'Heuristics'} for xyz in xyzs_raw]
+                except ValueError:
+                    continue
 
             for method_index, xyz_entry in enumerate(xyzs):
                 xyz = xyz_entry.get("xyz")
@@ -956,6 +978,815 @@ def h_abstraction(reaction: 'ARCReaction',
                     xyz_guesses.append({"xyz": xyz_guess, "method": "Heuristics"})
 
     return xyz_guesses
+
+
+def hydrolysis(reaction: 'ARCReaction') -> Tuple[List[dict], List[dict], List[int]]:
+    """
+    Generate TS guesses for reactions of the ARC "hydrolysis" families.
+
+    Args:
+        reaction (ARCReaction): The reaction to process.
+
+    Returns:
+        Tuple containing:
+            - List[dict]: Cartesian coordinates of TS guesses.
+            - List[dict]: Reaction families of the TS guesses.
+            - List[int]: Indices of the generated TS guesses.
+    """
+    xyz_guesses_total, zmats_total, reaction_families, guesses_indices = [], [], [], []
+    product_dicts, carbonyl_based_and_ether_families = get_products_and_check_families(reaction)
+    hydrolysis_parameters = load_hydrolysis_parameters()
+    dihedrals_to_change_num, max_dihedrals_found = 0, 0
+    if reaction._family is not None:
+        product_dicts = [pd for pd in product_dicts if pd.get("family") == reaction._family]
+        if not product_dicts:
+            raise ValueError(f"Specified target family '{reaction._family}' not found in reaction products.")
+    condition_met = False
+    while not xyz_guesses_total or not condition_met:
+        if dihedrals_to_change_num >= max_dihedrals_found > 0:
+            break
+        dihedrals_to_change_num += 1
+        for product_dict in product_dicts:
+            reaction_family = product_dict["family"]
+            is_set_1 = reaction_family in hydrolysis_parameters["family_sets"]["set_1"]
+            is_set_2 = reaction_family in hydrolysis_parameters["family_sets"]["set_2"]
+
+            main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(
+                reaction,
+                product_dict,
+                is_set_1,
+            )
+            base_xyz_indices = {
+                "a": xyz_indices["a"],
+                "b": xyz_indices["b"],
+                "e": xyz_indices["e"],
+                "o": xyz_indices["o"],
+                "h1": xyz_indices["h1"],
+            }
+            adjustments_to_try = [False, True] if dihedrals_to_change_num == 1 else [True]
+            for adjust_dihedral in adjustments_to_try:
+                chosen_xyz_indices, xyz_guesses, zmats_total, n_dihedrals_found = process_chosen_d_indices(
+                    initial_xyz,
+                    base_xyz_indices,
+                    xyz_indices,
+                    hydrolysis_parameters,
+                    reaction_family,
+                    water,
+                    zmats_total,
+                    is_set_1,
+                    is_set_2,
+                    dihedrals_to_change_num,
+                    should_adjust_dihedral=adjust_dihedral,
+                )
+                max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
+                if xyz_guesses:
+                    xyz_guesses_total.extend(xyz_guesses)
+                    reaction_families.extend([reaction_family] * len(xyz_guesses))
+                    guesses_indices.extend([list(chosen_xyz_indices.values()) for _ in range(len(xyz_guesses))])
+        if reaction._family is not None:
+            condition_met = any(fam == reaction._family for fam in reaction_families)
+        elif carbonyl_based_and_ether_families:
+            condition_met = has_carbonyl_based_hydrolysis(reaction_families)
+        else:
+            condition_met = len(xyz_guesses_total) > 0
+
+    nitrile_in_inputs = any(
+        (pd.get("family") == "nitrile_hydrolysis")
+        or (isinstance(pd.get("family"), list) and "nitrile_hydrolysis" in pd.get("family"))
+        for pd in product_dicts
+    )
+    nitrile_already_found = any(fam == "nitrile_hydrolysis" for fam in reaction_families)
+
+    if nitrile_in_inputs and not nitrile_already_found:
+        dihedrals_to_change_num, max_dihedrals_found = 0, 0
+        for product_dict in product_dicts:
+            _fam = product_dict["family"]
+            reaction_family = _fam[0] if isinstance(_fam, list) else _fam
+            if reaction_family != "nitrile_hydrolysis":
+                continue
+
+            is_set_1 = reaction_family in hydrolysis_parameters["family_sets"]["set_1"]
+            is_set_2 = reaction_family in hydrolysis_parameters["family_sets"]["set_2"]
+
+            main_reactant, water, initial_xyz, xyz_indices = extract_reactant_and_indices(
+                reaction,
+                product_dict,
+                is_set_1,
+            )
+            base_xyz_indices = {
+                "a": xyz_indices["a"],
+                "b": xyz_indices["b"],
+                "e": xyz_indices["e"],
+                "o": xyz_indices["o"],
+                "h1": xyz_indices["h1"],
+            }
+
+            while True:
+                if dihedrals_to_change_num >= max_dihedrals_found > 0:
+                    break
+                dihedrals_to_change_num += 1
+                chosen_xyz_indices, xyz_guesses, zmats_total, n_dihedrals_found = process_chosen_d_indices(
+                    initial_xyz,
+                    base_xyz_indices,
+                    xyz_indices,
+                    hydrolysis_parameters,
+                    reaction_family,
+                    water,
+                    zmats_total,
+                    is_set_1,
+                    is_set_2,
+                    dihedrals_to_change_num,
+                    should_adjust_dihedral=True,
+                    allow_nitrile_dihedrals=True,
+                )
+                max_dihedrals_found = max(max_dihedrals_found, n_dihedrals_found)
+
+                if xyz_guesses:
+                    xyz_guesses_total.extend(xyz_guesses)
+                    reaction_families.extend([reaction_family] * len(xyz_guesses))
+                    guesses_indices.extend([list(chosen_xyz_indices.values()) for _ in range(len(xyz_guesses))])
+                    break
+
+    return xyz_guesses_total, reaction_families, guesses_indices
+
+
+def get_products_and_check_families(reaction: 'ARCReaction') -> Tuple[List[dict], bool]:
+    """
+    Get all reaction products and determine if both carbonyl-based and ether hydrolysis families are present.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        Tuple containing:
+            - List[dict]: Product dictionaries with reaction family information
+            - bool: True if both carbonyl-based and ether hydrolysis families are present
+    """
+    product_dicts = get_reaction_family_products(
+        rxn=reaction,
+        rmg_family_set="default",
+        consider_rmg_families=False,
+        consider_arc_families=True,
+    )
+    carbonyl_based_present = any(
+        "carbonyl_based_hydrolysis"
+        in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
+        for d in product_dicts
+    )
+    ether_present = any(
+        "ether_hydrolysis"
+        in (d.get("family", []) if isinstance(d.get("family"), list) else [d.get("family")])
+        for d in product_dicts
+    )
+
+    return product_dicts, (carbonyl_based_present and ether_present)
+
+
+def load_hydrolysis_parameters() -> dict:
+    """
+    Load parameters for hydrolysis reactions from the YAML configuration file.
+
+    Returns:
+        dict: Hydrolysis parameters loaded from the configuration file containing
+              family sets and specific parameters for different reaction types.
+    """
+    return read_yaml_file(os.path.join(ARC_PATH, "data", "hydrolysis_families_parameters.yml"))
+
+
+def has_carbonyl_based_hydrolysis(reaction_families: List[dict]) -> bool:
+    """
+    Check if carbonyl-based hydrolysis is present in the generated transition state guesses.
+
+    Args:
+        reaction_families:  Reaction families of the generated TS guesses.
+
+    Returns:
+        bool: True if carbonyl-based hydrolysis is present in any of the transition state guesses.
+    """
+    return any(family == "carbonyl_based_hydrolysis" for family in reaction_families)
+
+
+def extract_reactant_and_indices(
+    reaction: 'ARCReaction',
+    product_dict: dict,
+    is_set_1: bool,
+) -> Tuple[ARCSpecies, ARCSpecies, dict, dict]:
+    """
+    Extract the reactant molecules and relevant atomic indices (a,b,e,d,o,h1) for the hydrolysis reaction.
+
+    Atom scheme for the TS structure of the hydrolysis reaction:
+
+                e
+                |
+            d — a — — b
+                |     |
+                |     |
+                o — — h1
+                |
+                h2
+    Description:
+            - a: Electrophilic center (receives nucleophilic attack from o).
+            - b: Leaving group atom (accepts proton h1).
+            - e, d: Atoms bonded to a (used to define geometry).
+            - o: Oxygen from water
+            - h1: The reactive hydrogen from water
+            - h2: The other hydrogen from water (not reactive).
+
+    Args:
+        reaction: An ARCReaction instance.
+        product_dict: Dictionary containing reaction product information and atom mappings.
+        is_set_1: Whether the reaction is in the first set of hydrolysis families.
+
+    Returns:
+        Tuple containing:
+            - main_reactant(ARCSpecies): The main reactant molecule
+            - water(ARCSpecies): The water molecule
+            - initial_xyz(dict): Initial XYZ coordinates of the main reactant
+            - xyz_indices(dict): Dictionary mapping a, b, e, d , o, h1 atoms to their indices in the xyz dictionary
+    """
+    main_reactant, water = get_main_reactant_and_water_from_hydrolysis_reaction(reaction)
+    a_xyz_index = product_dict["r_label_map"]["*1"]
+    b_xyz_index = product_dict["r_label_map"]["*2"]
+    two_neighbors = is_set_1
+    try:
+        e_xyz_index, d_xyz_indices = get_neighbors_by_electronegativity(
+            main_reactant,
+            a_xyz_index,
+            b_xyz_index,
+            two_neighbors,
+        )
+    except ValueError as e:
+        raise ValueError(
+            f"Failed to determine neighbors by electronegativity for atom {a_xyz_index} "
+            f"in species {main_reactant.label}: {e}"
+        )
+    o_index = len(main_reactant.mol.atoms)
+    h1_index = o_index + 1
+
+    initial_xyz = main_reactant.get_xyz()
+    xyz_indices = {
+        "a": a_xyz_index,
+        "b": b_xyz_index,
+        "e": e_xyz_index,
+        "d": d_xyz_indices,
+        "o": o_index,
+        "h1": h1_index,
+    }
+
+    return main_reactant, water, initial_xyz, xyz_indices
+
+
+def process_chosen_d_indices(
+    initial_xyz: dict,
+    base_xyz_indices: dict,
+    xyz_indices: dict,
+    hydrolysis_parameters: dict,
+    reaction_family: str,
+    water: 'ARCSpecies',
+    zmats_total: List[dict],
+    is_set_1: bool,
+    is_set_2: bool,
+    dihedrals_to_change_num: int,
+    should_adjust_dihedral: bool,
+    allow_nitrile_dihedrals: bool = False,
+) -> Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]], int]:
+    """
+    Iterates over the 'd' indices to process TS guess generation.
+
+    Args:
+        initial_xyz (dict): Initial Cartesian coordinates.
+        base_xyz_indices (Dict[str, int]): Base indices for TS generation.
+        xyz_indices (Dict[str, List[int]]): All relevant indices including 'd'.
+        hydrolysis_parameters (Dict[str, Any]): Hydrolysis-specific parameters.
+        reaction_family (str): The reaction family.
+        water ('ARCSpecies'): Water molecule info.
+        zmats_total (List[Dict[str, Any]]): List to accumulate Z-matrices.
+        is_set_1 (bool): Flag indicating if reaction_family is in set 1.
+        is_set_2 (bool): Flag indicating if reaction_family is in set 2.
+        dihedrals_to_change_num (int): The current iteration for adjusting dihedrals.
+        should_adjust_dihedral (bool): Whether to adjust dihedral angles.
+        allow_nitrile_dihedrals (bool, optional): Force-enable dihedral adjustments for nitriles. Defaults to False.
+
+    Returns:
+        Tuple[Dict[str, int], List[Dict[str, Any]], List[Dict[str, Any]]]:
+            - Chosen indices for TS generation.
+            - List of generated transition state (TS) guesses.
+            - Updated list of Z-matrices.
+            - Integer indicating maximum number of dihedrals found.
+    """
+    max_dihedrals_found = 0
+    for d_index in xyz_indices.get("d", []) or [None]:
+        chosen_xyz_indices = {**base_xyz_indices, "d": d_index} if d_index is not None else {
+            **base_xyz_indices,
+            "d": None,
+        }
+        current_zmat, zmat_indices = setup_zmat_indices(initial_xyz, chosen_xyz_indices)
+        matches = get_matching_dihedrals(
+            current_zmat,
+            zmat_indices['a'],
+            zmat_indices['b'],
+            zmat_indices['e'],
+            zmat_indices['d'],
+        )
+        max_dihedrals_found = max(max_dihedrals_found, len(matches))
+        if should_adjust_dihedral and dihedrals_to_change_num > len(matches):
+            continue
+
+        stretch_ab_bond(current_zmat, chosen_xyz_indices, zmat_indices, hydrolysis_parameters, reaction_family)
+        zmats_to_process = [current_zmat]
+        attempted_dihedral_adjustments = False
+
+        if should_adjust_dihedral and (reaction_family != 'nitrile_hydrolysis' or allow_nitrile_dihedrals):
+            attempted_dihedral_adjustments = True
+            adjustment_factors = [15, 25, 35, 45, 55]
+            indices_list = matches[:dihedrals_to_change_num]
+            adjusted_zmats = []
+            for indices in indices_list:
+                zmat_variants = generate_dihedral_variants(current_zmat, indices, adjustment_factors)
+                if zmat_variants:
+                    adjusted_zmats.extend(zmat_variants)
+            if adjusted_zmats:
+                zmats_to_process = adjusted_zmats
+
+        ts_guesses_list = []
+        for zmat_to_process in zmats_to_process:
+            ts_guesses, updated_zmats = process_family_specific_adjustments(
+                is_set_1,
+                is_set_2,
+                reaction_family,
+                hydrolysis_parameters,
+                zmat_to_process,
+                water,
+                chosen_xyz_indices,
+                zmats_total,
+            )
+            zmats_total = updated_zmats
+            ts_guesses_list.extend(ts_guesses)
+
+        if attempted_dihedral_adjustments and not ts_guesses_list and (
+            reaction_family != 'nitrile_hydrolysis' or allow_nitrile_dihedrals
+        ):
+            flipped_zmats = []
+            adjustment_factors = [15, 25, 35, 45, 55]
+            for indices in indices_list:
+                flipped_variants = generate_dihedral_variants(current_zmat, indices, adjustment_factors, flip=True)
+                flipped_zmats.extend(flipped_variants)
+
+            for zmat_to_process in flipped_zmats:
+                ts_guesses, updated_zmats = process_family_specific_adjustments(
+                    is_set_1,
+                    is_set_2,
+                    reaction_family,
+                    hydrolysis_parameters,
+                    zmat_to_process,
+                    water,
+                    chosen_xyz_indices,
+                    zmats_total,
+                )
+                zmats_total = updated_zmats
+                ts_guesses_list.extend(ts_guesses)
+
+        if ts_guesses_list:
+            return chosen_xyz_indices, ts_guesses_list, zmats_total, max_dihedrals_found
+
+    return {}, [], zmats_total, max_dihedrals_found
+
+
+def get_main_reactant_and_water_from_hydrolysis_reaction(reaction: 'ARCReaction') -> Tuple['ARCSpecies', 'ARCSpecies']:
+    """
+    Get main reactant and water species from a given hydrolysis reaction family.
+
+    Args:
+        reaction: An ARCReaction instance.
+
+    Returns:
+        Tuple containing:
+            - ARCSpecies: The main reactant
+            - ARCSpecies: The water molecule
+
+    Raises:
+        ValueError: If reactants don't include both water and a non-water molecule.
+    """
+    arc_reactants, _ = reaction.get_reactants_and_products()
+    arc_reactant, water = None, None
+
+    for spc in arc_reactants:
+        if spc.is_water():
+            water = spc
+        else:
+            arc_reactant = spc
+
+    if arc_reactant is None or water is None:
+        raise ValueError("Reactants must include a non-water molecule and water.")
+
+    return arc_reactant, water
+
+
+def get_neighbors_by_electronegativity(
+    spc: 'ARCSpecies',
+    atom_index: int,
+    exclude_index: int,
+    two_neighbors: bool = True,
+) -> Tuple[int, List[int]]:
+    """
+    Retrieve the top two neighbors of a given atom in a species, sorted by their effective electronegativity,
+    excluding a specified neighbor.
+    Effective electronegativity is calculated as:
+        Effective Electronegativity = Electronegativity of the neighbor * Bond order.
+    Sorting rules:
+    1. Neighbors are sorted in descending order of their effective electronegativity.
+    2. If two neighbors have the same effective electronegativity, the tie is broken by comparing the
+       sum of the effective electronegativities of their own bonded neighbors.
+       The neighbor with the higher sum will be ranked first.
+
+    Args:
+        spc (ARCSpecies): The species containing the atoms.
+        atom_index (int): Index of the central atom.
+        exclude_index (int): Index of atom to exclude from neighbors list.
+        two_neighbors (bool): Whether to return two neighbors (True) or one (False).
+
+    Returns:
+        Tuple[int, List[int]]: A tuple where:
+            - The first element is the index of the most electronegative neighbor.
+            - The second element is a list of the remaining ranked neighbors (empty if only one neighbor is requested).
+
+    Raises:
+        ValueError: If the atom has no valid neighbors.
+    """
+    neighbors = [
+        neighbor
+        for neighbor in spc.mol.atoms[atom_index].edges.keys()
+        if spc.mol.atoms.index(neighbor) != exclude_index
+    ]
+
+    if not neighbors:
+        raise ValueError(f"Atom at index {atom_index} has no valid neighbors.")
+
+    def get_neighbor_total_electronegativity(neighbor: 'Atom') -> float:
+        """
+        Calculate the total electronegativity of a neighbor based on its bonded neighbors.
+        Args:
+            neighbor (Atom): The atom to calculate the total electronegativity for.
+        Returns:
+            float: The total electronegativity of the neighbor
+        """
+        return sum(
+            ELECTRONEGATIVITIES[n.symbol] * neighbor.edges[n].order for n in neighbor.edges.keys()
+        )
+
+    effective_electronegativities = [
+        (
+            ELECTRONEGATIVITIES[n.symbol] * spc.mol.atoms[atom_index].edges[n].order,
+            get_neighbor_total_electronegativity(n),
+            n,
+        )
+        for n in neighbors
+    ]
+    effective_electronegativities.sort(reverse=True, key=lambda x: (x[0], x[1]))
+    sorted_neighbors = [spc.mol.atoms.index(n[2]) for n in effective_electronegativities]
+    most_electronegative = sorted_neighbors[0]
+    remaining_neighbors = sorted_neighbors[1:] if two_neighbors else []
+    return most_electronegative, remaining_neighbors
+
+
+def setup_zmat_indices(initial_xyz: dict, xyz_indices: dict) -> Tuple[dict, dict]:
+    """
+    Convert XYZ coordinates to Z-matrix format and set up corresponding indices.
+
+    Args:
+        initial_xyz (dict): XYZ coordinates of the molecule.
+        xyz_indices (dict): Dictionary mapping atom types to their XYZ indices.
+
+    Returns:
+        tuple: A tuple containing:
+            - dict: Z-matrix representation of the molecule
+            - dict: Dictionary mapping atom types to their Z-matrix indices
+    """
+    initial_zmat = zmat_from_xyz(initial_xyz, consolidate=False)
+    zmat_indices = {
+        'a': key_by_val(initial_zmat.get('map', {}), xyz_indices['a']),
+        'b': key_by_val(initial_zmat.get('map', {}), xyz_indices['b']),
+        'e': key_by_val(initial_zmat.get('map', {}), xyz_indices['e']),
+        'd': key_by_val(initial_zmat.get('map', {}), xyz_indices['d']) if xyz_indices['d'] is not None else None,
+    }
+    return initial_zmat, zmat_indices
+
+
+def generate_dihedral_variants(
+    zmat: dict,
+    indices: List[int],
+    adjustment_factors: List[float],
+    flip: bool = False,
+    tolerance_degrees: float = 10.0,
+) -> List[dict]:
+    """
+    Create variants of a Z-matrix by adjusting dihedral angles using multiple adjustment factors.
+
+    This function creates variants of the Z-matrix using different adjustment factors:
+    1. Retrieve the current dihedral value and normalize it to the (-180°, 180°] range.
+    2. For each adjustment factor, slightly push the angle away from 0° or ±180° to avoid
+       unstable, boundary configurations.
+    3. If `flip=True`, the same procedure is applied starting from a flipped
+       (180°-shifted) baseline angle.
+    4. Each adjusted or flipped variant is deep-copied to ensure independence.
+
+    Args:
+        zmat (dict): The initial Z-matrix.
+        indices (List[int]): The indices defining the dihedral angle.
+        adjustment_factors (List[float], optional): List of factors to try.
+        flip (bool, optional): Whether to start from a flipped (180°) baseline dihedral angle.
+                               Defaults to False.
+        tolerance_degrees (float, optional): Tolerance (in degrees) for detecting angles near 0° or ±180°.
+                                             Defaults to 10.0.
+
+    Returns:
+        List[dict]: List of Z-matrix variants with adjusted dihedral angles.
+    """
+    variants = []
+    parameter_name = get_parameter_from_atom_indices(zmat=zmat, indices=indices, xyz_indexed=False)
+    current_value = zmat['vars'].get(parameter_name, 0)
+    normalized_value = get_angle_in_180_range(current_value)
+    if tolerance_degrees < 0:
+        raise ValueError("tolerance_degrees must be non-negative.")
+
+    def push_up_dihedral(val: float, adj_factor: float) -> float:
+        """Scale the dihedral away from 0°/180° using the given factor."""
+        if abs(val) < tolerance_degrees:
+            new_value = (val + 360 + adj_factor) - 360
+        elif val < 0:
+            new_value = val + adj_factor
+        else:
+            new_value = val - adj_factor
+        normalized_new_value = get_angle_in_180_range(new_value)
+        return normalized_new_value
+
+    seed_value = normalized_value
+    if flip:
+        seed_value = get_angle_in_180_range(normalized_value + 180.0)
+    boundary_like = (abs(seed_value) < tolerance_degrees) or (
+        180 - tolerance_degrees <= abs(seed_value) <= 180 + tolerance_degrees
+    )
+    if boundary_like:
+        for factor in adjustment_factors:
+            variant = copy.deepcopy(zmat)
+            variant["vars"][parameter_name] = push_up_dihedral(seed_value, factor)
+            variants.append(variant)
+    return variants
+
+
+def get_matching_dihedrals(
+    zmat: dict,
+    a: int,
+    b: int,
+    e: int,
+    d: Optional[int],
+) -> List[List[int]]:
+    """
+    Retrieve all dihedral angles in the Z-matrix that match the given atom indices.
+    This function scans the Z-matrix for dihedral parameters (keys starting with 'D_' or 'DX_')
+    and collects those whose indices match the specified atoms.
+
+    Args:
+        zmat (dict): The Z-matrix containing atomic coordinates and parameters.
+        a (int): The first atom index to match.
+        b (int): The second atom index to match.
+        e (int): The third atom index to match.
+        d (Optional[int]): The fourth atom index to match (optional).
+
+    Returns:
+        List[List[int]]: A list of lists, where each sublist contains the indices of a matching dihedral.
+                         Returns an empty list if no matches are found.
+    """
+    matches = []
+    for key in zmat['vars']:
+        if key.startswith('D_') or key.startswith('DX_'):
+            indices = [int(idx) for idx in key.split('_')[1:]]
+            if d is not None:
+                if a in indices and b in indices and (e in indices or d in indices):
+                    matches.append(indices)
+            else:
+                if a in indices and b in indices and e in indices:
+                    matches.append(indices)
+    return matches
+
+
+def stretch_ab_bond(
+    initial_zmat: dict,
+    xyz_indices: dict,
+    zmat_indices: dict,
+    hydrolysis_parameters: dict,
+    reaction_family: str,
+) -> None:
+    """
+    Stretch the bond between atoms a and b in the Z-matrix based on the reaction family parameters.
+
+    Args:
+        initial_zmat (dict): The Z-matrix to modify.
+        xyz_indices (dict): Dictionary containing atom indices in XYZ coordinates.
+        zmat_indices (dict): Dictionary containing atom indices in Z-matrix coordinates.
+        hydrolysis_parameters (dict): Parameters for hydrolysis reactions.
+        reaction_family (str): The type of reaction family, used to get specific stretch parameters.
+
+    Returns:
+        None: Modifies the Z-matrix in place.
+
+    Note:
+        The stretching direction is determined by comparing atom positions in both
+        coordinate systems to ensure consistent bond modifications. The stretch degree
+        is obtained from the hydrolysis parameters for the specific reaction family.
+    """
+    a_before_b_xyz = xyz_indices['a'] < xyz_indices['b']
+    a_before_b_zmat = zmat_indices['a'] < zmat_indices['b']
+    stretch_degree = hydrolysis_parameters['family_parameters'][str(reaction_family)]['stretch']
+
+    if a_before_b_zmat != a_before_b_xyz:
+        indices = (min(xyz_indices['a'], xyz_indices['b']), max(xyz_indices['a'], xyz_indices['b']))
+    else:
+        indices = (max(xyz_indices['a'], xyz_indices['b']), min(xyz_indices['a'], xyz_indices['b']))
+
+    stretch_zmat_bond(zmat=initial_zmat, indices=indices, stretch=stretch_degree)
+
+
+def process_family_specific_adjustments(
+    is_set_1: bool,
+    is_set_2: bool,
+    reaction_family: str,
+    hydrolysis_parameters: dict,
+    initial_zmat: dict,
+    water: 'ARCSpecies',
+    xyz_indices: dict,
+    zmats_total: List[dict],
+) -> Tuple[List[dict], List[dict]]:
+    """
+    Process specific adjustments for different hydrolysis reaction families if needed, then generate TS guesses.
+
+    Args:
+        is_set_1 (bool): Whether the reaction belongs to parameter set 1.
+        is_set_2 (bool): Whether the reaction belongs to parameter set 2.
+        reaction_family (str): Type of hydrolysis reaction ('ether_hydrolysis' or others).
+        hydrolysis_parameters (dict): Parameters for different hydrolysis families.
+        initial_zmat (dict): Initial Z-matrix of the molecule.
+        water (ARCSpecies): Water molecule for the reaction.
+        xyz_indices (dict): Dictionary of atom indices in XYZ coordinates.
+        zmats_total (List[dict]): List of existing Z-matrices.
+
+    Returns:
+        Tuple[List[dict], List[dict]]: Generated XYZ guesses and updated Z-matrices list.
+
+    Raises:
+        ValueError: If the reaction family is not supported.
+    """
+    a_xyz, b_xyz, e_xyz, o_xyz, h1_xyz, d_xyz = xyz_indices.values()
+    r_atoms = [a_xyz, o_xyz, o_xyz]
+    a_atoms = [[b_xyz, a_xyz], [a_xyz, o_xyz], [h1_xyz, o_xyz]]
+    d_atoms = (
+        [[e_xyz, d_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
+        if d_xyz is not None
+        else [[e_xyz, b_xyz, a_xyz], [b_xyz, a_xyz, o_xyz], [a_xyz, h1_xyz, o_xyz]]
+    )
+    r_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['r_value']
+    a_value = hydrolysis_parameters['family_parameters'][str(reaction_family)]['a_value']
+    d_values = hydrolysis_parameters['family_parameters'][str(reaction_family)]['d_values']
+
+    if is_set_1 or is_set_2:
+        initial_xyz = zmat_to_xyz(initial_zmat)
+        return generate_hydrolysis_ts_guess(
+            initial_xyz,
+            xyz_indices.values(),
+            water,
+            r_atoms,
+            a_atoms,
+            d_atoms,
+            r_value,
+            a_value,
+            d_values,
+            zmats_total,
+            is_set_1,
+            threshold=0.6 if reaction_family == 'nitrile_hydrolysis' else 0.8,
+        )
+    else:
+        raise ValueError(f"Family {reaction_family} not supported for hydrolysis TS guess generation.")
+
+
+def generate_hydrolysis_ts_guess(
+    initial_xyz: dict,
+    xyz_indices: List[int],
+    water: 'ARCSpecies',
+    r_atoms: List[int],
+    a_atoms: List[List[int]],
+    d_atoms: List[List[int]],
+    r_value: List[float],
+    a_value: List[float],
+    d_values: List[List[float]],
+    zmats_total: List[dict],
+    is_set_1: bool,
+    threshold: float,
+) -> Tuple[List[dict], List[dict]]:
+    """
+    Generate Z-matrices and Cartesian coordinates for transition state (TS) guesses.
+
+    Args:
+        initial_xyz (dict): The initial coordinates of the reactant.
+        xyz_indices (List[int]): The indices of the atoms in the initial coordinates.
+        water (ARCSpecies): The water molecule involved in the reaction.
+        r_atoms (List[int]): Atom pairs for defining bond distances.
+        a_atoms (List[List[int]]): Atom triplets for defining bond angles.
+        d_atoms (List[List[int]]): Atom quartets for defining dihedral angles.
+        r_value (List[float]): Bond distances for each atom pair.
+        a_value (List[float]): Bond angles for each atom triplet.
+        d_values (List[List[float]]): Sets of dihedral angles for TS guesses.
+        zmats_total (List[dict]): Existing Z-matrices to avoid duplicates.
+        is_set_1 (bool): Whether the reaction belongs to parameter set 1.
+        threshold (float): Threshold for atom collision checking.
+
+    Returns:
+        Tuple[List[dict], List[dict]]: Unique TS guesses (XYZ coords and Z-matrices).
+    """
+    xyz_guesses = []
+
+    for d_value in d_values:
+        xyz_guess = copy.deepcopy(initial_xyz)
+        for i in range(3):
+            xyz_guess = add_atom_to_xyz_using_internal_coords(
+                xyz=xyz_guess,
+                element=water.mol.atoms[i].element.symbol,
+                r_index=r_atoms[i],
+                a_indices=a_atoms[i],
+                d_indices=d_atoms[i],
+                r_value=r_value[i],
+                a_value=a_value[i],
+                d_value=d_value[i],
+            )
+
+        a_xyz, b_xyz, e_xyz, o_xyz, h1_xyz, d_xyz = xyz_indices
+        are_valid_bonds = check_ts_bonds(xyz_guess, [o_xyz, h1_xyz, h1_xyz + 1, a_xyz, b_xyz])
+        colliding = colliding_atoms(xyz_guess, threshold=threshold)
+        duplicate = any(compare_zmats(existing, xyz_to_zmat(xyz_guess)) for existing in zmats_total)
+        if is_set_1:
+            dihedral_edao = [e_xyz, d_xyz, a_xyz, o_xyz]
+            dao_is_linear = check_dao_angle(dihedral_edao, xyz_guess)
+        else:
+            dao_is_linear = False
+        if xyz_guess is not None and not colliding and not duplicate and are_valid_bonds and not dao_is_linear:
+            xyz_guesses.append(xyz_guess)
+            zmats_total.append(xyz_to_zmat(xyz_guess))
+
+    return xyz_guesses, zmats_total
+
+
+def check_dao_angle(d_indices: List[int], xyz_guess: dict) -> bool:
+    """
+    Check if the angle DAO is close to 0 or 180 degrees in the given XYZ coordinates.
+
+    Args:
+        d_indices (List[int]): The indices of atoms defining the angle.
+        xyz_guess (dict): The XYZ coordinates of the molecule.
+
+    Returns:
+        bool: True if DAO angle is close to 0 or 180 degrees, False otherwise.
+    """
+    angle_indices = [d_indices[1], d_indices[2], d_indices[3]]
+    angle_value = calculate_angle(xyz_guess, angle_indices)
+    norm_value = (angle_value + 180) % 180
+    return (norm_value < 10) or (norm_value > 170)
+
+
+def check_ts_bonds(transition_state_xyz: dict, tested_atom_indices: list) -> bool:
+    """
+    Check if the transition state guess has the correct bonds between water atoms.
+
+    Args:
+        transition_state_xyz (dict): The transition state guess in XYZ format.
+        tested_atom_indices (list): the needed atom indices for the test.
+
+    Returns:
+        bool: Whether the transition state guess has the expected water-related bonds.
+    """
+    oxygen_index, h1_index, h2_index, a_index, b_index = tested_atom_indices
+    oxygen_bonds = sorted_distances_of_atom(transition_state_xyz, oxygen_index)
+    h1_bonds = sorted_distances_of_atom(transition_state_xyz, h1_index)
+    h2_bonds = sorted_distances_of_atom(transition_state_xyz, h2_index)
+
+    def check_oxygen_bonds(bonds):
+        if len(bonds) < 3:
+            return False
+        bonded_atoms = [bonds[1][0], bonds[2][0]]
+        if h1_index in bonded_atoms and a_index in bonded_atoms:
+            return True
+        a_position = next((i for i, bond in enumerate(bonds) if bond[0] == a_index), None)
+        if a_position is None:
+            return False
+        if all(transition_state_xyz['symbols'][bonds[i][0]] == 'H' for i in range(2, a_position)):
+            rel_error = abs(bonds[a_position][1] - bonds[2][1]) / bonds[a_position][1]
+            return rel_error <= 0.1
+        return False
+
+    oxygen_has_valid_bonds = oxygen_bonds[0][0] == h2_index and check_oxygen_bonds(oxygen_bonds)
+    h1_has_valid_bonds = (h1_bonds[0][0] in {oxygen_index, b_index}) and (
+        h1_bonds[1][0] in {oxygen_index, b_index}
+    )
+    h2_has_valid_bonds = h2_bonds[0][0] == oxygen_index
+    return oxygen_has_valid_bonds and h1_has_valid_bonds and h2_has_valid_bonds
 
 
 register_job_adapter("heuristics", HeuristicsAdapter)
