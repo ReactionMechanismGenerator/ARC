@@ -16,6 +16,12 @@ from arc.common import ARC_PATH, read_yaml_file
 from arc.main import ARC
 
 
+def _worker_suffix() -> str:
+    """Use the xdist worker id to isolate per-worker project directories."""
+    worker = os.getenv('PYTEST_XDIST_WORKER')
+    return f'_{worker}' if worker else ''
+
+
 class TestRestart(unittest.TestCase):
     """
     Contains unit tests for restarting ARC.
@@ -36,7 +42,7 @@ class TestRestart(unittest.TestCase):
         """
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '1_restart_thermo')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = 'arc_project_for_testing_delete_after_usage_restart_thermo'
+        project = f'arc_project_for_testing_delete_after_usage_restart_thermo{_worker_suffix()}'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs', 'Species'), dirs_exist_ok=True)
@@ -55,7 +61,7 @@ class TestRestart(unittest.TestCase):
                     break
         self.assertTrue(thermo_dft_ccsdtf12_bac)
 
-        with open(os.path.join(project_directory, 'arc_project_for_testing_delete_after_usage_restart_thermo.info'), 'r') as f:
+        with open(os.path.join(project_directory, f'{project}.info'), 'r') as f:
             sts, n2h3, oet, lot, ap = False, False, False, False, False
             for line in f.readlines():
                 if 'Considered the following species and TSs:' in line:
@@ -133,7 +139,7 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a reaction rate coefficient"""
         restart_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '2_restart_rate')
         restart_path = os.path.join(restart_dir, 'restart.yml')
-        project = 'arc_project_for_testing_delete_after_usage_restart_rate_1'
+        project = f'arc_project_for_testing_delete_after_usage_restart_rate_1{_worker_suffix()}'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -154,7 +160,7 @@ class TestRestart(unittest.TestCase):
 
     def test_restart_rate_2(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
-        project = 'arc_project_for_testing_delete_after_usage_restart_rate_2'
+        project = f'arc_project_for_testing_delete_after_usage_restart_rate_2{_worker_suffix()}'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         base_path = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '5_TS1')
         restart_path = os.path.join(base_path, 'restart.yml')
@@ -183,7 +189,7 @@ class TestRestart(unittest.TestCase):
         """Test restarting ARC and attaining a BDE for anilino_radical."""
         restart_dir   = os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '3_restart_bde')
         restart_path  = os.path.join(restart_dir, 'restart.yml')
-        project = 'test_restart_bde'
+        project = f'test_restart_bde{_worker_suffix()}'
         project_directory = os.path.join(ARC_PATH, 'Projects', project)
         os.makedirs(os.path.dirname(project_directory), exist_ok=True)
         shutil.copytree(os.path.join(restart_dir, 'calcs'), os.path.join(project_directory, 'calcs'), dirs_exist_ok=True)
@@ -192,7 +198,7 @@ class TestRestart(unittest.TestCase):
         arc1 = ARC(**input_dict)
         arc1.execute()
 
-        report_path = os.path.join(ARC_PATH, 'Projects', 'test_restart_bde', 'output', 'BDE_report.txt')
+        report_path = os.path.join(ARC_PATH, 'Projects', project, 'output', 'BDE_report.txt')
         with open(report_path, 'r') as f:
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
@@ -218,10 +224,11 @@ class TestRestart(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage_restart_thermo',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_1',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_2',
-                    'test_restart_bde',
+        suffix = _worker_suffix()
+        projects = [f'arc_project_for_testing_delete_after_usage_restart_thermo{suffix}',
+                    f'arc_project_for_testing_delete_after_usage_restart_rate_1{suffix}',
+                    f'arc_project_for_testing_delete_after_usage_restart_rate_2{suffix}',
+                    f'test_restart_bde{suffix}',
                     ]
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
