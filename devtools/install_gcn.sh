@@ -93,12 +93,12 @@ write_hook() {  # env_name  repo_path
   rm -f "$act" "$deact"
 
   # --- activation hook -----------------------------------------------------
-  cat <<'ACTHOOK' >"$act"
+  cat <<ACTHOOK >"$act"
 # TS-GCN hook – $(date +%F)
 export TSGCN_ROOT="$repo"
-case ":$PYTHONPATH:" in
-  *":$TSGCN_ROOT:") ;; \
-  *) export PYTHONPATH="$TSGCN_ROOT:\${PYTHONPATH:-}" ;; 
+case ":\$PYTHONPATH:" in
+  *":\$TSGCN_ROOT:") ;; \
+  *) export PYTHONPATH="\$TSGCN_ROOT:\${PYTHONPATH:-}" ;; 
 esac
 ACTHOOK
 
@@ -182,46 +182,43 @@ CORE_PKGS=(
 
 # ── inline env creation & unified PyTorch install --------------------------
 if $COMMAND_PKG env list | awk '{print $1}' | grep -qx ts_gcn; then
-  $COMMAND_PKG env update -n ts_gcn \
+  $COMMAND_PKG install -n ts_gcn \
     -c schrodinger -c conda-forge \
     --channel-priority flexible \
     "${CORE_PKGS[@]}" \
-    --prune -y
+    --yes
 else
-  $COMMAND_PKG env create -n ts_gcn \
+  $COMMAND_PKG create -n ts_gcn \
     -c schrodinger -c conda-forge \
     --channel-priority flexible \
     "${CORE_PKGS[@]}" \
-    -y
+    --yes
 fi
-  # 2) activate it - we set +u to avoid printing variable names
-  #    that are not set yet
-  set +u; $COMMAND_PKG activate ts_gcn; set -u
 
-  # 3) pip‐install exactly the CPU or CUDA wheels (no ROCm on that index)
-  WHEEL=https://download.pytorch.org/whl/torch_stable.html
-  if [[ $CUDA_VERSION == cpu ]]; then
-pip install torch==1.7.1+cpu torchvision==0.8.2+cpu torchaudio==0.7.2 -f $WHEEL
-  else
-    pip install torch==1.7.1+${CUDA_VERSION} \
-                torchvision==0.8.2+${CUDA_VERSION} \
-                torchaudio==0.7.2+${CUDA_VERSION} \
-      -f $WHEEL
-  fi
-  # for PyG wheels use the official PyG index—with a real '+' in the URL
-  TORCH_VER=1.7.1
-  WHEEL_URL="https://pytorch-geometric.com/whl/torch-${TORCH_VER}+${CUDA_VERSION}.html"
+# 2) pip‐install exactly the CPU or CUDA wheels (no ROCm on that index)
+PIP_RUN=("$COMMAND_PKG" run -n ts_gcn)
+WHEEL=https://download.pytorch.org/whl/torch_stable.html
+if [[ $CUDA_VERSION == cpu ]]; then
+  "${PIP_RUN[@]}" pip install torch==1.7.1+cpu torchvision==0.8.2+cpu torchaudio==0.7.2 -f $WHEEL
+else
+  "${PIP_RUN[@]}" pip install torch==1.7.1+${CUDA_VERSION} \
+                              torchvision==0.8.2+${CUDA_VERSION} \
+                              torchaudio==0.7.2+${CUDA_VERSION} \
+    -f $WHEEL
+fi
+# for PyG wheels use the official PyG index—with a real '+' in the URL
+TORCH_VER=1.7.1
+WHEEL_URL="https://pytorch-geometric.com/whl/torch-${TORCH_VER}+${CUDA_VERSION}.html"
 
+# install ONLY the prebuilt binaries, never fall back to source
+"${PIP_RUN[@]}" pip install torch-scatter     -f "$WHEEL_URL" --only-binary torch-scatter
+"${PIP_RUN[@]}" pip install torch-sparse      -f "$WHEEL_URL" --only-binary torch-sparse
+"${PIP_RUN[@]}" pip install torch-cluster     -f "$WHEEL_URL" --only-binary torch-cluster
+"${PIP_RUN[@]}" pip install torch-spline-conv -f "$WHEEL_URL" --only-binary torch-spline-conv
 
-  # install ONLY the prebuilt binaries, never fall back to source
-  pip install torch-scatter     -f "$WHEEL_URL" --only-binary torch-scatter
-  pip install torch-sparse      -f "$WHEEL_URL" --only-binary torch-sparse
-  pip install torch-cluster     -f "$WHEEL_URL" --only-binary torch-cluster
-  pip install torch-spline-conv -f "$WHEEL_URL" --only-binary torch-spline-conv
-
-  # finally the meta‐package (this one can install from PyPI)
-  pip install torch-geometric
-  echo "✅ ts_gcn environment ready"
+# finally the meta‐package (this one can install from PyPI)
+"${PIP_RUN[@]}" pip install torch-geometric
+echo "✅ ts_gcn environment ready"
 
 # ── write hooks into conda envs if required -------------------------------
 if [[ $MODE == conda ]]; then

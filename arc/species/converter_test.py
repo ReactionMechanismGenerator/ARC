@@ -700,6 +700,25 @@ H      3.654100    0.340300    0.057100"""
         xyz = converter.str_to_xyz(xyz_format)
         self.assertEqual(xyz, expected_xyz)
 
+    def test_reorder_xyz_string_atom_first(self):
+        """Test reordering atom-first XYZ strings with unit conversion"""
+        xyz_format = "C 0.0 1.0 2.0\nH -1.0 0.5 0.0"
+        converted = converter.reorder_xyz_string(xyz_str=xyz_format, reverse_atoms=True, convert_to="bohr")
+        expected = "0.0 1.8897259886 3.7794519772 C\n-1.8897259886 0.9448629943 0.0 H"
+        self.assertEqual(converted, expected)
+
+    def test_reorder_xyz_string_coordinate_first(self):
+        """Test reordering coordinate-first XYZ strings back to atom-last order with conversion"""
+        xyz_format = "0.0 0.0 0.0 N\n1.0 0.0 0.0 H"
+        converted = converter.reorder_xyz_string(
+            xyz_str=xyz_format,
+            reverse_atoms=False,
+            units="bohr",
+            convert_to="angstrom",
+        )
+        expected = "0.0 0.0 0.0 N\n0.529177 0.0 0.0 H"
+        self.assertEqual(converted, expected)
+
     def test_xyz_to_str(self):
         """Test converting an ARC xyz format to a string xyz format"""
         xyz_str1 = converter.xyz_to_str(xyz_dict=self.xyz1['dict'])

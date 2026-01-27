@@ -208,6 +208,12 @@ class TestJobAdapter(unittest.TestCase):
                                     server='server3',
                                     testing=True,
                                     )
+        os.makedirs(cls.job_5.local_path, exist_ok=True)
+        fixture_path = os.path.join(ARC_PATH, 'arc', 'testing', 'trsh', 'wall_exceeded.txt')
+        with open(fixture_path, 'r') as f:
+            log_content = f.read()
+        with open(os.path.join(cls.job_5.local_path, 'out.txt'), 'w') as f:
+            f.write(log_content)
         cls.job_6 = GaussianAdapter(execution_type='queue',
                                     job_name='spc1',
                                     job_type='opt',
