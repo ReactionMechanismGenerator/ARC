@@ -1536,12 +1536,12 @@ class ARCSpecies(object):
             self.ts_report += ':\n'
             if self.successful_methods:
                 self.ts_report += 'Methods that successfully generated a TS guess:\n'
-                for successful_method in self.successful_methods:
-                    self.ts_report += successful_method + ','
+                unique_successful_methods = list(dict.fromkeys(self.successful_methods))
+                self.ts_report += ','.join(unique_successful_methods)
             if self.unsuccessful_methods:
                 self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
-                for unsuccessful_method in self.unsuccessful_methods:
-                    self.ts_report += unsuccessful_method + ','
+                unique_unsuccessful_methods = list(dict.fromkeys(self.unsuccessful_methods))
+                self.ts_report += ','.join(unique_unsuccessful_methods)
             if not self.ts_guesses_exhausted:
                 self.ts_report += f'\nThe method that generated the best TS guess and its output used for the ' \
                                   f'optimization: {self.chosen_ts_method}\n'
