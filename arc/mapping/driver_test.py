@@ -29,6 +29,8 @@ class TestMappingDriver(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
+        cls._prev_skip_scissors_conformers = os.getenv("ARC_SKIP_SCISSORS_CONFORMERS")
+        os.environ["ARC_SKIP_SCISSORS_CONFORMERS"] = "1"
         cls.o2_xyz = {'coords': ((0, 0, 0.6487420), (0, 0, -0.6487420)), 'isotopes': (16, 16), 'symbols': ('O', 'O')}
         cls.co_xyz = {'coords': ((0, 0, -0.6748240), (0, 0, 0.5061180)), 'isotopes': (12, 16), 'symbols': ('C', 'O')}
         cls.nh_xyz = {'coords': ((0.509499983131626, 0.0, 0.0), (-0.509499983131626, 0.0, 0.0)),
@@ -1642,6 +1644,10 @@ class TestMappingDriver(unittest.TestCase):
         """
         A function that is run ONCE after all unit tests in this class.
         """
+        if cls._prev_skip_scissors_conformers is None:
+            os.environ.pop("ARC_SKIP_SCISSORS_CONFORMERS", None)
+        else:
+            os.environ["ARC_SKIP_SCISSORS_CONFORMERS"] = cls._prev_skip_scissors_conformers
         file_paths = [os.path.join(ARC_PATH, 'arc', 'mapping', 'nul'), os.path.join(ARC_PATH, 'arc', 'mapping', 'run.out')]
         for file_path in file_paths:
             if os.path.isfile(file_path):
