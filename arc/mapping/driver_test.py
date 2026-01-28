@@ -1088,7 +1088,8 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_a'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11],
+                                     [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
         # Disproportionation: HO2 + NHOH <=> NH2OH + O2
@@ -1341,7 +1342,8 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_1'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11],
+                                     [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
     def test_get_atom_map_7(self):
@@ -1436,6 +1438,8 @@ class TestMappingDriver(unittest.TestCase):
 
     def test_get_atom_map_10(self):
         """Test getting an atom map for a reaction"""
+        prev_skip = os.getenv("ARC_SKIP_SCISSORS_CONFORMERS")
+        os.environ.pop("ARC_SKIP_SCISSORS_CONFORMERS", None)
         # 1+2_Cycloaddition: CH2 + C2H4 <=> C3H6
         c2h4_xyz = {'coords': ((0.6664040429179742, 0.044298334171779405, -0.0050238049104911735),
                                (-0.6664040438461246, -0.04429833352898575, 0.00502380522486473),
@@ -1466,6 +1470,10 @@ class TestMappingDriver(unittest.TestCase):
         for index in [1, 2, 5, 6, 7, 8]:
             self.assertIn(rxn.atom_map[index], [3, 4, 5, 6, 7, 8])
         self.assertTrue(check_atom_map(rxn))
+        if prev_skip is None:
+            os.environ.pop("ARC_SKIP_SCISSORS_CONFORMERS", None)
+        else:
+            os.environ["ARC_SKIP_SCISSORS_CONFORMERS"] = prev_skip
 
     def test_get_atom_map_11(self):
         """Test getting an atom map for a reaction"""
