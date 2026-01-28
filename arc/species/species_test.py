@@ -1945,14 +1945,14 @@ H       1.11582953    0.94384729   -0.10134685"""
         ch3oc2h5 = ARCSpecies(label='ch3oc2h5', smiles='COCC', xyz=ch3oc2h5_xyz, bdes=[(1, 2)])
         ch3oc2h5.final_xyz = ch3oc2h5.conformers[0]
 
-        resulting_species = ch3oc2h5.scissors()
+        resulting_species = ch3oc2h5.scissors(generate_conformers=False)
         self.assertEqual(len(resulting_species), 2)
         for spc in resulting_species:
             self.assertIn(spc.label, ['ch3oc2h5_BDE_1_2_A', 'ch3oc2h5_BDE_1_2_B'])
             self.assertIn(spc.mol.to_smiles(), ['CC[O]', '[CH3]'])
 
         ch3oc2h5.bdes = ['all_h']
-        resulting_species = ch3oc2h5.scissors()
+        resulting_species = ch3oc2h5.scissors(generate_conformers=False)
         self.assertEqual(len(resulting_species), 9)  # inc. H
         self.assertIn('H', [spc.label for spc in resulting_species])
         xyz1 = """C       1.37610855    1.22086621   -0.01539125
@@ -1980,7 +1980,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                          H  0.1036620  1.1982630 -0.8800660"""
         ch3ch2o = ARCSpecies(label='ch3ch2o', smiles='CC[O]', xyz=ch3ch2o_xyz, multiplicity=2, bdes=[(1, 2)])
         ch3ch2o.final_xyz = ch3ch2o.conformers[0]
-        spc1, spc2 = ch3ch2o.scissors()
+        spc1, spc2 = ch3ch2o.scissors(generate_conformers=False)
         self.assertEqual(spc1.mol.to_smiles(), '[CH3]')
         expected_conformer0 = {'symbols': ('C', 'O', 'H', 'H'), 'isotopes': (12, 16, 1, 1),
                                'coords': ((0.6948946528715227, 0.1950960079388373, 0.0),
@@ -2013,7 +2013,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                    O                  1.32323842    0.95413994   -1.37785658"""
         spc0 = ARCSpecies(label='0', smiles='CONSC1OCCC1', xyz=xyz0, bdes=[(6, 8), 'all_h'])
         spc0.final_xyz = spc0.conformers[0]
-        spc_list = spc0.scissors()
+        spc_list = spc0.scissors(generate_conformers=False)
         self.assertEqual(len(spc_list), 14)  # 11 H's, one H species, two non-H cut fragments
         for spc in spc_list:
             self.assertTrue(check_isomorphism(mol1=spc.mol,
@@ -2025,7 +2025,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle = ARCSpecies(label="cycle",smiles= "C(1)CC(1)")
         cycle.bdes = [(1, 2)]
         cycle.final_xyz = cycle.get_xyz()
-        cycle_scissors = cycle.scissors()
+        cycle_scissors = cycle.scissors(generate_conformers=False)
         cycle_scissors[0].mol.update(sort_atoms=False)
         self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
         self.assertEqual(len(cycle_scissors), 1)
@@ -2049,7 +2049,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                            H       1.91694170    0.12185320    1.66439598""")
         benzyl_alcohol.bdes = [(7, 13)]
         benzyl_alcohol.final_xyz = benzyl_alcohol.get_xyz()
-        species = benzyl_alcohol.scissors(sort_atom_labels=True)
+        species = benzyl_alcohol.scissors(sort_atom_labels=True, generate_conformers=False)
         for spc in species:
             if spc.label != 'H':
                 for i, atom in enumerate(spc.mol.atoms):
@@ -2074,7 +2074,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                     H      -2.20781000    0.40849000   -0.80435700
                                     H      -1.68661400    0.40822800    0.89814000""")
         dioxane.final_xyz = dioxane.get_xyz()
-        species = dioxane.scissors()
+        species = dioxane.scissors(generate_conformers=False)
         self.assertEqual(sorted([spc.label for spc in species]),
                          ['1_4_dioxane_BDE_1_2_cyclic',
                           '1_4_dioxane_BDE_1_7_A',
@@ -2093,7 +2093,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                                H       0.00000000    0.00000000   -0.61310000""")
         oh.bdes = [(1, 2)]
         oh.final_xyz = oh.get_xyz()
-        species = oh.scissors(sort_atom_labels=True)
+        species = oh.scissors(sort_atom_labels=True, generate_conformers=False)
         for spc in species:
             if spc.label != 'H':
                 self.assertEqual(len(spc.mol.atoms), 1)
@@ -2104,7 +2104,7 @@ H       1.11582953    0.94384729   -0.10134685"""
                    'coords': ((0.8407400963991551, 0.0, 0.0), (-0.8407400963991551, 0.0, 0.0))}
         spc1 = ARCSpecies(label="R3-X2", smiles="[O]Cl", xyz=p_1_xyz, bdes=[(1, 2)])
         spc1.final_xyz = spc1.get_xyz()
-        cuts = spc1.scissors()
+        cuts = spc1.scissors(generate_conformers=False)
         self.assertEqual(len(cuts), 2)
         for cut in cuts:
             self.assertEqual(cut.mol.atoms[0].element.symbol, cut.get_xyz()['symbols'][0])
@@ -2128,7 +2128,7 @@ H       1.11582953    0.94384729   -0.10134685"""
             self.assertEqual(atom.element.symbol, symbol)
         spc_1.final_xyz = spc_1.get_xyz()
         spc_1.bdes = [(1, 5)]
-        frags = spc_1.scissors()
+        frags = spc_1.scissors(generate_conformers=False)
         for frag in frags:
             for atom, symbol in zip(frag.mol.atoms, frag.get_xyz()['symbols']):
                 self.assertEqual(atom.element.symbol, symbol)
