@@ -127,12 +127,18 @@ if [[ "$MODE" == "source" ]]; then
         exit 1
     fi
 
+    # Prepare flags - --strict-channel-priority only works with mamba/micromamba on create
+    CHANNEL_PRIORITY_FLAG=""
+    if [[ "$COMMAND_PKG" != "conda" ]]; then
+        CHANNEL_PRIORITY_FLAG="--strict-channel-priority"
+    fi
+
     if $COMMAND_PKG env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
         echo ">>> Updating existing environment: $ENV_NAME"
-        $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune --strict-channel-priority
+        $COMMAND_PKG env update -n "$ENV_NAME" -f environment.yml --prune -y
     else
-      echo ">>> Creating new environment: $ENV_NAME"
-        $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y --strict-channel-priority
+        echo ">>> Creating new environment: $ENV_NAME"
+        $COMMAND_PKG env create -n "$ENV_NAME" -f environment.yml -y $CHANNEL_PRIORITY_FLAG
     fi
 
     ###############################################################################
@@ -256,27 +262,46 @@ if [ "$INSTALL_RMS" = true ]; then
     # Check if juliaup is installed - juliaup &> /dev/null
     if ! command -v juliaup &> /dev/null; then
         echo "    juliaup not found. Installing it now."
-        curl -fsSL https://install.julialang.org | bash
+        if ! curl -fsSL https://install.julialang.org | bash 2>/dev/null; then
+            echo "❌ Failed to install juliaup. Skipping RMS installation."
+            echo "ℹ️  You can manually install Julia 1.10+ and try again."
+            exit 1
+        fi
         export PATH="$HOME/.juliaup/bin:$PATH"
         # Add it to bashrc/zshrc
         echo 'export PATH="$HOME/.juliaup/bin:$PATH"' >> "$RC"
         # juliaup 1.10
-        juliaup add 1.10
-        juliaup default 1.10
-        juliaup remove release
+        if ! juliaup add 1.10 2>/dev/null || ! juliaup default 1.10 2>/dev/null; then
+            echo "❌ Failed to configure Julia 1.10. Skipping RMS installation."
+            exit 1
+        fi
+        juliaup remove release 2>/dev/null || true
     else
         echo "✔️ juliaup is already installed."
+        export PATH="$HOME/.juliaup/bin:$PATH"
+        
         echo "Checking for Julia 1.10..."
-        if ! julia --version | grep -q "1\.10"; then
-            echo "❌ Julia 1.10 not found. Installing it now."
-            juliaup add 1.10
-            juliaup default 1.10
+        if ! "$HOME/.juliaup/bin/julialauncher" --version 2>/dev/null | grep -q "1\.10"; then
+            echo "    Julia 1.10 not found. Installing it now..."
+            "$HOME/.juliaup/bin/juliaup" add 1.10
+            "$HOME/.juliaup/bin/juliaup" default 1.10
+            # Verify installation
+            if ! "$HOME/.juliaup/bin/julialauncher" --version 2>/dev/null | grep -q "1\.10"; then
+                echo "❌ Failed to install Julia 1.10. Skipping RMS installation."
+                exit 1
+            fi
+            echo "✔️ Julia 1.10 installed successfully."
         else
             echo "✔️ Julia 1.10 is already installed."
         fi
-        # Get julia path
-        JULIA_PATH=$(which julia)
-        echo "Using Julia at: $JULIA_PATH"
+        # Get julia path via julialauncher - already set to 1.10 as default
+        JULIA_PATH="$HOME/.juliaup/bin/julialauncher"
+        if [[ ! -f "$JULIA_PATH" ]]; then
+            echo "❌ Julia launcher not found at $JULIA_PATH. Skipping RMS installation."
+            exit 1
+        fi
+        
+        echo "Using Julia launcher: $JULIA_PATH (1.10 is default)"
         # Set the micromamba/conda/mamba env config vars
         # Find the base path - check COMMAND_PKG is micromamba, mamba, or conda
         if [ "$COMMAND_PKG" = "micromamba" ]; then
@@ -293,14 +318,14 @@ if [ "$INSTALL_RMS" = true ]; then
             conda env config vars set -n "$ENV_NAME" \
                 JULIA_CONDAPKG_BACKEND=Null \
                 JULIA_PYTHONCALL_EXE=$BASE_PATH/envs/$ENV_NAME/bin/python \
-                PYTHON_JULIAPKG_EXE=$JULIA_PATH \
+                PYTHON_JULIAPKG_EXE="$JULIA_PATH" \
                 PYTHON_JULIAPKG_PROJECT=$BASE_PATH/envs/$ENV_NAME/julia_env
         else
             mkdir -p "$BASE_PATH/envs/$ENV_NAME/etc/conda/activate.d"
             cat > "$BASE_PATH/envs/$ENV_NAME/etc/conda/activate.d/julia_vars.sh" <<'EOF'
 export JULIA_CONDAPKG_BACKEND=Null
 export JULIA_PYTHONCALL_EXE="$CONDA_PREFIX/bin/python"
-export PYTHON_JULIAPKG_EXE="$(command -v julia)"
+export PYTHON_JULIAPKG_EXE="$HOME/.juliaup/bin/julialauncher"
 export PYTHON_JULIAPKG_PROJECT="$CONDA_PREFIX/julia_env"
 EOF
         
@@ -309,15 +334,23 @@ EOF
         # Now export the variables to the current shell
         export JULIA_CONDAPKG_BACKEND=Null
         export JULIA_PYTHONCALL_EXE=$BASE_PATH/envs/$ENV_NAME/bin/python
-        export PYTHON_JULIAPKG_EXE=$JULIA_PATH
+        export PYTHON_JULIAPKG_EXE="$JULIA_PATH"
         export PYTHON_JULIAPKG_PROJECT=$BASE_PATH/envs/$ENV_NAME/julia_env
 
         # install pyjuliacall
         echo "📦 Installing PyJuliaCall in $ENV_NAME"
         $COMMAND_PKG install -n "$ENV_NAME" -c conda-forge pyjuliacall -y
+
+        # Ensure Julia uses conda's libstdc++
+        echo "🔧 Configuring Julia to use conda's libstdc++..."
+        JDIR="$("$JULIA_PATH" -e 'println(joinpath(Sys.BINDIR,"..","lib","julia"))')"
+        [ -f "$JDIR/libstdc++.so.6.bak" ] || mv "$JDIR/libstdc++.so.6" "$JDIR/libstdc++.so.6.bak" 2>/dev/null || true
+        ln -sf "$BASE_PATH/envs/$ENV_NAME/lib/libstdc++.so.6" "$JDIR/libstdc++.so.6" || \
+            cp -L "$BASE_PATH/envs/$ENV_NAME/lib/libstdc++.so.6" "$JDIR/libstdc++.so.6"
+
         export RMS_BRANCH=${RMS_BRANCH:-for_rmg}
         echo "📦 Installing ReactionMechanismSimulator - BRANCH: $RMS_BRANCH"
-        $COMMAND_PKG run -n "$ENV_NAME" julia -e '
+        "$JULIA_PATH" -e '
             using Pkg;
             Pkg.add(Pkg.PackageSpec(
                 name="ReactionMechanismSimulator",
@@ -326,7 +359,7 @@ EOF
             ));
             using ReactionMechanismSimulator;
             Pkg.instantiate();
-        ' || echo "RMS install error – continuing anyway ¯\_(ツ)_/¯"   # conda-run executes in env
+        '
         echo "Checking if RMS is installed..."
 ENV_NAME="$ENV_NAME" $COMMAND_PKG run -n "$ENV_NAME" python - <<'PY'
 from juliacall import Main
