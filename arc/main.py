@@ -21,6 +21,7 @@ from arc.common import (VERSION,
                         ARC_PATH,
                         check_ess_settings,
                         delete_check_files,
+                        fill_in_the_blanks,
                         get_logger,
                         globalize_path,
                         initialize_job_types,
@@ -280,6 +281,7 @@ class ARC(object):
         self.verbose = verbose
         self.project_directory = project_directory if project_directory is not None \
             else os.path.join(ARC_PATH, 'Projects', self.project)
+        self.project_directory = fill_in_the_blanks(self.project_directory)
         if not os.path.exists(self.project_directory):
             os.makedirs(self.project_directory)
         self.output = output

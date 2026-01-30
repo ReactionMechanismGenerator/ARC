@@ -1864,3 +1864,16 @@ def calculate_arrhenius_rate_coefficient(A: Union[int, float, Sequence[float], n
         raise ValueError("All temperature values must be positive")
     exp_arg = -Ea_arr / (R * T_arr)
     return A_arr * np.power(T_arr, n_arr) * np.exp(exp_arg)
+
+
+def fill_in_the_blanks(folder_name: str):
+    """
+    Adding backslashes before spaces in the folder name.
+
+    Args:
+        folder_name (str): The string directory we want to modify.
+
+    Returns:
+        str: Modified folder name.
+    """
+    return folder_name.replace(" ", "\ ")
