@@ -1161,14 +1161,18 @@ class Scheduler(object):
         successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
         if len(successful_tsgs) > 1:
             self.job_dict[label]['conf_opt'] = dict()
-            for i, tsg in enumerate(successful_tsgs):
+            for tsg in successful_tsgs:
+                if tsg.index is None:
+                    existing_indices = [guess.index for guess in self.species_dict[label].ts_guesses
+                                        if guess.index is not None]
+                    tsg.index = max(existing_indices or [-1]) + 1
                 self.run_job(label=label,
                              xyz=tsg.initial_xyz,
                              level_of_theory=self.ts_guess_level,
                              job_type='conf_opt',
-                             conformer=i,
+                             conformer=tsg.index,
                              )
-                tsg.conformer_index = i  # Store the conformer index in the TSGuess object to match them later.
+                tsg.conformer_index = tsg.index  # Use a stable identifier for mapping back to TSGuess.
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label].keys() and 'composite' not in self.job_dict[label].keys():
                 # proceed only if opt (/composite) not already spawned
@@ -1954,9 +1958,14 @@ class Scheduler(object):
             xyz = parser.parse_geometry(log_file_path=job.local_path_to_output_file)
             energy = parser.parse_e_elect(log_file_path=job.local_path_to_output_file)
             if self.species_dict[label].is_ts:
-                self.species_dict[label].ts_guesses[i].energy = energy
-                self.species_dict[label].ts_guesses[i].opt_xyz = xyz
-                self.species_dict[label].ts_guesses[i].index = i
+                tsg = next((guess for guess in self.species_dict[label].ts_guesses
+                            if guess.conformer_index == i), None)
+                if tsg is None:
+                    logger.warning(f'Could not find TSGuess for conformer {i} of {label} '
+                                   f'(expected a matching conformer_index); skipping.')
+                    return False
+                tsg.energy = energy
+                tsg.opt_xyz = xyz
                 if energy is not None:
                     logger.debug(f'Energy for TSGuess {i} of {label} is {energy:.2f}')
                 else:
