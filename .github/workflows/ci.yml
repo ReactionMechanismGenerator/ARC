@@ -96,6 +96,7 @@ jobs:
         working-directory: ARC
         run: |
           echo "Running Unit Tests..."
+          export PYTEST_INLINE_DURATIONS=1
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           pytest arc/ --cov --cov-report=xml -ra -vv -n auto
 
@@ -104,6 +105,7 @@ jobs:
         working-directory: ${{ github.workspace }}/ARC
         run: |
           echo "Running Functional Tests from $(pwd)..."
+          export PYTEST_INLINE_DURATIONS=1
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
           pytest functional/ -ra -vv -n auto
 

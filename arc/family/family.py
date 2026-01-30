@@ -3,7 +3,9 @@ A module for working with RMG reaction families.
 """
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from collections import OrderedDict
 import ast
+import hashlib
 import os
 import re
 
@@ -21,6 +23,13 @@ ARC_FAMILIES_PATH = settings['ARC_FAMILIES_PATH']
 
 
 logger = get_logger()
+
+_ENTRY_RE = re.compile(r'entry\((.*?)\)', re.DOTALL)
+_ENTRY_LABEL_RE = re.compile(r'label = "(.*?)"')
+_ENTRY_GROUP_RE = re.compile(r'group =(.*?)(?=\w+ =)', re.DOTALL)
+_ENTRIES_CACHE_MAX = 32
+_ENTRIES_CACHE: "OrderedDict[str, Dict[str, str]]" = OrderedDict()
+_REACTION_FAMILY_CACHE: Dict[Tuple[str, bool], 'ReactionFamily'] = {}
 
 
 def get_rmg_db_subpath(*parts: str, must_exist: bool = False) -> str:
@@ -481,7 +490,7 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                     and whether the family's template also represents its own reverse.
     """
     product_dicts = list()
-    family = ReactionFamily(label=family_label, consider_arc_families=consider_arc_families)
+    family = get_reaction_family(label=family_label, consider_arc_families=consider_arc_families)
     products = family.generate_products(reactants=rxn.get_reactants_and_products(return_copies=True)[0])
     if products:
         for group_labels, product_lists in products.items():
@@ -808,17 +817,8 @@ def get_entries(groups_as_lines: List[str],
     Returns:
         Dict[str, str]: The extracted entries, keys are the labels, values are the groups.
     """
-    groups_str = ''.join(groups_as_lines)
-    entries = re.findall(r'entry\((.*?)\)', groups_str, re.DOTALL)
-    specific_entries = dict()
-    for i, entry in enumerate(entries):
-        label_match = re.search(r'label = "(.*?)"', entry)
-        group_match = re.search(r'group =(.*?)(?=\w+ =)', entry, re.DOTALL)
-        if label_match is not None and group_match is not None and label_match.group(1) in entry_labels:
-            specific_entries[label_match.group(1)] = clean_text(group_match.group(1))
-        if i > 2000:
-            break
-    return specific_entries
+    entries_map = _get_entries_map(groups_as_lines)
+    return {label: entries_map[label] for label in entry_labels if label in entries_map}
 
 
 def get_group_adjlist(groups_as_lines: List[str],
@@ -834,8 +834,52 @@ def get_group_adjlist(groups_as_lines: List[str],
     Returns:
         str: The extracted group.
     """
-    specific_entries = get_entries(groups_as_lines, entry_labels=[entry_label])
-    return specific_entries[entry_label]
+    entries_map = _get_entries_map(groups_as_lines)
+    return entries_map[entry_label]
+
+
+def _get_entries_map(groups_as_lines: List[str]) -> Dict[str, str]:
+    cache_key = _fingerprint_lines(groups_as_lines)
+    cached = _ENTRIES_CACHE.get(cache_key)
+    if cached is not None:
+        _ENTRIES_CACHE.move_to_end(cache_key)
+        return cached
+    groups_str = ''.join(groups_as_lines)
+    entries_map: Dict[str, str] = {}
+    for i, match in enumerate(_ENTRY_RE.finditer(groups_str)):
+        entry = match.group(1)
+        label_match = _ENTRY_LABEL_RE.search(entry)
+        group_match = _ENTRY_GROUP_RE.search(entry)
+        if label_match is not None and group_match is not None:
+            entries_map[label_match.group(1)] = clean_text(group_match.group(1))
+        if i > 2000:
+            break
+    _ENTRIES_CACHE[cache_key] = entries_map
+    _ENTRIES_CACHE.move_to_end(cache_key)
+    if len(_ENTRIES_CACHE) > _ENTRIES_CACHE_MAX:
+        _ENTRIES_CACHE.popitem(last=False)
+    return entries_map
+
+
+def _fingerprint_lines(groups_as_lines: List[str]) -> str:
+    """Create a stable fingerprint for a groups file represented as lines."""
+    hasher = hashlib.blake2b(digest_size=16)
+    for line in groups_as_lines:
+        hasher.update(line.encode('utf-8', errors='ignore'))
+        hasher.update(b'\0')
+    return hasher.hexdigest()
+
+
+def get_reaction_family(label: str,
+                        consider_arc_families: bool = True,
+                        ) -> 'ReactionFamily':
+    key = (label, consider_arc_families)
+    cached = _REACTION_FAMILY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    family = ReactionFamily(label=label, consider_arc_families=consider_arc_families)
+    _REACTION_FAMILY_CACHE[key] = family
+    return family
 
 
 def get_isomorphic_subgraph(isomorphic_subgraph_1: dict,
