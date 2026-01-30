@@ -325,6 +325,8 @@ class Scheduler(object):
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.save_restart = False
+        if self.restart_dict is not None:
+            self._sanitize_restart_output()
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
@@ -2619,7 +2621,6 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
-        self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
@@ -3044,6 +3045,9 @@ class Scheduler(object):
                     logger.debug(f'Species {label} did not converge.')
                     all_converged = False
                     break
+            if all_converged and self._missing_required_paths(label):
+                logger.debug(f'Species {label} did not converge due to missing output paths.')
+                all_converged = False
         if label in self.output and all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:
@@ -3083,6 +3087,64 @@ class Scheduler(object):
             logger.error(f'Species {label} did not converge. Job type status is: {job_type_status}')
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
+
+    def _missing_required_paths(self, label: str) -> bool:
+        """
+        Check whether required output paths are missing for a species/TS.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether required output paths are missing.
+        """
+        return bool(self._get_missing_required_paths(label))
+
+    def _get_missing_required_paths(self, label: str) -> set:
+        """
+        Get missing required output path job types for a species/TS.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            set: Job types with missing required output paths.
+        """
+        if label not in self.output or 'paths' not in self.output[label]:
+            return set()
+        path_map = {
+            'opt': 'geo',
+            'freq': 'freq',
+            'sp': 'sp',
+            'composite': 'composite',
+        }
+        missing = set()
+        for job_type, path_key in path_map.items():
+            if job_type == 'composite':
+                required = self.composite_method is not None
+            else:
+                required = self.job_types.get(job_type, False)
+            if not required:
+                continue
+            if self.species_dict[label].number_of_atoms == 1 and job_type in ['opt', 'freq']:
+                continue
+            if self.output[label]['job_types'].get(job_type, False) and not self.output[label]['paths'].get(path_key, ''):
+                missing.add(job_type)
+        return missing
+
+    def _sanitize_restart_output(self) -> None:
+        """
+        Ensure restart output state is internally consistent (e.g., convergence without paths).
+        """
+        for label in list(self.output.keys()):
+            if label not in self.species_dict:
+                continue
+            missing_job_types = self._get_missing_required_paths(label)
+            if self.output[label].get('convergence') and missing_job_types:
+                self.output[label]['convergence'] = False
+                if 'job_types' in self.output[label]:
+                    for job_type in missing_job_types:
+                        self.output[label]['job_types'][job_type] = False
 
     def get_server_job_ids(self, specific_server: Optional[str] = None):
         """
@@ -3547,7 +3609,13 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        if label in self.output:
+            self.output[label]['convergence'] = False
+            for key in ['opt', 'freq', 'sp', 'composite', 'fine']:
+                if key in self.output[label]['job_types']:
+                    self.output[label]['job_types'][key] = False
+            self.output[label]['paths'] = {key: '' if key != 'irc' else list()
+                                           for key in self.output[label]['paths'].keys()}
 
     def restore_running_jobs(self):
         """
