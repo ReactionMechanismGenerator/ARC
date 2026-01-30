@@ -146,6 +146,7 @@ class ARC(object):
         ts_adapters (list, optional): Entries represent different TS adapters.
         report_e_elect (bool, optional): Whether to report electronic energy. Default is ``False``.
         skip_nmd (bool, optional): Whether to skip normal mode displacement check. Default is ``False``.
+        only_process (bool, optional): Whether to only run statmech and process runs from a (restart) input file.
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
@@ -215,7 +216,7 @@ class ARC(object):
         ts_adapters (list): Entries represent different TS adapters.
         report_e_elect (bool): Whether to report electronic energy.
         skip_nmd (bool): Whether to skip normal mode displacement check.
-
+        only_process (bool): Whether to only run statmech and process runs from a (restart) input file.
     """
 
     def __init__(self,
@@ -246,6 +247,7 @@ class ARC(object):
                  level_of_theory: str = '',
                  max_job_time: Optional[float] = None,
                  n_confs: int = 10,
+                 only_process: bool = False,
                  opt_level: Optional[Union[str, dict, Level]] = None,
                  orbitals_level: Optional[Union[str, dict, Level]] = None,
                  output: Optional[dict] = None,
@@ -329,6 +331,7 @@ class ARC(object):
         for ts_adapter in self.ts_adapters or list():
             if ts_adapter.lower() not in _registered_job_adapters.keys():
                 raise InputError(f'Unknown TS adapter: "{ts_adapter}"')
+        self.only_process = only_process
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
@@ -464,6 +467,8 @@ class ARC(object):
             restart_dict['ts_adapters'] = self.ts_adapters
         if self.e_confs != 5.0:
             restart_dict['e_confs'] = self.e_confs
+        if self.only_process:
+            restart_dict['only_process'] = self.only_process
         restart_dict['ess_settings'] = self.ess_settings
         if self.freq_level is not None and str(self.freq_level).split()[0] != default_levels_of_theory['freq']:
             restart_dict['freq_level'] = self.freq_level.as_dict() \
@@ -603,6 +608,7 @@ class ARC(object):
                                    report_e_elect=self.report_e_elect,
                                    skip_nmd=self.skip_nmd,
                                    output=self.output,
+                                   only_process=self.only_process,
                                    )
 
         self.output = self.scheduler.output
