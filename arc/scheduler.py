@@ -12,6 +12,7 @@ import time
 
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import arc.parser.parser as parser
 from arc import plotter
@@ -131,6 +132,7 @@ class Scheduler(object):
         species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both wells and TSs).
         rxn_list (list): Contains input :ref:`ARCReaction <reaction>` objects.
         project_directory (str): Folder path for the project: the input file path or ARC/Projects/project-name.
+        conformer_gen_nprocs (int, optional): The number of processes to use for non-TS conformer generation. Defaults to 1 (serial).
         composite_method (str, optional): A composite method to use.
         conformer_opt_level (Union[str, dict], optional): The level of theory to use for conformer comparisons.
         conformer_sp_level (Union[str, dict], optional): The level of theory to use for conformer sp jobs.
@@ -171,6 +173,7 @@ class Scheduler(object):
 
     Attributes:
         project (str): The project's name. Used for naming the working directory.
+        conformer_gen_nprocs (int): The number of processes to use for non-TS conformer generation.
         servers (list): A list of servers used for the present project.
         species_list (list): Contains input :ref:`ARCSpecies <species>` objects (both species and TSs).
         species_dict (dict): Keys are labels, values are :ref:`ARCSpecies <species>` objects.
@@ -232,6 +235,7 @@ class Scheduler(object):
                  ess_settings: dict,
                  species_list: list,
                  project_directory: str,
+                 conformer_gen_nprocs: Optional[int] = 1,
                  composite_method: Optional[Level] = None,
                  conformer_opt_level: Optional[Level] = None,
                  conformer_sp_level: Optional[Level] = None,
@@ -297,6 +301,7 @@ class Scheduler(object):
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        self.conformer_gen_nprocs = int(conformer_gen_nprocs or default_job_settings.get('conformer_gen_nprocs', 1))
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
@@ -1040,6 +1045,26 @@ class Scheduler(object):
             self.save_restart_dict()
             return True
 
+    def _generate_conformers_for_label(self, label: str) -> None:
+        """
+        A helper function to generate conformers for a given species label (used internally).
+
+        Args:
+            label (str): The species label.
+        """
+        species = self.species_dict[label]
+        if species.force_field == 'cheap':
+            # Just embed in RDKit and use MMFF94s for opt and energies.
+            if species.initial_xyz is None:
+                species.initial_xyz = species.get_xyz()
+        else:
+            n_confs = self.n_confs if species.multi_species is None else 1
+            species.generate_conformers(
+                n_confs=n_confs,
+                e_confs=self.e_confs,
+                plot_path=os.path.join(self.project_directory, 'output', 'Species',
+                                       label, 'geometry', 'conformers'))
+
     def _run_a_job(self,
                    job: 'JobAdapter',
                    label: str,
@@ -1088,52 +1113,57 @@ class Scheduler(object):
                            If ``None``, conformer jobs will be spawned for all species in self.species_list.
         """
         labels_to_consider = labels if labels is not None else [spc.label for spc in self.species_list]
-        log_info_printed = False
+        pending_non_ts_generation: List[str] = []
+
         for label in labels_to_consider:
-            if not self.species_dict[label].is_ts and not self.output[label]['job_types']['opt'] \
-                    and 'opt' not in self.job_dict[label] and 'composite' not in self.job_dict[label] \
-                    and all([e is None for e in self.species_dict[label].conformer_energies]) \
-                    and self.species_dict[label].number_of_atoms > 1 and not self.output[label]['paths']['geo'] \
-                    and self.species_dict[label].yml_path is None and not self.output[label]['convergence'] \
-                    and (self.job_types['conf_opt'] and label not in self.dont_gen_confs
-                         or self.species_dict[label].get_xyz(generate=False) is None):
-                # This is not a TS, opt (/composite) did not converge nor is it running, and conformer energies were
-                # not set. Also, either 'conf_opt' are set to True in job_types (and it's not in dont_gen_confs),
-                # or they are set to False (or it's in dont_gen_confs), but the species has no 3D information.
-                # Generate conformers.
-                if not log_info_printed:
-                    logger.info('\nStarting (non-TS) species conformational analysis...\n')
-                    log_info_printed = True
-                if self.species_dict[label].force_field == 'cheap':
-                    # Just embed in RDKit and use MMFF94s for opt and energies.
-                    if self.species_dict[label].initial_xyz is None:
-                        self.species_dict[label].initial_xyz = self.species_dict[label].get_xyz()
-                else:
-                    # Run the combinatorial method w/o fitting a force field.
-                    n_confs = self.n_confs if self.species_dict[label].multi_species is None else 1
-                    self.species_dict[label].generate_conformers(
-                        n_confs=n_confs,
-                        e_confs=self.e_confs,
-                        plot_path=os.path.join(self.project_directory, 'output', 'Species',
-                                               label, 'geometry', 'conformers'))
-                self.process_conformers(label)
-            # TSs:
-            elif self.species_dict[label].is_ts \
-                    and self.species_dict[label].tsg_spawned \
-                    and not self.species_dict[label].ts_conf_spawned \
-                    and all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses]) \
-                    and any([tsg.success for tsg in self.species_dict[label].ts_guesses]):
-                # This is a TS Species for which all TSGs were spawned, but conformers haven't been spawned,
-                # and all tsg.success flags contain a values (either ``True`` or ``False``), so they are done.
-                # We're ready to spawn conformer jobs for this TS Species
+            # Non_TS needing conformer generation:
+            if (not self.species_dict[label].is_ts
+                and not self.output[label]['job_types']['opt']
+                and 'opt' not in self.job_dict[label]
+                and 'composite' not in self.job_dict[label]
+                and all([e is None for e in self.species_dict[label].conformer_energies])
+                and self.species_dict[label].number_of_atoms > 1
+                and not self.output[label]['paths']['geo']
+                and self.species_dict[label].yml_path is None
+                and not self.output[label]['convergence']
+                and ((self.job_types['conf_opt'] and label not in self.dont_gen_confs)
+                     or self.species_dict[label].get_xyz(generate=False) is None)):
+                pending_non_ts_generation.append(label)
+            elif (self.species_dict[label].is_ts
+                  and self.species_dict[label].tsg_spawned
+                  and not self.species_dict[label].ts_conf_spawned
+                  and all([tsg.success is not None for tsg in self.species_dict[label].ts_guesses])
+                  and any([tsg.success for tsg in self.species_dict[label].ts_guesses])):
                 self.run_ts_conformer_jobs(label=label)
                 self.species_dict[label].ts_conf_spawned = True
-            if label in self.dont_gen_confs \
-                    and (self.species_dict[label].initial_xyz is not None
-                         or self.species_dict[label].final_xyz is not None
-                         or len(self.species_dict[label].conformers)) \
-                    and not self.species_dict[label].is_ts:
-                # The species was defined with xyzs.
+            if (label in self.dont_gen_confs
+                and (self.species_dict[label].initial_xyz is not None
+                     or self.species_dict[label].final_xyz is not None
+                     or len(self.species_dict[label].conformers))
+                and not self.species_dict[label].is_ts):
+                self.process_conformers(label)
+            
+        if pending_non_ts_generation:
+            logger.info('\nStarting (non-TS) species conformational analysis...\n')
+            if self.conformer_gen_nprocs > 1 and len(pending_non_ts_generation) > 1:
+                # Parallel generation
+                with ThreadPoolExecutor(max_workers=self.conformer_gen_nprocs) as executor:
+                    futures = {
+                        executor.submit(self._generate_conformers_for_label, label): label
+                        for label in pending_non_ts_generation
+                    }
+                    for future in as_completed(futures):
+                        label_done = futures[future]
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f'Error generating conformers for species {label_done}: {e}')
+            else:
+                # Serial generation
+                for label in pending_non_ts_generation:
+                    self._generate_conformers_for_label(label)
+
+            for label in pending_non_ts_generation:
                 self.process_conformers(label)
 
     def run_ts_conformer_jobs(self, label: str):
