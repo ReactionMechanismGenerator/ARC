@@ -41,7 +41,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              'Cyclic_Ether_Formation': ['kinbot'],
                              'Cyclopentadiene_scission': ['gcn', 'xtb_gsm'],
                              'Diels_alder_addition': ['kinbot'],
-                             'H_Abstraction': ['heuristics', 'autotst'],
+                             'H_Abstraction': ['heuristics', 'autotst', 'crest'],
                              'carbonyl_based_hydrolysis': ['heuristics'],
                              'ether_hydrolysis': ['heuristics'],
                              'nitrile_hydrolysis': ['heuristics'],
@@ -77,7 +77,8 @@ all_families_ts_adapters = []
 adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
-default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani', 'openbabel']
+default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani',
+                           'openbabel']
 
 
 def _initialize_adapter(obj: 'JobAdapter',

@@ -5,6 +5,7 @@ A module for performing various species-related format conversions.
 import math
 import numpy as np
 import os
+import warnings
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, Union
 
 from ase import Atoms
@@ -47,6 +48,106 @@ logger = get_logger()
 
 DIST_PRECISION = 0.01  # Angstrom
 ANGL_PRECISION = 0.1  # rad (for both bond angle and dihedral)
+
+def reorder_xyz_string(xyz_str: str,
+                       reverse_atoms: bool = False,
+                       units: str = 'angstrom',
+                       convert_to: str = 'angstrom',
+                       project_directory: Optional[str] = None
+                       ) -> str:
+    """
+    Reorder an XYZ string between ``ATOM X Y Z`` and ``X Y Z ATOM`` with optional unit conversion.
+
+    Args:
+        xyz_str (str): The string xyz format to be converted.
+        reverse_atoms (bool, optional): Whether to reverse the atoms and coordinates.
+        units (str, optional): Units of the input coordinates ('angstrom' or 'bohr').
+        convert_to (str, optional): The units to convert to (either 'angstrom' or 'bohr').
+        project_directory (str, optional): The path to the project directory.
+    
+    Raises:
+        ConverterError: If xyz_str is not a string or does not have four space-separated entries per non-empty line.
+
+    Returns: str
+        The converted string xyz format.
+    """
+    if isinstance(xyz_str, tuple):
+        xyz_str = '\n'.join(xyz_str)
+    if isinstance(xyz_str, list):
+        xyz_str = '\n'.join(xyz_str)
+    if not isinstance(xyz_str, str):
+        raise ConverterError(f'Expected a string input, got {type(xyz_str)}')
+    if project_directory is not None:
+        file_path = os.path.join(project_directory, xyz_str)
+        if os.path.isfile(file_path):
+            with open(file_path, 'r') as f:
+                xyz_str = f.read()
+    
+
+    BOHR_TO_ANGSTROM = 0.529177
+    ANGSTROM_TO_BOHR = 1.8897259886
+
+    if units.lower() == 'angstrom' and convert_to.lower() == 'angstrom':
+        conversion_factor = 1
+    elif units.lower() == 'bohr' and convert_to.lower() == 'bohr':
+        conversion_factor = 1
+    elif units.lower() == 'angstrom' and convert_to.lower() == 'bohr':
+        conversion_factor = ANGSTROM_TO_BOHR
+    elif units.lower() == 'bohr' and convert_to.lower() == 'angstrom':
+        conversion_factor = BOHR_TO_ANGSTROM
+    else:
+        raise ConverterError("Invalid target unit. Choose 'angstrom' or 'bohr'.")
+
+    processed_lines = list()
+    # Split the string into lines
+    lxyz = xyz_str.strip().split()
+
+    atom_first = False if is_str_float(lxyz[0]) else True
+    lxyz = xyz_str.strip().splitlines()
+
+    for idx, item in enumerate(lxyz):
+        parts = item.strip().split()
+
+        if len(parts) != 4:
+            raise ConverterError(f'xyz_str has an incorrect format, expected 4 elements in each line, '
+                                    f'got "{item}" in:\n{xyz_str}')
+        if atom_first:
+            atom, x_str, y_str, z_str = parts
+        else:
+            x_str, y_str, z_str, atom = parts
+        
+        try:
+            x = float(x_str) * conversion_factor
+            y = float(y_str) * conversion_factor
+            z = float(z_str) * conversion_factor
+        
+        except ValueError as e:
+            raise ConverterError(f'Could not convert {x_str}, {y_str}, or {z_str} to floats.') from e
+        
+        if reverse_atoms and atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        elif reverse_atoms and not atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and atom_first:
+            formatted_line = f'{atom} {x} {y} {z}'
+        elif not reverse_atoms and not atom_first:
+            formatted_line = f'{x} {y} {z} {atom}'
+        
+        processed_lines.append(formatted_line)
+    
+    return '\n'.join(processed_lines)
+
+
+def str_to_str(*args, **kwargs) -> str:
+    """
+    Backwards compatible wrapper for reorder_xyz_string.
+    """
+    warnings.warn(
+        "str_to_str was renamed to reorder_xyz_string and will be removed in a future ARC release",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return reorder_xyz_string(*args, **kwargs)
 
 
 def str_to_xyz(xyz_str: str,
