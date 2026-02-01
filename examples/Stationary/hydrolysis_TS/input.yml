@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# Example input file for automated transition-state search
+# of a neutral hydrolysis reaction.
+#
+# This example illustrates how to specify electronic structure
+# levels, molecular species, requested job types, and a reaction
+# definition for automated TS generation and validation.
+#
+# Species may be defined using SMILES, xyz coordinates, InChI
+# strings, or adjacency lists.
+# ------------------------------------------------------------
+
+project: hydrolysis_TS
+
+opt_level:
+  method: wb97xd
+  basis: jul-cc-pVTZ
+  solvation_method: smd
+  solvent: water
+
+freq_level:
+  method: wb97xd
+  basis: jul-cc-pVTZ
+  solvation_method: smd
+  solvent: water
+
+scan_level:
+  method: wb97xd
+  basis: jul-cc-pVTZ
+  solvation_method: smd
+  solvent: water
+
+irc_level:
+  method: wb97xd
+  basis: jul-cc-pVTZ
+  solvation_method: smd
+  solvent: water
+
+sp_level:
+  method: wb97xd
+  basis: jul-cc-pVTZ
+  solvation_method: smd
+  solvent: water
+
+ts_adapters: ['heuristics']
+freq_scale_factor: 1.0
+compute_thermo: false
+
+species:
+  - label: reactant
+    smiles: ClCC(=O)OC
+
+  - label: H2O
+    smiles: O
+
+  - label: ClCC(=O)O
+    smiles: ClCC(=O)O
+
+  - label: CO
+    smiles: CO
+
+job_types:
+  rotors: false
+  sp: true
+  opt: true
+  fine: true
+  freq: true
+  irc: true
+
+reactions:
+  - label: reactant + H2O <=> ClCC(=O)O + CO
+
