@@ -38,6 +38,7 @@ Documentation Contents
    docker
    running
    examples
+   TS_search
    advanced
    output
    api/index
