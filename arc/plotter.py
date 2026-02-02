@@ -905,7 +905,7 @@ longDesc = \"\"\"\n{lib_long_desc}\n\"\"\"\n
     with open(reactions_file, 'w') as f:
         f.write(reactions_txt)
 
-    species_dict_path = os.path.join(lib_path, 'species_dictionary.txt')
+    species_dict_path = os.path.join(lib_path, 'dictionary.txt')
     with open(species_dict_path, 'w') as f:
         for label, adjlist in species_dict.items():
             f.write(f'{label}\n{adjlist}\n')
