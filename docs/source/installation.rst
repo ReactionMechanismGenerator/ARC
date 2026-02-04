@@ -43,8 +43,8 @@ Clone and setup path
 Install dependencies
 ^^^^^^^^^^^^^^^^^^^^
 
-- Create the environment for ARC using miniforge or miniconda(after changing the directory to the
-  installation folder by, e.g., ``cd ~/Code/ARC/``)::
+- Create the environment for ARC using Miniforge or Miniconda (after changing the directory to the
+  installation folder by, e.g., ``cd ~/Code/ARC/``):|
 
      conda env create -f environment.yml
 
