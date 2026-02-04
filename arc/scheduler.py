@@ -2681,7 +2681,7 @@ class Scheduler(object):
         if self.sp_level is not None and 'ccsd' in self.sp_level.method:
             self.species_dict[label].t1 = parser.parse_t1(self.output[label]['paths']['sp'])
         self.species_dict[label].e_elect = parser.parse_e_elect(self.output[label]['paths']['sp'])
-        if level is not None and level.method_type == 'wavefunction':
+        if level is not None and level.method_type == 'wavefunction' and self.species_dict[label].active is None:
             self.species_dict[label].active = parser.parse_active_space(sp_path=self.output[label]['paths']['sp'],
                                                                         species=self.species_dict[label])
         if self.species_dict[label].t1 is not None:
