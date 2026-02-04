@@ -34,8 +34,8 @@ Clone and setup path
     git clone https://github.com/ReactionMechanismGenerator/ARC.git
 
 
-__ miniconda__
-__ miniforge__
+.. _Miniconda: https://docs.conda.io/projects/miniconda/en/latest/
+.. _Miniforge: https://github.com/conda-forge/miniforge
 
 
 .. _arce:
