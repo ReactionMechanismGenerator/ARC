@@ -539,7 +539,7 @@ def parse_active_space(sp_path: str, species: 'ARCSpecies') -> Optional[Dict[str
     if not os.path.isfile(sp_path):
         raise InputError(f'Could not find file {sp_path}')
     if not determine_ess(sp_path) == 'molpro':
-        raise InputError(f'File {sp_path} is not a Molpro output file, cannot parse active space.')
+        return None
     active = dict()
     num_heavy_atoms = sum([1 for symbol in species.get_xyz()['symbols'] if symbol not in ['H', 'D', 'T']])
     nuclear_charge, total_closed_shell_orbitals, total_active_orbitals = None, None, None
