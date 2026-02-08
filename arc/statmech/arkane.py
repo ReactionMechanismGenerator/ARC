@@ -235,7 +235,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         self.generate_arkane_input(statmech_dir=statmech_dir, skip_rotors=skip_rotors)
         self.generate_species_files(statmech_dir, skip_rotors, check_compute_thermo=False)
         self.generate_ts_files(statmech_dir, skip_rotors)
-        run_arkane(statmech_dir)
+        success = run_arkane(statmech_dir)
+        if not success:
+            return
         self.parse_arkane_kinetics_output(statmech_dir)
         for reaction in self.reactions:
             plotter.log_kinetics(reaction.ts_species.label, path=statmech_dir)
@@ -504,7 +506,7 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             parse_reaction_kinetics(rxn, output_content)
 
 
-def run_arkane(statmech_dir: str) -> None:
+def run_arkane(statmech_dir: str) -> bool:
     """
     Execute an Arkane calculation within statmech_dir that contains an 'input.py' file.
 
@@ -513,11 +515,11 @@ def run_arkane(statmech_dir: str) -> None:
     """
     if not os.path.isdir(statmech_dir):
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not exist.')
-        return
+        return False
     input_file = os.path.join(statmech_dir, 'input.py')
     if not os.path.isfile(input_file):
         logger.error(f'Cannot run Arkane in {statmech_dir} because it does not contain an input.py file.')
-        return
+        return False
     rmg_db_path = RMG_DB_PATH or ""
     arkane_cmd = 'python -m arkane input.py'
     arkane_cmd += ' 2> >(tee -a stderr.log >&2) | tee -a stdout.log'
@@ -540,9 +542,31 @@ fi' '''
                                        no_fail=True,
                                        executable='/bin/bash')
     if std_err:
-        logger.debug(f'Arkane run failed:\n{std_err}')
-    else:
-        logger.debug(f'Arkane run completed:\n{std_out}')
+        ignorable_phrases = [
+            "Open Babel Warning",
+            "Accepted unusual valence",
+            "=============================="
+        ]
+
+        real_errors = []
+        for line in std_err:
+            line = line.strip()
+            if not line:
+                continue
+            if not any(phrase in line for phrase in ignorable_phrases):
+                real_errors.append(line)
+
+        if real_errors:
+            logger.info(f'Arkane run failed with errors:\n{std_err}')
+            return False
+
+    output_file = os.path.join(statmech_dir, 'output.py')
+    if not os.path.isfile(output_file):
+        logger.error(f'Arkane run finished but {output_file} was not created. Check stdout/stderr.')
+        return False
+
+    logger.debug(f'Arkane run completed:\n{std_out}')
+    return True
 
 
 def clean_output_directory(species_path: str,  # todo
