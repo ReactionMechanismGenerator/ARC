@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+# Accept environment name as argument (Default: arc_env)
+TARGET_ENV="${1:-arc_env}"
+echo "Target Environment: $TARGET_ENV"
 
 # Create log directory
 LOGDIR="$HOME/molecule_build_logs"
 mkdir -p "$LOGDIR"
 
 # Save working directory and setup RDL path
-# Determine where this script lives
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
 # Try to find the ARC repo root via git, otherwise use parent dir
@@ -27,21 +29,21 @@ if command -v micromamba &> /dev/null; then
     echo "✔️ Micromamba is installed."
     COMMAND_PKG=micromamba
     eval "$(micromamba shell hook -s bash)"
-    micromamba activate arc_env
+    micromamba activate "$TARGET_ENV"
 elif command -v mamba &> /dev/null; then
     echo "✔️ Mamba is installed."
     COMMAND_PKG=mamba
     BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
     eval "$($COMMAND_PKG shell hook --shell bash)"
-    conda activate arc_env
+    conda activate "$TARGET_ENV"
 elif command -v conda &> /dev/null; then
     echo "✔️ Conda is installed."
     COMMAND_PKG=conda
     BASE=$(conda info --base)
     source "$BASE/etc/profile.d/conda.sh"
     eval "$($COMMAND_PKG shell hook --shell bash)"
-    conda activate arc_env
+    conda activate "$TARGET_ENV"
 else
     echo "❌ Micromamba, Mamba, or Conda is required. Please install one."
     exit 1
