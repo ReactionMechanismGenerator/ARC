@@ -1043,11 +1043,11 @@ class ARCReaction(object):
         """
         returns the reaction smiles of the reaction.
 
-    Raises:
-        ValueError: If any of the species (reactants or products) has no SMILES (or could not be generated for some reason).
+        Raises:
+            ValueError: If any of the species (reactants or products) has no SMILES (or could not be generated for some reason).
 
-    Returns: string
-        The reaction SMILES
+        Returns: string
+            The reaction SMILES
         """
         reactants, products = self.get_reactants_and_products(return_copies=True)
         smiles_r = [reactant.mol.copy(deep=True).to_smiles() for reactant in reactants]
