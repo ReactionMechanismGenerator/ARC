@@ -10,6 +10,8 @@ import itertools
 import os
 import shutil
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.family import get_reaction_family_products
@@ -31,6 +33,7 @@ from arc.job.adapters.ts.heuristics import (HeuristicsAdapter,
                                             check_dao_angle,
                                             check_ts_bonds,
                                             )
+from arc.job.adapters.ts.seed_hub import get_ts_seeds, get_wrapper_constraints
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz, zmat_to_xyz, zmat_from_xyz
 from arc.species.species import ARCSpecies
@@ -2256,6 +2259,62 @@ H      -0.30139889    0.23142254    3.12085495"""
         """
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'heuristics'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'heuristics_1'), ignore_errors=True)
+
+
+class TestHeuristicsHub(unittest.TestCase):
+    """Unit tests for shared heuristic seed and CREST-constraint helpers."""
+
+    def test_get_ts_seeds_h_abstraction(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with patch('arc.job.adapters.ts.heuristics.h_abstraction',
+                   return_value=[{'xyz': {'symbols': ('H',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (1,)},
+                                  'method': 'Heuristics'}]):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics', dihedral_increment=60)
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'H_Abstraction')
+        self.assertEqual(seeds[0]['method'], 'Heuristics')
+        self.assertEqual(seeds[0]['source_adapter'], 'heuristics')
+
+    def test_get_ts_seeds_hydrolysis(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = {'symbols': ('O',), 'coords': ((0.0, 0.0, 0.0),), 'isotopes': (16,)}
+        with patch('arc.job.adapters.ts.heuristics.hydrolysis',
+                   return_value=([xyz], ['carbonyl_based_hydrolysis'], [[0, 1, 2]])):
+            seeds = get_ts_seeds(reaction=rxn, base_adapter='heuristics')
+        self.assertEqual(len(seeds), 1)
+        self.assertEqual(seeds[0]['family'], 'carbonyl_based_hydrolysis')
+        self.assertEqual(seeds[0]['xyz'], xyz)
+        self.assertEqual(seeds[0]['metadata'], {'indices': [0, 1, 2]})
+
+    def test_get_wrapper_constraints_crest(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            H 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsInstance(atoms, dict)
+        self.assertSetEqual(set(atoms.keys()), {'A', 'H', 'B'})
+        self.assertTrue(all(isinstance(v, int) for v in atoms.values()))
+
+    def test_get_wrapper_constraints_crest_unsupported_family(self):
+        rxn = SimpleNamespace(family='carbonyl_based_hydrolysis')
+        xyz = str_to_xyz("""O 0.0000 0.0000 0.0000
+                            H 0.0000 0.0000 0.9600
+                            H 0.9000 0.0000 0.0000""")
+        seed = {'xyz': xyz, 'family': rxn.family}
+        atoms = get_wrapper_constraints(wrapper='crest', reaction=rxn, seed=seed)
+        self.assertIsNone(atoms)
+
+    def test_get_ts_seeds_unsupported_adapter(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_ts_seeds(reaction=rxn, base_adapter='gcn')
+
+    def test_get_wrapper_constraints_unsupported_wrapper(self):
+        rxn = SimpleNamespace(family='H_Abstraction')
+        with self.assertRaises(ValueError):
+            get_wrapper_constraints(wrapper='foo_wrapper', reaction=rxn, seed={})
 
 
 if __name__ == '__main__':
