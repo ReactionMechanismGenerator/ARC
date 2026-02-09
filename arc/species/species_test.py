@@ -2225,8 +2225,9 @@ H       1.11582953    0.94384729   -0.10134685"""
         self.assertEqual(len(spc_1.ts_guesses), 4)
         spc_1.cluster_tsgs()
         self.assertEqual(len(spc_1.ts_guesses), 2)
-        self.assertEqual(spc_1.ts_guesses[0].method, 'user guess 0 + kinbot')
-        self.assertEqual(spc_1.ts_guesses[0].execution_time, '00:00:02 + 00:00:02')
+        self.assertEqual(spc_1.ts_guesses[0].method, 'user guess 0')
+        self.assertEqual(spc_1.ts_guesses[0].method_sources, ['user guess 0', 'kinbot'])
+        self.assertEqual(spc_1.ts_guesses[0].execution_time, '00:00:02')
         self.assertEqual(spc_1.ts_guesses[0].index, 0)
         self.assertEqual(spc_1.ts_guesses[1].method, 'gcn')
         self.assertEqual(spc_1.ts_guesses[1].execution_time, '00:00:02')
@@ -2888,6 +2889,7 @@ class TestTSGuess(unittest.TestCase):
         """Test TSGuess.as_dict()"""
         tsg_dict = self.tsg1.as_dict()
         expected_dict = {'method': 'autotst',
+                         'method_sources': ['autotst'],
                          'conformer_index': None,
                          'family': 'H_Abstraction',
                          'index': None,
@@ -2906,9 +2908,10 @@ class TestTSGuess(unittest.TestCase):
         ts_dict = self.tsg1.as_dict()
         tsg = TSGuess(ts_dict=ts_dict)
         self.assertEqual(tsg.method, 'autotst')
+        self.assertEqual(tsg.method_sources, ['autotst'])
         ts_dict_for_report = self.tsg1.as_dict(for_report=True)
-        self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_index', 'success', 'index',
-                                                           'conformer_index', 'initial_xyz', 'opt_xyz'])
+        self.assertEqual(list(ts_dict_for_report.keys()), ['method', 'method_sources', 'method_index', 'success',
+                                                           'index', 'conformer_index', 'initial_xyz', 'opt_xyz'])
 
     def test_process_xyz(self):
         """Test the process_xyz() method"""
