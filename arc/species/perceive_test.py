@@ -9,7 +9,7 @@ import os
 import unittest
 import numpy as np
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.parser.parser import parse_geometry
 from arc.species import ARCSpecies
 from arc.species.converter import str_to_xyz
@@ -1314,7 +1314,7 @@ H      -0.57000001    0.25001318    0.00000000"""
         """
         Test that perceiving a collection of molecules from ARC tests that gave warnings works.
         """
-        xyz_ts_5_nmd = parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2044.out'))
+        xyz_ts_5_nmd = parse_geometry(os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2044.out'))
         mol = perceive_molecule_from_xyz(xyz_ts_5_nmd, charge=0, multiplicity=2, n_fragments=2)
         self.assertEqual(mol.to_smiles(), 'CCN')
         self.assertEqual(mol.to_adjacency_list(), """multiplicity 2

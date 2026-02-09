@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH, almost_equal_coords
+from arc.common import ARC_TESTING_PATH, almost_equal_coords
 from arc.job.adapters.xtb_adapter import xTBAdapter
 from arc.level import Level
 from arc.parser.parser import parse_e_elect, parse_frequencies, parse_geometry
@@ -31,7 +31,7 @@ class TestxTBAdapter(unittest.TestCase):
                                job_type='sp',
                                project='test_1',
                                level=Level(method='gfn1', args={'keyword': {'parallel': 'no'}}),
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_1'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_1'),
                                species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                testing=True,
                                )
@@ -39,7 +39,7 @@ class TestxTBAdapter(unittest.TestCase):
                                job_type='opt',
                                project='test_2',
                                fine=True,
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_2'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_2'),
                                species=[ARCSpecies(label='spc2', smiles='CC[O]')],
                                testing=True,
                                )
@@ -47,7 +47,7 @@ class TestxTBAdapter(unittest.TestCase):
                                job_type='scan',
                                project='test_3',
                                torsions=[[0, 1, 2, 3]],
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_3'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_3'),
                                species=[ARCSpecies(label='spc1', xyz="""O       1.09412318   -0.31048292    0.52221323
 N      -0.00341051    0.01666411    0.06406731
 O      -0.88296129   -0.72127547   -0.38686359
@@ -60,27 +60,27 @@ H      -0.20775137    1.01509427    0.05730382""")],
                                torsions=[[5, 6, 1, 4]],
                                project='test_4',
                                fine=True,
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_4'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_4'),
                                species=[ARCSpecies(label='EtOH', smiles='CCO')],
                                testing=True,
                                )
         cls.job_5 = xTBAdapter(execution_type='incore',
                                job_type='sp',
                                project='test_5',
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_5'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_5'),
                                species=[ARCSpecies(label='NCC', smiles='NCC')]
                                )
         cls.job_6 = xTBAdapter(execution_type='incore',
                                job_type='freq',
                                project='test_6',
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_6'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_6'),
                                species=[ARCSpecies(label='HO2', smiles='O[O]')]
                                )
         cls.job_7 = xTBAdapter(execution_type='queue',
                                job_type='opt',
                                project='test_7',
                                fine=True,
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_7'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_7'),
                                species=[ARCSpecies(label='spc7', xyz='O 0 0 1', multiplicity=3)],
                                testing=True,
                                )
@@ -89,7 +89,7 @@ H      -0.20775137    1.01509427    0.05730382""")],
         cls.job_8 = xTBAdapter(job_type='scan',
                                level=Level(method='xtb'),
                                project='test_8',
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_8'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_8'),
                                species=[spc_8],
                                rotor_index=0,
                                )
@@ -97,14 +97,14 @@ H      -0.20775137    1.01509427    0.05730382""")],
                                job_type='opt',
                                project='test_9',
                                level=Level(method='xtb', solvent='water', solvation_method="alpb"),
-                               project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_9'),
+                               project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_9'),
                                species=[ARCSpecies(label='spc2', smiles='CC[O]')],
                                )
         cls.job_10 = xTBAdapter(execution_type='incore',
                                 job_type='opt',
                                 project='test_10',
                                 level=Level(method='gfn2'),
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_10'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_10'),
                                 species=[ARCSpecies(label='TS', is_ts=True,
                                                     xyz="""C       -1.317288   -0.260819   -0.032638
                                                            C       -0.041481    0.531329    0.023478
@@ -134,14 +134,14 @@ H      -0.20775137    1.01509427    0.05730382""")],
                                 job_type='freq',
                                 project='test_11',
                                 level=Level(method='gfn2'),
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_11'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_11'),
                                 species=[ARCSpecies(label='TS', is_ts=True, xyz=cls.ts_xyz)],
                                 )
         cls.job_12 = xTBAdapter(execution_type='incore',
                                 job_type='freq',
                                 project='test_12',
                                 level=Level(method='gfn2'),
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAdapter_12'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAdapter_12'),
                                 species=[ARCSpecies(label='H2', smiles='[H][H]')],
                                 )
 
@@ -294,7 +294,7 @@ $end"""
         Delete all project directories created during these unit tests
         """
         for i in range(20):
-            path = os.path.join(ARC_PATH, 'arc', 'testing', f'test_xTBAdapter_{i}')
+            path = os.path.join(ARC_TESTING_PATH, f'test_xTBAdapter_{i}')
             shutil.rmtree(path, ignore_errors=True)
 
 

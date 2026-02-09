@@ -11,7 +11,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.orca import (OrcaAdapter,
                                    _format_orca_basis,
                                    _format_orca_basis_token,
@@ -36,7 +36,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 job_type='sp',
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -50,7 +50,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c',
                                             solvation_method='SMD', solvent='DMSO'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -64,7 +64,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 level=Level(method='DLPNO-CCSD(T)', basis='def2-tzvp', auxiliary_basis='def2-tzvp/c',
                                             solvation_method='cpcm', solvent='water'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
                                 species=[ARCSpecies(label='CH3O',
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
                                                            O       1.35198769    0.01264937   -0.17195885
@@ -77,7 +77,7 @@ class TestOrcaAdapter(unittest.TestCase):
                                 job_type='sp',
                                 level=Level(method='MP2_CASSCF_MRCI', basis='aug-cc-pVTZ'),
                                 project='test4',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'),
                                 species=[ARCSpecies(label='CH3O',
                                                     active=(14, 7),
                                                     xyz="""C       0.03807240    0.00035621   -0.00484242
@@ -280,7 +280,7 @@ end
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_OrcaAdapter'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_OrcaAdapter'), ignore_errors=True)
 
 
 if __name__ == '__main__':

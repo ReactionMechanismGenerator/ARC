@@ -12,7 +12,7 @@ import shutil
 import numpy as np
 
 import arc.checks.ts as ts
-from arc.common import ARC_PATH, almost_equal_lists
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_lists
 from arc.job.factory import job_factory
 from arc.level import Level
 from arc.parser.parser import parse_normal_mode_displacement, parse_geometry
@@ -33,7 +33,7 @@ class TestTSChecks(unittest.TestCase):
 
         cls.rms_list_1 = [0.01414213562373095, 0.05, 0.04, 0.5632938842203065, 0.7993122043357026, 0.08944271909999159,
                           0.10677078252031312, 0.09000000000000001, 0.05, 0.09433981132056604]
-        path_1 = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'C3H7_intra_h_TS.out')
+        path_1 = os.path.join(ARC_TESTING_PATH, 'freq', 'C3H7_intra_h_TS.out')
         cls.freqs_1, cls.normal_modes_disp_1 = parse_normal_mode_displacement(path_1)
         cls.ts_1 = ARCSpecies(label='TS', is_ts=True)
         cls.ts_1.ts_guesses = [TSGuess(family='intra_H_migration', xyz='C 0 0 0'),
@@ -110,7 +110,7 @@ class TestTSChecks(unittest.TestCase):
         cls.rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH3', smiles='N'), ARCSpecies(label='H', smiles='[H]')],
                                 p_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='H2', smiles='[H][H]')])
         cls.rxn_3.ts_species = ARCSpecies(label='TS3', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH3+H=NH2+H2.out'))
+                                          xyz=os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH3+H=NH2+H2.out'))
 
         ccooj_xyz = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H'),
                      'isotopes': (12, 12, 16, 16, 1, 1, 1, 1, 1),
@@ -128,7 +128,7 @@ class TestTSChecks(unittest.TestCase):
         cls.rxn_4 = ARCReaction(r_species=[ccooj, ARCSpecies(label='CC', smiles='CC')],
                                 p_species=[ARCSpecies(label='CCOOH', smiles='CCOO'), ARCSpecies(label='CCj', smiles='[CH2]C')])
         cls.rxn_4.ts_species = ARCSpecies(label='TS4', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2043.out'))
+                                          xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2043.out'))
 
         ea_xyz = """N                  1.27511929   -0.21413688   -0.09829069
                     C                  0.04568411    0.51479456    0.24529057
@@ -155,11 +155,11 @@ class TestTSChecks(unittest.TestCase):
         cls.rxn_5 = ARCReaction(r_species=[ea, ARCSpecies(label='H', smiles='[H]')],
                                 p_species=[ch3chnh2, ARCSpecies(label='H2', smiles='[H][H]')])
         cls.rxn_5.ts_species = ARCSpecies(label='TS5', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2044.out'))
+                                          xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2044.out'))
         cls.rxn_6 = ARCReaction(r_species=[ea, ARCSpecies(label='H', smiles='[H]')],
                                 p_species=[ARCSpecies(label='CH2CH2NH2', smiles='[CH2]CN'), ARCSpecies(label='H2', smiles='[H][H]')])
         cls.rxn_6.ts_species = ARCSpecies(label='TS6', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS1_composite_695.out'))
+                                          xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'TS1_composite_695.out'))
 
         cls.c2h5no2_xyz = """O                  0.62193295    1.59121319   -0.58381518
                              N                  0.43574593    0.41740669    0.07732982
@@ -187,7 +187,7 @@ class TestTSChecks(unittest.TestCase):
         cls.rxn_8 = ARCReaction(r_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC')],
                                 p_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C')])
         cls.rxn_8.ts_species = ARCSpecies(label='TS8', is_ts=True,
-                                          xyz=os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'))
+                                          xyz=os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out'))
         cls.rxn_8.ts_label = cls.rxn_8.ts_species.label
 
         cls.ccooj_xyz = {'symbols': ('C', 'C', 'O', 'O', 'H', 'H', 'H', 'H', 'H'),
@@ -213,26 +213,26 @@ class TestTSChecks(unittest.TestCase):
 
         cls.species_dict_8 = {spc.label: spc for spc in cls.rxn_8.r_species + cls.rxn_8.p_species + [cls.rxn_8.ts_species]}
         cls.project_directory_8 = os.path.join(ts.ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage5')
-        cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out'),
-                                                 'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
-                                                 'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out'),
+        cls.output_dict_8 = {'iC3H7': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out'),
+                                                 'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
+                                                 'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out'),
                                                  'composite': ''},
                                        'convergence': True},
-                             'nC3H7': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'nC3H7.out'),
-                                                 'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
-                                                 'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'nC3H7.out'),
+                             'nC3H7': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'nC3H7.out'),
+                                                 'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out'),
+                                                 'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out'),
                                                  'composite': ''},
                                        'convergence': True},
-                             'TS8': {'paths': {'freq': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out'),
-                                               'sp': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
-                                               'opt': os.path.join(ts.ARC_PATH, 'arc', 'testing', 'opt', 'TS_nC3H7-iC3H7.out'),
+                             'TS8': {'paths': {'freq': os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out'),
+                                               'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out'),
+                                               'opt': os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out'),
                                                'composite': ''},
                                      'convergence': True}}
 
     def test_analyze_ts_normal_mode_displacement(self):
         """Test checking for NMD."""
         # iC3H7 <=> nC3H7
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C3_intraH_8.out')
         self.rxn_2a.ts_species.populate_ts_checks()
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
@@ -240,13 +240,13 @@ class TestTSChecks(unittest.TestCase):
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         # C2H5NO2 <=> C2H5ONO
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C2H5NO2__C2H5ONO.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
         self.rxn_7.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_7.ts_species.ts_checks['NMD'])
         ts.check_ts(reaction=self.rxn_7, job=self.job1, checks=['NMD'])
         self.assertTrue(self.rxn_7.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_nC3H7-iC3H7.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_nC3H7-iC3H7.out')
         self.rxn_8.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_8.ts_species.ts_checks['NMD'])
         ts.check_ts(reaction=self.rxn_8, job=self.job1, checks=['NMD'])
@@ -375,7 +375,7 @@ class TestTSChecks(unittest.TestCase):
         """Test the check_normal_mode_displacement() function."""
         self.rxn_2a.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS_intra_H_migration_CBS-QB3.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS_intra_H_migration_CBS-QB3.out')
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
@@ -388,49 +388,49 @@ class TestTSChecks(unittest.TestCase):
         self.assertFalse(self.rxn_2b.ts_species.ts_checks['NMD'])
 
         # Wrong TS for intra H migration [CH2]CC <=> C[CH]C
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS1.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS1.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS2.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS2.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS3.log')  # ** The correct TS. **
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS3.log')  # ** The correct TS. **
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS4.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS4.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS5.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS5.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS6.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS6.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'C3H7', 'TS7.log')  # A wrong TS.
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS7.log')  # A wrong TS.
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_2a, job=self.job1)
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_C3_intraH_8.out')  # Correct TS (freq run, not composite).
         self.rxn_2a.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_2a.ts_species.populate_ts_checks()
         self.assertFalse(self.rxn_2a.ts_species.ts_checks['NMD'])
@@ -438,28 +438,28 @@ class TestTSChecks(unittest.TestCase):
         self.assertTrue(self.rxn_2a.ts_species.ts_checks['NMD'])
 
         # CCO[O] + CC <=> CCOO + [CH2]C, incorrect TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2043.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2043.out')
         self.rxn_4.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_4.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
         self.assertFalse(self.rxn_4.ts_species.ts_checks['NMD'])
 
         # CCO[O] + CC <=> CCOO + [CH2]C, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2102.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2102.out')
         self.rxn_4.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_4.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_4, job=self.job1)
         self.assertTrue(self.rxn_4.ts_species.ts_checks['NMD'])
 
         # NCC + H <=> CH3CHNH2 + H2, correct TS:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2044.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2044.out')
         self.rxn_5.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.rxn_5.ts_species.populate_ts_checks()
         ts.check_normal_mode_displacement(reaction=self.rxn_5, job=self.job1)
         self.assertTrue(self.rxn_5.ts_species.ts_checks['NMD'])
 
         # NH2 + N2H3 <=> NH + N2H4:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH2+N2H3.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH2+N2H3.out')
         rxn_6 = ARCReaction(r_species=[ARCSpecies(label='NH2', xyz="""N       0.00000000   -0.00000000    0.14115400
                                                                       H      -0.80516800    0.00000000   -0.49355600
                                                                       H       0.80516800   -0.00000000   -0.49355600"""),
@@ -490,7 +490,7 @@ class TestTSChecks(unittest.TestCase):
         self.assertTrue(rxn_6.ts_species.ts_checks['NMD'])
 
         # [CH2]CC=C <=> CCC=[CH] butylene intra H migration:
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS_butylene_intra_H_migration.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS_butylene_intra_H_migration.out')
         rxn_7 = ARCReaction(r_species=[
             ARCSpecies(label='butylene',
                        xyz={'symbols': ('C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H'),
@@ -524,7 +524,7 @@ class TestTSChecks(unittest.TestCase):
         ts.check_normal_mode_displacement(reaction=rxn_7, job=self.job1)
         self.assertTrue(rxn_7.ts_species.ts_checks['NMD'])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'freq', 'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_NH3+H=NH2+H2.out')  # NH3 + H <=> NH2 + H2
         self.rxn_3.ts_species.populate_ts_checks()
         self.rxn_3.ts_species.final_xyz = parse_geometry(log_file_path=self.job1.local_path_to_output_file)
         self.assertFalse(self.rxn_3.ts_species.ts_checks['NMD'])
@@ -560,8 +560,7 @@ class TestTSChecks(unittest.TestCase):
                          'Pivots participate in the TS reaction zone (code: pivTS). ')
         self.assertEqual(ts_spc_1.rotors_dict[1]['success'], False)
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS_intra_H_migration_CBS-QB3.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS_intra_H_migration_CBS-QB3.out')
         self.rxn_2a.ts_species.populate_ts_checks()
         ts.invalidate_rotors_with_both_pivots_in_a_reactive_zone(reaction=self.rxn_2a,
                                                                  job=self.job1)
@@ -577,18 +576,15 @@ class TestTSChecks(unittest.TestCase):
 
     def test_get_rxn_zone_atom_indices(self):
         """Test the get_rxn_zone_atom_indices() function."""
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2102.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2102.out')
         rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_4, job=self.job1)
         self.assertEqual(rxn_zone_atom_indices, [14, 10, 3, 2, 16])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS0_composite_2044.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2044.out')
         rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_5, job=self.job1)
         self.assertEqual(rxn_zone_atom_indices, [5, 10, 1, 3, 0])
 
-        self.job1.local_path_to_output_file = os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite',
-                                                           'TS1_composite_695.out')
+        self.job1.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'TS1_composite_695.out')
         rxn_zone_atom_indices = ts.get_rxn_zone_atom_indices(reaction=self.rxn_6, job=self.job1)
         self.assertEqual(rxn_zone_atom_indices, [7, 2, 9, 8, 1])  # Atom 10, the abstractor, is not moving
 
@@ -600,7 +596,7 @@ class TestTSChecks(unittest.TestCase):
                                0.034641016151377546, 0.0, 0.033166247903554, 0.01414213562373095, 0.0])
 
         freqs_2, normal_modes_disp_2 = parse_normal_mode_displacement(
-            os.path.join(ts.ARC_PATH, 'arc', 'testing', 'composite', 'TS0_composite_2102.out'))
+            os.path.join(ARC_TESTING_PATH, 'composite', 'TS0_composite_2102.out'))
         rms = ts.get_rms_from_normal_mode_disp(normal_mode_disp=normal_modes_disp_2,
                                                freqs=freqs_2,
                                                reaction=ARCReaction(r_species=[ARCSpecies(label='CCOOj', xyz=self.ccooj_xyz),
@@ -680,8 +676,8 @@ class TestTSChecks(unittest.TestCase):
                           p_species=[ARCSpecies(label='P', smiles='O=CCO[O]', xyz=xyz_2)])
         rxn.ts_species = ARCSpecies(label='TS', is_ts=True)
         self.assertIsNone(rxn.ts_species.ts_checks['IRC'])
-        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_1.out')),
-                                     xyz_2=parse_geometry(os.path.join(ARC_PATH, 'arc', 'testing', 'irc', 'rxn_1_irc_2.out')),
+        ts.check_irc_species_and_rxn(xyz_1=parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_1.out')),
+                                     xyz_2=parse_geometry(os.path.join(ARC_TESTING_PATH, 'irc', 'rxn_1_irc_2.out')),
                                      rxn=rxn,
                                      )
         self.assertTrue(rxn.ts_species.ts_checks['IRC'])

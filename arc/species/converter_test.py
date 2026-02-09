@@ -17,7 +17,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolTransforms as rdMT, rdchem
 
 import arc.species.converter as converter
-from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
+from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
 from arc.species.perceive import perceive_molecule_from_xyz
@@ -856,7 +856,7 @@ H      3.654100    0.340300    0.057100"""
 
     def test_species_to_sdf_file(self):
         """Test the species_to_sdf_file() function."""
-        path = os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf')
+        path = os.path.join(ARC_TESTING_PATH, 'mol.sdf')
         spc = ARCSpecies(label='NCC', smiles='NCC')
         converter.species_to_sdf_file(spc, path)
         with open(path, 'r') as f:
@@ -5040,7 +5040,7 @@ H      -1.88123946   -2.00923795    0.23313156"""
                       os.path.join(ARC_PATH, 'run.out'),
                       os.path.join(ARC_PATH, 'arc', 'species', 'nul'),
                       os.path.join(ARC_PATH, 'arc', 'species', 'run.out'),
-                      os.path.join(ARC_PATH, 'arc', 'testing', 'mol.sdf'),
+                      os.path.join(ARC_TESTING_PATH, 'mol.sdf'),
                       ]
         for file_path in file_paths:
             if os.path.isfile(file_path):

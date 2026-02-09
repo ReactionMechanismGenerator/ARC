@@ -160,7 +160,7 @@ class TestRestart(unittest.TestCase):
         restart_path = os.path.join(base_path, 'restart.yml')
         input_dict = read_yaml_file(path=restart_path, project_directory=project_directory)
         input_dict['output']['TS0']['paths']['freq'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['freq'])
-        input_dict['output']['TS0']['paths']['goe'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['geo'])
+        input_dict['output']['TS0']['paths']['geo'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['geo'])
         input_dict['output']['TS0']['paths']['sp'] = os.path.join(ARC_PATH, input_dict['output']['TS0']['paths']['sp'])
         for spc in input_dict['species']:
             if 'TS' not in spc['label']:

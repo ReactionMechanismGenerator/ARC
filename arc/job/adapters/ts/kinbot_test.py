@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.ts.kinbot_ts import KinBotAdapter, HAS_KINBOT
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
@@ -39,7 +39,7 @@ class TestKinBotAdapter(unittest.TestCase):
                                     reactions=[rxn1],
                                     testing=True,
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_KinBot', 'tst1'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_KinBot', 'tst1'),
                                     )
             kinbot1.execute_incore()
             self.assertTrue(rxn1.ts_species.is_ts)
@@ -67,7 +67,7 @@ class TestKinBotAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests.
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_KinBot'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_KinBot'), ignore_errors=True)
 
 
 if __name__ == '__main__':

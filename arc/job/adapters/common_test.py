@@ -10,7 +10,7 @@ import shutil
 import unittest
 
 import arc.job.adapters.common as common
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.job.adapters.molpro import MolproAdapter
 from arc.level import Level
@@ -31,7 +31,7 @@ class TestJobCommon(unittest.TestCase):
                                     job_type='composite',
                                     level=Level(method='cbs-qb3-paraskevas'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -41,7 +41,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -51,7 +51,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=2)],
                                     testing=True,
                                     args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -61,7 +61,7 @@ class TestJobCommon(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2tzvp'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=2, multi_species='mltspc1'),
                                             ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1, number_of_radicals=1, multi_species='mltspc1')],
                                     testing=True,
@@ -86,7 +86,7 @@ class TestJobCommon(unittest.TestCase):
                           job_type='irc',
                           level=Level(method='ccsd(t)', basis='cc-pvtz'),
                           project='test',
-                          project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter'),
+                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter'),
                           species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                           testing=True,
                           )
@@ -95,7 +95,7 @@ class TestJobCommon(unittest.TestCase):
                             job_type='irc',
                             level=Level(method='b3lyp', basis='def2svp'),
                             project='test',
-                            project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'),
+                            project_directory=os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'),
                             species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=1)],
                             testing=True,
                             args={'keyword': {'general': 'IOp(1/12=5,3/44=0)'}},
@@ -109,7 +109,7 @@ class TestJobCommon(unittest.TestCase):
                           torsions=[[1, 2, 3, 4]],
                           level=Level(method='ccsd(t)', basis='cc-pvtz'),
                           project='test',
-                          project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter'),
+                          project_directory=os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter'),
                           species=[spc],
                           testing=True,
                           )
@@ -273,8 +273,8 @@ class TestJobCommon(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_GaussianAdapter'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_MolproAdapter'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_GaussianAdapter'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_MolproAdapter'), ignore_errors=True)
 
 
 if __name__ == '__main__':

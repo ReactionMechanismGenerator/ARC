@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_PATH, ARC_TESTING_PATH
 from arc.level import Level
 from arc.reaction import ARCReaction
 from arc.species import ARCSpecies
@@ -40,12 +40,12 @@ class TestArkaneAdapter(unittest.TestCase):
         """
         A method that is run before all unit tests in this class.
         """
-        output_path_1 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'output_1')
-        calcs_path_1 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_1')
-        output_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'output_2')
-        calcs_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_2')
-        output_path_3 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'output_3')
-        calcs_path_3 = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_3')
+        output_path_1 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_1')
+        calcs_path_1 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_1')
+        output_path_2 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_2')
+        calcs_path_2 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_2')
+        output_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_3')
+        calcs_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3')
         for path in [output_path_1, calcs_path_1, output_path_2, calcs_path_2, output_path_3, calcs_path_3]:
             if not os.path.isdir(path):
                 os.makedirs(path)
@@ -74,8 +74,8 @@ class TestArkaneAdapter(unittest.TestCase):
                                      species=rxn_1.r_species[0])
         cls.ic3h7 = ARCSpecies(label='iC3H7', smiles='C[CH]C')
         cls.ic3h7.e_elect = 150.1
-        opt_path = os.path.join(ARC_PATH, 'arc', 'testing', 'opt', 'iC3H7.out')
-        freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'iC3H7.out')
+        opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
         cls.arkane_3 = ArkaneAdapter(output_directory=output_path_3,
                                      calcs_directory=calcs_path_3,
                                      output_dict={'iC3H7': {'paths': {'freq': freq_path,
@@ -109,8 +109,7 @@ class TestArkaneAdapter(unittest.TestCase):
     def test_run_statmech_using_molecular_properties(self):
         """Test running statmech using molecular properties."""
         self.arkane_3.compute_thermo()
-        plot_path = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_tests_delete', 'calcs_3',
-                                 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
+        plot_path = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3', 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
         if not os.path.isfile(plot_path):
             log_dir = os.path.dirname(os.path.dirname(plot_path))
             stdout_log = os.path.join(log_dir, 'stdout.log')
@@ -167,7 +166,7 @@ class TestArkaneAdapter(unittest.TestCase):
 
     def test_generate_arkane_input(self):
         """Test generating Arkane input"""
-        statmech_dir = os.path.join(ARC_PATH, 'arc', 'testing', 'arkane_input_tests_delete')
+        statmech_dir = os.path.join(ARC_TESTING_PATH, 'arkane_input_tests_delete')
         os.makedirs(statmech_dir, exist_ok=True)
         self.arkane_1.generate_arkane_input(statmech_dir=statmech_dir)
         input_path = os.path.join(statmech_dir, 'input.py')
@@ -194,7 +193,7 @@ class TestArkaneAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         """
         for folder in ['arkane_tests_delete', 'arkane_input_tests_delete']:
-            shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', folder), ignore_errors=True)
+            shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
 
 
 if __name__ == '__main__':

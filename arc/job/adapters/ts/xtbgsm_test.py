@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.job.adapters.ts.xtb_gsm import xTBGSMAdapter
 from arc.level import Level
 from arc.parser.parser import parse_trajectory
@@ -30,7 +30,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
         cls.maxDiff = None
         cls.job_1 = xTBGSMAdapter(project='test_1',
                                   job_type='tsg',
-                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAGSMdapter_1'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_1'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )
@@ -43,7 +43,7 @@ class TestxTBGSMAdapter(unittest.TestCase):
                                                                 'add_node_tol': 0.5,
                                                                 'final_opt': 10,
                                                                 'nnodes': 9}}),
-                                  project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_xTBAGSMdapter_2'),
+                                  project_directory=os.path.join(ARC_TESTING_PATH, 'test_xTBAGSMdapter_2'),
                                   reactions=[ARCReaction(r_species=[ARCSpecies(label='HNO', smiles='N=O')],
                                                          p_species=[ARCSpecies(label='HON', smiles='[N-]=[OH+]')])],
                                   )
@@ -140,7 +140,7 @@ H      -1.29374518   -0.31588249    0.00000000
         Delete all project directories created during these unit tests.
         """
         for i in range(10):
-            path = os.path.join(ARC_PATH, 'arc', 'testing', f'test_xTBAGSMdapter_{i}')
+            path = os.path.join(ARC_TESTING_PATH, f'test_xTBAGSMdapter_{i}')
             shutil.rmtree(path, ignore_errors=True)
 
 

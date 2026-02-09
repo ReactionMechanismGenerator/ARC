@@ -9,7 +9,7 @@ import os
 import shutil
 import unittest
 
-from arc.common import ARC_PATH, read_yaml_file
+from arc.common import ARC_TESTING_PATH, read_yaml_file
 from arc.job.adapters.mockter import MockAdapter
 from arc.level import Level
 from arc.reaction.reaction import ARCReaction
@@ -30,28 +30,28 @@ class TestMockAdapter(unittest.TestCase):
                                 job_type='sp',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_1'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_1'),
                                 species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_2 = MockAdapter(job_type='opt',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_2'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_2'),
                                 species=[ARCSpecies(label='spc2', xyz=['O 0 0 1'], multiplicity=3)],
                                 testing=True,
                                 )
         cls.job_3 = MockAdapter(job_type='freq',
                                 level=Level(method='CCMockSD(T)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_3'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_3'),
                                 species=[ARCSpecies(label='spc3', xyz=['O 0 0 1\nH 0 0 0\nH 1 0 0'], is_ts=True)],
                                 testing=True,
                                 )
         cls.job_4 = MockAdapter(job_type='tsg',
                                 level=Level(method='mock)', basis='cc-pVmockZ'),
                                 project='test',
-                                project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_MockAdapter_4'),
+                                project_directory=os.path.join(ARC_TESTING_PATH, 'test_MockAdapter_4'),
                                 reactions=[ARCReaction(r_species=[ARCSpecies(label='O', smiles='[O]'),
                                                                   ARCSpecies(label='CCC', smiles='CCC')],
                                                        p_species=[ARCSpecies(label='OH', smiles='[OH]'),
@@ -168,7 +168,7 @@ class TestMockAdapter(unittest.TestCase):
         Delete all project directories created during these unit tests
         """
         for folder in ['test_MockAdapter_1', 'test_MockAdapter_2', 'test_MockAdapter_3', 'test_MockAdapter_4']:
-            shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', folder), ignore_errors=True)
+            shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
 
 
 if __name__ == '__main__':

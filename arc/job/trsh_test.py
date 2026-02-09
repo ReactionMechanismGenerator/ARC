@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import arc.job.trsh as trsh
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.imports import settings
 from arc.parser.parser import parse_1d_scan_energies
 
@@ -28,7 +28,7 @@ class TestTrsh(unittest.TestCase):
         A method that is run before all unit tests in this class.
         """
         cls.maxDiff = None
-        path = os.path.join(ARC_PATH, "arc", "testing", "trsh")
+        path = os.path.join(ARC_TESTING_PATH, 'trsh')
         cls.base_path = {ess: os.path.join(path, ess) for ess in supported_ess}
         cls.server = "test_server"
         cls.job_name = "test_job"
@@ -777,19 +777,19 @@ class TestTrsh(unittest.TestCase):
 
     def test_determine_job_log_memory_issues(self):
         """Test the determine_job_log_memory_issues() function."""
-        job_log_path_1 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'no_issues.log')
+        job_log_path_1 = os.path.join(ARC_TESTING_PATH, 'job_log', 'no_issues.log')
         keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_1)
         self.assertEqual(keywords, [])
         self.assertEqual(error, '')
         self.assertEqual(line, '')
 
-        job_log_path_2 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'memory_exceeded.log')
+        job_log_path_2 = os.path.join(ARC_TESTING_PATH, 'job_log', 'memory_exceeded.log')
         keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_2)
         self.assertEqual(keywords, ['Memory'])
         self.assertEqual(error, 'Insufficient job memory.')
         self.assertEqual(line, '\tMEMORY EXCEEDED\n')
 
-        job_log_path_3 = os.path.join(ARC_PATH, 'arc', 'testing', 'job_log', 'using_to_few.log')
+        job_log_path_3 = os.path.join(ARC_TESTING_PATH, 'job_log', 'using_to_few.log')
         keywords, error, line = trsh.determine_job_log_memory_issues(job_log=job_log_path_3)
         self.assertEqual(keywords, ['Memory'])
         self.assertIn('Memory requested is too high, used only', error)
@@ -804,7 +804,7 @@ class TestTrsh(unittest.TestCase):
 
     def test_trsh_negative_freq(self):
         """Test troubleshooting a negative frequency"""
-        gaussian_neg_freq_path = os.path.join(ARC_PATH, 'arc', 'testing', 'freq', 'Gaussian_neg_freq.out')
+        gaussian_neg_freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'Gaussian_neg_freq.out')
         current_neg_freqs_trshed, conformers, output_errors, output_warnings = \
             trsh.trsh_negative_freq(label='2-methoxy_n-methylaniline', log_file=gaussian_neg_freq_path)
         expected_current_neg_freqs_trshed = [-18.07]
@@ -861,7 +861,7 @@ class TestTrsh(unittest.TestCase):
 
     def test_scan_quality_check(self):
         """Test scan quality check for 1D rotor"""
-        log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'CH2OOH.out')
+        log_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'CH2OOH.out')
         # Case 1: non-smooth scan which troubleshot once
         case1 = {'label': 'CH2OOH',
                  'pivots': [1, 2],
@@ -885,7 +885,7 @@ class TestTrsh(unittest.TestCase):
         self.assertIn([2, 1, 4, 5], actions['freeze'])
 
         # Case 2: Lower conformer
-        log_file = os.path.join(ARC_PATH, 'arc', 'testing', 'rotor_scans', 'COCCOO.out')
+        log_file = os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'COCCOO.out')
         case2 = {'label': 'COCCOO',
                  'pivots': [2, 5],
                  'energies': parse_1d_scan_energies(log_file_path=log_file)[0],
@@ -919,9 +919,7 @@ class TestTrsh(unittest.TestCase):
             "scan": [4, 1, 2, 3],
             "scan_list": [[4, 1, 2, 3], [1, 2, 3, 6]],
             "methods": {"freeze": [[5, 1, 2, 3], [2, 1, 4, 5]]},
-            "log_file": os.path.join(
-                ARC_PATH, "arc", "testing", "rotor_scans", "CH2OOH.out"
-            ),
+            "log_file": os.path.join(ARC_TESTING_PATH, 'rotor_scans', 'CH2OOH.out'),
         }
         scan_trsh, scan_res = trsh.trsh_scan_job(**case)
         self.assertEqual(scan_trsh, "D 5 4 1 2 F\nD 1 2 3 6 F\nB 2 3 F\n")

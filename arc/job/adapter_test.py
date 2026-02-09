@@ -15,13 +15,12 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from arc.common import ARC_PATH
+from arc.common import ARC_TESTING_PATH
 from arc.imports import settings
 from arc.job.adapter import DataPoint, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
-
 
 servers, submit_filenames = settings['servers'], settings['submit_filenames']
 
@@ -127,7 +126,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='conf_opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1',
                                                         xyz=['O 0 0 1',
                                                              'O 0 0 2',
@@ -156,7 +155,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
@@ -183,7 +182,7 @@ class TestJobAdapter(unittest.TestCase):
                                     torsions=[[1, 2, 3, 4]],
                                     level=Level(method='wb97xd', basis='def2-tzvp'),
                                     project='test_scans',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_scan'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'),
                                     species=[cls.spc_3a, cls.spc_3b, cls.spc_3c, cls.spc_3d, cls.spc_3e, cls.spc_3f],
                                     testing=True,
                                     )
@@ -191,7 +190,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_type='opt',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
@@ -203,7 +202,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_server_name = 'server3',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     server='server3',
                                     testing=True,
@@ -216,7 +215,7 @@ class TestJobAdapter(unittest.TestCase):
                                     job_server_name = 'server1',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     queue='short_queue',
@@ -402,7 +401,7 @@ class TestJobAdapter(unittest.TestCase):
                                         job_type='opt',
                                         level=Level(method='cbs-qb3'),
                                         project='test',
-                                        project_directory=os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'),
+                                        project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'),
                                         species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                         testing=True,
                                         args={'keyword': {'general': 'val_tst_1 val_tst_2     val_tst_3'},
@@ -467,9 +466,9 @@ class TestJobAdapter(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_scan'), ignore_errors=True)
-        shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'), ignore_errors=True)
+        shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
 
 
 if __name__ == '__main__':

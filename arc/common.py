@@ -39,6 +39,7 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 
 # Absolute path to the ARC folder.
 ARC_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+ARC_TESTING_PATH = os.path.join(ARC_PATH, 'arc', 'testing')
 
 VERSION = '1.1.0'
 
