@@ -70,20 +70,26 @@ df -h .
 echo "---- Conda env list ----"
 $COMMAND_PKG env list
 
-# 10) Activate and sanity-check
-echo ">>> Activating and sanity-checking TANI import"
-set +x
-if [[ $COMMAND_PKG == micromamba ]]; then
-    micromamba activate "$ENV_NAME"
-else
-    conda activate "$ENV_NAME"
+# 10) Ensure pkg_resources exists, then sanity-check import without shell activation
+echo ">>> Ensuring setuptools/pkg_resources is present in '$ENV_NAME'"
+$COMMAND_PKG install -n "$ENV_NAME" -y setuptools
+
+echo ">>> Verifying pkg_resources in '$ENV_NAME'"
+if ! $COMMAND_PKG run -n "$ENV_NAME" python -c "import pkg_resources" >/dev/null 2>&1; then
+    echo ">>> pkg_resources missing after conda install; forcing setuptools reinstall via pip"
+    $COMMAND_PKG run -n "$ENV_NAME" python -m pip install --upgrade --force-reinstall "setuptools<81"
 fi
 
-python - <<'PYCODE'
+# Hard fail early if pkg_resources is still unavailable.
+$COMMAND_PKG run -n "$ENV_NAME" python -c "import pkg_resources"
+
+echo ">>> Sanity-checking TANI import"
+set +x
+$COMMAND_PKG run -n "$ENV_NAME" python - <<'PYCODE'
+import pkg_resources
 import torchani
+print("pkg_resources:", pkg_resources.__name__)
 print("torchani version:", torchani.__version__)
 PYCODE
-
-$COMMAND_PKG deactivate
 
 echo "✅  TANI environment '$ENV_NAME' setup completed at $(date)"
