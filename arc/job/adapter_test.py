@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from arc.common import ARC_TESTING_PATH
+from arc.common import ARC_PATH, ARC_TESTING_PATH
 from arc.imports import settings
 from arc.job.adapter import DataPoint, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
