@@ -2274,7 +2274,7 @@ class TSGuess(object):
         initial_xyz (dict): The 3D coordinates guess.
         opt_xyz (dict): The 3D coordinates after optimization at the ts_guesses level.
         method (str): The method/source used for the xyz guess.
-        method_sources (list[str]): All methods/sources that produced an equivalent xyz guess.
+        method_sources (List[str]): All methods/sources that produced an equivalent xyz guess.
         method_index (int): A subindex, used for cases where a single method generates several guesses.
                             Counts separately for each direction, 'F' and 'R'.
         method_direction (str): The reaction direction used for generating the guess ('F' or 'R').
@@ -2380,7 +2380,7 @@ class TSGuess(object):
         self._opt_xyz = check_xyz_dict(value)
 
     @staticmethod
-    def _normalize_method_sources(method_sources: list[str] | None) -> list[str]:
+    def _normalize_method_sources(method_sources: Optional[List[str]]) -> List[str]:
         """
         Normalize method_sources to a unique, ordered, lowercase list.
         """
