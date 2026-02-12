@@ -79,6 +79,7 @@ F = 96485.3321233100184
 epsilon_0 = 8.8541878128
 
 bohr_to_angstrom = 0.529177
+angstrom_to_bohr = 1 / bohr_to_angstrom
 
 # Cython does not automatically place module-level variables into the module
 # symbol table when in compiled mode, so we must do this manually so that we
@@ -102,4 +103,5 @@ globals().update({
     'F': F,
     'epsilon_0': epsilon_0,
     'bohr_to_angstrom': bohr_to_angstrom,
+    'angstrom_to_bohr': angstrom_to_bohr,
 })
