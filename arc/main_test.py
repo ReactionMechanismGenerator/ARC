@@ -85,6 +85,7 @@ class TestARC(unittest.TestCase):
                                           'onedmin': ['server1'],
                                           'openbabel': ['local'],
                                           'orca': ['local'],
+                                          'orca_neb': ['local'],
                                           'qchem': ['server1'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
