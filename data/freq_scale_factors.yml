@@ -33,7 +33,7 @@ freq_scale_factors:
   'm08so/mg3s*, software: gaussian': 0.995  # [1] Table 3, taken as 'M08-SO/MG3S'
   'b97d3/def2msvp, software: gaussian': 1.014  # [4]
   'wb97xd/cc-pvtz, software: gaussian': 0.987  # [4]
-  'wb97xd/aug-cc-pvtz, software: gaussian': 0.988  # [3], taken as 'ωB97X-D/maug-cc-pVTZ'
+  #'wb97xd/aug-cc-pvtz, software: gaussian': 0.988  # [3], taken as 'ωB97X-D/maug-cc-pVTZ'
   'wb97xd/6-311++g(d,p), software: gaussian': 0.988  # [4]
   'wb97xd/def2svp, software: gaussian': 0.986  # [4]
   'wb97xd/def2tzvp, software: gaussian': 0.988  # [4]
