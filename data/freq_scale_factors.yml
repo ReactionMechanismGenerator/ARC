@@ -18,7 +18,7 @@ freq_scale_factors:
   'b3lyp/6-311+g(3df,2p), software: gaussian': 0.967  # [2]
   'b3lyp/6-311+g(3df,2pd), software: gaussian': 0.970  # [2]
   'b3lyp/cc-pvtz, software: gaussian': 0.998  # [2]
-  'b3lyp/jul-cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 1.002  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'b3lyp/jul-cc-pvtz, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 1.002  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
   'b3lyp/aug-cc-pvtz, software: gaussian': 0.999  # [2]
   'b3lyp/def2tzvp, software: gaussian': 0.999  # [2]
   'm062x/6-31g(d,p), software: gaussian': 0.952  # [2]
@@ -32,18 +32,18 @@ freq_scale_factors:
   'm062x/def2qzvp, software: gaussian': 0.983  # [3]
   'm062x/def2tzvpp, software: gaussian': 0.983  # [1] Table 3, [3]
   'm08so/mg3s*, software: gaussian': 0.995  # [1] Table 3, taken as 'M08-SO/MG3S'
-  'm11/jul-cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.995  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'm11/jul-cc-pvtz, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 0.995  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
   'b97d3/def2msvp, software: gaussian': 1.014  # [4]
   'wb97xd/cc-pvtz, software: gaussian': 0.987  # [4]
-  'wb97xd/cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.991  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
-  'wb97xd/apr-cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.992  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
-  'wb97xd/jul-cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.992  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'wb97xd/cc-pvtz, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 0.991  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'wb97xd/apr-cc-pvtz, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 0.992  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'wb97xd/jul-cc-pvtz, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 0.992  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
   'wb97xd/aug-cc-pvtz, software: gaussian': 0.988  # [3], taken as 'ωB97X-D/maug-cc-pVTZ', [4] gaussian 16
   'wb97xd/aug-cc-pvtz, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.992  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
   'wb97xd/6-311++g(d,p), software: gaussian': 0.988  # [4]
   'wb97xd/def2svp, software: gaussian': 0.986  # [4]
   'wb97xd/def2tzvp, software: gaussian': 0.988  # [4]
-  'wb97xd/def2tzvp, solvation_method: smd, solvent:dimethylsulfoxide, software: gaussian': 0.991  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
+  'wb97xd/def2tzvp, solvation_method: smd, solvent: dimethylsulfoxide, software: gaussian': 0.991  # [4] gaussian 16, calculated w/o NH3 since it doesn't converge in solvent
   'wb97xd3/def2-tzvp, software: qchem': 0.984  # [4]
   'wb97xd3/def2-tzvpd, solvation_method: smd, solvent: dimethylsulfoxide,software: orca': 0.993  # [4] orca 6
   'wb97m-v/def2-tzvpd, software: qchem': 1.002  # [4]
