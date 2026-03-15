@@ -340,6 +340,38 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc14.freq_level.simple(), 'pm6')
         self.assertEqual(arc14.sp_level.simple(), 'amber')
 
+        # Test applying an explicit year to level_of_theory SP side
+        arc15 = ARC(project='test', level_of_theory='wb97xd/def2tzvp', level_of_theory_year=2023,
+                    calc_freq_factor=False, compute_thermo=False)
+        self.assertEqual(arc15.sp_level.simple(), 'wb97xd/def2tzvp (2023)')
+        self.assertEqual(arc15.opt_level.simple(), 'wb97xd/def2tzvp')
+        self.assertEqual(arc15.arkane_level_of_theory.year, 2023)
+
+        # Test level_of_theory_year coercion from string
+        arc16 = ARC(project='test', level_of_theory='wb97xd/def2tzvp', level_of_theory_year='2023',
+                    calc_freq_factor=False, compute_thermo=False)
+        self.assertEqual(arc16.sp_level.year, 2023)
+
+        # Test explicit year in sp_level dictionary
+        arc17 = ARC(project='test',
+                    sp_level={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
+                    opt_level='wb97xd/def2tzvp',
+                    calc_freq_factor=False, compute_thermo=False)
+        self.assertEqual(arc17.sp_level.year, 2023)
+
+        # Test explicit year in arkane_level_of_theory dictionary
+        arc18 = ARC(project='test',
+                    sp_level='wb97xd/def2tzvp',
+                    opt_level='wb97xd/def2tzvp',
+                    arkane_level_of_theory={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
+                    bac_type=None,
+                    calc_freq_factor=False, compute_thermo=False)
+        self.assertEqual(arc18.arkane_level_of_theory.year, 2023)
+
+        # Test level_of_theory_year must accompany level_of_theory
+        with self.assertRaises(InputError):
+            ARC(project='test', sp_level='wb97xd/def2tzvp', level_of_theory_year=2023, compute_thermo=False)
+
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
         spc0 = ARCSpecies(label='spc0', smiles='CC', compute_thermo=False)

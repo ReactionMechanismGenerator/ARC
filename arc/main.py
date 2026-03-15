@@ -65,6 +65,10 @@ class ARC(object):
                                          e.g., 'ZINDO/2', 'DLPNO-MP2-F12/D'
                                          For these cases, use the dictionary-type job-specific level of theory arguments
                                          instead (e.g., ``opt_level``).
+        level_of_theory_year (int or str, optional): An optional 4-digit year suffix to apply to the single-point
+                                                     side of ``level_of_theory``. Useful for selecting Arkane entries
+                                                     such as ``wb97xd2023`` while keeping a shorthand
+                                                     ``level_of_theory: wb97xd/def2tzvp`` input.
         composite_method (str, dict, Level, optional): Composite method.
         conformer_level (str, dict, Level, optional): Level of theory for conformer searches.
         conformer_opt_level (str, dict, Level, optional): Level of theory for conformer searches, interchangable with `conformer_level`.
@@ -153,6 +157,7 @@ class ARC(object):
         species (list): A list of :ref:`ARCSpecies <species>` objects.
         reactions (list): A list of :ref:`ARCReaction <reaction>` objects.
         level_of_theory (str): A shortcut representing either sp//geometry levels or a composite method.
+        level_of_theory_year (int): An optional 4-digit year suffix associated with ``level_of_theory``.
         composite_method (Level): Composite method.
         conformer_opt_level (Level): Level of theory for conformer searches.
         conformer_sp_level (Level): Level of theory for conformer sp jobs after opt.
@@ -244,6 +249,7 @@ class ARC(object):
                  job_memory: Optional[int] = None,
                  job_types: Optional[Dict[str, bool]] = None,
                  level_of_theory: str = '',
+                 level_of_theory_year: Optional[Union[int, str]] = None,
                  max_job_time: Optional[float] = None,
                  n_confs: int = 10,
                  opt_level: Optional[Union[str, dict, Level]] = None,
@@ -332,6 +338,7 @@ class ARC(object):
 
         # attributes related to level of theory specifications
         self.level_of_theory = level_of_theory
+        self.level_of_theory_year = self._coerce_level_year(level_of_theory_year, arg_name='level_of_theory_year')
         self.composite_method = composite_method or None
         self.conformer_opt_level = conformer_level or conformer_opt_level or None
         self.conformer_sp_level = conformer_sp_level or None
@@ -1107,6 +1114,9 @@ class ARC(object):
         """
         Process the ``level_of_theory`` argument, and populate respective job level of theory arguments as needed.
         """
+        if self.level_of_theory_year is not None and not self.level_of_theory:
+            raise InputError('Got level_of_theory_year without level_of_theory. '
+                             'Use level_of_theory with level_of_theory_year, or specify year directly in sp_level.')
         if self.level_of_theory:
             if self.opt_level is not None:
                 raise InputError(f'Got both level_of_theory and opt_level arguments. Choose the correct one:\n'
@@ -1134,6 +1144,13 @@ class ARC(object):
                 sp = opt = self.level_of_theory
             sp = Level(repr=sp)
             opt = Level(repr=opt)
+            if self.level_of_theory_year is not None:
+                if sp.year is not None and sp.year != self.level_of_theory_year:
+                    raise InputError(
+                        f'Conflicting year specifications for level_of_theory "{self.level_of_theory}": '
+                        f'sp level year={sp.year}, level_of_theory_year={self.level_of_theory_year}.'
+                    )
+                sp.year = self.level_of_theory_year
             if sp.method_type == 'composite':
                 self.composite_method = sp
             else:
@@ -1145,6 +1162,29 @@ class ARC(object):
                     self.scan_level = opt
 
         self.level_of_theory = ''  # Reset the level_of_theory argument to avoid conflicts upon restarting ARC.
+        self.level_of_theory_year = None
+
+    @staticmethod
+    def _coerce_level_year(level_year: Optional[Union[int, str]],
+                           arg_name: str = 'level_year',
+                           ) -> Optional[int]:
+        """
+        Coerce a year argument into an integer or None.
+        """
+        if level_year is None:
+            return None
+        if isinstance(level_year, str):
+            if not level_year.strip():
+                return None
+            if level_year.strip().lower() in {'none', 'null'}:
+                return None
+        try:
+            year = int(level_year)
+        except (TypeError, ValueError):
+            raise InputError(f'{arg_name} must be a 4-digit integer year or None, got: {level_year}')
+        if year < 1000 or year > 9999:
+            raise InputError(f'{arg_name} must be a 4-digit integer (1000-9999), got: {year}')
+        return year
 
     def check_arkane_level_of_theory(self):
         """
