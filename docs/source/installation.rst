@@ -8,8 +8,8 @@ The instructions below make this differentiation when relevant (the only differe
 of software installed on the same machine, where the communication isn't done via SSH).
 
 Note:
-    ARC was only tested on Linux (Ubuntu_ 18.04.1 and 20.04 LTS) and Mac machines.
-    We don't expect it to work smoothly on Windows machines.
+    ARC was only tested on Linux (Ubuntu_ 18.04.1 until 24.04 LTS & Rocky Linux 8.1) and Mac machines.
+    /We don't expect it to work smoothly on Windows machines.
 
 Note:
     For a containerized setup, see the :ref:`Docker image <docker>` documentation.
@@ -26,18 +26,16 @@ Note:
 Clone and setup path
 ^^^^^^^^^^^^^^^^^^^^
 
-- Download and install the `Anaconda Python Platform`__ for Python 3.7 or higher if you haven't already.
+- Download and install the `Miniforge`_ or `Miniconda`_ for Python 3.12 or higher if you haven't already.
 - Get git and appropriate compilers if you don't have them already by typing ``sudo apt install git gcc g++ make``
   in a terminal.
 - Clone ARC's repository to by typing the following command in the desired folder (e.g., under `~/Code/`)::
 
     git clone https://github.com/ReactionMechanismGenerator/ARC.git
 
-- Add ARC to your local path in ``.bashrc`` (make sure to change ``~/Path/to/ARC/`` accordingly)::
 
-    export PYTHONPATH=$PYTHONPATH:~/Path/to/ARC/
-
-__ anaconda_
+.. _Miniconda: https://docs.conda.io/projects/miniconda/en/latest/
+.. _Miniforge: https://github.com/conda-forge/miniforge
 
 
 .. _arce:
@@ -45,10 +43,10 @@ __ anaconda_
 Install dependencies
 ^^^^^^^^^^^^^^^^^^^^
 
-- Create the Anaconda environment for ARC (after changing the directory to the
-  installation folder by, e.g., ``cd ~/Code/ARC/``)::
+- Create the environment for ARC using Miniforge or Miniconda (after changing the directory to the
+  installation folder by, e.g., ``cd ~/Code/ARC/``):|
 
-    conda env create -f environment.yml
+     conda env create -f environment.yml
 
   Activate the ARC environment every time before you run ARC::
 
@@ -58,30 +56,30 @@ Install dependencies
 
   - Use the installer script via Make (recommended). Default is the packaged release::
 
-    make install-rmg
+     make install-rmg
 
-    To install from source instead::
+    To install from source instead (like a github repo)::
 
-    make install-rmg RMG_ARGS=--source
+     make install-rmg RMG_ARGS=--source
 
     Additional source options (examples)::
 
-    make install-rmg RMG_ARGS="--source --conda"
-    make install-rmg RMG_ARGS="--source --pip"
+     make install-rmg RMG_ARGS="--source --conda"
+     make install-rmg RMG_ARGS="--source --pip"
 
     Optional extras (examples)::
 
-    make install-rmg RMG_ARGS="--rms"
-    make install-rmg RMG_ARGS="--source --rms --ssh"
+     make install-rmg RMG_ARGS="--rms"
+     make install-rmg RMG_ARGS="--source --rms --ssh"
 
-    See ``devtools/install_rmg.sh --help`` for all flags.
+    See ``bash devtools/install_rmg.sh --help`` for all flags.
 
   - Source install RMG-Py + RMG-database manually, then set `RMG_PY_PATH` and `RMG_DB_PATH` in your shell or
     `.arc/settings.py`.
 
   - Install the packaged RMG release (RMG-Py + RMG-database + Arkane) into a dedicated environment::
 
-    mamba create -n rmg_env -c rmg -c conda-forge python=3.9 conda-forge::numpy>=1.10.0,<2 \
+     mamba create -n rmg_env -c rmg -c conda-forge python=3.9 conda-forge::numpy>=1.10.0,<2 \
         blas=*=openblas conda-forge::numdifftools rmg=3.3.0 connie::symmetry
 
     ARC runs Arkane automatically for statmech from this environment.
