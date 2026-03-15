@@ -1566,24 +1566,36 @@ class ARCSpecies(object):
                 cluster_tsgs.append(tsg)
         self.ts_guesses = cluster_tsgs
 
-    def process_completed_tsg_queue_jobs(self, yml_path: str):
+    def process_completed_tsg_queue_jobs(self, path: str):
         """
         Process YAML files which are the output of running a TS guess job in the queue.
 
         Args:
-            yml_path (str): The path to the output YAML file.
+            path (str): The path to the output file.
         """
-        if not isinstance(yml_path, str) or not os.path.isfile(yml_path):
+        if not isinstance(path, str) or not os.path.isfile(path):
             return None
-        tsg_list = read_yaml_file(yml_path)
-        if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
-            return None
-        tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
-        for tsg in tsgs:
+        if path.endswith('.log'):
+            xyz = parse_geometry(path)
+            tsg = TSGuess(method='orca_neb',
+                          success=True,
+                          xyz=xyz,
+                          )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
                     tsg.index = len(self.ts_guesses)
                 self.ts_guesses.append(tsg)
+        elif path.endswith('.yml') or path.endswith('.yaml'):
+            yml_path = path
+            tsg_list = read_yaml_file(yml_path)
+            if not isinstance(tsg_list, list) or not all(isinstance(tsg, dict) for tsg in tsg_list):
+                return None
+            tsgs = [TSGuess(ts_dict=tsg_dict) for tsg_dict in tsg_list]
+            for tsg in tsgs:
+                if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
+                    if tsg.index is None:
+                        tsg.index = len(self.ts_guesses)
+                    self.ts_guesses.append(tsg)
         self.cluster_tsgs()
 
     def mol_from_xyz(self,
