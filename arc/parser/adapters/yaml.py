@@ -42,7 +42,7 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: Optional[Dict[str, tuple]]
             The cartesian geometry.
         """
-        for key in ['xyz', 'opt_xyz']:
+        for key in ['opt_xyz', 'xyz']:
             if key in self.data.keys():
                 return self.data[key] if isinstance(self.data[key], dict) else str_to_xyz(self.data[key])
         return None
@@ -54,7 +54,7 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: Optional[np.ndarray]
             The parsed frequencies (in cm^-1).
         """
-        freqs = self.data.get('freqs')
+        freqs = self.data.get('freqs') or self.data.get('frequencies')
         return np.array(freqs, dtype=np.float64) if freqs else None
 
     def parse_normal_mode_displacement(self) -> Tuple[Optional['np.ndarray'], Optional['np.ndarray']]:
@@ -64,8 +64,8 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: Tuple[Optional['np.ndarray'], Optional['np.ndarray']]
             The frequencies (in cm^-1) and the normal mode displacements.
         """
-        freqs = self.data.get('freqs')
-        modes = self.data.get('modes')
+        freqs = self.data.get('freqs') or self.data.get('frequencies')
+        modes = self.data.get('modes') or self.data.get('normal_modes')
         if freqs and modes:
             return (
                 np.array(freqs, dtype=np.float64) if freqs is not None else None,
@@ -90,7 +90,13 @@ class YAMLParser(ESSAdapter, ABC):
         Returns: Optional[float]
             The electronic energy in kJ/mol.
         """
-        energy = self.data.get('sp')
+        energy = self.data.get('sp') or self.data.get('energy')
+        if energy is not None:
+            # If the value is very small, it might already be in kJ/mol (unlikely for E_elect),
+            # but standard internal representation is Hartree.
+            if abs(energy) < 1e6: # Arbitrary threshold to detect Hartree vs kJ/mol
+                return energy * E_h_kJmol
+            return energy
         return energy
 
     def parse_zpe_correction(self) -> Optional[float]:

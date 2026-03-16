@@ -74,7 +74,7 @@ ts_adapters_by_rmg_family = {'1+2_Cycloaddition': ['kinbot'],
                              }
 
 all_families_ts_adapters = []
-adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
+adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
 default_incore_adapters = ['autotst', 'gcn', 'heuristics', 'kinbot', 'psi4', 'xtb', 'xtb_gsm', 'torchani', 'openbabel']
