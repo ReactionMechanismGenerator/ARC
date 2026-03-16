@@ -97,7 +97,7 @@ all_families_ts_adapters = []
 # family. These adapters must tolerate rxn.family being None or unknown.
 ts_adapters_for_unknown_unimolecular = ['linear']
 
-adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani']
+adapters_that_do_not_require_a_level_arg = ['xtb', 'torchani', 'ase']
 
 # Default is "queue", "pipe" will be called whenever needed. So just list 'incore'.
 default_incore_adapters = ['autotst', 'crest', 'gcn', 'heuristics', 'kinbot', 'linear', 'openbabel', 'torchani', 'psi4', 'xtb', 'xtb_gsm']
