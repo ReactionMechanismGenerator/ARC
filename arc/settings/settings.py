@@ -83,10 +83,11 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'ase': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
@@ -133,7 +134,7 @@ submit_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qsub
                   'HTCondor': 'condor_submit',
                   }
 
-delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/lx24-amd64/qdel',
+delete_command = {'OGE': 'export SGE_ROOT=/opt/sge; /opt/sge/bin/scancel',
                   'Slurm': '/usr/bin/scancel',
                   'PBS': '/usr/local/bin/qdel',
                   'HTCondor': 'condor_rm',
@@ -157,7 +158,8 @@ t_max_format = {'OGE': 'hours',
                 'HTCondor': 'hours',
                 }
 
-input_filenames = {'cfour': 'ZMAT',
+input_filenames = {'ase': 'input.yml',
+                   'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
                    'mockter': 'input.yml',
                    'molpro': 'input.in',
@@ -169,7 +171,8 @@ input_filenames = {'cfour': 'ZMAT',
                    'xtb': 'input.sh',
                    }
 
-output_filenames = {'cfour': 'output.out',
+output_filenames = {'ase': 'output.yml',
+                    'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
                     'mockter': 'output.yml',
@@ -258,6 +261,15 @@ orca_neb_settings = {'keyword': {
                     'level': 'wb97xd/def2tzvp',
                     }
 
+ase_default_options_dict = {'optimizer': 'BFGS',
+                            'fmax': 0.001,
+                            'steps': 1000,
+                            }
+
+ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
+                       'xtb': 'SELLA_PYTHON',
+                       }
+
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
@@ -345,6 +357,7 @@ def find_executable(env_name, executable_name='python'):
     return None
 
 TANI_PYTHON = find_executable('tani_env')
+SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
