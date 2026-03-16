@@ -88,12 +88,17 @@ jobs:
       - name: Compile ARC molecule
         shell: micromamba-shell {0}
         working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
         run: |
           make compile
 
       - name: Run Unit Tests
         shell: micromamba-shell {0}
         working-directory: ARC
+        env:
+          ARC_COVERAGE: 1
+          CYTHON_TRACE: 1
         run: |
           echo "Running Unit Tests..."
           export PYTHONPATH="${{ github.workspace }}/AutoTST:${{ github.workspace }}/KinBot:$PYTHONPATH"
