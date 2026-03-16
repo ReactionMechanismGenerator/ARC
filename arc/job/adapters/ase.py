@@ -76,10 +76,15 @@ class ASEAdapter(JobAdapter):
         
         self.job_adapter = 'ase'
         self.execution_type = execution_type or 'incore'
+        self.incore_capacity = 100
         
         self.sp = None
         self.opt_xyz = None
         self.freqs = None
+
+        self.args = args or dict()
+        self.python_executable = self.get_python_executable()
+        self.script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
 
         _initialize_adapter(obj=self,
                             is_ts=False,
@@ -122,9 +127,6 @@ class ASEAdapter(JobAdapter):
                             tsg=tsg,
                             xyz=xyz,
                             )
-
-        self.python_executable = self.get_python_executable()
-        self.script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'ase_script.py')
 
     def get_python_executable(self) -> str:
         """
