@@ -342,6 +342,8 @@ class Level(object):
         Args:
             job_type (str, optional): An ARC job type, assists in determining the software.
         """
+        if self.software is not None:
+            return
 
         # OneDMin
         if job_type == 'onedmin':
