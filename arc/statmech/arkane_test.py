@@ -8,6 +8,7 @@ This module contains unit tests for ARC's statmech.arkane module
 import os
 import shutil
 import unittest
+from unittest.mock import patch
 
 from arc.common import ARC_PATH, ARC_TESTING_PATH
 from arc.level import Level
@@ -16,6 +17,7 @@ from arc.species import ARCSpecies
 from arc.statmech.adapter import StatmechEnum
 from arc.statmech.arkane import ArkaneAdapter
 from arc.statmech.arkane import _level_to_str, _section_contains_key, get_arkane_model_chemistry
+from arc.statmech.factory import statmech_factory
 from arc.imports import settings
 
 
@@ -47,8 +49,7 @@ class TestArkaneAdapter(unittest.TestCase):
         output_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_3')
         calcs_path_3 = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3')
         for path in [output_path_1, calcs_path_1, output_path_2, calcs_path_2, output_path_3, calcs_path_3]:
-            if not os.path.isdir(path):
-                os.makedirs(path)
+            os.makedirs(path, exist_ok=True)
         rxn_1 = ARCReaction(r_species=[ARCSpecies(label='CH3NH', smiles='C[NH]')],
                             p_species=[ARCSpecies(label='CH2NH2', smiles='[CH2]N')])
         rxn_1.ts_species = ARCSpecies(label='TS1', is_ts=True, xyz="""C      -0.68121000   -0.03232800    0.00786900
@@ -106,8 +107,23 @@ class TestArkaneAdapter(unittest.TestCase):
             if arkane.sp_level is not None:
                 self.assertIn(f'sp_level={arkane.sp_level.simple()}', repr)
 
+    def test_statmech_factory(self):
+        """Test the statmech_factory function"""
+        output_path = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'output_factory')
+        calcs_path = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_factory')
+        os.makedirs(output_path, exist_ok=True)
+        os.makedirs(calcs_path, exist_ok=True)
+        adapter = statmech_factory(statmech_adapter_label='arkane',
+                                   output_directory=output_path,
+                                   calcs_directory=calcs_path,
+                                   output_dict=dict(),
+                                   species=[self.ic3h7])
+        self.assertIsInstance(adapter, ArkaneAdapter)
+        self.assertEqual(adapter.output_directory, output_path)
+
     def test_run_statmech_using_molecular_properties(self):
         """Test running statmech using molecular properties."""
+        os.makedirs(os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3', 'statmech', 'thermo'), exist_ok=True)
         self.arkane_3.compute_thermo()
         plot_path = os.path.join(ARC_TESTING_PATH, 'arkane_tests_delete', 'calcs_3', 'statmech', 'thermo', 'plots', 'iC3H7.pdf')
         if not os.path.isfile(plot_path):
