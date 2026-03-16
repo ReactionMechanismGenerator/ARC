@@ -83,10 +83,11 @@ global_ess_settings = {
     'torchani': 'local',
     'openbabel': 'local',
     'orca_neb': 'local',
+    'ase': 'local',
 }
 
 # Electronic structure software ARC may access (use lowercase):
-supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel']
+supported_ess = ['cfour', 'gaussian', 'mockter', 'molpro', 'orca', 'qchem', 'terachem', 'onedmin', 'xtb', 'torchani', 'openbabel', 'ase']
 
 # TS methods to try when appropriate for a reaction (other than user guesses which are always allowed):
 ts_adapters = ['heuristics', 'AutoTST', 'GCN', 'xtb_gsm', 'orca_neb']
@@ -157,7 +158,8 @@ t_max_format = {'OGE': 'hours',
                 'HTCondor': 'hours',
                 }
 
-input_filenames = {'cfour': 'ZMAT',
+input_filenames = {'ase': 'input.yml',
+                   'cfour': 'ZMAT',
                    'gaussian': 'input.gjf',
                    'mockter': 'input.yml',
                    'molpro': 'input.in',
@@ -169,7 +171,8 @@ input_filenames = {'cfour': 'ZMAT',
                    'xtb': 'input.sh',
                    }
 
-output_filenames = {'cfour': 'output.out',
+output_filenames = {'ase': 'output.yml',
+                    'cfour': 'output.out',
                     'gaussian': 'input.log',
                     'gcn': 'output.yml',
                     'mockter': 'output.yml',
@@ -258,6 +261,15 @@ orca_neb_settings = {'keyword': {
                     'level': 'wb97xd/def2tzvp',
                     }
 
+ase_default_options_dict = {'optimizer': 'BFGS',
+                            'fmax': 0.001,
+                            'steps': 1000,
+                            }
+
+ASE_CALCULATORS_ENV = {'torchani': 'TANI_PYTHON',
+                       'xtb': 'SELLA_PYTHON',
+                       }
+
 valid_chars = "-_[]=.,%s%s" % (string.ascii_letters, string.digits)
 
 # A scan with better resolution (lower number here) takes more time to compute,
@@ -307,8 +319,8 @@ LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
 ARC_FAMILIES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'families')
 
 # Default environment names for sister repos
-TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
-    None, None, None, None, None, None, None, None, None
+TS_GCN_PYTHON, TANI_PYTHON, AUTOTST_PYTHON, ARC_PYTHON, XTB, XTB_PYTHON, OB_PYTHON, RMG_PYTHON, RMG_PATH, RMG_DB_PATH = \
+    None, None, None, None, None, None, None, None, None, None
 
 home = os.getenv("HOME") or os.path.expanduser("~")
 
@@ -345,10 +357,12 @@ def find_executable(env_name, executable_name='python'):
     return None
 
 TANI_PYTHON = find_executable('tani_env')
+SELLA_PYTHON = find_executable('sella_env')
 OB_PYTHON = find_executable('ob_env')
 TS_GCN_PYTHON = find_executable('ts_gcn')
 AUTOTST_PYTHON = find_executable('tst_env')
 ARC_PYTHON = find_executable('arc_env')
+XTB_PYTHON = find_executable('xtb_env')
 RMG_ENV_NAME = 'rmg_env'
 RMG_PYTHON = find_executable('rmg_env')
 XTB = find_executable('xtb_env', 'xtb')
