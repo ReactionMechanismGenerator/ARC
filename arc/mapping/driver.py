@@ -241,7 +241,6 @@ def map_isomerization_reaction(rxn: 'ARCReaction') -> Optional[List[int]]:
     return map_two_species(reactant, product, map_type='list')
 
 
-
 def map_rxn(rxn: 'ARCReaction',
             backend: str = 'ARC',
             product_dict_index_to_try: int = 0,
