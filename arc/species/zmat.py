@@ -60,6 +60,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                 consolidate: bool = True,
                 consolidation_tols: Dict[str, float] = None,
                 fragments: Optional[List[List[int]]] = None,
+                atom_order: Optional[List[int]] = None,
                 ) -> Dict[str, tuple]:
     """
     Generate a z-matrix from cartesian coordinates.
@@ -96,6 +97,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
             Fragments represented by the species, i.e., as in a VdW well or a TS.
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
             indices are 0-indexed.
+        atom_order (List[int], optional): The order in which atoms should be added to the zmat.
 
     Raises:
         ZMatError: If the zmat could not be generated.
@@ -118,7 +120,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                                     f'coordinates with only {len(xyz["symbols"])} atoms:\n{constraints}')
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
-    atom_order = get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
+    atom_order = atom_order or get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
     connectivity = get_connectivity(mol=mol) if mol is not None else None
     skipped_atoms = list()  # atoms for which constrains are applied
     for atom_index in atom_order:
@@ -1336,7 +1338,7 @@ def order_fragments_by_constraints(fragments: List[List[int]],
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         constraints_dict (dict, optional):
             A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
-            are after the atoms they are constraint to.
+            are after the atoms they are constrained to.
 
     Returns:
         List[List[int]]: The ordered fragments list.
@@ -1376,7 +1378,7 @@ def get_atom_order(xyz: Optional[Dict[str, tuple]] = None,
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
         constraints_dict (dict, optional):
             A dictionary of atom constraints. The function will try to find an atom order in which all constrained atoms
-            are after the atoms they are constraint to.
+            are after the atoms they are constrained to.
 
     Returns:
         List[int]: The atom order, 0-indexed.
@@ -1967,6 +1969,8 @@ def _compare_zmats(zmat1: dict,
     Returns:
         bool: Whether the two zmats represent the same conformation to the desired tolerance. ``True`` if they do.
     """
+    print(f'zmat1: {zmat1}')
+    print(f'zmat2: {zmat2}')
     if not isinstance(zmat1, dict) or not isinstance(zmat2, dict):
         raise ZMatError(f'zmats must be dictionaries, got {type(zmat1)} and {type(zmat2)}')
     if not len(list(zmat1.keys())):
@@ -2338,3 +2342,243 @@ def map_index_to_int(index: Union[int, str]) -> int:
     if isinstance(index, str) and all(char.isdigit() for char in index[1:]):
         return int(index[1:])
     raise TypeError(f'Expected either an int or a string on the format "X15", got {index}')
+
+
+def check_ordered_zmats(zmat_1: dict,
+                        zmat_2: dict,
+                        ) -> bool:
+    """
+    Check whether the ZMats have the same order of atoms and the same variable names.
+
+    Args:
+        zmat_1 (dict): ZMat 1.
+        zmat_2 (dict): ZMat 2.
+
+    Returns:
+        bool: Whether the ZMats are ordered.
+    """
+    return zmat_1['symbols'] == zmat_2['symbols'] and zmat_1['vars'].keys() == zmat_2['vars'].keys()
+
+
+# def update_zmat_by_xyz(zmat: dict,
+#                        xyz: Dict[str, tuple],
+#                        ) -> dict:
+#     """
+#     Update a zmat vars by xyz.
+#
+#     Args:
+#         zmat (dict): The zmat to update.
+#         xyz (dict): The xyz to update the zmat with.
+#
+#     Returns:
+#         dict: The updated zmat.
+#     """
+#     zmat = {'symbols': zmat['symbols'],
+#             'coords': zmat['coords'],
+#             'vars': zmat['vars'],
+#             'map': zmat['map'],
+#             }
+#     new_vars = dict()
+#     for key, val in zmat['vars'].items():
+#         indices = get_atom_indices_from_zmat_parameter(key)[0]
+#         indices = [zmat['map'][index] for index in indices]
+#         new_vars[key] = calculate_param(coords=xyz, atoms=indices)
+#     zmat['vars'] = new_vars
+#     return zmat
+
+
+
+def update_zmat_by_xyz(zmat: dict,
+                       xyz: Dict[str, tuple],
+                       ) -> dict:
+    """
+    Update a zmat vars by xyz.
+
+    Notes:
+        - If the zmat contains dummy atoms (e.g., symbols 'X' and map entries like 'X19'),
+          the corresponding dummy coordinates are often NOT present in `xyz['coords']`.
+          In that case we keep the original zmat variable value instead of trying to
+          compute it (which would IndexError).
+        - If `xyz` *does* include dummy coordinates (coords length covers those indices),
+          then the dummy-related variables will be updated as well.
+    """
+    # Shallow copy the top-level structure; we'll rebuild vars.
+    zmat_out = {
+        'symbols': zmat['symbols'],
+        'coords': zmat['coords'],
+        'vars': dict(zmat['vars']),
+        'map': zmat['map'],
+    }
+
+    # Normalize coords access for bounds checking
+    coords = xyz['coords'] if isinstance(xyz, dict) and 'coords' in xyz else xyz
+    n_atoms_xyz = len(coords)
+
+    new_vars = {}
+    for key, old_val in zmat_out['vars'].items():
+        # indices from parameter name (e.g., R_8_6 -> [8, 6], etc.)
+        indices = get_atom_indices_from_zmat_parameter(key)[0]
+
+        # map zmat-local indices to xyz indices / labels
+        mapped = [zmat_out['map'][i] for i in indices]
+
+        # Convert mapped entries into integer indices where possible
+        atoms: List[int] = []
+        convertible = True
+        for m in mapped:
+            if isinstance(m, str):
+                # Dummy atom labels like "X19"
+                if m.startswith('X') and m[1:].isdigit():
+                    atoms.append(int(m[1:]))
+                else:
+                    convertible = False
+                    break
+            elif isinstance(m, int):
+                atoms.append(m)
+            else:
+                convertible = False
+                break
+
+        # If we can't convert or any atom index doesn't exist in xyz -> keep original
+        if (not convertible) or any(a < 0 or a >= n_atoms_xyz for a in atoms):
+            new_vars[key] = old_val
+            continue
+
+        # Safe to compute from xyz
+        new_vars[key] = calculate_param(coords=xyz, atoms=atoms)
+
+    zmat_out['vars'] = new_vars
+    return zmat_out
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def update_zmat_by_xyz(zmat: dict,
+#                        xyz: Dict[str, tuple],
+#                        ) -> dict:
+#     """
+#     Update a zmat vars by xyz.
+#     Calculates the Cartesian coordinates of any dummy atoms present in the Z-matrix
+#     but missing from the xyz input, assuming rigid dummy atom definitions from the input zmat.
+#
+#     Args:
+#         zmat (dict): The zmat to update.
+#         xyz (dict): The xyz to update the zmat with.
+#
+#     Returns:
+#         dict: The updated zmat.
+#     """
+#     zmat_out = {'symbols': zmat['symbols'],
+#                 'coords': zmat['coords'],
+#                 'vars': zmat['vars'],
+#                 'map': zmat['map'],
+#                 }
+#
+#     # Create a mutable list of coordinates that we can extend with dummy atoms
+#     # Ensure it's large enough to hold the indices referenced in zmat['map']
+#     max_index = len(xyz['coords']) - 1
+#     for val in zmat['map'].values():
+#         if isinstance(val, str) and 'X' in val:
+#             idx = int(val[1:])
+#             if idx > max_index:
+#                 max_index = idx
+#         elif isinstance(val, int):
+#             if val > max_index:
+#                 max_index = val
+#
+#     # Fill list with Real atoms, None for placeholders up to max_index
+#     coords_list = [None] * (max_index + 1)
+#     for i, coord in enumerate(xyz['coords']):
+#         coords_list[i] = coord
+#
+#     # Iterate through Z-matrix rows to calculate Dummy Atom positions
+#     for i, row in enumerate(zmat['coords']):
+#         map_idx = zmat['map'][i]
+#
+#         # Check if this is a dummy atom (mapped to string 'X...')
+#         if isinstance(map_idx, str) and 'X' in map_idx:
+#             dummy_index = int(map_idx[1:])
+#
+#             # Retrieve definition (R, A, D) from zmat vars
+#             # row format: (r_var, a_var, d_var)
+#             r_key, a_key, d_key = row
+#
+#             # Helper to get parent index from var name (e.g., 'R_7_6' -> parent is 6)
+#             # zmat parameters are usually stored as 'Type_Current_Parent...'
+#             def _get_parent_idx(key_):
+#                 if key_:
+#                     # The second number in the string is usually the parent for R, A, D
+#                     # e.g., R_7_6 -> 6. A_7_6_4 -> 6 (first parent).
+#                     parts = key_.split('_')
+#                     # parts[1] is the current atom zmat-index, parts[2] is the parent zmat-index
+#                     parent_zmat_idx = int(parts[2])
+#                     # We need the xyz-index (or map value) of that parent
+#                     parent_map_idx = zmat['map'][parent_zmat_idx]
+#                     if isinstance(parent_map_idx, str):
+#                         return int(parent_map_idx[1:])
+#                     return parent_map_idx
+#                 return None
+#
+#             p1_idx = _get_parent_idx(r_key)
+#             p2_idx = _get_parent_idx(a_key)
+#             p3_idx = _get_parent_idx(d_key)
+#
+#             # Get values (Dummy definitions are assumed constant/rigid from input zmat)
+#             r_val = zmat['vars'][r_key]
+#             a_val = zmat['vars'][a_key] if a_key else 90.0
+#             d_val = zmat['vars'][d_key] if d_key else 0.0
+#
+#             # Calculate Cartesian Position
+#             if p1_idx is not None and coords_list[p1_idx] is not None:
+#                 p1 = coords_list[p1_idx]
+#                 p2 = coords_list[p2_idx] if p2_idx is not None else None
+#                 p3 = coords_list[p3_idx] if p3_idx is not None else None
+#
+#                 dummy_pos = get_position(r=r_val, theta=a_val, phi=d_val, p1=p1, p2=p2, p3=p3)
+#                 coords_list[dummy_index] = dummy_pos
+#
+#     # Now calculate new variables using the augmented coordinates list
+#     # Re-package coordinates into a dict structure expected by calculate_param logic if needed,
+#     # or just pass the list if calculate_param accepts it (it accepts lists/tuples).
+#     new_vars = dict()
+#     for key, val in zmat['vars'].items():
+#         # Identify if this variable *defines* a dummy atom (starts with 'RX', 'AX', 'DX')
+#         # If so, keep original value (rigid dummy assumption).
+#         # Otherwise, calculate it (real atom or real atom referencing dummy).
+#         if key.startswith('RX') or key.startswith('AX') or key.startswith('DX'):
+#             new_vars[key] = val
+#         else:
+#             # Standard calculation
+#             # We need to get atom indices.
+#             indices = get_atom_indices_from_zmat_parameter(key)[0]
+#
+#             # Map Z-mat indices to XYZ indices (handling 'X' strings)
+#             mapped_indices = []
+#             for index in indices:
+#                 m_val = zmat['map'][index]
+#                 if isinstance(m_val, str) and 'X' in m_val:
+#                     mapped_indices.append(int(m_val[1:]))
+#                 else:
+#                     mapped_indices.append(m_val)
+#
+#             new_vars[key] = calculate_param(coords=coords_list, atoms=mapped_indices)
+#
+#     zmat_out['vars'] = new_vars
+#     return zmat_out
