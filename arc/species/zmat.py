@@ -61,6 +61,7 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
                 consolidation_tols: Dict[str, float] = None,
                 fragments: Optional[List[List[int]]] = None,
                 atom_order: Optional[List[int]] = None,
+                anchors: Optional[List[int]] = None,
                 ) -> Dict[str, tuple]:
     """
     Generate a z-matrix from cartesian coordinates.
@@ -98,9 +99,15 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
             Entries are atom index lists of all atoms in a fragment, each list represents a different fragment.
             indices are 0-indexed.
         atom_order (List[int], optional): The order in which atoms should be added to the zmat.
+        anchors (List[int], optional): A list of up to 3 atom indices (0-indexed) to serve as the root of the
+                                       Z-matrix. If provided, these atoms will be placed at positions 0, 1, and 2
+                                       in the Z-matrix respectively. The remaining atoms are ordered by the standard
+                                       ARC logic. Raises ``ValueError`` if the anchors are invalid (out of bounds,
+                                       duplicates, too close, or collinear).
 
     Raises:
         ZMatError: If the zmat could not be generated.
+        ValueError: If ``anchors`` contains invalid indices, duplicates, atoms that are too close, or a collinear triad.
 
     Returns: Dict[str, tuple]
         The z-matrix.
@@ -121,6 +128,26 @@ def xyz_to_zmat(xyz: Dict[str, tuple],
     xyz = xyz.copy()
     zmat = {'symbols': list(), 'coords': list(), 'vars': dict(), 'map': dict()}
     atom_order = atom_order or get_atom_order(xyz=xyz, mol=mol, constraints_dict=constraints, fragments=fragments)
+    if anchors is not None:
+        if not isinstance(anchors, (list, tuple)) or not (1 <= len(anchors) <= 3):
+            raise ValueError(f'anchors must be a list or tuple of 1-3 atom indices, got: {anchors}')
+        num_atoms = len(xyz['symbols'])
+        for idx in anchors:
+            if not isinstance(idx, int) or not (0 <= idx < num_atoms):
+                raise ValueError(f'anchor index {idx} is out of bounds for a molecule with {num_atoms} atoms')
+        if len(anchors) != len(set(anchors)):
+            raise ValueError(f'anchors must not contain duplicate indices, got: {anchors}')
+        if len(anchors) >= 2:
+            dist = calculate_param(coords=xyz['coords'], atoms=[anchors[0], anchors[1]], index=0)
+            if dist <= 0.1:
+                raise ValueError(f'Anchors {anchors[0]} and {anchors[1]} are too close ({dist:.3f} Å); '
+                                 f'cannot define a valid Z-matrix reference distance.')
+        if len(anchors) == 3:
+            angle = calculate_param(coords=xyz['coords'], atoms=[anchors[0], anchors[1], anchors[2]], index=0)
+            if is_angle_linear(angle, tolerance=5.0):
+                raise ValueError(f'Anchors {anchors} are collinear (angle at atom {anchors[1]} = {angle:.2f}°); '
+                                 f'cannot define a valid torsional plane.')
+        atom_order = list(anchors) + [a for a in atom_order if a not in anchors]
     connectivity = get_connectivity(mol=mol) if mol is not None else None
     skipped_atoms = list()  # atoms for which constrains are applied
     for atom_index in atom_order:
@@ -2364,22 +2391,56 @@ def update_zmat_by_xyz(zmat: dict,
     """
     Update a zmat vars by xyz.
 
+    Notes:
+        - If the zmat contains dummy atoms (e.g., symbols 'X' and map entries like 'X19'),
+          the corresponding dummy coordinates are often NOT present in `xyz['coords']`.
+          In that case we keep the original zmat variable value instead of trying to
+          compute it (which would IndexError).
+        - If `xyz` *does* include dummy coordinates (coords length covers those indices),
+          then the dummy-related variables will be updated as well.
+
     Args:
         zmat (dict): The zmat to update.
-        xyz (dict): The xyz to update the zmat with.
+        xyz (dict): The xyz to update from, with keys 'symbols' and 'coords'.
+                    The 'coords' can be a list of tuples or a dict with 'coords' key.
 
     Returns:
-        dict: The updated zmat.
+        dict: The updated zmat with vars updated based on the provided xyz.
     """
-    zmat = {'symbols': zmat['symbols'],
-            'coords': zmat['coords'],
-            'vars': zmat['vars'],
-            'map': zmat['map'],
-            }
-    new_vars = dict()
-    for key, val in zmat['vars'].items():
+    zmat_out = {
+        'symbols': zmat['symbols'],
+        'coords': zmat['coords'],
+        'vars': dict(zmat['vars']),
+        'map': zmat['map'],
+    }
+
+    coords = xyz['coords'] if isinstance(xyz, dict) and 'coords' in xyz else xyz
+    n_atoms_xyz = len(coords)
+
+    new_vars = {}
+    for key, old_val in zmat_out['vars'].items():
+        # indices from parameter name (e.g., R_8_6 -> [8, 6], etc.)
         indices = get_atom_indices_from_zmat_parameter(key)[0]
-        indices = [zmat['map'][index] for index in indices]
-        new_vars[key] = calculate_param(coords=xyz, atoms=indices)
-    zmat['vars'] = new_vars
-    return zmat
+        mapped = [zmat_out['map'][i] for i in indices]
+        atoms: List[int] = []
+        convertible = True
+        for m in mapped:
+            if isinstance(m, str):
+                if m.startswith('X') and m[1:].isdigit():
+                    atoms.append(int(m[1:]))
+                else:
+                    convertible = False
+                    break
+            elif isinstance(m, int):
+                atoms.append(m)
+            else:
+                convertible = False
+                break
+
+        if (not convertible) or any(a < 0 or a >= n_atoms_xyz for a in atoms):
+            new_vars[key] = old_val
+            continue
+        new_vars[key] = calculate_param(coords=xyz, atoms=atoms)
+
+    zmat_out['vars'] = new_vars
+    return zmat_out
