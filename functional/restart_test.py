@@ -128,6 +128,8 @@ class TestRestart(unittest.TestCase):
         adj_list = ''.join(adj_lines)
         mol1 = Molecule().from_adjacency_list(adj_list)
         self.assertEqual(mol1.to_smiles(), 'OO')
+        
+        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_restart_rate_1(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
@@ -151,6 +153,8 @@ class TestRestart(unittest.TestCase):
                     got_rate = True
                     break
         self.assertTrue(got_rate)
+        
+        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_restart_rate_2(self):
         """Test restarting ARC and attaining a reaction rate coefficient"""
@@ -178,6 +182,8 @@ class TestRestart(unittest.TestCase):
                     got_rate = True
                     break
         self.assertTrue(got_rate)
+        
+        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_restart_bde (self):
         """Test restarting ARC and attaining a BDE for anilino_radical."""
@@ -197,6 +203,8 @@ class TestRestart(unittest.TestCase):
             lines = f.readlines()
         self.assertIn(' BDE report for anilino_radical:\n', lines)
         self.assertIn(' (1, 9)            N - H           353.92\n', lines)
+
+        shutil.rmtree(project_directory, ignore_errors=True)
 
     def test_globalize_paths(self):
         """Test modifying a YAML file's contents to correct absolute file paths"""
@@ -218,15 +226,6 @@ class TestRestart(unittest.TestCase):
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage_restart_thermo',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_1',
-                    'arc_project_for_testing_delete_after_usage_restart_rate_2',
-                    'test_restart_bde',
-                    ]
-        for project in projects:
-            project_directory = os.path.join(ARC_PATH, 'Projects', project)
-            shutil.rmtree(project_directory, ignore_errors=True)
-
         shutil.rmtree(os.path.join(ARC_PATH, 'arc', 'testing', 'restart', '4_globalized_paths',
                                    'log_and_restart_archive'), ignore_errors=True)
         for file_name in ['arc.log', 'restart_paths_globalized.yml']:
