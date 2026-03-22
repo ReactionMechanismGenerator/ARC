@@ -1,5 +1,6 @@
 # .coveragerc to control coverage.py
 [run]
+plugins = Cython.Coverage
 branch = True
 source = arc
 omit =
@@ -10,6 +11,7 @@ omit =
     */examples/*
     */ipython/*
     */logo/*
+    arc/**/*_test.py
 
 [report]
 show_missing = True
