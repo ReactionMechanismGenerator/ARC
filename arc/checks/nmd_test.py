@@ -546,11 +546,11 @@ class TestNMD(unittest.TestCase):
                                       normal_mode_disp=normal_mode_disp[0],
                                       weights=weights,
                                       )
-        baseline_max, std = nmd.get_bond_length_changes_baseline_and_std(
+        baseline, std = nmd.get_bond_length_changes_baseline_and_std(
             non_reactive_bonds=[(0, 1), (1, 2), (4, 7), (4, 8), (3, 6), (3, 4)],
             xyzs=xyzs)
-        self.assertAlmostEqual(baseline_max, 0.0913286, 4)
-        self.assertAlmostEqual(std, 0.1657833, 4)
+        self.assertAlmostEqual(baseline, 0.0204022, 4)
+        self.assertAlmostEqual(std, 0.0254036, 4)
 
     def test_get_bond_length_in_reaction(self):
         """Test the get_bond_length_in_reaction() function."""
@@ -639,11 +639,11 @@ class TestNMD(unittest.TestCase):
                                                                      xyzs=xyzs,
                                                                      weights=weights,
                                                                      )
-        self.assertAlmostEqual(baseline, 0.10390012, 4)
-        self.assertAlmostEqual(std, 0.1217205, 4)
+        self.assertAlmostEqual(baseline, 0.0700999, 4)
+        self.assertAlmostEqual(std, 0.0921143, 4)
         min_reactive_bond_diff = np.min(reactive_bonds_diffs)
         sigma = (min_reactive_bond_diff - baseline) / std
-        self.assertAlmostEqual(float(sigma), 10.914223252, 4)
+        self.assertAlmostEqual(float(sigma), 14.7891, 4)
 
     def test_get_displaced_xyzs(self):
         """Test the get_displaced_xyzs() function."""
@@ -758,6 +758,136 @@ class TestNMD(unittest.TestCase):
         self.assertEqual(fp, [8, [7]])
         fp = nmd.fingerprint_atom(atom_index=2, molecule=c2h5no2_mol, depth=5)
         self.assertEqual(fp, [8, [7, [6, [1], [1], [6, [1], [1], [1]]], [8]]])
+
+    def test_check_bond_directionality_valid_h_abstraction(self):
+        """Test check_bond_directionality() with a real H-abstraction TS (CH4 + OH -> CH3 + H2O)."""
+        freq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        freqs, normal_mode_disp = parse_normal_mode_displacement(log_file_path=freq_log)
+        weights = nmd.get_weights_from_xyz(xyz=self.ts_1_xyz, weights=True)
+        xyzs = nmd.get_displaced_xyzs(xyz=self.ts_1_xyz, amplitude=0.25,
+                                       normal_mode_disp=normal_mode_disp[0], weights=weights)
+        formed_bonds, broken_bonds = self.rxn_1.get_formed_and_broken_bonds()
+        # Valid TS: formed and broken bonds move in opposite directions
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=broken_bonds, xyzs=xyzs))
+        # Swapping xyzs reverses all signs but keeps them opposite -> still valid
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=broken_bonds, xyzs=(xyzs[1], xyzs[0])))
+
+    def test_check_bond_directionality_invalid_same_sign(self):
+        """Test check_bond_directionality() fails when formed and broken bonds move in the same direction."""
+        freq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        freqs, normal_mode_disp = parse_normal_mode_displacement(log_file_path=freq_log)
+        weights = nmd.get_weights_from_xyz(xyz=self.ts_1_xyz, weights=True)
+        xyzs = nmd.get_displaced_xyzs(xyz=self.ts_1_xyz, amplitude=0.25,
+                                       normal_mode_disp=normal_mode_disp[0], weights=weights)
+        formed_bonds, broken_bonds = self.rxn_1.get_formed_and_broken_bonds()
+        # Trick: swap formed and broken labels so they now have the same sign
+        # (what was a "formed" bond with positive delta is now labeled "broken" -> both positive)
+        self.assertFalse(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=formed_bonds, xyzs=xyzs))
+
+    def test_check_bond_directionality_edge_cases(self):
+        """Test check_bond_directionality() edge cases."""
+        freq_log = os.path.join(ARC_TESTING_PATH, 'freq', 'TS_CH4_OH.log')
+        freqs, normal_mode_disp = parse_normal_mode_displacement(log_file_path=freq_log)
+        weights = nmd.get_weights_from_xyz(xyz=self.ts_1_xyz, weights=True)
+        xyzs = nmd.get_displaced_xyzs(xyz=self.ts_1_xyz, amplitude=0.25,
+                                       normal_mode_disp=normal_mode_disp[0], weights=weights)
+        formed_bonds, broken_bonds = self.rxn_1.get_formed_and_broken_bonds()
+        # Empty bonds -> True (no check needed)
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=[], broken_bonds=[], xyzs=xyzs))
+        # Only formed bonds -> True (internal consistency only)
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=[], xyzs=xyzs))
+        # Only broken bonds -> True (internal consistency only)
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=[], broken_bonds=broken_bonds, xyzs=xyzs))
+        # Large min_delta that excludes all bonds -> True (nothing significant to check)
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=broken_bonds, xyzs=xyzs,
+            min_delta=1e6))
+
+    def test_check_bond_directionality_h_migration(self):
+        """Test check_bond_directionality() with a real intra-H-migration TS (iC3H7 -> nC3H7)."""
+        xyz_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'TS3.log')
+        standard_ts_orientation_xyz = check_xyz_dict(xyz_path)
+        freqs, nmd_array = parse_normal_mode_displacement(xyz_path)
+        weights = nmd.get_weights_from_xyz(standard_ts_orientation_xyz)
+        xyzs = nmd.get_displaced_xyzs(xyz=standard_ts_orientation_xyz, amplitude=0.25,
+                                       normal_mode_disp=nmd_array[0], weights=weights)
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7', 'nC3H7.gjf'))])
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=xyz_path)
+        formed_bonds, broken_bonds = rxn.get_formed_and_broken_bonds()
+        self.assertTrue(nmd.check_bond_directionality(
+            formed_bonds=formed_bonds, broken_bonds=broken_bonds, xyzs=xyzs))
+
+    def test_baseline_and_std_uses_median_and_mad(self):
+        """Test that get_bond_length_changes_baseline_and_std() uses median + MAD*1.4826."""
+        # Construct synthetic displaced xyzs with known bond length differences
+        # Use the existing HO2+N2H4 data and verify the computation is median-based
+        weights = nmd.get_weights_from_xyz(xyz=self.ts_2_xyz, weights=False)
+        freqs, normal_mode_disp = parse_normal_mode_displacement(log_file_path=self.freq_log_path_2)
+        xyzs = nmd.get_displaced_xyzs(xyz=self.ts_2_xyz, amplitude=0.25,
+                                       normal_mode_disp=normal_mode_disp[0], weights=weights)
+        # Get the raw diffs for the non-reactive bonds
+        non_reactive_bonds = [(0, 1), (1, 2), (4, 7), (4, 8), (3, 6), (3, 4)]
+        diffs, _ = nmd.get_bond_length_changes(bonds=non_reactive_bonds, xyzs=xyzs, weights=None)
+        # Manually compute expected median and MAD
+        expected_baseline = float(np.median(diffs))
+        expected_mad = float(np.median(np.abs(diffs - expected_baseline)))
+        expected_std = expected_mad * 1.4826
+        baseline, std = nmd.get_bond_length_changes_baseline_and_std(
+            non_reactive_bonds=non_reactive_bonds, xyzs=xyzs)
+        self.assertAlmostEqual(baseline, expected_baseline, 10)
+        self.assertAlmostEqual(std, expected_std, 10)
+
+    def test_baseline_and_std_empty_bonds(self):
+        """Test that get_bond_length_changes_baseline_and_std() returns None for empty bonds."""
+        weights = nmd.get_weights_from_xyz(xyz=self.ts_2_xyz, weights=False)
+        freqs, normal_mode_disp = parse_normal_mode_displacement(log_file_path=self.freq_log_path_2)
+        xyzs = nmd.get_displaced_xyzs(xyz=self.ts_2_xyz, amplitude=0.25,
+                                       normal_mode_disp=normal_mode_disp[0], weights=weights)
+        baseline, std = nmd.get_bond_length_changes_baseline_and_std(
+            non_reactive_bonds=[], xyzs=xyzs)
+        self.assertIsNone(baseline)
+        self.assertIsNone(std)
+
+    def test_module_constants(self):
+        """Test that the NMD module-level constants are properly defined."""
+        self.assertEqual(nmd.SIGMA_THRESHOLD, 3.0)
+        self.assertEqual(nmd.STD_FLOOR, 1e-4)
+        self.assertEqual(nmd.DIRECTIONALITY_MIN_DELTA, 0.005)
+
+    def test_sigma_threshold_separates_correct_from_incorrect_ts(self):
+        """Test that the 3.0 sigma threshold correctly separates valid and invalid TSs for iC3H7 <=> nC3H7."""
+        base_path = os.path.join(ARC_TESTING_PATH, 'composite', 'C3H7')
+        rxn = ARCReaction(r_species=[ARCSpecies(label='iC3H7', smiles='C[CH]C',
+                                                xyz=os.path.join(base_path, 'iC3H7.gjf'))],
+                          p_species=[ARCSpecies(label='nC3H7', smiles='[CH2]CC',
+                                                xyz=os.path.join(base_path, 'nC3H7.gjf'))])
+        # Correct TS (TS3): sigma should be well above SIGMA_THRESHOLD
+        self.generic_job.local_path_to_output_file = os.path.join(base_path, 'TS3.log')
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=os.path.join(base_path, 'TS3.log'))
+        self.assertTrue(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+        # Wrong TS (TS1, iC3H7-like saddle point): should fail
+        self.generic_job.local_path_to_output_file = os.path.join(base_path, 'TS1.log')
+        rxn.ts_species = ARCSpecies(label='TS', is_ts=True, xyz=os.path.join(base_path, 'TS1.log'))
+        self.assertFalse(nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25))
+
+    def test_isomerization_uses_changed_bonds_as_primary(self):
+        """Test that the NMD check handles isomerization (only changed-order bonds) via the C2H5NO2 <=> C2H5ONO case."""
+        # This reaction has formed and broken bonds too, but tests the full pipeline including changed bonds
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'composite', 'C2H5NO2__C2H5ONO.out')
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=self.rxn_3,
+                                                        job=self.generic_job,
+                                                        amplitude=0.25,
+                                                        weights=True)
+        self.assertTrue(valid)
 
     @classmethod
     def tearDownClass(cls):
