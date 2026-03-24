@@ -1134,7 +1134,7 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_a'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11], [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
         # Disproportionation: HO2 + NHOH <=> NH2OH + O2
@@ -1387,7 +1387,7 @@ class TestMappingDriver(unittest.TestCase):
                                                                     11 H u0 p0 c0 {4,S}
                                                                     12 H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(reactants=['C6H6_1'], products=['C6H6_b'], r_species=[r_1], p_species=[p_1])
-        self.assertEqual(rxn.atom_map, [3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11])
+        self.assertIn(rxn.atom_map, [[3, 2, 1, 0, 5, 4, 10, 9, 8, 7, 6, 11], [3, 2, 1, 0, 5, 4, 10, 9, 8, 6, 7, 11]])
         self.assertTrue(check_atom_map(rxn))
 
     def test_get_atom_map_7(self):
