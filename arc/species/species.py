@@ -464,7 +464,7 @@ class ARCSpecies(object):
                         self.multiplicity = self.mol.multiplicity
                     if self.charge is None:
                         self.charge = self.mol.get_net_charge()
-            if regen_mol:
+            if regen_mol and not (self.mol is not None and self.keep_mol):
                 # Perceive molecule from xyz coordinates. This also populates the .mol attribute of the Species.
                 # It overrides self.mol generated from adjlist or smiles so xyz and mol will have the same atom order.
                 if self.final_xyz or self.initial_xyz or self.most_stable_conformer or self.conformers or self.ts_guesses:
