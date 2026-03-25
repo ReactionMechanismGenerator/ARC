@@ -286,12 +286,14 @@ def identify_superimposable_candidates(fingerprint_1: Dict[int, Dict[str, Union[
                               of species 1, values are potentially mapped atom indices of species 2.
     """
     candidates = list()
-    for key_1 in fingerprint_1.keys():
-        for key_2 in fingerprint_2.keys():
-            # Try all combinations of heavy atoms.
-            result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
-            if result is not None:
-                candidates.append(result)
+    if not fingerprint_1:
+        return []
+    key_1 = list(fingerprint_1.keys())[0]
+    for key_2 in fingerprint_2.keys():
+        # Try all combinations of heavy atoms.
+        result = iterative_dfs(fingerprint_1, fingerprint_2, key_1, key_2)
+        if result is not None:
+            candidates.append(result)
     return prune_identical_dicts(candidates)
 
 
@@ -384,14 +386,7 @@ def prune_identical_dicts(dicts_list: List[dict]) -> List[dict]:
     """
     new_dicts_list = list()
     for new_dict in dicts_list:
-        unique_ = True
-        for existing_dict in new_dicts_list:
-            if unique_:
-                for new_key, new_val in new_dict.items():
-                    if new_key not in existing_dict.keys() or new_val == existing_dict[new_key]:
-                        unique_ = False
-                        break
-        if unique_:
+        if new_dict not in new_dicts_list:
             new_dicts_list.append(new_dict)
     return new_dicts_list
 
@@ -1197,11 +1192,18 @@ def pairing_reactants_and_products_for_mapping(r_cuts: List[ARCSpecies],
         List[Tuple[ARCSpecies,ARCSpecies]]: A list of paired reactant and products, to be sent to map_two_species.
     """
     pairs: List[Tuple[ARCSpecies, ARCSpecies]] = list()
-    for react in r_cuts:
+    r_res = [generate_resonance_structures_safely(react.mol, save_order=True) for react in r_cuts]
+    for i, react in enumerate(r_cuts):
+        res1 = r_res[i]
         for idx, prod in enumerate(p_cuts):
-            if r_cut_p_cut_isomorphic(react, prod):
-                pairs.append((react, prod))
-                p_cuts.pop(idx)
+            found = False
+            for res in res1:
+                if res.fingerprint == prod.mol.fingerprint or prod.mol.is_isomorphic(res, save_order=True):
+                    pairs.append((react, prod))
+                    p_cuts.pop(idx)
+                    found = True
+                    break
+            if found:
                 break
     return pairs
 
@@ -1462,7 +1464,10 @@ def copy_species_list_for_mapping(species: List["ARCSpecies"]) -> List["ARCSpeci
     Returns:
         List[ARCSpecies]: The copied species list.
     """
-    copies = [spc.copy() for spc in species]
+    copies = list()
+    for spc in species:
+        new_spc = ARCSpecies(label=spc.label, mol=spc.mol.copy(deep=True), xyz=spc.get_xyz(), keep_mol=True)
+        copies.append(new_spc)
     for copy, spc in zip(copies, species):
         for atom1, atom2 in zip(copy.mol.atoms, spc.mol.atoms):
             atom1.label = atom2.label
