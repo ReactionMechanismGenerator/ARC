@@ -62,7 +62,7 @@ install-all: install
 
 install:
 	@echo "Installing all external ARC dependencies..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --rmg-rms
+	bash $(DEVTOOLS_DIR)/install_all.sh
 
 install-ci:
 	@echo "Installing all external ARC dependencies for CI (no clean)..."
@@ -70,7 +70,7 @@ install-ci:
 
 install-lite:
 	@echo "Installing ARC's lite version (no external dependencies)..."
-	bash $(DEVTOOLS_DIR)/install_all.sh --no-ext --rmg-rms
+	bash $(DEVTOOLS_DIR)/install_all.sh --no-ext
 
 install-rmg:
 	bash $(DEVTOOLS_DIR)/install_rmg.sh $(RMG_ARGS)
