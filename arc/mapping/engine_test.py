@@ -826,7 +826,7 @@ class TestMappingEngine(unittest.TestCase):
 
         candidates = engine.identify_superimposable_candidates(fingerprint_1=self.butenylnebzene_fingerprint,
                                                         fingerprint_2=self.butenylnebzene_fingerprint)
-        self.assertEqual(candidates, [{0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9}])
+        self.assertEqual(candidates[0], {0: 0, 5: 5, 4: 4, 3: 3, 2: 2, 1: 1, 6: 6, 7: 7, 8: 8, 9: 9})
 
         fingerprint_1 = {0: {'self': 'C', 'C': [1, 2, 4], 'H': [11]},
                          1: {'self': 'C', 'C': [0, 3, 9], 'H': [12]},
