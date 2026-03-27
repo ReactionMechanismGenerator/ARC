@@ -2457,6 +2457,8 @@ class Scheduler(object):
                 raise SchedulerError('Called check_freq_job with no output file')
             vibfreqs = parser.parse_frequencies(log_file_path=str(job.local_path_to_output_file))
             freq_ok = self.check_negative_freq(label=label, job=job, vibfreqs=vibfreqs)
+            if freq_ok and vibfreqs is not None:
+                self.species_dict[label].freqs = [float(f) for f in vibfreqs]
             if freq_ok:
                 # Copy the frequency file to the species / TS output folder.
                 folder_name = 'rxns' if self.species_dict[label].is_ts else 'Species'

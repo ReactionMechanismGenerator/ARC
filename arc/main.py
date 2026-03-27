@@ -34,6 +34,7 @@ from arc.imports import settings
 from arc.level import Level, assign_frequency_scale_factor
 from arc.job.factory import _registered_job_adapters
 from arc.job.ssh import SSHClient
+from arc.output import write_output_yml
 from arc.processor import process_arc_project
 from arc.reaction import ARCReaction
 from arc.scheduler import Scheduler
@@ -635,6 +636,28 @@ class ARC(object):
                             freq_level=self.freq_level,
                             skip_nmd=self.skip_nmd,
                             )
+
+        # Determine whether the user supplied the scale factor explicitly, or ARC looked it up.
+        _freq_level_for_lookup = self.composite_method if self.composite_method is not None else self.freq_level
+        _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
+        _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
+
+        try:
+            write_output_yml(
+                project=self.project,
+                project_directory=self.project_directory,
+                species_dict=self.scheduler.species_dict,
+                reactions=self.scheduler.rxn_list,
+                output_dict=self.output,
+                opt_level=self.opt_level,
+                freq_level=self.freq_level,
+                sp_level=self.arkane_level_of_theory or self.sp_level,
+                freq_scale_factor=self.freq_scale_factor,
+                freq_scale_factor_user_provided=_user_provided_scale,
+                bac_type=self.bac_type,
+            )
+        except Exception as e:
+            logger.error(f'Could not write output.yml: {e}')
 
         status_dict = self.summary()
         log_footer(execution_time=self.execution_time)

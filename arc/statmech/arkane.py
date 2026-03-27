@@ -484,6 +484,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
+                    spc.thermo.nasa_low = content[lbl].get('nasa_low')
+                    spc.thermo.nasa_high = content[lbl].get('nasa_high')
+                    spc.thermo.cp_data = content[lbl].get('cp_data')
 
                     line = (
                         f"   {lbl:<{label_width}}  "

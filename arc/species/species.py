@@ -489,6 +489,7 @@ class ARCSpecies(object):
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
+            self.freqs = None  # harmonic vibrational frequencies in cm⁻¹, set after a successful freq job
 
         if self.charge is None:
             self.charge = 0
@@ -2459,6 +2460,9 @@ class ThermoData(object):
                  Tmax=None,
                  data=None,
                  comment='',
+                 nasa_low=None,
+                 nasa_high=None,
+                 cp_data=None,
                  ):
         """
         Args:
@@ -2472,6 +2476,9 @@ class ThermoData(object):
             Tmax (tuple): Maximum temperature as (value, units)
             data (str): the thermo data block from the RMG library
             comment (str): Additional comments or description
+            nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2483,6 +2490,9 @@ class ThermoData(object):
         self.Tmax = Tmax
         self.data = data
         self.comment = comment
+        self.nasa_low = nasa_low
+        self.nasa_high = nasa_high
+        self.cp_data = cp_data
 
     def __repr__(self):
         """
@@ -2516,6 +2526,25 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.comment))
+
+    def update(self, data: dict):
+        """
+        Update attributes from a dictionary.
+
+        Handles both top-level keys (H298, S298, nasa_low, ...) and the nested
+        'thermo_data' sub-dict produced by parse_thermo_block(), which carries
+        Tdata, Cpdata, Tmin, Tmax, Cp0, CpInf.
+
+        Args:
+            data (dict): Mapping of attribute names to values.
+        """
+        for key, value in data.items():
+            if key == 'thermo_data' and isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    if hasattr(self, sub_key):
+                        setattr(self, sub_key, sub_value)
+            elif hasattr(self, key):
+                setattr(self, key, value)
 
 
 class TransportData(object):
