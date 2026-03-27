@@ -874,7 +874,9 @@ class ARC(object):
         Check that the harmonic frequencies scaling factor is known,
         otherwise, and if ``calc_freq_factor`` is set to ``True``, spawn a calculation for it using Truhlar's method.
         """
+        factor_source = 'user input'
         if self.freq_scale_factor is None:
+            factor_source = 'database (ARC/data/freq_scale_factors.yml)'
             # The user did not specify a scaling factor, see if Arkane has it.
             freq_level = self.composite_method if self.composite_method is not None \
                 else self.freq_level if self.freq_level is not None else None
@@ -883,6 +885,7 @@ class ARC(object):
                 if self.freq_scale_factor is None:
                     logger.info(f'Could not determine the harmonic frequencies scaling factor for {freq_level}.')
                     if self.calc_freq_factor:
+                        factor_source = "Truhlar's method"
                         logger.info("Calculating it using Truhlar's method.")
                         logger.warning("This procedure normally spawns QM jobs for various small species "
                                        "not directly asked for by the user.\n\n")
@@ -890,8 +893,14 @@ class ARC(object):
                                                                            ess_settings=self.ess_settings,
                                                                            init_log=False)[0]
                     else:
+                        factor_source = 'fallback default'
                         logger.info('Not calculating it, assuming a frequencies scaling factor of 1.')
                         self.freq_scale_factor = 1
+            else:
+                factor_source = 'not set (no composite/frequency level provided)'
+
+        logger.info(f'Using harmonic frequencies scaling factor: {self.freq_scale_factor} '
+                    f'(source: {factor_source}).')
 
     def delete_leftovers(self):
         """
