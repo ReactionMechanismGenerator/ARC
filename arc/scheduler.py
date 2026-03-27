@@ -9,6 +9,7 @@ import os
 import pprint
 import shutil
 import time
+from typing import Any
 
 import numpy as np
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
@@ -297,12 +298,20 @@ class Scheduler(object):
         self.output_multi_spc = dict()
         self.report_e_elect = report_e_elect
         self.skip_nmd = skip_nmd
+        self.provenance = {'version': 1,
+                           'project': self.project,
+                           'run_id': f'{self.project}_{datetime.datetime.now().strftime("%Y%m%d%H%M%S")}',
+                           'started_at': datetime.datetime.now().isoformat(timespec='seconds'),
+                           'events': list(),
+                           }
+        self.provenance_path = os.path.join(self.project_directory, 'output', 'provenance.yml')
 
         self.species_dict, self.rxn_dict = dict(), dict()
         for species in self.species_list:
             self.species_dict[species.label] = species
         for rxn in self.rxn_list:
             self.rxn_dict[rxn.index] = rxn
+        self._initialize_provenance()
         if self.restart_dict is not None:
             self.output = self.restart_dict['output'] if 'output' in self.restart_dict else dict()
             self.output_multi_spc = self.restart_dict['output_multi_spc'] if 'output_multi_spc' in self.restart_dict else dict()
@@ -509,6 +518,55 @@ class Scheduler(object):
         self.timer = True
         if not self.testing:
             self.schedule_jobs()
+
+    def _initialize_provenance(self):
+        """Load previous provenance when restarting and record the current run start."""
+        if os.path.isfile(self.provenance_path):
+            try:
+                provenance = read_yaml_file(self.provenance_path)
+            except Exception:
+                provenance = None
+            if isinstance(provenance, dict):
+                events = provenance.get('events', list())
+                self.provenance.update({key: val for key, val in provenance.items() if key != 'events'})
+                self.provenance['events'] = events
+        for species in self.species_list:
+            self.record_provenance_event(event_type='species_initialized',
+                                         label=species.label,
+                                         is_ts=species.is_ts,
+                                         )
+
+    def record_provenance_event(self,
+                                event_type: str,
+                                label: Optional[str] = None,
+                                **data: Any,
+                                ):
+        """Append a provenance event and persist the event log."""
+        event = {'event_id': len(self.provenance['events']) + 1,
+                 'event_type': event_type,
+                 'timestamp': datetime.datetime.now().isoformat(timespec='seconds'),
+                 }
+        if label is not None:
+            event['label'] = label
+        for key, value in data.items():
+            if value is not None and value != '' and value != list():
+                event[key] = value
+        self.provenance['events'].append(event)
+        self.save_provenance()
+
+    def save_provenance(self):
+        """Persist the provenance event log."""
+        output_directory = os.path.dirname(self.provenance_path)
+        if not os.path.isdir(output_directory):
+            os.makedirs(output_directory)
+        save_yaml_file(path=self.provenance_path, content=self.provenance)
+
+    def finalize_provenance(self):
+        """Render final provenance artifacts after the run completes."""
+        self.provenance['ended_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        plotter.save_provenance_artifacts(project_directory=self.project_directory,
+                                          provenance=self.provenance,
+                                          )
 
     def schedule_jobs(self):
         """
@@ -741,6 +799,7 @@ class Scheduler(object):
 
         # Generate a TS report:
         self.generate_final_ts_guess_report()
+        self.finalize_provenance()
 
     def run_job(self,
                 job_type: str,
@@ -767,6 +826,8 @@ class Scheduler(object):
                 torsions: Optional[List[List[int]]] = None,
                 times_rerun: int = 0,
                 tsg: Optional[int] = None,
+                provenance_parent_job: Optional[str] = None,
+                provenance_reason: Optional[str] = None,
                 xyz: Optional[Union[dict, List[dict]]]= None,
                 ):
         """
@@ -898,6 +959,23 @@ class Scheduler(object):
         if job.server is not None and job.server not in self.servers:
             self.servers.append(job.server)
         self.check_max_simultaneous_jobs_limit(job.server)
+        level_repr = None if job.level is None else str(job.level)
+        self.record_provenance_event(
+            event_type='job_started',
+            label=label,
+            is_ts=self.species_dict[label].is_ts if isinstance(label, str) and label in self.species_dict else None,
+            job_key=f'{label}:{job.job_name}',
+            job_name=job.job_name,
+            job_type=job.job_type,
+            job_adapter=job.job_adapter,
+            level=level_repr,
+            execution_type=job.execution_type,
+            ess_trsh_methods=job.ess_trsh_methods,
+            conformer=conformer,
+            tsg=tsg,
+            provenance_parent_job=provenance_parent_job,
+            provenance_reason=provenance_reason,
+        )
         job.execute()
         self.save_restart_dict()
 
@@ -1018,6 +1096,18 @@ class Scheduler(object):
             self.timer = False
             job.write_completed_job_to_csv_file()
             logger.info(f'  Ending job {job_name} for {label} (run time: {job.run_time})')
+            self.record_provenance_event(
+                event_type='job_finished',
+                label=label,
+                is_ts=self.species_dict[label].is_ts if label in self.species_dict else None,
+                job_key=f'{label}:{job.job_name}',
+                job_name=job.job_name,
+                job_type=job.job_type,
+                status=job.job_status[1]['status'] if job.job_status[1]['status'] else job.job_status[0],
+                keywords=job.job_status[1]['keywords'],
+                error=job.job_status[1]['error'],
+                run_time=str(job.run_time) if job.run_time is not None else None,
+            )
             if job.job_status[0] != 'done':
                 return False
             if job.job_adapter in ['gaussian', 'terachem'] and os.path.isfile(os.path.join(job.local_path, 'check.chk')) \
@@ -1074,6 +1164,8 @@ class Scheduler(object):
                      torsions=job.torsions,
                      times_rerun=job.times_rerun + int(rerun),
                      tsg=job.tsg,
+                     provenance_parent_job=job.job_name,
+                     provenance_reason='rerun',
                      xyz=job.xyz,
                      )
 
@@ -1972,8 +2064,12 @@ class Scheduler(object):
             logger.warning(f'Conformer {i} for {label} did not converge.')
             if job.job_status[1]['status'] == 'errored' and job.times_rerun == 0:
                 job.times_rerun += 1
-                self.troubleshoot_ess(label=label, job=job, level_of_theory=job.level, conformer= job.conformer if job.conformer is not None else None) 
-                return True
+                self.troubleshoot_ess(label=label,
+                                      job=job,
+                                      level_of_theory=job.level,
+                                      conformer=job.conformer if job.conformer is not None else None)
+                # Report "still troubleshooting" only if another job was actually queued.
+                return label in self.running_jobs and job.job_name in self.running_jobs[label]
             if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
                 return True
@@ -2186,6 +2282,10 @@ class Scheduler(object):
                 logger.warning(f'Could not determine a likely TS conformer for {label}')
                 self.species_dict[label].ts_number, self.species_dict[label].chosen_ts = None, None
                 self.species_dict[label].populate_ts_checks()
+                self.record_provenance_event(event_type='ts_guess_selection_failed',
+                                             label=label,
+                                             is_ts=True,
+                                             )
                 return None
             else:
                 rxn_txt = '' if self.species_dict[label].rxn_label is None \
@@ -2203,6 +2303,13 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
+                    self.record_provenance_event(event_type='ts_guess_selected',
+                                                 label=label,
+                                                 is_ts=True,
+                                                 selected_index=selected_i,
+                                                 method=tsg.method,
+                                                 energy=tsg.energy,
+                                                 )
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -3446,6 +3553,16 @@ class Scheduler(object):
         job.ess_trsh_methods = ess_trsh_methods
 
         if not couldnt_trsh:
+            self.record_provenance_event(event_type='job_troubleshooting',
+                                         label=label,
+                                         is_ts=self.species_dict[label].is_ts,
+                                         job_key=f'{label}:{job.job_name}',
+                                         job_name=job.job_name,
+                                         job_type=job.job_type,
+                                         methods=ess_trsh_methods,
+                                         keywords=job.job_status[1]['keywords'],
+                                         error=job.job_status[1]['error'],
+                                         )
             self.run_job(label=label,
                          xyz=xyz,
                          level_of_theory=level_of_theory,
@@ -3462,8 +3579,15 @@ class Scheduler(object):
                          rotor_index=job.rotor_index,
                          cpu_cores=cpu_cores,
                          shift=shift,
+                         provenance_parent_job=job.job_name,
+                         provenance_reason='ess_troubleshoot',
                          )
         elif self.species_dict[label].is_ts and not self.species_dict[label].ts_guesses_exhausted:
+            # During TS conf_opt screening, avoid switching mid-batch since switch_ts() deletes all
+            # running jobs for this TS label and can discard other viable TS guesses still running.
+            if job.job_type == 'conf_opt':
+                self.save_restart_dict()
+                return None
             logger.info(f'TS {label} did not converge. '
                         f'Status is:\n{self.species_dict[label].ts_checks}\n'
                         f'Searching for a better TS conformer...')

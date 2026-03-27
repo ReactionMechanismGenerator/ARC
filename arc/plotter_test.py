@@ -218,6 +218,40 @@ H      -1.16115119    0.31478894   -0.81506145
         plotter.save_irc_traj_animation(irc_f_path, irc_r_path, out_path)
         self.assertTrue(os.path.isfile(out_path))
 
+    def test_save_provenance_artifacts(self):
+        """Test saving ARC provenance YAML / Graphviz artifacts."""
+        project = 'arc_project_for_testing_delete_after_usage'
+        project_directory = os.path.join(ARC_PATH, 'Projects', project)
+        provenance = {
+            'project': project,
+            'run_id': 'run_1',
+            'started_at': '2026-03-15T10:00:00',
+            'ended_at': '2026-03-15T10:05:00',
+            'events': [
+                {'event_id': 1, 'event_type': 'species_initialized', 'timestamp': '2026-03-15T10:00:00', 'label': 'spc1'},
+                {'event_id': 2, 'event_type': 'job_started', 'timestamp': '2026-03-15T10:00:01',
+                 'label': 'spc1', 'job_key': 'spc1:opt_a1', 'job_name': 'opt_a1', 'job_type': 'opt',
+                 'job_adapter': 'gaussian', 'level': 'b3lyp/6-31g(d)'},
+                {'event_id': 3, 'event_type': 'job_finished', 'timestamp': '2026-03-15T10:01:00',
+                 'label': 'spc1', 'job_key': 'spc1:opt_a1', 'job_name': 'opt_a1', 'job_type': 'opt',
+                 'status': 'done', 'run_time': '0:01:00'},
+                {'event_id': 4, 'event_type': 'job_troubleshooting', 'timestamp': '2026-03-15T10:01:05',
+                 'label': 'spc1', 'job_key': 'spc1:freq_a2', 'job_name': 'freq_a2', 'job_type': 'freq',
+                 'methods': ['memory']},
+                {'event_id': 5, 'event_type': 'job_started', 'timestamp': '2026-03-15T10:01:10',
+                 'label': 'spc1', 'job_key': 'spc1:freq_a3', 'job_name': 'freq_a3', 'job_type': 'freq',
+                 'job_adapter': 'gaussian', 'provenance_reason': 'ess_troubleshoot'},
+            ],
+        }
+        paths = plotter.save_provenance_artifacts(project_directory=project_directory, provenance=provenance)
+        self.assertTrue(os.path.isfile(paths['yml']))
+        if paths['dot'] is not None:
+            self.assertTrue(os.path.isfile(paths['dot']))
+            with open(paths['dot'], 'r') as f:
+                dot = f.read()
+            self.assertIn('spc1', dot)
+            self.assertIn('opt_a1', dot)
+
 
     @classmethod
     def tearDownClass(cls):

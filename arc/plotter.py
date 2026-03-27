@@ -2,6 +2,7 @@
 A module for plotting and saving output files such as RMG libraries.
 """
 
+import datetime
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 # This must be called before pylab, matplotlib.pyplot, or matplotlib.backends is imported.
@@ -12,10 +13,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import shutil
+import textwrap
 from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.mplot3d import Axes3D
 from typing import List, Optional, Tuple, Union
 
+try:
+    import graphviz
+except ImportError:
+    graphviz = None
 import py3Dmol as p3D
 from rdkit import Chem
 
@@ -52,6 +58,153 @@ PRETTY_UNITS = {'(s^-1)': r' (s$^-1$)',
                 '(cm^6/(mol^2*s))': r' (cm$^6$/(mol$^2$ s))'}
 
 logger = get_logger()
+
+
+def _sanitize_graphviz_id(value: str) -> str:
+    """Return a Graphviz-safe identifier."""
+    return ''.join(ch if ch.isalnum() else '_' for ch in value)
+
+
+def _wrap_graph_label(text: str, width: int = 24) -> str:
+    """Wrap long labels so graph nodes stay readable."""
+    return '\n'.join(textwrap.wrap(str(text), width=width)) if text else ''
+
+
+def save_provenance_artifacts(project_directory: str,
+                              provenance: dict,
+                              ) -> dict:
+    """
+    Save provenance YAML and render Graphviz artifacts for an ARC run.
+
+    Args:
+        project_directory (str): The ARC project directory.
+        provenance (dict): A provenance dictionary with an ``events`` list.
+
+    Returns:
+        dict: Paths to generated artifacts.
+    """
+    output_directory = os.path.join(project_directory, 'output')
+    os.makedirs(output_directory, exist_ok=True)
+    yml_path = os.path.join(output_directory, 'provenance.yml')
+    dot_path = os.path.join(output_directory, 'provenance.dot')
+    svg_path = os.path.join(output_directory, 'provenance.svg')
+
+    save_yaml_file(path=yml_path, content=provenance)
+
+    run_label = provenance.get('project', 'ARC run')
+    if graphviz is None:
+        logger.warning('The graphviz Python package is not available, so ARC will only save provenance.yml.')
+        return {'yml': yml_path, 'dot': None, 'svg': None}
+
+    graph = graphviz.Digraph(
+        name='arc_provenance',
+        comment=f'ARC provenance for {run_label}',
+        graph_attr={'rankdir': 'LR', 'splines': 'true', 'overlap': 'false'},
+        node_attr={'shape': 'box', 'style': 'rounded,filled', 'fillcolor': 'white', 'fontname': 'Helvetica'},
+        edge_attr={'fontname': 'Helvetica'},
+    )
+    run_node_id = _sanitize_graphviz_id(f"run_{provenance.get('run_id', run_label)}")
+    run_header = provenance.get('started_at', '')
+    run_footer = provenance.get('ended_at', '')
+    run_text = f'{run_label}'
+    if run_header:
+        run_text += f'\nstart: {run_header}'
+    if run_footer:
+        run_text += f'\nend: {run_footer}'
+    graph.node(run_node_id, _wrap_graph_label(run_text, width=32), shape='oval', fillcolor='lightgoldenrod1')
+
+    species_nodes, job_nodes = dict(), dict()
+    last_node_by_label = dict()
+
+    for event in provenance.get('events', list()):
+        event_type = event.get('event_type', '')
+        label = event.get('label')
+        if label and label not in species_nodes:
+            species_node_id = _sanitize_graphviz_id(f'species_{label}')
+            species_text = label
+            if event.get('is_ts'):
+                species_text += '\nTS'
+            graph.node(species_node_id, _wrap_graph_label(species_text), fillcolor='aliceblue')
+            graph.edge(run_node_id, species_node_id)
+            species_nodes[label] = species_node_id
+            last_node_by_label[label] = species_node_id
+
+        if event_type == 'job_started':
+            job_key = event.get('job_key', event.get('job_name', 'job'))
+            job_node_id = _sanitize_graphviz_id(f'job_{job_key}')
+            job_text = f"{event.get('job_type', 'job')}\n{event.get('job_name', job_key)}"
+            if event.get('job_adapter'):
+                job_text += f"\n{event['job_adapter']}"
+            if event.get('level'):
+                job_text += f"\n{event['level']}"
+            graph.node(job_node_id, _wrap_graph_label(job_text), fillcolor='white')
+            source_node_id = run_node_id if label is None else last_node_by_label.get(label, species_nodes.get(label))
+            if source_node_id is not None:
+                edge_label = event.get('provenance_reason') or ''
+                graph.edge(source_node_id, job_node_id, label=edge_label)
+            if label is not None:
+                last_node_by_label[label] = job_node_id
+            job_nodes[job_key] = job_node_id
+
+        elif event_type == 'job_finished':
+            job_key = event.get('job_key')
+            if job_key in job_nodes:
+                status = event.get('status', 'unknown')
+                fillcolor = {'done': 'honeydew', 'errored': 'mistyrose'}.get(status, 'lightyellow')
+                graph.node(job_nodes[job_key], fillcolor=fillcolor)
+
+                result_node_id = _sanitize_graphviz_id(
+                    f"result_{event.get('event_id', len(job_nodes))}_{job_key}"
+                )
+                result_text = f"{status}"
+                if event.get('run_time'):
+                    result_text += f"\n{event['run_time']}"
+                if event.get('keywords'):
+                    result_text += f"\n{', '.join(event['keywords'])}"
+                graph.node(result_node_id, _wrap_graph_label(result_text), shape='note', fillcolor='cornsilk')
+                graph.edge(job_nodes[job_key], result_node_id)
+                if label is not None:
+                    last_node_by_label[label] = result_node_id
+
+        elif event_type in ['ts_guess_selected', 'job_troubleshooting']:
+            decision_node_id = _sanitize_graphviz_id(f"decision_{event.get('event_id', 0)}")
+            if event_type == 'ts_guess_selected':
+                decision_text = f"Select TS guess {event.get('selected_index')}"
+                if event.get('method'):
+                    decision_text += f"\n{event['method']}"
+                fillcolor = 'lavender'
+            else:
+                decision_text = f"Troubleshoot {event.get('job_name', '')}"
+                if event.get('methods'):
+                    decision_text += f"\n{', '.join(event['methods'])}"
+                fillcolor = 'moccasin'
+            graph.node(decision_node_id, _wrap_graph_label(decision_text), shape='diamond', fillcolor=fillcolor)
+            source_job_key = event.get('job_key')
+            source_node_id = job_nodes.get(source_job_key) if source_job_key else last_node_by_label.get(label)
+            if source_node_id is None and label is not None:
+                source_node_id = species_nodes.get(label)
+            if source_node_id is not None:
+                graph.edge(source_node_id, decision_node_id)
+            if label is not None:
+                last_node_by_label[label] = decision_node_id
+
+        elif event_type == 'species_initialized' and label in species_nodes:
+            continue
+
+    with open(dot_path, 'w') as f:
+        f.write(graph.source)
+
+    try:
+        svg_data = graph.pipe(format='svg')
+    except (graphviz.ExecutableNotFound, graphviz.CalledProcessError):
+        logger.warning('Could not render ARC provenance SVG because Graphviz is not available on this system.')
+    else:
+        with open(svg_path, 'wb') as f:
+            f.write(svg_data)
+
+    provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+    save_yaml_file(path=yml_path, content=provenance)
+    return {'yml': yml_path, 'dot': dot_path, 'svg': svg_path if os.path.isfile(svg_path) else None}
 
 
 # *** Drawings species ***
