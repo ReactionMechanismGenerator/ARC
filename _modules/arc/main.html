@@ -983,7 +983,9 @@
 <span class="sd">        Check that the harmonic frequencies scaling factor is known,</span>
 <span class="sd">        otherwise, and if ``calc_freq_factor`` is set to ``True``, spawn a calculation for it using Truhlar&#39;s method.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">factor_source</span> <span class="o">=</span> <span class="s1">&#39;user input&#39;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">factor_source</span> <span class="o">=</span> <span class="s1">&#39;database (ARC/data/freq_scale_factors.yml)&#39;</span>
             <span class="c1"># The user did not specify a scaling factor, see if Arkane has it.</span>
             <span class="n">freq_level</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
                 <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
@@ -992,6 +994,7 @@
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not determine the harmonic frequencies scaling factor for </span><span class="si">{</span><span class="n">freq_level</span><span class="si">}</span><span class="s1">.&#39;</span><span class="p">)</span>
                     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">calc_freq_factor</span><span class="p">:</span>
+                        <span class="n">factor_source</span> <span class="o">=</span> <span class="s2">&quot;Truhlar&#39;s method&quot;</span>
                         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Calculating it using Truhlar&#39;s method.&quot;</span><span class="p">)</span>
                         <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;This procedure normally spawns QM jobs for various small species &quot;</span>
                                        <span class="s2">&quot;not directly asked for by the user.</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -999,8 +1002,14 @@
                                                                            <span class="n">ess_settings</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ess_settings</span><span class="p">,</span>
                                                                            <span class="n">init_log</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
                     <span class="k">else</span><span class="p">:</span>
+                        <span class="n">factor_source</span> <span class="o">=</span> <span class="s1">&#39;fallback default&#39;</span>
                         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">&#39;Not calculating it, assuming a frequencies scaling factor of 1.&#39;</span><span class="p">)</span>
-                        <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="mi">1</span></div>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">factor_source</span> <span class="o">=</span> <span class="s1">&#39;not set (no composite/frequency level provided)&#39;</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Using harmonic frequencies scaling factor: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span><span class="si">}</span><span class="s1"> &#39;</span>
+                    <span class="sa">f</span><span class="s1">&#39;(source: </span><span class="si">{</span><span class="n">factor_source</span><span class="si">}</span><span class="s1">).&#39;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ARC.delete_leftovers">
