@@ -1201,7 +1201,7 @@ H      -1.67091600   -1.35164600   -0.93286400"""
                         'ts_guesses_exhausted': False, 'ts_number': 0,
                         'ts_report': 'TS method summary for TS0 in C3_1 <=> C3_2:\n'
                                      'Methods that successfully generated a TS guess:\n'
-                                     'autotst,autotst,autotst,autotst,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,gcn,kinbot,kinbot,\n'
+                                     'autotst,gcn,kinbot\n'
                                      'The method that generated the best TS guess and its output used '
                                      'for the optimization: gcn\n',
                         'tsg_spawned': True, 'unsuccessful_methods': []}

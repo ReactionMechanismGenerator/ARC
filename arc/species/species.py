@@ -1539,7 +1539,7 @@ class ARCSpecies(object):
                 unique_successful_methods = list(dict.fromkeys(self.successful_methods))
                 self.ts_report += ','.join(unique_successful_methods)
             if self.unsuccessful_methods:
-                self.ts_report += '\nMethods that were unsuccessfully in generating a TS guess:\n'
+                self.ts_report += '\nMethods that were unsuccessful in generating a TS guess:\n'
                 unique_unsuccessful_methods = list(dict.fromkeys(self.unsuccessful_methods))
                 self.ts_report += ','.join(unique_unsuccessful_methods)
             if not self.ts_guesses_exhausted:
