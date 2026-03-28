@@ -344,6 +344,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
             if self.sp_level.simple() in aec_dict else ''
 
+        if not model_chemistry and not atom_energies:
+            logger.warning(f'SP level {self.sp_level} is not recognized by Arkane and has no AEC entry in ARC. '
+                           f'Atom and bond energy corrections will be DISABLED for this Arkane run. '
+                           f'Thermo and kinetics results will lack these corrections.')
+
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
         if self.reactions is not None:
@@ -359,8 +364,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             atom_energies=atom_energies,
             freq_scale_factor=freq_scale_factor,
             use_hindered_rotors=True if not skip_rotors else False,
-            use_aec=True,
-            use_bac=True if self.bac_type is not None else False,
+            use_aec=bool(model_chemistry or atom_energies),
+            use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
             bac_type=self.bac_type,
             species_list=species_list,
             ts_list=ts_list,
