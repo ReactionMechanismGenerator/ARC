@@ -89,7 +89,7 @@ def xyz_to_smiles(xyz: Union[dict, str],
                    coordinates=xyz['coords'],
                    charge=charge,
                    use_graph=quick,
-                   allow_charged_fragments=False,
+                   allow_charged_fragments=charge != 0,
                    embed_chiral=embed_chiral,
                    use_huckel=use_huckel,
                    )
