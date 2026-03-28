@@ -377,6 +377,10 @@ class Scheduler(object):
                     self.species_list.append(ts_species)
                     self.species_dict[ts_species.label] = ts_species
                     self.initialize_output_dict(ts_species.label)
+                    self.record_provenance_event(event_type='species_initialized',
+                                                 label=ts_species.label,
+                                                 is_ts=True,
+                                                 )
                 else:
                     # The TS species was already loaded from a restart dict or an Arkane YAML file.
                     ts_species = None
@@ -534,7 +538,7 @@ class Scheduler(object):
                 else:
                     logger.warning('Existing provenance.yml has invalid events; starting with an empty event log.')
         already_initialized = {e['label'] for e in self.provenance['events']
-                               if e.get('event_type') == 'species_initialized' and 'label' in e}
+                               if e.get('event_type') == 'species_initialized' and isinstance(e.get('label'), str)}
         for species in self.species_list:
             if species.label not in already_initialized:
                 self.record_provenance_event(event_type='species_initialized',
@@ -548,7 +552,8 @@ class Scheduler(object):
                                 **data: Any,
                                 ):
         """Append a provenance event and persist the event log."""
-        event = {'event_id': len(self.provenance['events']) + 1,
+        max_id = max((e.get('event_id', 0) for e in self.provenance['events']), default=0)
+        event = {'event_id': max_id + 1,
                  'event_type': event_type,
                  'timestamp': datetime.datetime.now().isoformat(timespec='seconds'),
                  }

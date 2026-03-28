@@ -875,6 +875,27 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                 f'conformer_index was None when run_job was called for conformer {conformer_idx}')
             self.assertEqual(conformer_idx, conformer_index_value)
 
+    def test_provenance_records_ts_species_from_reactions(self):
+        """Test that TS species created from reactions get a species_initialized provenance event."""
+        r_spc = ARCSpecies(label='nC3H7', smiles='[CH2]CC')
+        p_spc = ARCSpecies(label='iC3H7', smiles='C[CH]C')
+        rxn = ARCReaction(reactants=['nC3H7'], products=['iC3H7'],
+                          r_species=[r_spc], p_species=[p_spc])
+        rxn.index = 0
+        sched = Scheduler(project='test_ts_prov', ess_settings=self.ess_settings,
+                          species_list=[r_spc, p_spc],
+                          rxn_list=[rxn],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        init_labels = [e['label'] for e in sched.provenance['events']
+                       if e.get('event_type') == 'species_initialized']
+        self.assertIn('nC3H7', init_labels)
+        self.assertIn('iC3H7', init_labels)
+        self.assertIn('TS0', init_labels, 'TS species created from a reaction should get a species_initialized event')
+
     def test_provenance_multi_species_label(self):
         """Test that provenance handles multi-species (list) labels by joining them."""
         spc1 = ARCSpecies(label='H2', smiles='[H][H]')
