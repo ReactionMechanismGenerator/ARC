@@ -2027,7 +2027,7 @@ H       1.11582953    0.94384729   -0.10134685"""
         cycle.final_xyz = cycle.get_xyz()
         cycle_scissors = cycle.scissors()
         cycle_scissors[0].mol.update(sort_atoms=False)
-        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2+]C[CH2+]").mol))
+        self.assertTrue(cycle_scissors[0].mol.is_isomorphic(ARCSpecies(label="check",smiles ="[CH2]C[CH2]").mol))
         self.assertEqual(len(cycle_scissors), 1)
 
         benzyl_alcohol = ARCSpecies(label='benzyl_alcohol', smiles='c1ccccc1CO',
