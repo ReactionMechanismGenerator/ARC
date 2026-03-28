@@ -24,6 +24,7 @@ dependencies:
   - conda-forge::ffmpeg
   - conda-forge::gprof2dot
   - conda-forge::graphviz
+  - conda-forge::python-graphviz
   - conda-forge::h5py
   - conda-forge::ipython
   - conda-forge::jupyter
