@@ -1885,6 +1885,7 @@ class ARCSpecies(object):
 
     def scissors(self,
                  sort_atom_labels: bool = False,
+                 generate_conformers: Optional[bool] = None,
                  ) -> list:
         """
         Cut chemical bonds to create new species from the original one according to the .bdes attribute,
@@ -1895,6 +1896,9 @@ class ARCSpecies(object):
         
         Args:
             sort_atom_labels (bool, optional): Boolean flag, determines whether sorting is required.
+            generate_conformers (Optional[bool], optional): Whether to generate conformers for the fragments.
+                                                           If ``None``, will use the ARC_SKIP_SCISSORS_CONFORMERS
+                                                           environment variable (skip when set to "1").
 
         Returns: list
             The scission-resulting species.
@@ -1921,8 +1925,12 @@ class ARCSpecies(object):
         if sort_atom_labels:
             self.label_atoms()
         resulting_species = list()
+        if generate_conformers is None:
+            generate_conformers = os.getenv("ARC_SKIP_SCISSORS_CONFORMERS") != "1"
         for index_tuple in self.bdes:
-            new_species_list = self._scissors(indices=index_tuple, sort_atom_labels=sort_atom_labels)
+            new_species_list = self._scissors(indices=index_tuple,
+                                              sort_atom_labels=sort_atom_labels,
+                                              generate_conformers=generate_conformers)
             for new_species in new_species_list:
                 if new_species.label not in [existing_species.label for existing_species in resulting_species]:
                     # Mainly checks that the H species doesn't already exist.
@@ -1932,6 +1940,7 @@ class ARCSpecies(object):
     def _scissors(self,
                   indices: tuple,
                   sort_atom_labels: bool = True,
+                  generate_conformers: bool = True,
                   ) -> list:
         """
         Cut a chemical bond to create two new species from the original one, preserving the 3D geometry.
@@ -1978,7 +1987,8 @@ class ARCSpecies(object):
                               charge=mol_splits[0].get_net_charge(),
                               compute_thermo=False,
                               e0_only=True)
-            spc1.generate_conformers()
+            if generate_conformers:
+                spc1.generate_conformers()
             return [spc1]
         elif len(mol_splits) == 2:
             mol1, mol2 = mol_splits
@@ -2033,7 +2043,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc1.generate_conformers()
+        if generate_conformers:
+            spc1.generate_conformers()
         spc1.rotors_dict = None
         spc2 = ARCSpecies(label=label2,
                           mol=mol2,
@@ -2043,7 +2054,8 @@ class ARCSpecies(object):
                           compute_thermo=False,
                           e0_only=True,
                           keep_mol=True)
-        spc2.generate_conformers()
+        if generate_conformers:
+            spc2.generate_conformers()
         spc2.rotors_dict = None
 
         return [spc1, spc2]
