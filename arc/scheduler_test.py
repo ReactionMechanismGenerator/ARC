@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import unittest
 import os
 import shutil
+from unittest import mock
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -19,7 +20,7 @@ from arc.scheduler import Scheduler, species_has_freq, species_has_geo, species_
 from arc.imports import settings
 from arc.reaction import ARCReaction
 from arc.species.converter import str_to_xyz
-from arc.species.species import ARCSpecies
+from arc.species.species import ARCSpecies, TSGuess
 
 
 default_levels_of_theory = settings['default_levels_of_theory']
@@ -831,6 +832,48 @@ H      -1.82570782    0.42754384   -0.56130718"""
         for key in ['opt', 'freq', 'sp', 'fine']:
             self.assertFalse(sched.output['CH4']['job_types'][key])
         self.assertEqual(sched.output['CH4']['paths']['geo'], '')
+
+    def test_conformer_index_set_before_run_job(self):
+        """Test that tsg.conformer_index is assigned before run_job is called, so restart state is consistent."""
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, multiplicity=1, charge=0)
+        # Use geometries different enough to survive cluster_tsgs() deduplication.
+        ts_spc.ts_guesses = [
+            TSGuess(method='autotst', index=0, success=True,
+                    xyz={'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1), (-1, 0, 0))},
+                    project_directory=self.project_directory),
+            TSGuess(method='gcn', index=1, success=True,
+                    xyz={'symbols': ('C', 'H', 'H', 'H', 'H'), 'isotopes': (12, 1, 1, 1, 1),
+                         'coords': ((0, 0, 0), (2, 0, 0), (0, 2, 0), (0, 0, 2), (-2, 0, 0))},
+                    project_directory=self.project_directory),
+        ]
+        sched = Scheduler(project='test_conf_index_order', ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          ts_guess_level=Level(repr=default_levels_of_theory['ts_guesses']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        # Track conformer_index values observed inside run_job.
+        observed = []
+
+        def capturing_run_job(**kwargs):
+            conformer = kwargs.get('conformer')
+            if conformer is not None:
+                tsg = next((g for g in ts_spc.ts_guesses if g.index == conformer), None)
+                observed.append((conformer, tsg.conformer_index if tsg else None))
+
+        with mock.patch.object(sched, 'run_job', side_effect=capturing_run_job), \
+             mock.patch('arc.plotter.save_conformers_file'):
+            sched.run_ts_conformer_jobs(label='TS0')
+
+        # Every call to run_job should have seen conformer_index already set.
+        self.assertTrue(len(observed) >= 2, f'Expected at least 2 conf_opt jobs, got {len(observed)}')
+        for conformer_idx, conformer_index_value in observed:
+            self.assertIsNotNone(conformer_index_value,
+                                f'conformer_index was None when run_job was called for conformer {conformer_idx}')
+            self.assertEqual(conformer_idx, conformer_index_value)
 
     def test_provenance_multi_species_label(self):
         """Test that provenance handles multi-species (list) labels by joining them."""

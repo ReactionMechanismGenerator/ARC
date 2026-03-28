@@ -528,7 +528,11 @@ class Scheduler(object):
                 logger.warning('Could not parse existing provenance.yml; starting a fresh provenance log.')
                 provenance = None
             if isinstance(provenance, dict):
-                self.provenance['events'] = provenance.get('events', list())
+                raw_events = provenance.get('events', list())
+                if isinstance(raw_events, list) and all(isinstance(e, dict) for e in raw_events):
+                    self.provenance['events'] = raw_events
+                else:
+                    logger.warning('Existing provenance.yml has invalid events; starting with an empty event log.')
         already_initialized = {e['label'] for e in self.provenance['events']
                                if e.get('event_type') == 'species_initialized' and 'label' in e}
         for species in self.species_list:
@@ -1263,13 +1267,13 @@ class Scheduler(object):
                     existing_indices = [guess.index for guess in self.species_dict[label].ts_guesses
                                         if guess.index is not None]
                     tsg.index = max(existing_indices or [-1]) + 1
+                tsg.conformer_index = tsg.index  # Set before run_job so restart state is consistent.
                 self.run_job(label=label,
                              xyz=tsg.initial_xyz,
                              level_of_theory=self.ts_guess_level,
                              job_type='conf_opt',
                              conformer=tsg.index,
                              )
-                tsg.conformer_index = tsg.index  # Use a stable identifier for mapping back to TSGuess.
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label].keys() and 'composite' not in self.job_dict[label].keys():
                 # proceed only if opt (/composite) not already spawned
