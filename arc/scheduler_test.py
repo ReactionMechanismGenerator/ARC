@@ -757,13 +757,105 @@ H      -1.82570782    0.42754384   -0.56130718"""
         self.assertEqual(unique_label, 'new_species_15_1')
         self.assertEqual(self.sched2.unique_species_labels, ['methylamine', 'C2H6', 'CtripCO', 'new_species_15', 'new_species_15_0', 'new_species_15_1'])
 
+    def test_initialize_provenance_dedup_on_restart(self):
+        """Test that _initialize_provenance does not re-emit species_initialized for species already in the log."""
+        spc = ARCSpecies(label='ethanol', smiles='CCO')
+        project_directory = os.path.join(ARC_PATH, 'Projects', 'arc_project_for_testing_delete_after_usage_prov')
+        os.makedirs(os.path.join(project_directory, 'output'), exist_ok=True)
+        # Write a fake provenance file that already has ethanol initialized.
+        from arc.common import save_yaml_file
+        save_yaml_file(path=os.path.join(project_directory, 'output', 'provenance.yml'),
+                       content={'version': 1, 'project': 'test', 'run_id': 'old_run',
+                                'started_at': '2026-01-01T00:00:00',
+                                'events': [{'event_id': 1, 'event_type': 'species_initialized',
+                                            'label': 'ethanol', 'is_ts': False}]})
+        sched = Scheduler(project='test_prov_dedup', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=project_directory,
+                          testing=True, job_types=initialize_job_types())
+        init_events = [e for e in sched.provenance['events']
+                       if e['event_type'] == 'species_initialized' and e.get('label') == 'ethanol']
+        self.assertEqual(len(init_events), 1, 'species_initialized should not be duplicated on restart')
+        # New run should get its own run_id, not the old one.
+        self.assertNotEqual(sched.provenance['run_id'], 'old_run')
+        shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_sanitize_restart_output(self):
+        """Test that _sanitize_restart_output resets convergence when paths are missing."""
+        spc = ARCSpecies(label='H2O', smiles='O')
+        output = {
+            'H2O': {
+                'paths': {'geo': '', 'freq': '', 'sp': '', 'composite': ''},
+                'restart': '', 'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': False, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_sanitize', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types(),
+                          restart_dict={'output': output})
+        self.assertFalse(sched.output['H2O']['convergence'])
+        for key in ['opt', 'freq', 'sp']:
+            self.assertFalse(sched.output['H2O']['job_types'][key])
+
+    def test_delete_all_species_jobs_resets_output(self):
+        """Test that delete_all_species_jobs clears convergence, job_types, and paths."""
+        spc = ARCSpecies(label='CH4', smiles='C')
+        output = {
+            'CH4': {
+                'paths': {'geo': 'some/path.out', 'freq': 'freq.out', 'sp': 'sp.out', 'composite': ''},
+                'restart': '', 'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': True, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_delete_jobs', ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types(),
+                          restart_dict={'output': output})
+        sched.running_jobs['CH4'] = []
+        sched.delete_all_species_jobs(label='CH4')
+        self.assertFalse(sched.output['CH4']['convergence'])
+        for key in ['opt', 'freq', 'sp', 'fine']:
+            self.assertFalse(sched.output['CH4']['job_types'][key])
+        self.assertEqual(sched.output['CH4']['paths']['geo'], '')
+
+    def test_provenance_multi_species_label(self):
+        """Test that provenance handles multi-species (list) labels by joining them."""
+        spc1 = ARCSpecies(label='H2', smiles='[H][H]')
+        spc2 = ARCSpecies(label='O2', smiles='[O][O]')
+        sched = Scheduler(project='test_multi_label', ess_settings=self.ess_settings,
+                          species_list=[spc1, spc2],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True, job_types=initialize_job_types())
+        sched.record_provenance_event(event_type='test_event', label='H2+O2')
+        event = sched.provenance['events'][-1]
+        self.assertEqual(event['label'], 'H2+O2')
+        self.assertIsInstance(event['label'], str)
+
     @classmethod
     def tearDownClass(cls):
         """
         A function that is run ONCE after all unit tests in this class.
         Delete all project directories created during these unit tests
         """
-        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6']
+        projects = ['arc_project_for_testing_delete_after_usage3', 'arc_project_for_testing_delete_after_usage6',
+                    'arc_project_for_testing_delete_after_usage_prov']
         for project in projects:
             project_directory = os.path.join(ARC_PATH, 'Projects', project)
             shutil.rmtree(project_directory, ignore_errors=True)
