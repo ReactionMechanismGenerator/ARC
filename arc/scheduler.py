@@ -9,10 +9,8 @@ import os
 import pprint
 import shutil
 import time
-from typing import Any
-
 import numpy as np
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import Any, TYPE_CHECKING, List, Optional, Tuple, Union
 
 import arc.parser.parser as parser
 from arc import plotter
@@ -334,6 +332,8 @@ class Scheduler(object):
         self.orbitals_level = orbitals_level
         self.unique_species_labels = list()
         self.save_restart = False
+        if self.restart_dict is not None:
+            self._sanitize_restart_output()
 
         if len(self.rxn_list):
             rxn_info_path = self.make_reaction_labels_info_file()
@@ -525,16 +525,18 @@ class Scheduler(object):
             try:
                 provenance = read_yaml_file(self.provenance_path)
             except Exception:
+                logger.warning('Could not parse existing provenance.yml; starting a fresh provenance log.')
                 provenance = None
             if isinstance(provenance, dict):
-                events = provenance.get('events', list())
-                self.provenance.update({key: val for key, val in provenance.items() if key != 'events'})
-                self.provenance['events'] = events
+                self.provenance['events'] = provenance.get('events', list())
+        already_initialized = {e['label'] for e in self.provenance['events']
+                               if e.get('event_type') == 'species_initialized' and 'label' in e}
         for species in self.species_list:
-            self.record_provenance_event(event_type='species_initialized',
-                                         label=species.label,
-                                         is_ts=species.is_ts,
-                                         )
+            if species.label not in already_initialized:
+                self.record_provenance_event(event_type='species_initialized',
+                                             label=species.label,
+                                             is_ts=species.is_ts,
+                                             )
 
     def record_provenance_event(self,
                                 event_type: str,
@@ -856,6 +858,8 @@ class Scheduler(object):
             torsions (List[List[int]], optional): The 0-indexed atom indices of the torsion(s).
             trsh (str, optional): A troubleshooting keyword to be used in input files.
             tsg (int, optional): TSGuess number if optimizing TS guesses.
+            provenance_parent_job (str, optional): The job_name of the parent job that triggered this one.
+            provenance_reason (str, optional): Why this job was spawned (e.g., 'rerun', 'ess_troubleshoot', 'fine_opt').
             xyz (Union[dict, List[dict]], optional): The 3D coordinates for the species.
         """
         max_job_time = max_job_time or self.max_job_time  # if it's None, set to default
@@ -960,11 +964,12 @@ class Scheduler(object):
             self.servers.append(job.server)
         self.check_max_simultaneous_jobs_limit(job.server)
         level_repr = None if job.level is None else str(job.level)
+        provenance_label = '+'.join(label) if isinstance(label, list) else label
         self.record_provenance_event(
             event_type='job_started',
-            label=label,
+            label=provenance_label,
             is_ts=self.species_dict[label].is_ts if isinstance(label, str) and label in self.species_dict else None,
-            job_key=f'{label}:{job.job_name}',
+            job_key=f'{provenance_label}:{job.job_name}',
             job_name=job.job_name,
             job_type=job.job_type,
             job_adapter=job.job_adapter,
@@ -1099,7 +1104,7 @@ class Scheduler(object):
             self.record_provenance_event(
                 event_type='job_finished',
                 label=label,
-                is_ts=self.species_dict[label].is_ts if label in self.species_dict else None,
+                is_ts=self.species_dict[label].is_ts if isinstance(label, str) and label in self.species_dict else None,
                 job_key=f'{label}:{job.job_name}',
                 job_name=job.job_name,
                 job_type=job.job_type,
@@ -2069,7 +2074,9 @@ class Scheduler(object):
                                       level_of_theory=job.level,
                                       conformer=job.conformer if job.conformer is not None else None)
                 # Report "still troubleshooting" only if another job was actually queued.
-                return label in self.running_jobs and job.job_name in self.running_jobs[label]
+                # Conformer jobs are tracked in running_jobs as '{job_type}_{conformer}', not by job_name.
+                running_key = f'{job.job_type}_{job.conformer}' if job.conformer is not None else job.job_name
+                return label in self.running_jobs and running_key in self.running_jobs[label]
             if job.times_rerun == 0 and self.trsh_ess_jobs:
                 self._run_a_job(job=job, label=label, rerun=True)
                 return True
@@ -2484,6 +2491,8 @@ class Scheduler(object):
                              level_of_theory=job.level,
                              job_type='opt',
                              fine=True,
+                             provenance_parent_job=job.job_name,
+                             provenance_reason='fine_opt',
                              )
             else:
                 success = True
@@ -2726,7 +2735,6 @@ class Scheduler(object):
         logger.info(f'Switching a TS guess for {label}...')
         self.determine_most_likely_ts_conformer(label=label)  # Look for a different TS guess.
         self.delete_all_species_jobs(label=label)  # Delete other currently running jobs for this TS.
-        self.output[label]['geo'] = self.output[label]['freq'] = self.output[label]['sp'] = self.output[label]['composite'] = ''
         freq_path = os.path.join(self.project_directory, 'output', 'rxns', label, 'geometry', 'freq.out')
         if os.path.isfile(freq_path):
             os.remove(freq_path)
@@ -3151,6 +3159,9 @@ class Scheduler(object):
                     logger.debug(f'Species {label} did not converge.')
                     all_converged = False
                     break
+            if all_converged and self._missing_required_paths(label):
+                logger.debug(f'Species {label} did not converge due to missing output paths.')
+                all_converged = False
         if label in self.output and all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:
@@ -3190,6 +3201,64 @@ class Scheduler(object):
             logger.error(f'Species {label} did not converge. Job type status is: {job_type_status}')
         # Update restart dictionary and save the yaml restart file:
         self.save_restart_dict()
+
+    def _missing_required_paths(self, label: str) -> bool:
+        """
+        Check whether required output paths are missing for a species/TS.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            bool: Whether required output paths are missing.
+        """
+        return bool(self._get_missing_required_paths(label))
+
+    def _get_missing_required_paths(self, label: str) -> set:
+        """
+        Get missing required output path job types for a species/TS.
+
+        Args:
+            label (str): The species label.
+
+        Returns:
+            set: Job types with missing required output paths.
+        """
+        if label not in self.output or 'paths' not in self.output[label]:
+            return set()
+        path_map = {
+            'opt': 'geo',
+            'freq': 'freq',
+            'sp': 'sp',
+            'composite': 'composite',
+        }
+        missing = set()
+        for job_type, path_key in path_map.items():
+            if job_type == 'composite':
+                required = self.composite_method is not None
+            else:
+                required = self.job_types.get(job_type, False)
+            if not required:
+                continue
+            if self.species_dict[label].number_of_atoms == 1 and job_type in ['opt', 'freq']:
+                continue
+            if self.output[label]['job_types'].get(job_type, False) and not self.output[label]['paths'].get(path_key, ''):
+                missing.add(job_type)
+        return missing
+
+    def _sanitize_restart_output(self) -> None:
+        """
+        Ensure restart output state is internally consistent (e.g., convergence without paths).
+        """
+        for label in list(self.output.keys()):
+            if label not in self.species_dict:
+                continue
+            missing_job_types = self._get_missing_required_paths(label)
+            if self.output[label].get('convergence') and missing_job_types:
+                self.output[label]['convergence'] = False
+                if 'job_types' in self.output[label]:
+                    for job_type in missing_job_types:
+                        self.output[label]['job_types'][job_type] = False
 
     def get_server_job_ids(self, specific_server: Optional[str] = None):
         """
@@ -3586,6 +3655,7 @@ class Scheduler(object):
             # During TS conf_opt screening, avoid switching mid-batch since switch_ts() deletes all
             # running jobs for this TS label and can discard other viable TS guesses still running.
             if job.job_type == 'conf_opt':
+                logger.debug(f'Deferring TS switch for {label} during conf_opt batch screening.')
                 self.save_restart_dict()
                 return None
             logger.info(f'TS {label} did not converge. '
@@ -3671,7 +3741,13 @@ class Scheduler(object):
                     logger.info(f'Deleted job {job_name}')
                     job.delete()
         self.running_jobs[label] = list()
-        self.output[label]['paths'] = {key: '' if key != 'irc' else list() for key in self.output[label]['paths'].keys()}
+        if label in self.output:
+            self.output[label]['convergence'] = False
+            for key in ['opt', 'freq', 'sp', 'composite', 'fine']:
+                if key in self.output[label]['job_types']:
+                    self.output[label]['job_types'][key] = False
+            self.output[label]['paths'] = {key: '' if key != 'irc' else list()
+                                           for key in self.output[label]['paths'].keys()}
 
     def restore_running_jobs(self):
         """
