@@ -8,6 +8,7 @@ This module contains unit tests for the arc.scheduler module
 import unittest
 import os
 import shutil
+from unittest import mock
 
 import arc.parser.parser as parser
 from arc.checks.ts import check_ts
@@ -725,6 +726,124 @@ H      -1.82570782    0.42754384   -0.56130718"""
         content = read_yaml_file(e_elect_summary_path)
         self.assertEqual(content, {'formaldehyde': -300621.95378630824, 'mehylamine': -251360.00924747565})
         shutil.rmtree(project_directory, ignore_errors=True)
+
+    def test_check_all_done_requires_paths(self):
+        """Test that convergence isn't set when required paths are missing."""
+        spc = ARCSpecies(label='formaldehyde', smiles='C=O')
+        output = {
+            'formaldehyde': {
+                'paths': {'geo': '', 'freq': '', 'sp': '', 'composite': ''},
+                'restart': '',
+                'convergence': False,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': False, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_check_all_done_requires_paths',
+                          ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True,
+                          job_types=initialize_job_types(),
+                          restart_dict={'output': output},
+                          )
+        sched.check_all_done(label='formaldehyde')
+        self.assertFalse(sched.output['formaldehyde']['convergence'])
+
+    def test_restart_sanitizes_convergence_for_ts(self):
+        """Test restart output sanitization for TS with missing paths."""
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, multiplicity=2, charge=0)
+        output = {
+            'TS0': {
+                'paths': {'geo': '', 'freq': '', 'sp': '', 'composite': ''},
+                'restart': '',
+                'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': False, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_restart_sanitizes_convergence_for_ts',
+                          ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True,
+                          job_types=initialize_job_types(),
+                          restart_dict={'output': output, 'running_jobs': {'TS0': []}},
+                          )
+        self.assertFalse(sched.output['TS0']['convergence'])
+        for key in ['opt', 'freq', 'sp', 'composite']:
+            self.assertFalse(sched.output['TS0']['job_types'][key])
+
+    def test_delete_all_species_jobs_resets_output(self):
+        """Test that deleting jobs clears convergence and job status."""
+        spc = ARCSpecies(label='formaldehyde', smiles='C=O')
+        output = {
+            'formaldehyde': {
+                'paths': {'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out', 'composite': ''},
+                'restart': '',
+                'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': True, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_delete_all_species_jobs_resets_output',
+                          ess_settings=self.ess_settings,
+                          species_list=[spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True,
+                          job_types=initialize_job_types(),
+                          restart_dict={'output': output},
+                          )
+        sched.job_dict['formaldehyde'] = {'opt': {}, 'freq': {}, 'sp': {}}
+        sched.running_jobs['formaldehyde'] = []
+        sched.delete_all_species_jobs(label='formaldehyde')
+        self.assertFalse(sched.output['formaldehyde']['convergence'])
+        for key in ['opt', 'freq', 'sp', 'composite', 'fine']:
+            self.assertFalse(sched.output['formaldehyde']['job_types'][key])
+        self.assertEqual(sched.output['formaldehyde']['paths'],
+                         {'geo': '', 'freq': '', 'sp': '', 'composite': ''})
+
+    def test_switch_ts_resets_output(self):
+        """Test that switching TS guesses resets convergence and paths."""
+        ts_spc = ARCSpecies(label='TS0', is_ts=True, multiplicity=2, charge=0)
+        output = {
+            'TS0': {
+                'paths': {'geo': 'geo.out', 'freq': 'freq.out', 'sp': 'sp.out', 'composite': ''},
+                'restart': '',
+                'convergence': True,
+                'job_types': {'conf_opt': False, 'conf_sp': False, 'opt': True, 'freq': True, 'sp': True,
+                              'rotors': False, 'irc': False, 'fine': True, 'composite': False},
+            }
+        }
+        sched = Scheduler(project='test_switch_ts_resets_output',
+                          ess_settings=self.ess_settings,
+                          species_list=[ts_spc],
+                          opt_level=Level(repr=default_levels_of_theory['opt']),
+                          freq_level=Level(repr=default_levels_of_theory['freq']),
+                          sp_level=Level(repr=default_levels_of_theory['sp']),
+                          project_directory=self.project_directory,
+                          testing=True,
+                          job_types=initialize_job_types(),
+                          restart_dict={'output': output},
+                          )
+        sched.species_dict['TS0'].ts_guesses_exhausted = True
+        sched.species_dict['TS0'].chosen_ts = None
+        with mock.patch.object(Scheduler, 'determine_most_likely_ts_conformer', return_value=None):
+            sched.switch_ts(label='TS0')
+        self.assertFalse(sched.output['TS0']['convergence'])
+        for key in ['opt', 'freq', 'sp', 'composite', 'fine']:
+            self.assertFalse(sched.output['TS0']['job_types'][key])
+        self.assertEqual(sched.output['TS0']['paths'],
+                         {'geo': '', 'freq': '', 'sp': '', 'composite': ''})
 
     def test_species_has_geo_sp_freq(self):
         """Test the species_has_geo() / species_has_sp() / species_has_freq() functions."""
