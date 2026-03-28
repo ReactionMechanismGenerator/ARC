@@ -66,8 +66,11 @@ def _sanitize_graphviz_id(value: str) -> str:
 
 
 def _wrap_graph_label(text: str, width: int = 24) -> str:
-    """Wrap long labels so graph nodes stay readable."""
-    return '\n'.join(textwrap.wrap(str(text), width=width)) if text else ''
+    """Wrap long labels so graph nodes stay readable, preserving intentional newlines."""
+    if not text:
+        return ''
+    return '\n'.join(line for part in str(text).split('\n')
+                     for line in (textwrap.wrap(part, width=width) or ['']))
 
 
 def save_provenance_artifacts(project_directory: str,
@@ -89,11 +92,11 @@ def save_provenance_artifacts(project_directory: str,
     dot_path = os.path.join(output_directory, 'provenance.dot')
     svg_path = os.path.join(output_directory, 'provenance.svg')
 
-    save_yaml_file(path=yml_path, content=provenance)
-
     run_label = provenance.get('project', 'ARC run')
     if graphviz is None:
         logger.warning('The graphviz Python package is not available, so ARC will only save provenance.yml.')
+        provenance['updated_at'] = datetime.datetime.now().isoformat(timespec='seconds')
+        save_yaml_file(path=yml_path, content=provenance)
         return {'yml': yml_path, 'dot': None, 'svg': None}
 
     graph = graphviz.Digraph(
@@ -113,8 +116,11 @@ def save_provenance_artifacts(project_directory: str,
         run_text += f'\nend: {run_footer}'
     graph.node(run_node_id, _wrap_graph_label(run_text, width=32), shape='oval', fillcolor='lightgoldenrod1')
 
-    species_nodes, job_nodes = dict(), dict()
-    last_node_by_label = dict()
+    species_nodes = dict()
+    job_nodes = dict()
+    # Track the most recent decision node (troubleshoot / TS selection) per label,
+    # so that follow-up jobs spawned by that decision connect from the diamond.
+    last_decision_by_label = dict()
 
     for event in provenance.get('events', list()):
         event_type = event.get('event_type', '')
@@ -127,7 +133,6 @@ def save_provenance_artifacts(project_directory: str,
             graph.node(species_node_id, _wrap_graph_label(species_text), fillcolor='aliceblue')
             graph.edge(run_node_id, species_node_id)
             species_nodes[label] = species_node_id
-            last_node_by_label[label] = species_node_id
 
         if event_type == 'job_started':
             job_key = event.get('job_key', event.get('job_name', 'job'))
@@ -138,12 +143,21 @@ def save_provenance_artifacts(project_directory: str,
             if event.get('level'):
                 job_text += f"\n{event['level']}"
             graph.node(job_node_id, _wrap_graph_label(job_text), fillcolor='white')
-            source_node_id = run_node_id if label is None else last_node_by_label.get(label, species_nodes.get(label))
-            if source_node_id is not None:
-                edge_label = event.get('provenance_reason') or ''
-                graph.edge(source_node_id, job_node_id, label=edge_label)
-            if label is not None:
-                last_node_by_label[label] = job_node_id
+
+            # Determine the source node for this job's incoming edge.
+            parent_job = event.get('provenance_parent_job')
+            reason = event.get('provenance_reason', '')
+            if parent_job and label in last_decision_by_label:
+                # A decision (troubleshoot / TS selection) preceded this job — connect from it.
+                source_node_id = last_decision_by_label.pop(label)
+            elif parent_job:
+                # Rerun or other child job — connect from the parent job node.
+                parent_key = f'{label}:{parent_job}'
+                source_node_id = job_nodes.get(parent_key, species_nodes.get(label, run_node_id))
+            else:
+                # Normal first-launch job — connect from the species node.
+                source_node_id = species_nodes.get(label, run_node_id)
+            graph.edge(source_node_id, job_node_id, label=reason)
             job_nodes[job_key] = job_node_id
 
         elif event_type == 'job_finished':
@@ -163,16 +177,17 @@ def save_provenance_artifacts(project_directory: str,
                     result_text += f"\n{', '.join(event['keywords'])}"
                 graph.node(result_node_id, _wrap_graph_label(result_text), shape='note', fillcolor='cornsilk')
                 graph.edge(job_nodes[job_key], result_node_id)
-                if label is not None:
-                    last_node_by_label[label] = result_node_id
 
-        elif event_type in ['ts_guess_selected', 'job_troubleshooting']:
+        elif event_type in ('ts_guess_selected', 'ts_guess_selection_failed', 'job_troubleshooting'):
             decision_node_id = _sanitize_graphviz_id(f"decision_{event.get('event_id', 0)}")
             if event_type == 'ts_guess_selected':
                 decision_text = f"Select TS guess {event.get('selected_index')}"
                 if event.get('method'):
                     decision_text += f"\n{event['method']}"
                 fillcolor = 'lavender'
+            elif event_type == 'ts_guess_selection_failed':
+                decision_text = 'TS guess selection\nfailed'
+                fillcolor = 'mistyrose'
             else:
                 decision_text = f"Troubleshoot {event.get('job_name', '')}"
                 if event.get('methods'):
@@ -180,13 +195,13 @@ def save_provenance_artifacts(project_directory: str,
                 fillcolor = 'moccasin'
             graph.node(decision_node_id, _wrap_graph_label(decision_text), shape='diamond', fillcolor=fillcolor)
             source_job_key = event.get('job_key')
-            source_node_id = job_nodes.get(source_job_key) if source_job_key else last_node_by_label.get(label)
+            source_node_id = job_nodes.get(source_job_key) if source_job_key else species_nodes.get(label)
             if source_node_id is None and label is not None:
                 source_node_id = species_nodes.get(label)
             if source_node_id is not None:
                 graph.edge(source_node_id, decision_node_id)
             if label is not None:
-                last_node_by_label[label] = decision_node_id
+                last_decision_by_label[label] = decision_node_id
 
         elif event_type == 'species_initialized' and label in species_nodes:
             continue
