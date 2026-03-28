@@ -19,7 +19,7 @@ jobs:
     steps:
       # ────────── source repo ──────────
       - name: Checkout ARC
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ────────── AutoTST ──────────
       - name: Cache AutoTST
@@ -32,7 +32,7 @@ jobs:
             ${{ runner.os }}-autotst-
       - name: Checkout AutoTST
         if: steps.cache-autotst.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ReactionMechanismGenerator/AutoTST
           path: AutoTST
@@ -50,7 +50,7 @@ jobs:
             ${{ runner.os }}-tsgcn-
       - name: Checkout TS-GCN
         if: steps.cache-tsgcn.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ReactionMechanismGenerator/TS-GCN
           path: TS-GCN
@@ -68,7 +68,7 @@ jobs:
             ${{ runner.os }}-kinbot-
       - name: Checkout KinBot 2.0.6
         if: steps.cache-kinbot.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: zadorlab/KinBot
           path: KinBot
