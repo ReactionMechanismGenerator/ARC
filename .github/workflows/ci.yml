@@ -116,7 +116,7 @@ jobs:
           pytest functional/ --cov --cov-append --cov-report=xml -ra -vv -n auto
 
       - name: Upload coverage data
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ARC/coverage.xml
