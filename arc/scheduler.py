@@ -2610,6 +2610,11 @@ class Scheduler(object):
                     logger.info(f'TS {rxn.ts_species.label} of reaction {rxn.label} did not pass the E0 check.\n'
                                 f'Searching for a better TS conformer...\n')
                     self.switch_ts(rxn.ts_label)
+                    if self.species_dict[rxn.ts_label].ts_guesses_exhausted \
+                            or self.species_dict[rxn.ts_label].chosen_ts is None:
+                        logger.warning(f'Could not find a valid TS conformer for {rxn.ts_label} '
+                                       f'that passes the E0 check. Marking as unconverged.')
+                        self.output[rxn.ts_label]['convergence'] = False
 
     def switch_ts(self, label: str):
         """
