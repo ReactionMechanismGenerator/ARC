@@ -746,8 +746,43 @@ class GaussianParser(ESSAdapter, ABC):
                     continue
         return polarizability
 
+    def parse_opt_steps(self) -> Optional[int]:
+        """
+        Parse the number of geometry optimization cycles from a Gaussian opt log.
 
+        Reads "Step number N" lines and returns the maximum N found.
+        Falls back to counting convergence table blocks (anchored on "Maximum Force").
 
+        Returns: Optional[int]
+            The number of optimization steps, or ``None`` if not an opt job.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        step_re = re.compile(r'\bStep number\s+(\d+)\b', re.IGNORECASE)
+        step_nums = []
+        n_conv_blocks = 0
+        for line in lines:
+            m = step_re.search(line)
+            if m:
+                step_nums.append(int(m.group(1)))
+            if line.strip().startswith('Maximum Force'):
+                n_conv_blocks += 1
+        if step_nums:
+            return max(step_nums)
+        if n_conv_blocks:
+            return n_conv_blocks
+        return None
+
+    def parse_ess_version(self) -> Optional[str]:
+        """
+        Parse the Gaussian version string, e.g. ``'Gaussian 09, Revision D.01'``.
+        """
+        lines = _get_lines_from_file(self.log_file_path)
+        # Look for "Gaussian NN, Revision XX.YY," in the citation block near the top
+        for line in lines[:200]:
+            m = re.search(r'(Gaussian\s+\d+,\s*Revision\s+\S+)', line)
+            if m:
+                return m.group(1).rstrip(',')
+        return None
 
     def _load_scan_specs(self, letter_spec, get_after_letter_spec=False):
         """

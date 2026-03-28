@@ -22,8 +22,6 @@ from arc.species.converter import xyz_to_str
 
 logger = get_logger()
 
-_RMG_PY_PATH = '/home/calvin/code/RMG-Py'
-
 
 def write_output_yml(
     project: str,
@@ -37,6 +35,8 @@ def write_output_yml(
     freq_scale_factor: Optional[float] = None,
     freq_scale_factor_user_provided: bool = False,
     bac_type: Optional[str] = None,
+    arkane_level_of_theory=None,
+    irc_requested: bool = True,
 ) -> None:
     """
     Write the consolidated output.yml to <project_directory>/output/output.yml.
@@ -56,6 +56,9 @@ def write_output_yml(
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor used.
         freq_scale_factor_user_provided (bool): Whether the user explicitly set the scale factor.
         bac_type (str, optional): The BAC type ('p', 'm', or None).
+        arkane_level_of_theory (Level, optional): The composite LOT Arkane uses for energy corrections.
+            Recorded only when it differs from sp_level.
+        irc_requested (bool): Whether IRC jobs were requested for this run.
     """
     doc: Dict[str, Any] = {}
 
@@ -71,6 +74,7 @@ def write_output_yml(
     doc['opt_level'] = _level_to_dict(opt_level)
     doc['freq_level'] = _level_to_dict(freq_level)
     doc['sp_level'] = _level_to_dict(sp_level)
+    doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
     doc['freq_scale_factor'] = freq_scale_factor
     doc['freq_scale_factor_source'] = (
         None if freq_scale_factor_user_provided
@@ -84,7 +88,7 @@ def write_output_yml(
     doc['species'] = []
     doc['transition_states'] = []
     for spc in species_dict.values():
-        d = _spc_to_dict(spc, output_dict, project_directory, point_groups)
+        d = _spc_to_dict(spc, output_dict, project_directory, point_groups, irc_requested=irc_requested)
         if spc.is_ts:
             doc['transition_states'].append(d)
         else:
@@ -116,16 +120,25 @@ def write_output_yml(
 def _get_arkane_git_commit() -> Optional[str]:
     """Return the HEAD commit hash of the RMG-Py repo (Arkane lives there), or None."""
     try:
-        head, _ = get_git_commit(_RMG_PY_PATH)
+        from arc.imports import settings
+        rmg_path = settings.get('RMG_PATH')
+        if not rmg_path:
+            return None
+        head, _ = get_git_commit(rmg_path)
         return head or None
     except Exception:
         return None
 
 
 def _level_to_dict(level) -> Optional[Dict]:
-    """Convert a Level object to {method, basis, software}, or None."""
+    """Convert a Level object to a dict with all non-None fields, or None."""
     if level is None:
         return None
+    if hasattr(level, 'as_dict'):
+        d = level.as_dict()
+        d.pop('repr', None)
+        d.pop('compatible_ess', None)
+        return d
     return {
         'method': getattr(level, 'method', None),
         'basis': getattr(level, 'basis', None),
@@ -151,9 +164,11 @@ def _resolve_freq_scale_factor_source(freq_level) -> Optional[str]:
     except OSError:
         return None
 
-    # Build {ref_number: full_citation_text} from header comment lines
+    # Build {ref_number: full_citation_text} from header comment lines only.
+    # Anchor to lines that start with optional whitespace then '#' so that
+    # inline comments on data lines (e.g. 0.988  # [4]) don't overwrite.
     citations: Dict[str, str] = {}
-    for m in re.finditer(r'#\s*\[(\d+)\]\s+(.+)', raw):
+    for m in re.finditer(r'^\s*#\s*\[(\d+)\]\s+(.+)', raw, re.MULTILINE):
         citations[m.group(1)] = m.group(2).strip()
 
     level_key = str(freq_level) if not isinstance(freq_level, str) else freq_level
@@ -174,6 +189,51 @@ def _make_rel_path(path: Optional[str], project_directory: str) -> Optional[str]
         return os.path.relpath(path, project_directory)
     except ValueError:
         return path  # Windows: relpath can fail across drives
+
+
+def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
+    """
+    Parse opt_n_steps and opt_final_energy_hartree from the geometry opt log.
+
+    Returns:
+        (opt_n_steps, opt_final_energy_hartree) — either may be None.
+    """
+    if not geo_path:
+        return None, None
+    if not os.path.isabs(geo_path):
+        geo_path = os.path.join(project_directory, geo_path)
+    if not os.path.isfile(geo_path):
+        return None, None
+    try:
+        from arc.parser.parser import parse_opt_steps, parse_e_elect
+        n_steps = parse_opt_steps(geo_path)
+        e_elect_kj = parse_e_elect(geo_path)  # returns kJ/mol
+        e_elect_hartree = e_elect_kj / E_h_kJmol if e_elect_kj is not None else None
+        return n_steps, e_elect_hartree
+    except Exception:
+        return None, None
+
+
+def _get_ess_version(paths: Dict, project_directory: str) -> Optional[str]:
+    """
+    Parse the ESS version string from the first available log file (sp > geo > freq).
+    """
+    for key in ('sp', 'geo', 'freq'):
+        log_path = paths.get(key) or None
+        if not log_path:
+            continue
+        if not os.path.isabs(log_path):
+            log_path = os.path.join(project_directory, log_path)
+        if not os.path.isfile(log_path):
+            continue
+        try:
+            from arc.parser.parser import parse_ess_version
+            version = parse_ess_version(log_path)
+            if version:
+                return version
+        except Exception:
+            pass
+    return None
 
 
 def _safe(fn, default=None):
@@ -250,7 +310,8 @@ def _compute_point_groups(species_dict: Dict, project_directory: str) -> Dict[st
                 pass
 
 
-def _spc_to_dict(spc, output_dict: Dict, project_directory: str, point_groups: Optional[Dict] = None) -> Dict:
+def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
+                  point_groups: Optional[Dict] = None, irc_requested: bool = True) -> Dict:
     """Build the per-species/TS section for output.yml."""
     label = spc.label
     entry = output_dict.get(label, {})
@@ -297,9 +358,8 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str, point_groups: O
         d['zpe_hartree'] = None
 
     d['opt_converged'] = entry.get('job_types', {}).get('opt') if converged else None
-    # opt_n_steps and opt_final_energy_hartree are not retained in memory
-    d['opt_n_steps'] = None
-    d['opt_final_energy_hartree'] = None
+    d['opt_n_steps'], d['opt_final_energy_hartree'] = _parse_opt_log(
+        paths.get('geo') or None, project_directory) if converged else (None, None)
 
     # ── freq results ────────────────────────────────────────────────────────
     if is_mono:
@@ -320,8 +380,15 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str, point_groups: O
     # When SP level == opt level the SP log IS the opt log — store it anyway.
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
 
+    # ── ESS software version (from SP log, or fall back to geo/freq log) ──
+    d['ess_version'] = _get_ess_version(paths, project_directory) if converged else None
+
     if spc.is_ts:
         d['irc_logs'] = [_make_rel_path(p, project_directory) for p in (paths.get('irc') or [])]
+        if not irc_requested:
+            d['irc_converged'] = None
+        else:
+            d['irc_converged'] = entry.get('job_types', {}).get('irc', False)
         d['rxn_label'] = spc.rxn_label
 
     # ── thermochemistry (non-TS converged species only) ──────────────────────

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from arc.common import ARC_PATH
 from arc.level import Level
+from arc.common import ARC_TESTING_PATH
 from arc.output import (
     _compute_point_groups,
     _get_arkane_git_commit,
@@ -18,6 +19,7 @@ from arc.output import (
     _get_ts_imag_freq,
     _level_to_dict,
     _make_rel_path,
+    _parse_opt_log,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
     _spc_to_dict,
@@ -45,7 +47,14 @@ class TestLevelToDict(unittest.TestCase):
         level = Level(method='cbs-qb3')
         result = _level_to_dict(level)
         self.assertEqual(result['method'], 'cbs-qb3')
-        self.assertIsNone(result['basis'])
+        self.assertNotIn('basis', result)  # as_dict omits None fields
+
+    def test_level_with_solvent(self):
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian',
+                      solvent='water', solvation_method='smd')
+        result = _level_to_dict(level)
+        self.assertEqual(result['solvent'], 'water')
+        self.assertEqual(result['solvation_method'], 'smd')
 
 
 class TestMakeRelPath(unittest.TestCase):
@@ -81,17 +90,24 @@ class TestResolveFreqScaleFactorSource(unittest.TestCase):
 class TestGetArkaneGitCommit(unittest.TestCase):
     """Tests for _get_arkane_git_commit."""
 
+    @patch('arc.imports.settings', {'RMG_PATH': '/fake/RMG-Py'})
     @patch('arc.output.get_git_commit', return_value=('abc1234', '2026-01-01'))
     def test_returns_hash(self, mock_git):
         result = _get_arkane_git_commit()
         self.assertEqual(result, 'abc1234')
 
+    @patch('arc.imports.settings', {'RMG_PATH': '/fake/RMG-Py'})
     @patch('arc.output.get_git_commit', side_effect=Exception('no repo'))
     def test_returns_none_on_error(self, mock_git):
         self.assertIsNone(_get_arkane_git_commit())
 
+    @patch('arc.imports.settings', {'RMG_PATH': '/fake/RMG-Py'})
     @patch('arc.output.get_git_commit', return_value=('', ''))
     def test_returns_none_for_empty(self, mock_git):
+        self.assertIsNone(_get_arkane_git_commit())
+
+    @patch('arc.imports.settings', {})
+    def test_returns_none_no_rmg_path(self):
         self.assertIsNone(_get_arkane_git_commit())
 
 
@@ -295,6 +311,65 @@ class TestGetRotorBarrier(unittest.TestCase):
             os.unlink(tmp_path)
 
 
+class TestParseOptLog(unittest.TestCase):
+    """Tests for _parse_opt_log and the Gaussian parse_opt_steps adapter."""
+
+    def test_gaussian_opt_log(self):
+        """Parse a real Gaussian opt log for step count and final energy."""
+        opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        n_steps, e_hartree = _parse_opt_log(opt_path, '/dummy')
+        self.assertEqual(n_steps, 4)
+        self.assertIsNotNone(e_hartree)
+        self.assertAlmostEqual(e_hartree, -116.986089069, places=6)
+
+    def test_missing_file(self):
+        n_steps, e_hartree = _parse_opt_log('/nonexistent/file.log', '/tmp')
+        self.assertIsNone(n_steps)
+        self.assertIsNone(e_hartree)
+
+    def test_none_path(self):
+        n_steps, e_hartree = _parse_opt_log(None, '/tmp')
+        self.assertIsNone(n_steps)
+        self.assertIsNone(e_hartree)
+
+    def test_gaussian_adapter_parse_opt_steps(self):
+        """Test the Gaussian adapter method directly."""
+        from arc.parser.adapters.gaussian import GaussianParser
+        opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        parser = GaussianParser(log_file_path=opt_path)
+        self.assertEqual(parser.parse_opt_steps(), 4)
+
+    def test_parse_opt_steps_via_make_parser(self):
+        """Test the top-level parse_opt_steps function."""
+        from arc.parser.parser import parse_opt_steps
+        opt_path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        self.assertEqual(parse_opt_steps(opt_path), 4)
+
+
+class TestParseEssVersion(unittest.TestCase):
+    """Tests for parse_ess_version across ESS adapters."""
+
+    def test_gaussian(self):
+        from arc.parser.parser import parse_ess_version
+        path = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        self.assertEqual(parse_ess_version(path), 'Gaussian 09, Revision D.01')
+
+    def test_orca(self):
+        from arc.parser.parser import parse_ess_version
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        self.assertEqual(parse_ess_version(path), 'ORCA 5.0.4')
+
+    def test_qchem(self):
+        from arc.parser.parser import parse_ess_version
+        path = os.path.join(ARC_TESTING_PATH, 'N2H4_opt_QChem.out')
+        self.assertEqual(parse_ess_version(path), 'Q-Chem 4.4')
+
+    def test_molpro(self):
+        from arc.parser.parser import parse_ess_version
+        path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        self.assertEqual(parse_ess_version(path), 'Molpro 2015.1.37')
+
+
 class TestRxnToDict(unittest.TestCase):
     """Tests for _rxn_to_dict."""
 
@@ -432,7 +507,7 @@ class TestSpcToDict(unittest.TestCase):
         spc.ts_guesses = [ts_guess]
         spc.chosen_ts = 0
         output_dict = {'TS0': {'convergence': True, 'paths': {'freq': '/abs/freq.log', 'irc': ['/abs/irc_f.log', '/abs/irc_r.log']},
-                                'job_types': {'opt': True}}}
+                                'job_types': {'opt': True, 'irc': True}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
         self.assertTrue(result['is_ts'])
         self.assertEqual(result['freq_n_imag'], 1)
@@ -441,6 +516,24 @@ class TestSpcToDict(unittest.TestCase):
         self.assertIsNone(result['smiles'])
         self.assertEqual(result['rxn_label'], 'CH4 + OH <=> CH3 + H2O')
         self.assertEqual(len(result['irc_logs']), 2)
+        self.assertTrue(result['irc_converged'])
+
+    def test_ts_irc_not_requested(self):
+        spc = self._make_spc_mock(label='TS1', is_ts=True)
+        spc.rxn_label = 'A <=> B'
+        spc.thermo = None
+        output_dict = {'TS1': {'convergence': True, 'paths': {'irc': []}, 'job_types': {}}}
+        result = _spc_to_dict(spc, output_dict, '/abs', irc_requested=False)
+        self.assertIsNone(result['irc_converged'])
+
+    def test_ts_irc_failed(self):
+        spc = self._make_spc_mock(label='TS2', is_ts=True)
+        spc.rxn_label = 'A <=> B'
+        spc.thermo = None
+        output_dict = {'TS2': {'convergence': True, 'paths': {'irc': ['/abs/irc_f.log']},
+                                'job_types': {'irc': False}}}
+        result = _spc_to_dict(spc, output_dict, '/abs', irc_requested=True)
+        self.assertFalse(result['irc_converged'])
 
     def test_point_groups_threaded(self):
         spc = self._make_spc_mock()
@@ -647,6 +740,47 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertAlmostEqual(doc['freq_scale_factor'], 0.975)
         self.assertIsNone(doc['freq_scale_factor_source'])  # user-provided
         self.assertTrue(doc['energy_corrections_applied'])
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_level_of_theory(self, mock_arc_git, mock_arkane_git, mock_pg):
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+        sp_level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        arkane_lot = Level(method='cbs-qb3', software='gaussian')
+
+        write_output_yml(
+            project='test_arkane_lot',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+            sp_level=sp_level,
+            arkane_level_of_theory=arkane_lot,
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertEqual(doc['arkane_level_of_theory']['method'], 'cbs-qb3')
+        self.assertEqual(doc['sp_level']['method'], 'wb97xd')
+
+    @patch('arc.output._compute_point_groups', return_value={})
+    @patch('arc.output._get_arkane_git_commit', return_value=None)
+    @patch('arc.output.get_git_commit', return_value=('', ''))
+    def test_arkane_level_none_when_not_set(self, mock_arc_git, mock_arkane_git, mock_pg):
+        from arc.common import read_yaml_file
+        spc = self._make_spc_mock()
+
+        write_output_yml(
+            project='test_no_arkane',
+            project_directory=self.tmp_dir,
+            species_dict={'CH4': spc},
+            reactions=[],
+            output_dict={'CH4': {'convergence': True, 'paths': {}, 'job_types': {}}},
+        )
+
+        doc = read_yaml_file(os.path.join(self.tmp_dir, 'output', 'output.yml'))
+        self.assertIsNone(doc['arkane_level_of_theory'])
 
     @patch('arc.output._compute_point_groups', return_value={})
     @patch('arc.output._get_arkane_git_commit', return_value=None)

@@ -651,10 +651,12 @@ class ARC(object):
                 output_dict=self.output,
                 opt_level=self.opt_level,
                 freq_level=self.freq_level,
-                sp_level=self.arkane_level_of_theory or self.sp_level,
+                sp_level=self.sp_level,
                 freq_scale_factor=self.freq_scale_factor,
                 freq_scale_factor_user_provided=_user_provided_scale,
                 bac_type=self.bac_type,
+                arkane_level_of_theory=self.arkane_level_of_theory,
+                irc_requested=self.job_types.get('irc', True),
             )
         except Exception as e:
             logger.error(f'Could not write output.yml: {e}')
