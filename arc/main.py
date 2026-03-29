@@ -406,6 +406,7 @@ class ARC(object):
             self.job_types['opt'] = True  # Run the optimizations, self.fine_only will make sure that they are fine.
 
         self.set_levels_of_theory()  # All level of theories should be Level types after this call.
+        self._warn_year_on_non_arkane_levels()
         if self.thermo_adapter == 'arkane':
             self.check_arkane_level_of_theory()
 
@@ -1154,6 +1155,17 @@ class ARC(object):
                     self.scan_level = opt
 
         self.level_of_theory = ''  # Reset the level_of_theory argument to avoid conflicts upon restarting ARC.
+
+    def _warn_year_on_non_arkane_levels(self):
+        """
+        Warn if ``year`` was specified on any Level other than ``arkane_level_of_theory``.
+        The ``year`` attribute only affects Arkane database matching and is ignored elsewhere.
+        """
+        for attr_name in ('sp_level', 'opt_level', 'freq_level', 'scan_level', 'irc_level',
+                          'conformer_opt_level', 'conformer_sp_level', 'orbitals_level'):
+            level = getattr(self, attr_name, None)
+            if isinstance(level, Level):
+                level.warn_if_year_set(attr_name)
 
     def check_arkane_level_of_theory(self):
         """

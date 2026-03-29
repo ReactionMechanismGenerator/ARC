@@ -328,7 +328,9 @@ class xTBAdapter(JobAdapter):
                            'futurewarning:', 
                            'userwarning:', 
                            'deprecationwarning:', 
-                           'warnings.warn('
+                           'warnings.warn(',
+                           'pjrt_executable.cc',
+                           'cpu_aot_loader.cc',
                            ]
         real_errors = []
         for line in stderr:
