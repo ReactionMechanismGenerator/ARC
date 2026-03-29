@@ -3039,18 +3039,25 @@ class Scheduler(object):
         """
         all_converged = True
         if label in self.output and not self.output[label]['convergence']:
-            for job_type, spawn_job_type in self.job_types.items():
-                if spawn_job_type and not self.output[label]['job_types'][job_type] \
-                        and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
-                                 or (self.species_dict[label].number_of_atoms == 1
-                                     and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
-                                 or job_type == 'bde' and self.species_dict[label].bdes is None
-                                 or job_type == 'conf_opt'
-                                 or job_type == 'irc'
-                                 or job_type == 'tsg'):
-                    logger.debug(f'Species {label} did not converge.')
-                    all_converged = False
-                    break
+            # A TS that failed the E0 check should stay unconverged even if all jobs succeeded.
+            if self.species_dict[label].is_ts \
+                    and getattr(self.species_dict[label], 'ts_checks', {}).get('E0') is False \
+                    and (self.species_dict[label].ts_guesses_exhausted
+                         or self.species_dict[label].chosen_ts is None):
+                all_converged = False
+            else:
+                for job_type, spawn_job_type in self.job_types.items():
+                    if spawn_job_type and not self.output[label]['job_types'][job_type] \
+                            and not ((self.species_dict[label].is_ts and job_type in ['scan', 'conf_opt'])
+                                     or (self.species_dict[label].number_of_atoms == 1
+                                         and job_type in ['conf_opt', 'opt', 'fine', 'freq', 'rotors', 'bde'])
+                                     or job_type == 'bde' and self.species_dict[label].bdes is None
+                                     or job_type == 'conf_opt'
+                                     or job_type == 'irc'
+                                     or job_type == 'tsg'):
+                        logger.debug(f'Species {label} did not converge.')
+                        all_converged = False
+                        break
         if label in self.output and all_converged:
             self.output[label]['convergence'] = True
             if self.species_dict[label].is_ts:
