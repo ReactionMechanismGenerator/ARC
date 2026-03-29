@@ -165,6 +165,11 @@ isn’t set, and ARC will use the default in settings.py unless directed otherwi
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">level_of_theory</span><span class="p">:</span> <span class="n">CBS</span><span class="o">-</span><span class="n">QB3</span>
 </pre></div>
 </div>
+<p>Note: Do not include year suffixes in <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> (e.g., <code class="docutils literal notranslate"><span class="pre">wb97xd32023</span></code>). Year suffixes are
+for Arkane database matching only and are not valid QC methods. If you need a specific correction year,
+specify a <code class="docutils literal notranslate"><span class="pre">year</span></code> key on <code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code>.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">year</span></code> is omitted, ARC will prefer the no-year Arkane entry for that method/basis; if none exists,
+ARC will fall back to the latest available year in the Arkane database.</p>
 <p>Note that for composite methods the <code class="docutils literal notranslate"><span class="pre">freq_level</span></code> and <code class="docutils literal notranslate"><span class="pre">scan_level</span></code> may have different
 default values than for non-composite methods (defined in settings.py). Note: an independent
 frequencies calculation job is automatically executed after a composite job just so that the Hamiltonian will

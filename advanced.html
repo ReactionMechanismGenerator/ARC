@@ -195,8 +195,20 @@ Make sure to pass the correct format based on the intended ESS that should be us
 </pre></div>
 </div>
 <p>specifies <code class="docutils literal notranslate"><span class="pre">DLPNO-CCSD(T)-F12/cc-pVTZ-F12</span></code> model chemistry along with two auxiliary basis sets,
-<code class="docutils literal notranslate"><span class="pre">aug-cc-pVTZ/C</span></code> and <code class="docutils literal notranslate"><span class="pre">cc-pVTZ-F12-CABS</span></code>, with <code class="docutils literal notranslate"><span class="pre">TightOpt</span></code> for a single point energy calculation.</p>
-<p>THe following are examples for <strong>equivalent</strong> definitions:</p>
+<code class="docutils literal notranslate"><span class="pre">aug-cc-pVTZ/C</span></code> and <code class="docutils literal notranslate"><span class="pre">cc-pVTZ-F12-CABS</span></code>, with <code class="docutils literal notranslate"><span class="pre">TightOpt</span></code> for a single point energy calculation.
+You can also provide a 4-digit <code class="docutils literal notranslate"><span class="pre">year</span></code> on <code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code> to distinguish method variants
+in the Arkane database (e.g., <code class="docutils literal notranslate"><span class="pre">b97d3</span></code> vs <code class="docutils literal notranslate"><span class="pre">b97d32023</span></code>):</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">arkane_level_of_theory</span><span class="p">:</span>
+  <span class="n">method</span><span class="p">:</span> <span class="n">b97d3</span>
+  <span class="n">basis</span><span class="p">:</span> <span class="n">def2tzvp</span>
+  <span class="n">year</span><span class="p">:</span> <span class="mi">2023</span>
+</pre></div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">year</span></code> is omitted, ARC will prefer the no-year Arkane entry for that method/basis. If no entry
+without a year exists, ARC will use the latest available year in the Arkane database. If no entry
+exists at all (neither with nor without a year), ARC will warn the user and proceed without
+atom energy or bond additivity corrections.</p>
+<p>The following are examples for <strong>equivalent</strong> definitions:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">opt_level</span> <span class="o">=</span> <span class="s1">&#39;apfd/def2tzvp&#39;</span>
 <span class="n">opt_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;apfd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2tzvp&#39;</span><span class="p">}</span>
 
@@ -233,6 +245,11 @@ it is interpreted as intended for running all opt, freq, scan, <strong>and sp</s
 <span class="n">sp_level</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;wb97xd&#39;</span><span class="p">,</span> <span class="s1">&#39;basis&#39;</span><span class="p">:</span> <span class="s1">&#39;def2svp&#39;</span><span class="p">}</span>
 </pre></div>
 </div>
+<p>Note: Year suffixes in the method (e.g., <code class="docutils literal notranslate"><span class="pre">wb97xd32023</span></code>) are meant for Arkane database matching
+and are not valid QC methods. Do not include year suffixes in <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code>; instead, specify a
+<code class="docutils literal notranslate"><span class="pre">year</span></code> key on <code class="docutils literal notranslate"><span class="pre">arkane_level_of_theory</span></code> if you need a specific atom or bond energy correction year.
+See <a class="reference external" href="https://github.com/ReactionMechanismGenerator/RMG-database/blob/main/input/quantum_corrections/data.py">here</a>
+for all of Arkane’s corrections.</p>
 <p>Note: If <code class="docutils literal notranslate"><span class="pre">level_of_theory</span></code> does not contain any deliminator (neither <code class="docutils literal notranslate"><span class="pre">//</span></code> nor <code class="docutils literal notranslate"><span class="pre">\/</span></code>), it is interpreted as a
 composite method.</p>
 <p>For example:</p>

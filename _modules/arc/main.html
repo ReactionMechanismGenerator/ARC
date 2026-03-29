@@ -492,6 +492,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">job_types</span><span class="p">[</span><span class="s1">&#39;opt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Run the optimizations, self.fine_only will make sure that they are fine.</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">set_levels_of_theory</span><span class="p">()</span>  <span class="c1"># All level of theories should be Level types after this call.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_warn_year_on_non_arkane_levels</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">thermo_adapter</span> <span class="o">==</span> <span class="s1">&#39;arkane&#39;</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">check_arkane_level_of_theory</span><span class="p">()</span>
 
@@ -1279,6 +1280,17 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">level_of_theory</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>  <span class="c1"># Reset the level_of_theory argument to avoid conflicts upon restarting ARC.</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_warn_year_on_non_arkane_levels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Warn if ``year`` was specified on any Level other than ``arkane_level_of_theory``.</span>
+<span class="sd">        The ``year`` attribute only affects Arkane database matching and is ignored elsewhere.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">attr_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;sp_level&#39;</span><span class="p">,</span> <span class="s1">&#39;opt_level&#39;</span><span class="p">,</span> <span class="s1">&#39;freq_level&#39;</span><span class="p">,</span> <span class="s1">&#39;scan_level&#39;</span><span class="p">,</span> <span class="s1">&#39;irc_level&#39;</span><span class="p">,</span>
+                          <span class="s1">&#39;conformer_opt_level&#39;</span><span class="p">,</span> <span class="s1">&#39;conformer_sp_level&#39;</span><span class="p">,</span> <span class="s1">&#39;orbitals_level&#39;</span><span class="p">):</span>
+            <span class="n">level</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">level</span><span class="p">,</span> <span class="n">Level</span><span class="p">):</span>
+                <span class="n">level</span><span class="o">.</span><span class="n">warn_if_year_set</span><span class="p">(</span><span class="n">attr_name</span><span class="p">)</span>
 
 <div class="viewcode-block" id="ARC.check_arkane_level_of_theory">
 <a class="viewcode-back" href="../../api/main.html#arc.main.ARC.check_arkane_level_of_theory">[docs]</a>
