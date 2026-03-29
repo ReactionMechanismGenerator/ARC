@@ -204,7 +204,7 @@ class ARCReaction(object):
             if self._multiplicity is not None:
                 logger.info(f'Setting multiplicity of reaction {self.label} to {self._multiplicity}')
             else:
-                logger.Error(f'Could not determine multiplicity for the reaction: {self.label}')
+                logger.error(f'Could not determine multiplicity for the reaction: {self.label}')
         return self._multiplicity
 
     @multiplicity.setter
