@@ -95,9 +95,21 @@ Another example::
 
 specifies ``DLPNO-CCSD(T)-F12/cc-pVTZ-F12`` model chemistry along with two auxiliary basis sets,
 ``aug-cc-pVTZ/C`` and ``cc-pVTZ-F12-CABS``, with ``TightOpt`` for a single point energy calculation.
+You can also provide a 4-digit ``year`` on ``arkane_level_of_theory`` to distinguish method variants
+in the Arkane database (e.g., ``b97d3`` vs ``b97d32023``)::
+
+    arkane_level_of_theory:
+      method: b97d3
+      basis: def2tzvp
+      year: 2023
+
+If ``year`` is omitted, ARC will prefer the no-year Arkane entry for that method/basis. If no entry
+without a year exists, ARC will use the latest available year in the Arkane database. If no entry
+exists at all (neither with nor without a year), ARC will warn the user and proceed without
+atom energy or bond additivity corrections.
 
 
-THe following are examples for **equivalent** definitions::
+The following are examples for **equivalent** definitions::
 
     opt_level = 'apfd/def2tzvp'
     opt_level = {'method': 'apfd', 'basis': 'def2tzvp'}
@@ -137,6 +149,12 @@ is equivalent to::
     freq_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     scan_level = {'method': 'wb97xd', 'basis': 'def2svp'}
     sp_level = {'method': 'wb97xd', 'basis': 'def2svp'}
+
+Note: Year suffixes in the method (e.g., ``wb97xd32023``) are meant for Arkane database matching
+and are not valid QC methods. Do not include year suffixes in ``level_of_theory``; instead, specify a
+``year`` key on ``arkane_level_of_theory`` if you need a specific atom or bond energy correction year.
+See `here <https://github.com/ReactionMechanismGenerator/RMG-database/blob/main/input/quantum_corrections/data.py>`_
+for all of Arkane's corrections.
 
 Note: If ``level_of_theory`` does not contain any deliminator (neither ``//`` nor ``\/``), it is interpreted as a
 composite method.
