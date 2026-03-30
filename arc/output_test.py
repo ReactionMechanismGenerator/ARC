@@ -553,19 +553,15 @@ kinetics(
 class TestTsWithSmiles(unittest.TestCase):
     """Test that TS species get SMILES when mol is available."""
 
-    def test_ts_with_mol(self):
+    def test_ts_smiles_null_formula_from_mol(self):
+        """TS SMILES should be null; formula comes from spc.mol."""
         spc = MagicMock()
         spc.label = 'TS0'
         spc.original_label = None
         spc.charge = 0
         spc.multiplicity = 2
         spc.is_ts = True
-        mol_copy = MagicMock()
-        mol_copy.to_smiles.return_value = '[CH3].[H].[CH2]=O'
-        mol_copy.to_inchi.return_value = 'InChI=1S/test'
-        mol_copy.to_inchi_key.return_value = 'TESTKEY'
         spc.mol = MagicMock()
-        spc.mol.copy.return_value = mol_copy
         spc.mol.get_formula.return_value = 'C2H6O'
         spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
         spc.initial_xyz = None
@@ -578,12 +574,12 @@ class TestTsWithSmiles(unittest.TestCase):
         spc.freqs = [-1500.0, 100.0]
         spc.rotors_dict = None
         spc.thermo = None
-        spc.rxn_label = 'A <=> B'
+        spc.rxn_label = 'CHO + CH4 <=> CH2O + CH3'
         spc.chosen_ts_method = 'heuristics'
         spc.successful_methods = ['heuristics']
         output_dict = {'TS0': {'convergence': True, 'paths': {'irc': []}, 'job_types': {'opt': True, 'irc': True}}}
         result = _spc_to_dict(spc, output_dict, '/abs')
-        self.assertEqual(result['smiles'], '[CH3].[H].[CH2]=O')
+        self.assertIsNone(result['smiles'])
         self.assertEqual(result['formula'], 'C2H6O')
 
     def test_ts_without_mol(self):
