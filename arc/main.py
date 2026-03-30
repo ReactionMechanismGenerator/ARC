@@ -1199,10 +1199,10 @@ class ARC(object):
         if self.arkane_level_of_theory is None:
             self.arkane_level_of_theory = self.composite_method if self.composite_method is not None \
                 else self.sp_level if self.sp_level is not None else None
-        if self.arkane_level_of_theory is not None and self.bac_type is not None:
-            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
-        else:
+        if self.arkane_level_of_theory is None:
             logger.warning('Could not determine a level of theory to be used for Arkane!')
+        elif self.bac_type is not None:
+            check_arkane_bacs(sp_level=self.arkane_level_of_theory, bac_type=self.bac_type, raise_error=self.compute_thermo)
 
     def backup_restart(self):
         """

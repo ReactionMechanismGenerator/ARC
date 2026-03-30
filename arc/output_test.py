@@ -14,6 +14,8 @@ from arc.common import ARC_TESTING_PATH
 from arc.output import (
     _compute_point_groups,
     _get_arkane_git_commit,
+    _get_energy_corrections,
+    _get_ess_versions,
     _get_rotor_barrier,
     _get_torsions,
     _get_ts_imag_freq,
@@ -376,6 +378,240 @@ class TestParseEssVersion(unittest.TestCase):
         from arc.parser.parser import parse_ess_version
         path = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
         self.assertEqual(parse_ess_version(path), 'Molpro 2015.1.37')
+
+
+class TestGetEssVersions(unittest.TestCase):
+    """Tests for _get_ess_versions."""
+
+    def test_gaussian_log(self):
+        paths = {'sp': os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')}
+        result = _get_ess_versions(paths, '/dummy')
+        self.assertIn('sp', result)
+        self.assertIn('Gaussian 09', result['sp'])
+
+    def test_deduplicates_same_path(self):
+        """When sp and geo point to the same file, only one entry should appear."""
+        log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        paths = {'sp': log, 'geo': log}
+        result = _get_ess_versions(paths, '/dummy')
+        # Should have only one key since the paths are identical
+        self.assertEqual(len(result), 1)
+
+    def test_no_paths(self):
+        self.assertIsNone(_get_ess_versions({}, '/dummy'))
+
+    def test_missing_files(self):
+        paths = {'sp': '/nonexistent.log', 'geo': '/also_missing.log'}
+        self.assertIsNone(_get_ess_versions(paths, '/dummy'))
+
+
+class TestGetEnergyCorrections(unittest.TestCase):
+    """Tests for _get_energy_corrections."""
+
+    def test_none_level(self):
+        aec, bac = _get_energy_corrections(None, 'p')
+        self.assertIsNone(aec)
+        self.assertIsNone(bac)
+
+    def test_known_level(self):
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        aec, bac = _get_energy_corrections(lot, 'p')
+        if aec is not None:  # only if RMG-database is available
+            self.assertIn('H', aec)
+            self.assertIn('C', aec)
+            self.assertIsInstance(aec['H'], float)
+        if bac is not None:
+            self.assertIn('C-H', bac)
+            self.assertIsInstance(bac['C-H'], float)
+
+    def test_no_bac_when_type_none(self):
+        lot = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        aec, bac = _get_energy_corrections(lot, None)
+        self.assertIsNone(bac)
+
+
+class TestGetTsImagFreqFromFreqs(unittest.TestCase):
+    """Tests for _get_ts_imag_freq using spc.freqs as primary source."""
+
+    def test_from_spc_freqs(self):
+        spc = MagicMock()
+        spc.freqs = [-1500.0, 100.0, 200.0, 300.0]
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        result = _get_ts_imag_freq(spc)
+        self.assertAlmostEqual(result, -1500.0)
+
+    def test_most_negative_selected(self):
+        spc = MagicMock()
+        spc.freqs = [-200.0, -1500.0, 100.0, 300.0]
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        result = _get_ts_imag_freq(spc)
+        self.assertAlmostEqual(result, -1500.0)
+
+    def test_no_negative_freqs(self):
+        spc = MagicMock()
+        spc.freqs = [100.0, 200.0, 300.0]
+        spc.chosen_ts = None
+        spc.ts_guesses = []
+        self.assertIsNone(_get_ts_imag_freq(spc))
+
+
+class TestParseConformerStatmech(unittest.TestCase):
+    """Tests for _parse_conformer_statmech in arkane.py."""
+
+    def test_parses_symmetry_and_optical_isomers(self):
+        from arc.statmech.arkane import _parse_conformer_statmech
+        content = """
+conformer(
+    label = 'CH2O',
+    E0 = (-118.911, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(
+            inertia = ([1.0, 2.0, 3.0], 'amu*angstrom^2'),
+            symmetry = 2,
+        ),
+        HarmonicOscillator(frequencies=([1200.0, 1500.0], 'cm^-1')),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        spc = MagicMock()
+        spc.label = 'CH2O'
+        spc.optical_isomers = None
+        spc.external_symmetry = None
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.optical_isomers, 1)
+        self.assertEqual(spc.external_symmetry, 2)
+
+    def test_does_not_overwrite_existing(self):
+        from arc.statmech.arkane import _parse_conformer_statmech
+        content = "conformer(label='X', E0=(0,'kJ/mol'), modes=[NonlinearRotor(symmetry=4)], optical_isomers=2)"
+        spc = MagicMock()
+        spc.label = 'X'
+        spc.optical_isomers = 1  # already set
+        spc.external_symmetry = 12  # already set
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.optical_isomers, 1)
+        self.assertEqual(spc.external_symmetry, 12)
+
+
+class TestKineticsCommentParsing(unittest.TestCase):
+    """Tests for dA/dn/dEa parsing from Arkane kinetics comment."""
+
+    def test_parse_uncertainties(self):
+        from arc.statmech.arkane import parse_reaction_kinetics
+        content = """
+kinetics(
+    label = 'A + B <=> C + D',
+    kinetics = Arrhenius(
+        A = (1.2e10, 'cm^3/(mol*s)'),
+        n = 2.5,
+        Ea = (45.6, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (3000, 'K'),
+        comment = 'Fitted to 50 data points; dA = *|/ 1.48, dn = +|- 0.05, dEa = +|- 0.29 kJ/mol',
+    ),
+)
+"""
+        rxn = MagicMock()
+        rxn.label = 'A + B <=> C + D'
+        rxn.ts_species = MagicMock()
+        rxn.ts_species.label = 'TS0'
+        rxn.ts_species.e0 = None
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['dA'], 1.48)
+        self.assertAlmostEqual(rxn.kinetics['dn'], 0.05)
+        self.assertAlmostEqual(rxn.kinetics['dEa'], 0.29)
+        self.assertEqual(rxn.kinetics['dEa_units'], 'kJ/mol')
+        self.assertEqual(rxn.kinetics['n_data_points'], 50)
+
+    def test_rxn_to_dict_with_uncertainties(self):
+        rxn = MagicMock()
+        rxn.label = 'A <=> B'
+        rxn.reactants = ['A']
+        rxn.products = ['B']
+        rxn.family = 'intra_H_migration'
+        rxn.multiplicity = 1
+        rxn.ts_label = 'TS0'
+        rxn.kinetics = {
+            'A': (1.2e10, 's^-1'), 'n': 2.5, 'Ea': (45.6, 'kJ/mol'),
+            'Tmin': (300, 'K'), 'Tmax': (3000, 'K'),
+            'dA': 1.48, 'dn': 0.05, 'dEa': 0.29, 'dEa_units': 'kJ/mol',
+            'n_data_points': 50,
+        }
+        result = _rxn_to_dict(rxn)
+        self.assertAlmostEqual(result['kinetics']['dA'], 1.48)
+        self.assertAlmostEqual(result['kinetics']['dn'], 0.05)
+        self.assertAlmostEqual(result['kinetics']['dEa'], 0.29)
+        self.assertEqual(result['kinetics']['dEa_units'], 'kJ/mol')
+        self.assertEqual(result['kinetics']['n_data_points'], 50)
+
+
+class TestTsWithSmiles(unittest.TestCase):
+    """Test that TS species get SMILES when mol is available."""
+
+    def test_ts_with_mol(self):
+        spc = MagicMock()
+        spc.label = 'TS0'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 2
+        spc.is_ts = True
+        mol_copy = MagicMock()
+        mol_copy.to_smiles.return_value = '[CH3].[H].[CH2]=O'
+        mol_copy.to_inchi.return_value = 'InChI=1S/test'
+        mol_copy.to_inchi_key.return_value = 'TESTKEY'
+        spc.mol = MagicMock()
+        spc.mol.copy.return_value = mol_copy
+        spc.mol.get_formula.return_value = 'C2H6O'
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = -100.0
+        spc.e0 = -95.0
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1500.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = 'heuristics'
+        spc.successful_methods = ['heuristics']
+        output_dict = {'TS0': {'convergence': True, 'paths': {'irc': []}, 'job_types': {'opt': True, 'irc': True}}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertEqual(result['smiles'], '[CH3].[H].[CH2]=O')
+        self.assertEqual(result['formula'], 'C2H6O')
+
+    def test_ts_without_mol(self):
+        spc = MagicMock()
+        spc.label = 'TS1'
+        spc.original_label = None
+        spc.charge = 0
+        spc.multiplicity = 2
+        spc.is_ts = True
+        spc.mol = None
+        spc.final_xyz = {'symbols': ('C',), 'isotopes': (12,), 'coords': ((0, 0, 0),)}
+        spc.initial_xyz = None
+        spc.is_monoatomic.return_value = False
+        spc.e_elect = -100.0
+        spc.e0 = -95.0
+        spc._is_linear = False
+        spc.optical_isomers = 1
+        spc.external_symmetry = 1
+        spc.freqs = [-1500.0, 100.0]
+        spc.rotors_dict = None
+        spc.thermo = None
+        spc.rxn_label = 'A <=> B'
+        spc.chosen_ts_method = None
+        spc.successful_methods = []
+        output_dict = {'TS1': {'convergence': True, 'paths': {'irc': []}, 'job_types': {}}}
+        result = _spc_to_dict(spc, output_dict, '/abs')
+        self.assertIsNone(result['smiles'])
+        self.assertIsNone(result['formula'])
 
 
 class TestRxnToDict(unittest.TestCase):

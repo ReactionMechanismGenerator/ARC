@@ -1219,11 +1219,23 @@ def _parse_conformer_statmech(species, content: str) -> None:
         optical_isomers = 1,
     """
     label = species.label
-    pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"].*?\)"
-    match = re.search(pattern, content, re.DOTALL)
-    if not match:
+    # Find the start of the conformer block, then use balanced-paren matching
+    # to find the full block (regex `.*?)` fails because of nested parens).
+    start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
+    m_start = re.search(start_pattern, content, re.DOTALL)
+    if not m_start:
         return
-    block = match.group(0)
+    idx = m_start.start() + len('conformer(')
+    depth = 1
+    while idx < len(content) and depth > 0:
+        if content[idx] == '(':
+            depth += 1
+        elif content[idx] == ')':
+            depth -= 1
+        idx += 1
+    if depth != 0:
+        return
+    block = content[m_start.start():idx]
     # optical_isomers
     oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
     if oi_match and species.optical_isomers is None:
