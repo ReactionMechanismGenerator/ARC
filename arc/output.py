@@ -408,8 +408,8 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
         'is_ts': spc.is_ts,
     }
 
-    # ── molecular identity (non-TS only) ────────────────────────────────────
-    if not spc.is_ts and spc.mol is not None:
+    # ── molecular identity ───────────────────────────────────────────────────
+    if spc.mol is not None:
         d['smiles'] = _safe(lambda: spc.mol.copy(deep=True).to_smiles())
         d['inchi'] = _safe(lambda: spc.mol.copy(deep=True).to_inchi())
         d['inchi_key'] = _safe(lambda: spc.mol.copy(deep=True).to_inchi_key())
