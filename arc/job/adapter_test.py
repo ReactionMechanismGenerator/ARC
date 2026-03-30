@@ -6,8 +6,10 @@ This module contains unit tests of the arc.job.adapter module
 """
 
 import datetime
+import glob
 import math
 import os
+import tempfile
 import time
 import shutil
 import unittest
@@ -17,7 +19,7 @@ import pandas as pd
 
 from arc.common import ARC_TESTING_PATH
 from arc.imports import settings
-from arc.job.adapter import DataPoint, JobEnum, JobTypeEnum, JobExecutionTypeEnum
+from arc.job.adapter import DataPoint, JobAdapter, JobEnum, JobTypeEnum, JobExecutionTypeEnum
 from arc.job.adapters.gaussian import GaussianAdapter
 from arc.level import Level
 from arc.species import ARCSpecies
@@ -194,28 +196,34 @@ class TestJobAdapter(unittest.TestCase):
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     )
+        # Copy the PBS time limit fixture into the directory structure the adapter expects.
+        stl_dir = os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit')
+        err_dest = os.path.join(stl_dir, 'calcs', 'Species', 'spc1', 'opt_101')
+        os.makedirs(err_dest, exist_ok=True)
+        shutil.copy(os.path.join(ARC_TESTING_PATH, 'server', 'pbs', 'timelimit', 'err.txt'),
+                    os.path.join(err_dest, 'err.txt'))
         cls.job_5 = GaussianAdapter(execution_type='queue',
-                                    job_name='spc1',
+                                    job_name='opt_101',
                                     job_type='opt',
                                     job_id='123456',
                                     job_num=101,
-                                    job_server_name = 'server3',
+                                    job_server_name='server3',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=stl_dir,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     server='server3',
                                     testing=True,
                                     )
         cls.job_6 = GaussianAdapter(execution_type='queue',
-                                    job_name='spc1',
+                                    job_name='opt_101',
                                     job_type='opt',
                                     job_id='123456',
                                     job_num=101,
-                                    job_server_name = 'server1',
+                                    job_server_name='server1',
                                     level=Level(method='cbs-qb3'),
                                     project='test',
-                                    project_directory=os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'),
+                                    project_directory=stl_dir,
                                     species=[ARCSpecies(label='spc1', xyz=['O 0 0 1'])],
                                     testing=True,
                                     queue='short_queue',
@@ -469,6 +477,63 @@ class TestJobAdapter(unittest.TestCase):
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_scan'), ignore_errors=True)
         shutil.rmtree(os.path.join(ARC_TESTING_PATH, 'test_JobAdapter_ServerTimeLimit'), ignore_errors=True)
+
+
+class TestRotateCSV(unittest.TestCase):
+    """
+    Contains unit tests for the CSV rotation logic.
+    """
+
+    def _make_csv(self, path, num_lines):
+        """Helper to create a CSV file with a header and ``num_lines - 1`` data rows."""
+        with open(path, 'w') as f:
+            f.write('col1,col2\n')
+            for i in range(num_lines - 1):
+                f.write(f'{i},data\n')
+
+    def test_no_rotation_below_threshold(self):
+        """Test that no rotation occurs when the file is below the threshold."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            self._make_csv(csv_path, 10)
+            JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertTrue(os.path.isfile(csv_path))
+            self.assertEqual(glob.glob(os.path.join(tmp, 'jobs.old.*.csv')), [])
+
+    def test_rotation_at_threshold(self):
+        """Test that the file is rotated when it reaches the threshold."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            self._make_csv(csv_path, 50)
+            JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            archives = glob.glob(os.path.join(tmp, 'jobs.old.*.csv'))
+            self.assertEqual(len(archives), 1)
+
+    def test_no_error_for_missing_file(self):
+        """Test that rotation is a no-op when the file does not exist."""
+        JobAdapter._rotate_csv_if_needed('/tmp/nonexistent_arc_test.csv')
+
+    def test_multiple_rotations(self):
+        """Test that multiple rotations produce distinct archive files."""
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, 'jobs.csv')
+            # First rotation on "day 1"
+            self._make_csv(csv_path, 50)
+            with patch('arc.job.adapter.datetime') as mock_dt:
+                mock_dt.datetime.now.return_value = datetime.datetime(2026, 1, 15)
+                mock_dt.timedelta = datetime.timedelta
+                JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            # Second rotation on "day 2"
+            self._make_csv(csv_path, 50)
+            with patch('arc.job.adapter.datetime') as mock_dt:
+                mock_dt.datetime.now.return_value = datetime.datetime(2026, 2, 20)
+                mock_dt.timedelta = datetime.timedelta
+                JobAdapter._rotate_csv_if_needed(csv_path, max_lines=50)
+            self.assertFalse(os.path.isfile(csv_path))
+            archives = glob.glob(os.path.join(tmp, 'jobs.old.*.csv'))
+            self.assertEqual(len(archives), 2)
 
 
 if __name__ == '__main__':

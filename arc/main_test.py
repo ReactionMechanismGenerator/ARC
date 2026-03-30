@@ -85,6 +85,7 @@ class TestARC(unittest.TestCase):
                                           'onedmin': ['server1'],
                                           'openbabel': ['local'],
                                           'orca': ['local'],
+                                          'orca_neb': ['local'],
                                           'qchem': ['server1'],
                                           'terachem': ['server1'],
                                           'torchani': ['local'],
@@ -338,6 +339,24 @@ class TestARC(unittest.TestCase):
         self.assertEqual(arc14.opt_level.simple(), 'am1')
         self.assertEqual(arc14.freq_level.simple(), 'pm6')
         self.assertEqual(arc14.sp_level.simple(), 'amber')
+
+        # Test explicit year in arkane_level_of_theory dictionary
+        arc15 = ARC(project='test',
+                    sp_level='wb97xd/def2tzvp',
+                    opt_level='wb97xd/def2tzvp',
+                    arkane_level_of_theory={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
+                    bac_type=None,
+                    calc_freq_factor=False, compute_thermo=False)
+        self.assertEqual(arc15.arkane_level_of_theory.year, 2023)
+
+        # Test warning when year is specified on sp_level instead of arkane_level_of_theory
+        arc16 = ARC(project='test',
+                    sp_level={'method': 'wb97xd', 'basis': 'def2tzvp', 'year': 2023},
+                    opt_level='wb97xd/def2tzvp',
+                    calc_freq_factor=False, compute_thermo=False)
+        with open(os.path.join(arc16.project_directory, 'arc.log'), 'r') as f:
+            log_content = f.read()
+        self.assertIn('"year" attribute on sp_level', log_content)
 
     def test_determine_unique_species_labels(self):
         """Test the determine_unique_species_labels method"""
