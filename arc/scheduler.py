@@ -2365,6 +2365,8 @@ class Scheduler(object):
                     and not job.level.method_type == 'wavefunction' \
                     and self.species_dict[label].irc_label is None:
                 # Run opt again using a finer grid.
+                # Store the coarse opt path before it gets overwritten by the fine opt.
+                self.output[label]['paths']['geo_coarse'] = job.local_path_to_output_file
                 # Save the optimized geometry as ``initial_xyz``, since trsh looks there.
                 if multi_species:
                     for spc in self.species_list:
@@ -3732,7 +3734,7 @@ class Scheduler(object):
                         self.output_multi_spc[species.multi_species] = dict()
                     if 'paths' not in self.output[species.label]:
                         self.output[species.label]['paths'] = dict()
-                    path_keys = ['geo', 'freq', 'sp', 'composite']
+                    path_keys = ['geo', 'geo_coarse', 'freq', 'sp', 'composite']
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''

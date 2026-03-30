@@ -437,6 +437,19 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
         if converged and not is_mono else None
 
     d['opt_converged'] = entry.get('job_types', {}).get('opt') if converged else None
+
+    # ── coarse opt (null if fine grid wasn't used or job didn't run) ────────
+    coarse_path = paths.get('geo_coarse') or None
+    if converged and coarse_path:
+        d['coarse_opt_log'] = _make_rel_path(coarse_path, project_directory)
+        d['coarse_opt_n_steps'], d['coarse_opt_final_energy_hartree'] = \
+            _parse_opt_log(coarse_path, project_directory)
+    else:
+        d['coarse_opt_log'] = None
+        d['coarse_opt_n_steps'] = None
+        d['coarse_opt_final_energy_hartree'] = None
+
+    # ── fine opt (or only opt if no fine grid) ─────────────────────────────
     d['opt_n_steps'], d['opt_final_energy_hartree'] = _parse_opt_log(
         paths.get('geo') or None, project_directory) if converged else (None, None)
 
@@ -455,8 +468,8 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
         d['imag_freq_cm1'] = None
 
     # ── log file paths (run-relative) ────────────────────────────────────────
+    d['opt_log'] = _make_rel_path(paths.get('geo') or None, project_directory)
     d['freq_log'] = _make_rel_path(paths.get('freq') or None, project_directory)
-    # When SP level == opt level the SP log IS the opt log — store it anyway.
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
@@ -637,6 +650,8 @@ def _rxn_to_dict(rxn) -> Dict:
             'dA': kinetics.get('dA'),
             'dn': kinetics.get('dn'),
             'dEa': kinetics.get('dEa'),
+            'dEa_units': kinetics.get('dEa_units'),
+            'n_data_points': kinetics.get('n_data_points'),
         }
 
     return {

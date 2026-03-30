@@ -1189,7 +1189,23 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
     kinetics["Tmax"] = find_tuple("Tmax")
     m_comment = re.search(r"comment\s*=\s*['\"](.*?)['\"]", arr_block, re.DOTALL)
     if m_comment:
-        kinetics["comment"] = m_comment.group(1).strip()
+        comment = m_comment.group(1).strip()
+        kinetics["comment"] = comment
+        # Parse uncertainties and fit metadata from the comment string.
+        # Format: "Fitted to 50 data points; dA = *|/ 1.48466, dn = +|- 0.0514738, dEa = +|- 0.294364 kJ/mol"
+        m_npts = re.search(r'Fitted to (\d+) data points', comment)
+        if m_npts:
+            kinetics['n_data_points'] = int(m_npts.group(1))
+        m_da = re.search(r'dA\s*=\s*\*\|/\s*([\d.eE+-]+)', comment)
+        if m_da:
+            kinetics['dA'] = float(m_da.group(1))
+        m_dn = re.search(r'dn\s*=\s*\+\|-\s*([\d.eE+-]+)', comment)
+        if m_dn:
+            kinetics['dn'] = float(m_dn.group(1))
+        m_dea = re.search(r'dEa\s*=\s*\+\|-\s*([\d.eE+-]+)\s*(kJ/mol)?', comment)
+        if m_dea:
+            kinetics['dEa'] = float(m_dea.group(1))
+            kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
     reaction.kinetics = kinetics
 
 
