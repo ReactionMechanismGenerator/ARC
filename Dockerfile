@@ -35,25 +35,31 @@ RUN wget -qO- https://install.julialang.org | sh -s -- --yes --default-channel 1
 
 # Switch directory to Code and RMG clone
 WORKDIR /home/mambauser/Code
-RUN git clone --branch ${RMG_PY_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-Py.git && \
-    git clone --branch ${RMG_DATABASE_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-database.git && \
-    git clone --branch ${ARC_BRANCH} https://github.com/ReactionMechanismGenerator/ARC.git
+RUN git clone --depth 1 --branch ${RMG_PY_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-Py.git && \
+    git clone --depth 1 --branch ${RMG_DATABASE_BRANCH} https://github.com/ReactionMechanismGenerator/RMG-database.git && \
+    git clone --depth 1 --branch ${ARC_BRANCH} https://github.com/ReactionMechanismGenerator/ARC.git
 
-# Create RMG-Py environment
-RUN micromamba create -y -n rmg_env -f /home/mambauser/Code/RMG-Py/environment.yml && \
-    micromamba run -n rmg_env micromamba install -y -c conda-forge pyjuliacall conda && \
-    micromamba clean --all --yes && \
-    micromamba run -n rmg_env make -C /home/mambauser/Code/RMG-Py -j"$(nproc)" && \
-    micromamba run -n rmg_env bash -c "\
+# Create RMG-Py environment (split into separate layers for GHA cache)
+# Pin python=3.9 to drastically reduce solver search space
+RUN micromamba create -y -v -n rmg_env python=3.9 -f /home/mambauser/Code/RMG-Py/environment.yml && \
+    micromamba run -n rmg_env micromamba install -y -v -c conda-forge pyjuliacall conda && \
+    micromamba clean --all --yes
+
+RUN micromamba run -n rmg_env make -C /home/mambauser/Code/RMG-Py -j"$(nproc)"
+
+RUN micromamba run -n rmg_env bash -c "\
       cd /home/mambauser/Code/RMG-Py && \
+      export RMS_INSTALLER=continuous && \
+      export RMS_BRANCH=for_rmg && \
       source install_rms.sh \
     "
 
 WORKDIR /home/mambauser/Code/ARC
-RUN micromamba create -y -n arc_env -f environment.yml --channel-priority flexible && \
-    micromamba install -y -n arc_env -c conda-forge pytest && \
-    micromamba clean --all -f -y && \
-    micromamba run -n arc_env bash -euxo pipefail -c \
+RUN micromamba create -y -v -n arc_env python=3.12 -f environment.yml && \
+    micromamba install -y -v -n arc_env -c conda-forge pytest && \
+    micromamba clean --all -f -y
+
+RUN micromamba run -n arc_env bash -euxo pipefail -c \
       "make compile && bash ./devtools/install_pyrdl.sh" && \
     micromamba clean --all --yes
 
