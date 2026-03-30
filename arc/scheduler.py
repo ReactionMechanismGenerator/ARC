@@ -2615,6 +2615,9 @@ class Scheduler(object):
                         logger.warning(f'Could not find a valid TS conformer for {rxn.ts_label} '
                                        f'that passes the E0 check. Marking as unconverged.')
                         self.output[rxn.ts_label]['convergence'] = False
+                        # Restore E0 failure flag — switch_ts resets ts_checks via populate_ts_checks().
+                        # check_all_done reads this to avoid overwriting convergence back to True.
+                        self.species_dict[rxn.ts_label].ts_checks['E0'] = False
 
     def switch_ts(self, label: str):
         """
