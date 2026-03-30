@@ -240,14 +240,14 @@ def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
 
 def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str, str]]:
     """
-    Parse ESS version strings from each available log file (sp, opt, freq).
+    Parse ESS version strings from each available log file (sp, opt, freq, neb).
 
     Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
     keyed by job type.  Skips duplicate log files (e.g. when opt == sp at the same level).
     Returns ``None`` if nothing could be parsed.
     """
     from arc.parser.parser import parse_ess_version
-    key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq'}
+    key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'neb': 'neb'}
     versions: Dict[str, str] = {}
     seen_paths: set = set()
     for path_key, label in key_map.items():
@@ -483,6 +483,7 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
     if spc.is_ts:
         d['chosen_ts_method'] = getattr(spc, 'chosen_ts_method', None)
         d['successful_ts_methods'] = getattr(spc, 'successful_methods', None) or None
+        d['neb_log'] = _make_rel_path(paths.get('neb') or None, project_directory)
         d['irc_logs'] = [_make_rel_path(p, project_directory) for p in (paths.get('irc') or [])]
         if not irc_requested:
             d['irc_converged'] = None

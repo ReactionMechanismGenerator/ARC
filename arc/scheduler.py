@@ -1185,6 +1185,8 @@ class Scheduler(object):
                 else:
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
+                if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
+                    self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
 
     def run_opt_job(self, label: str, fine: bool = False):
         """
@@ -2203,6 +2205,8 @@ class Scheduler(object):
                     self.species_dict[label].initial_xyz = tsg.opt_xyz
                     self.species_dict[label].final_xyz = None
                     self.species_dict[label].ts_guesses_exhausted = False
+                    if getattr(tsg, 'log_path', None):
+                        self.output[label]['paths']['neb'] = tsg.log_path
                 if tsg.success and tsg.energy is not None:  # guess method and ts_level opt were both successful
                     tsg.energy -= e_min
                     im_freqs = f', imaginary frequencies {tsg.imaginary_freqs}' if tsg.imaginary_freqs is not None else ''
@@ -3738,8 +3742,11 @@ class Scheduler(object):
                     for key in path_keys:
                         if key not in self.output[species.label]['paths']:
                             self.output[species.label]['paths'][key] = ''
-                    if 'irc' not in self.output[species.label]['paths'] and species.is_ts:
-                        self.output[species.label]['paths']['irc'] = list()
+                    if species.is_ts:
+                        if 'irc' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['irc'] = list()
+                        if 'neb' not in self.output[species.label]['paths']:
+                            self.output[species.label]['paths']['neb'] = ''
                     if 'job_types' not in self.output[species.label]:
                         self.output[species.label]['job_types'] = dict()
                     for job_type in list(set(self.job_types.keys())) + ['opt', 'freq', 'sp', 'composite', 'onedmin']:

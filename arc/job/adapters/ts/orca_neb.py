@@ -328,6 +328,7 @@ class OrcaNEBAdapter(OrcaAdapter):
         if os.path.isfile(self.local_path_to_output_file):
             tsg.initial_xyz = parse_geometry(self.local_path_to_output_file)
             tsg.execution_time = self.final_time - self.initial_time
+            tsg.log_path = self.local_path_to_output_file
             tsg.success = True
         self.reactions[0].ts_species.ts_guesses.append(tsg)
 

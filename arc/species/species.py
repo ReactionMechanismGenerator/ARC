@@ -2200,6 +2200,7 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2223,6 +2224,7 @@ class TSGuess(object):
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (List[int]): Indices of TSGuess object instances clustered together.
+        log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
     """
 
     def __init__(self,
@@ -2240,6 +2242,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 log_path: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  ):
 
@@ -2261,6 +2264,7 @@ class TSGuess(object):
             self.success = success
             self.energy = energy
             self.cluster = cluster
+            self.log_path = log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2348,6 +2352,8 @@ class TSGuess(object):
                 ts_dict['family'] = self.family
             if self.errors:
                 ts_dict['errors'] = self.errors
+            if self.log_path is not None:
+                ts_dict['log_path'] = self.log_path
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2379,6 +2385,7 @@ class TSGuess(object):
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
