@@ -396,7 +396,7 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
     """Build the per-species/TS section for output.yml."""
     label = spc.label
     entry = output_dict.get(label, {})
-    converged = entry.get('convergence', False)
+    converged = entry.get('convergence') is True
     paths = entry.get('paths', {})
 
     d: Dict[str, Any] = {

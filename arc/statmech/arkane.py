@@ -1177,7 +1177,7 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         return None
 
     def find_scalar(key):
-        pat = rf"{key}\s*=\s*([-+]?[\d.eE+-]+)"
+        pat = rf"\b{key}\s*=\s*([-+]?[\d.eE+-]+)"
         m = re.search(pat, arr_block)
         return float(m.group(1)) if m else None
 
@@ -1304,7 +1304,7 @@ def parse_thermo_data_block(block: str) -> dict:
             if key in ['Tdata', 'Cpdata']:  # Handle list values
                 try:
                     value = eval(value_str, {'__builtins__': None}, {})
-                except ValueError:
+                except (ValueError, SyntaxError, TypeError, NameError):
                     value = value_str
             else:  # Handle scalar values
                 try:
