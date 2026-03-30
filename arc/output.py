@@ -80,8 +80,10 @@ def write_output_yml(
         None if freq_scale_factor_user_provided
         else _resolve_freq_scale_factor_source(freq_level)
     )
-    doc['energy_corrections_applied'] = bac_type is not None
-    doc['energy_correction_note'] = None
+    doc['bac_type'] = bac_type
+    aec, bac = _get_energy_corrections(arkane_level_of_theory, bac_type)
+    doc['atom_energy_corrections'] = aec
+    doc['bond_additivity_corrections'] = bac
 
     # ---- species and TSs --------------------------------------------------------
     point_groups = _compute_point_groups(species_dict, project_directory)
@@ -191,6 +193,28 @@ def _make_rel_path(path: Optional[str], project_directory: str) -> Optional[str]
         return path  # Windows: relpath can fail across drives
 
 
+def _parse_zpe(freq_path: Optional[str], project_directory: str) -> Optional[float]:
+    """
+    Parse ZPE in Hartree from the freq log file.
+
+    Uses the ESS adapter's ``parse_zpe_correction``, which reads the
+    ``Zero-point correction=`` line (Gaussian) or equivalent.  The adapter
+    returns kJ/mol; we convert back to Hartree.
+    """
+    if not freq_path:
+        return None
+    if not os.path.isabs(freq_path):
+        freq_path = os.path.join(project_directory, freq_path)
+    if not os.path.isfile(freq_path):
+        return None
+    try:
+        from arc.parser.parser import parse_zpe_correction
+        zpe_kj = parse_zpe_correction(freq_path)
+        return zpe_kj / E_h_kJmol if zpe_kj is not None else None
+    except Exception:
+        return None
+
+
 def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
     """
     Parse opt_n_steps and opt_final_energy_hartree from the geometry opt log.
@@ -214,26 +238,83 @@ def _parse_opt_log(geo_path: Optional[str], project_directory: str) -> tuple:
         return None, None
 
 
-def _get_ess_version(paths: Dict, project_directory: str) -> Optional[str]:
+def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str, str]]:
     """
-    Parse the ESS version string from the first available log file (sp > geo > freq).
+    Parse ESS version strings from each available log file (sp, opt, freq).
+
+    Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
+    keyed by job type.  Skips duplicate log files (e.g. when opt == sp at the same level).
+    Returns ``None`` if nothing could be parsed.
     """
-    for key in ('sp', 'geo', 'freq'):
-        log_path = paths.get(key) or None
+    from arc.parser.parser import parse_ess_version
+    key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq'}
+    versions: Dict[str, str] = {}
+    seen_paths: set = set()
+    for path_key, label in key_map.items():
+        log_path = paths.get(path_key) or None
         if not log_path:
             continue
         if not os.path.isabs(log_path):
             log_path = os.path.join(project_directory, log_path)
-        if not os.path.isfile(log_path):
+        if not os.path.isfile(log_path) or log_path in seen_paths:
             continue
+        seen_paths.add(log_path)
         try:
-            from arc.parser.parser import parse_ess_version
             version = parse_ess_version(log_path)
             if version:
-                return version
+                versions[label] = version
         except Exception:
             pass
-    return None
+    return versions or None
+
+
+def _get_energy_corrections(arkane_level_of_theory, bac_type: Optional[str]) -> tuple:
+    """
+    Look up the AEC (per-atom, Hartree) and BAC (per-bond, kJ/mol) values
+    that Arkane used from the RMG database for the given level of theory.
+
+    Uses ``get_arkane_model_chemistry`` to find the matched key (with year
+    resolution), then execs data.py to pull the actual correction dicts.
+
+    Returns:
+        (aec_dict_or_None, bac_dict_or_None)
+    """
+    if arkane_level_of_theory is None:
+        return None, None
+    try:
+        from arc.statmech.arkane import get_arkane_model_chemistry, _get_qm_corrections_files
+        # get_arkane_model_chemistry returns the matched LevelOfTheory(...) string
+        # which is the exact key used in atom_energies / pbac / mbac dicts.
+        matched_key = get_arkane_model_chemistry(
+            sp_level=arkane_level_of_theory,
+            freq_scale_factor=1.0,  # dummy — we only need the energy key
+        )
+        if matched_key is None:
+            return None, None
+
+        qm_files = _get_qm_corrections_files()
+        local_ctx: Dict[str, Any] = {}
+        for qm_file in qm_files:
+            with open(qm_file, 'r') as f:
+                exec(compile(f.read(), qm_file, 'exec'), {'__builtins__': {}}, local_ctx)
+            if 'atom_energies' in local_ctx:
+                break
+
+        aec = local_ctx.get('atom_energies', {}).get(matched_key)
+        if aec is not None:
+            aec = {k: float(v) for k, v in aec.items()}
+
+        bac = None
+        if bac_type == 'p':
+            bac = local_ctx.get('pbac', {}).get(matched_key)
+        elif bac_type == 'm':
+            bac = local_ctx.get('mbac', {}).get(matched_key)
+        if bac is not None:
+            bac = {k: float(v) for k, v in bac.items()}
+
+        return aec, bac
+    except Exception:
+        return None, None
 
 
 def _safe(fn, default=None):
@@ -352,10 +433,8 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
     else:
         d['sp_energy_hartree'] = None
 
-    if converged and not is_mono and spc.e0 is not None and spc.e_elect is not None:
-        d['zpe_hartree'] = (spc.e0 - spc.e_elect) / E_h_kJmol
-    else:
-        d['zpe_hartree'] = None
+    d['zpe_hartree'] = _parse_zpe(paths.get('freq') or None, project_directory) \
+        if converged and not is_mono else None
 
     d['opt_converged'] = entry.get('job_types', {}).get('opt') if converged else None
     d['opt_n_steps'], d['opt_final_energy_hartree'] = _parse_opt_log(
@@ -381,7 +460,7 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
     d['sp_log'] = _make_rel_path(paths.get('sp') or None, project_directory)
 
     # ── ESS software version (from SP log, or fall back to geo/freq log) ──
-    d['ess_version'] = _get_ess_version(paths, project_directory) if converged else None
+    d['ess_versions'] = _get_ess_versions(paths, project_directory) if converged else None
 
     if spc.is_ts:
         d['irc_logs'] = [_make_rel_path(p, project_directory) for p in (paths.get('irc') or [])]
@@ -408,13 +487,20 @@ def _spc_to_dict(spc, output_dict: Dict, project_directory: str,
 
 
 def _get_ts_imag_freq(spc) -> Optional[float]:
-    """Return the imaginary frequency (cm⁻¹) of the chosen TS conformer, or None."""
+    """Return the imaginary frequency (cm⁻¹) of the TS, or None."""
+    # Primary: take the most negative frequency from spc.freqs (all freqs from the freq job)
+    freqs = getattr(spc, 'freqs', None)
+    if freqs:
+        neg = [f for f in freqs if f < 0]
+        if neg:
+            return float(min(neg))
+    # Fallback: try the chosen TS guess's imaginary_freqs
     try:
         chosen = spc.chosen_ts
         if chosen is not None and spc.ts_guesses and chosen < len(spc.ts_guesses):
-            freqs = spc.ts_guesses[chosen].imaginary_freqs
-            if freqs:
-                return float(freqs[0])
+            im_freqs = spc.ts_guesses[chosen].imaginary_freqs
+            if im_freqs:
+                return float(im_freqs[0])
     except Exception:
         pass
     return None

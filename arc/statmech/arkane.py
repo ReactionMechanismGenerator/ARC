@@ -1114,6 +1114,8 @@ def parse_species_thermo(species, output_content: str) -> None:
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
         species.e0 = e0
+    # Parse statmech properties from the conformer block
+    _parse_conformer_statmech(species, output_content)
     # Parse thermo data
     thermo_match = re.search(
         rf"thermo\(\s*label\s*=\s*['\"]{re.escape(species.label)}['\"].*?thermo\s*=\s*ThermoData\((.*?)\)\s*\)",
@@ -1191,6 +1193,31 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
     reaction.kinetics = kinetics
 
 
+def _parse_conformer_statmech(species, content: str) -> None:
+    """
+    Parse external_symmetry and optical_isomers from the Arkane conformer block.
+
+    These live inside the conformer's modes list, e.g.::
+
+        NonlinearRotor(symmetry=2, ...)
+        optical_isomers = 1,
+    """
+    label = species.label
+    pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"].*?\)"
+    match = re.search(pattern, content, re.DOTALL)
+    if not match:
+        return
+    block = match.group(0)
+    # optical_isomers
+    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
+    if oi_match and species.optical_isomers is None:
+        species.optical_isomers = int(oi_match.group(1))
+    # external_symmetry from NonlinearRotor or LinearRotor
+    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
+    if sym_match and species.external_symmetry is None:
+        species.external_symmetry = int(sym_match.group(1))
+
+
 def parse_e0(label: str, content: str) -> float | None:
     """Parse E0 value for a species."""
     pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"].*?E0\s*=\s*\(([^)]*)\)"
@@ -1252,7 +1279,10 @@ def parse_thermo_data_block(block: str) -> dict:
                 except ValueError:
                     value = value_str
             else:  # Handle scalar values
-                value = value_str
+                try:
+                    value = float(value_str)
+                except (ValueError, TypeError):
+                    value = value_str
             thermo_data[key] = value
     return thermo_data
 

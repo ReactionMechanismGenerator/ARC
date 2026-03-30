@@ -20,6 +20,7 @@ from arc.output import (
     _level_to_dict,
     _make_rel_path,
     _parse_opt_log,
+    _parse_zpe,
     _resolve_freq_scale_factor_source,
     _rxn_to_dict,
     _spc_to_dict,
@@ -332,6 +333,13 @@ class TestParseOptLog(unittest.TestCase):
         self.assertIsNone(n_steps)
         self.assertIsNone(e_hartree)
 
+    def test_parse_zpe_from_freq_log(self):
+        """Parse ZPE from a real Gaussian freq log."""
+        freq_path = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+        zpe = _parse_zpe(freq_path, '/dummy')
+        self.assertIsNotNone(zpe)
+        self.assertAlmostEqual(zpe, 0.0945, places=3)  # ~0.0945 Hartree for iC3H7
+
     def test_gaussian_adapter_parse_opt_steps(self):
         """Test the Gaussian adapter method directly."""
         from arc.parser.adapters.gaussian import GaussianParser
@@ -467,7 +475,8 @@ class TestSpcToDict(unittest.TestCase):
         self.assertEqual(result['smiles'], 'C')
         self.assertEqual(result['formula'], 'CH4')
         self.assertIsNotNone(result['sp_energy_hartree'])
-        self.assertIsNotNone(result['zpe_hartree'])
+        # zpe_hartree is parsed from the freq log file (which doesn't exist in this mock)
+        self.assertIsNone(result['zpe_hartree'])
         self.assertIsNotNone(result['thermo'])
         self.assertIsNotNone(result['statmech'])
         self.assertEqual(result['freq_n_imag'], 0)
@@ -739,7 +748,7 @@ class TestWriteOutputYml(unittest.TestCase):
         self.assertEqual(doc['sp_level']['method'], 'dlpno-ccsd(t)')
         self.assertAlmostEqual(doc['freq_scale_factor'], 0.975)
         self.assertIsNone(doc['freq_scale_factor_source'])  # user-provided
-        self.assertTrue(doc['energy_corrections_applied'])
+        self.assertEqual(doc['bac_type'], 'p')
 
     @patch('arc.output._compute_point_groups', return_value={})
     @patch('arc.output._get_arkane_git_commit', return_value=None)
