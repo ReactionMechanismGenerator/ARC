@@ -22,7 +22,7 @@ jobs:
 
       # ── rmg_env for Arkane/database availability ───────────────
       - name: Set up micromamba (rmg_env)
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: rmg_env
           create-args: >-
@@ -33,7 +33,7 @@ jobs:
 
       # ── docs env (wrapper shell) ────────────────────────────────
       - name: Set up micromamba (arc_env)
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: arc_env
           environment-file: ARC/environment.yml
