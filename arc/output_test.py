@@ -89,6 +89,54 @@ class TestResolveFreqScaleFactorSource(unittest.TestCase):
         level = Level(method='totally_fake_method', basis='fake_basis')
         self.assertIsNone(_resolve_freq_scale_factor_source(level))
 
+    def test_known_level_returns_citation(self):
+        """wb97xd/def2tzvp should resolve to [4] citation."""
+        level = Level(method='wb97xd', basis='def2tzvp', software='gaussian')
+        result = _resolve_freq_scale_factor_source(level)
+        self.assertIsNotNone(result)
+        self.assertIn('10.1021/ct100326h', result)
+
+
+class TestParseThermoDataBlock(unittest.TestCase):
+    """Tests for parse_thermo_data_block in arkane.py."""
+
+    def test_parses_all_fields(self):
+        from arc.statmech.arkane import parse_thermo_data_block
+        block = """
+            Tdata = ([300, 400, 500, 600, 800, 1000, 1500], 'K'),
+            Cpdata = ([35.5, 39.0, 43.2, 47.5, 55.1, 61.1, 70.7], 'J/(mol*K)'),
+            H298 = (-108.9, 'kJ/mol'),
+            S298 = (218.4, 'J/(mol*K)'),
+            Tmin = (10.0, 'K'),
+            Tmax = (3000.0, 'K'),
+            Cp0 = (33.3, 'J/(mol*K)'),
+            CpInf = (83.3, 'J/(mol*K)'),
+        """
+        result = parse_thermo_data_block(block)
+        self.assertAlmostEqual(result['H298'], -108.9)
+        self.assertAlmostEqual(result['S298'], 218.4)
+        self.assertAlmostEqual(result['Tmin'], 10.0)
+        self.assertAlmostEqual(result['Tmax'], 3000.0)
+        self.assertIsInstance(result['Tmin'], float)
+        self.assertIsInstance(result['Tmax'], float)
+        self.assertEqual(len(result['Tdata']), 7)
+        self.assertEqual(len(result['Cpdata']), 7)
+
+    def test_handles_missing_fields(self):
+        from arc.statmech.arkane import parse_thermo_data_block
+        block = "H298 = (-50.0, 'kJ/mol')"
+        result = parse_thermo_data_block(block)
+        self.assertAlmostEqual(result['H298'], -50.0)
+        self.assertNotIn('Tmin', result)
+        self.assertNotIn('Cpdata', result)
+
+    def test_handles_scientific_notation(self):
+        from arc.statmech.arkane import parse_thermo_data_block
+        block = "H298 = (-1.089e+02, 'kJ/mol'), S298 = (2.184e+02, 'J/(mol*K)')"
+        result = parse_thermo_data_block(block)
+        self.assertAlmostEqual(result['H298'], -108.9, places=1)
+        self.assertAlmostEqual(result['S298'], 218.4, places=1)
+
 
 class TestGetArkaneGitCommit(unittest.TestCase):
     """Tests for _get_arkane_git_commit."""
