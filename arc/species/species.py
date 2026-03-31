@@ -1581,6 +1581,7 @@ class ARCSpecies(object):
             tsg = TSGuess(method='orca_neb',
                           success=True,
                           xyz=xyz,
+                          log_path=path,
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
