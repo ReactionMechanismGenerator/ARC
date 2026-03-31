@@ -110,7 +110,24 @@ def backbone_atom_map(r_mol: 'Molecule',
         r_graph, p_graph,
         node_match=lambda n1, n2: n1['elem'] == n2['elem'])
     if not gm.is_isomorphic():
-        return None
+        # For ring-forming reactions P has one extra edge (the new ring bond).
+        # Try removing each P edge in turn and re-check isomorphism.
+        if p_graph.number_of_edges() == r_graph.number_of_edges() + 1:
+            found = False
+            for u, v in list(p_graph.edges()):
+                p_trial = p_graph.copy()
+                p_trial.remove_edge(u, v)
+                gm2 = nx.isomorphism.GraphMatcher(
+                    r_graph, p_trial,
+                    node_match=lambda n1, n2: n1['elem'] == n2['elem'])
+                if gm2.is_isomorphic():
+                    gm = gm2
+                    found = True
+                    break
+            if not found:
+                return None
+        else:
+            return None
     heavy_map: Dict[int, int] = gm.mapping  # {r_idx: p_idx}
 
     # --- 3. Assign H atoms via bonded heavy atom ---

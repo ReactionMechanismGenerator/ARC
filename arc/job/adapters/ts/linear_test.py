@@ -2739,7 +2739,7 @@ H       1.65446241   -1.85341259    0.04404524"""
                 has_good = True
         self.assertTrue(has_good, 'No TS guess preserves the 5-membered ring scaffold.')
 
-    def test_interpolate_intra_disproportionation(self):  # TODO: 0 guesses (singlet biradical mol_from_xyz issue)
+    def test_interpolate_intra_disproportionation(self):  # TODO: 0 guesses (singlet biradical: constraint lock + backbone drift rejection)
         """Test the interpolate_isomerization() function for Intra_Disproportionation: C=C1[CH]C[C]2C=CC=CC21 <=> C=C1CCC2=C1C=CC=C2"""
         r_xyz = """C      -1.71276869   -2.14835263   -0.29600082
 C      -1.30379477   -0.91506552    0.02297736
@@ -2811,7 +2811,7 @@ H       1.69266033   -2.46579510   -0.55597779"""
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
 
-    def test_interpolate_intra_rh_add_endocyclic(self):  # TODO: Got an empty list!
+    def test_interpolate_intra_rh_add_endocyclic(self):
         """Test the interpolate_isomerization() function for Intra_RH_Add_Endocyclic: OCCCC=C <=> C1OCCCC1"""
         r_xyz = """O      -2.82721787   -0.50660445    0.17006246
 C      -1.42423100   -0.54684140   -0.06325185
@@ -2857,7 +2857,7 @@ H       0.97222065   -1.40727159   -1.00427440"""
         self.assertIsInstance(ts_xyzs, list)
         print(ts_xyzs)
 
-    def test_interpolate_intra_rh_add_exocyclic(self):  # TODO: got an empty list
+    def test_interpolate_intra_rh_add_exocyclic(self):
         """Test the interpolate_isomerization() function for Intra_RH_Add_Exocyclic: CCCCC=O <=> OC1CCCC1"""
         r_xyz = """C       2.37622772    0.13188036   -0.10043648
 C       1.09261098   -0.13889783    0.66802441
@@ -3156,7 +3156,7 @@ H       0.31648739    2.42027069    0.39137850"""
  H      -2.59444815   -0.14669139   -0.42781129"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
-    def test_interpolate_intra_retro_diels_alder_bicyclic(self):  # TODO: takes too long....
+    def test_interpolate_intra_retro_diels_alder_bicyclic(self):  # TODO: takes too long (9 min) replace with somethign smaller?
         """Test the interpolate_isomerization() function for Intra_Retro_Diels_alder_bicyclic: CCC1(C)C=CC2(CC)CCC2C1 <=> C=CCCC(=CC=C(C)CC)CC"""
         r_xyz = """C       2.62820311    1.95455895    0.66045522
 C       1.77963459    1.16510642   -0.33200375

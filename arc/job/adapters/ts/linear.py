@@ -1406,9 +1406,23 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         p_mol = rxn.p_species[0].mol
 
         if r_xyz['symbols'] != p_xyz['symbols']:
-            logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback skipped — '
-                         f'R and P symbols do not match (different atom ordering).')
-        else:
+            # Symbols differ (different atom ordering).  Try backbone_atom_map
+            # which now handles ring-forming reactions (P has one extra edge).
+            bb_reorder = backbone_atom_map(r_mol, p_mol)
+            if bb_reorder is not None:
+                p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_reorder)
+                try:
+                    p_mol = order_mol_by_atom_map(p_mol, bb_reorder)
+                except Exception:
+                    pass
+                if rxn.atom_map is None:
+                    rxn.atom_map = bb_reorder
+                logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
+                             f'reordered P atoms via backbone atom map.')
+            else:
+                logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback skipped — '
+                             f'R and P symbols differ and backbone matching failed.')
+        if r_xyz['symbols'] == p_xyz['symbols']:
             # Try backbone graph matching first — it correctly handles
             # reactions where RMG family detection fails (e.g. singlet
             # biradicals) by matching heavy-atom connectivity ignoring
