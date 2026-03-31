@@ -234,23 +234,33 @@ def _has_misoriented_migrating_h(xyz: dict, forming_bonds: list, mol: 'Molecule'
 def _has_migrating_h_nearer_to_nonreactive(xyz: dict,
                                             forming_bonds: list,
                                             mol: 'Molecule',
+                                            margin: float = 0.3,
                                             ) -> bool:
     """
-    Return ``True`` if any migrating hydrogen is closer to a non-reactive atom
-    than to both of its reactive heavy atoms (donor and acceptor).
+    Return ``True`` if any migrating hydrogen is *significantly* closer to a
+    non-reactive heavy atom than to both of its reactive heavy atoms.
 
     In a well-formed H-migration TS the migrating H sits between donor and
-    acceptor, so min(d(H,donor), d(H,acceptor)) should be smaller than the
-    distance to any other atom.  When Z-matrix interpolation leaves the H
-    bunched with another H on the same group, this check rejects the guess.
+    acceptor.  When Z-matrix interpolation leaves the H bunched with
+    another H on the same group, the distance to a non-reactive atom is
+    much shorter than to the reactive pair, and this check rejects the
+    guess.
+
+    A ``margin`` (default 0.3 Å) prevents false rejections in compact ring
+    topologies where non-reactive ring atoms are only slightly closer than
+    the reactive sites.  Only non-reactive **heavy** atoms are considered
+    (other H atoms are ignored since they can legitimately be close).
 
     Args:
         xyz: XYZ coordinate dictionary.
         forming_bonds: List of (i, j) index pairs for bonds that form.
         mol: Reactant molecule providing bond topology.
+        margin: Distance margin in Å. A non-reactive heavy atom must be
+            closer than ``min(d_donor, d_acceptor) - margin`` to trigger
+            rejection.
 
     Returns:
-        ``True`` if a migrating H is nearer to a non-reactive atom.
+        ``True`` if a migrating H is much nearer to a non-reactive heavy atom.
     """
     symbols = xyz['symbols']
     coords_arr = np.array(xyz['coords'], dtype=float)
@@ -272,12 +282,12 @@ def _has_migrating_h_nearer_to_nonreactive(xyz: dict,
             continue
         d_donor = float(np.linalg.norm(coords_arr[h_idx] - coords_arr[donor_idx]))
         d_acceptor = float(np.linalg.norm(coords_arr[h_idx] - coords_arr[acceptor_idx]))
-        d_reactive_min = min(d_donor, d_acceptor)
+        threshold = min(d_donor, d_acceptor) - margin
         for k in range(len(symbols)):
-            if k in (h_idx, donor_idx, acceptor_idx):
+            if k in (h_idx, donor_idx, acceptor_idx) or symbols[k] == 'H':
                 continue
             d_k = float(np.linalg.norm(coords_arr[h_idx] - coords_arr[k]))
-            if d_k < d_reactive_min:
+            if d_k < threshold:
                 return True
     return False
 

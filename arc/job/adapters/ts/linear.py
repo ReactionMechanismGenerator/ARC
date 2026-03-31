@@ -187,9 +187,6 @@ if TYPE_CHECKING:
     from arc.molecule import Molecule
     from arc.reaction import ARCReaction
 
-# ---------------------------------------------------------------------------
-# Re-exports from linear_utils subpackage
-# ---------------------------------------------------------------------------
 from arc.job.adapters.ts.linear_utils.math_zmat import (  # noqa: F401
     BASE_WEIGHT_GRID,
     HAMMOND_DELTA,
