@@ -889,6 +889,33 @@ class TestNMD(unittest.TestCase):
                                                         weights=True)
         self.assertTrue(valid)
 
+    def test_analyze_ts_nmd_urea_rad_furazan(self):
+        """Test the NMD check for NC(=O)[NH] + N=C1ON=NO1 <=> NC(=O)N + [N]=C1ON=NO1 (H abstraction by furazan oxide)."""
+        rxn = ARCReaction(
+            r_species=[ARCSpecies(label='urea_rad', smiles='NC(=O)[NH]'),
+                       ARCSpecies(label='furazan_ox', smiles='N=C1ON=NO1')],
+            p_species=[ARCSpecies(label='urea_ene', smiles='NC(=O)N'),
+                       ARCSpecies(label='furazan_ox_rad', smiles='[N]=C1ON=NO1')])
+        rxn.ts_species = ARCSpecies(label='TS_1', is_ts=True, xyz=check_xyz_dict(
+            """N       1.76136700    0.43616300   -1.05594000
+               C       2.35916600   -0.16344800    0.05308500
+               O       3.02161500   -1.17353200   -0.07044200
+               N       2.19063500    0.49852200    1.22495400
+               H       1.57577700   -0.27664700   -1.75553300
+               H       2.73351100    0.19117400    2.01049900
+               H       1.77338900    1.41123500    1.24758300
+               N      -0.34078300    1.50547700   -0.42830900
+               C      -1.14965600    0.58792300   -0.19749200
+               O      -2.41751300    0.76810800    0.26728800
+               N      -2.98339500   -0.48075000    0.39341200
+               N      -2.18902800   -1.34291700    0.05442600
+               O      -0.99996400   -0.76117400   -0.33805800
+               H       0.75558200    1.14471800   -0.82621300"""))
+        self.assertIsNotNone(rxn.atom_map)
+        self.generic_job.local_path_to_output_file = os.path.join(ARC_TESTING_PATH, 'normal_mode', 'TS_1', 'output.log')
+        valid = nmd.analyze_ts_normal_mode_displacement(reaction=rxn, job=self.generic_job, amplitude=0.25, weights=True)
+        self.assertTrue(valid)
+
     @classmethod
     def tearDownClass(cls):
         """
