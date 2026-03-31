@@ -1353,6 +1353,158 @@ def get_connectivity(mol: Molecule) -> Dict[int, List[int]]:
     return connectivity
 
 
+def find_smart_anchors(mol: 'Molecule',
+                       breaking_bonds: Optional[List[Tuple[int, int]]] = None,
+                       forming_bonds: Optional[List[Tuple[int, int]]] = None,
+                       ) -> List[int]:
+    """
+    Find up to 3 contiguous atom indices to serve as a stable Z-matrix coordinate frame.
+
+    The algorithm prioritizes "spectator" atoms (those not participating in any breaking
+    or forming bonds) that are directly adjacent to the reactive core.  The returned list
+    forms a contiguous chain: result[0] is bonded to result[1], and result[1] is bonded to
+    result[2].  The list has length 1, 2, or 3 depending on the size of the molecule.
+
+    Selection hierarchy:
+
+    Step 1 – Define the reactive core: the union of all unique atom indices present in
+             ``breaking_bonds`` and ``forming_bonds``.  If both are absent the core is empty.
+
+    Step 2 – Ideal spectator backbone: find a spectator atom directly bonded to a core atom
+             (Anchor 0), then extend the chain along spectator neighbors for Anchors 1 and 2,
+             avoiding bonds that are in ``breaking_bonds``.
+
+    Step 3 – Fallback for partial spectators: if a purely spectator chain cannot be completed,
+             accept reactive-core atoms for the remaining positions provided the connecting bond
+             is not in ``breaking_bonds``.
+
+    Step 4 – Fallback for fully reactive molecules (no spectators): select the heaviest atom
+             as Anchor 0, its heaviest non-breaking neighbor as Anchor 1, and a non-Anchor-0
+             neighbor of Anchor 1 as Anchor 2.
+
+    Args:
+        mol (Molecule): The RMG Molecule object whose graph will be traversed.
+        breaking_bonds (List[Tuple[int, int]], optional): Pairs of 0-indexed atom indices
+            whose bond is breaking in the reaction.
+        forming_bonds (List[Tuple[int, int]], optional): Pairs of 0-indexed atom indices
+            whose bond is forming in the reaction.
+
+    Returns:
+        List[int]: A list of 1–3 unique, contiguous atom indices (0-indexed) ordered so that
+                   consecutive entries are bonded to one another.
+    """
+    n = len(mol.atoms)
+    if n == 0:
+        return []
+    if n == 1:
+        return [0]
+
+    # Normalise bond sets to sorted 2-tuples for O(1) membership tests.
+    bb: set = {(min(i, j), max(i, j)) for i, j in (breaking_bonds or [])}
+    fb: set = {(min(i, j), max(i, j)) for i, j in (forming_bonds or [])}
+
+    def _is_breaking(i: int, j: int) -> bool:
+        return (min(i, j), max(i, j)) in bb
+
+    # Reactive core: every atom index mentioned in any reactive bond.
+    core: set = set()
+    for bond in bb | fb:
+        core.update(bond)
+
+    spectators: set = set(range(n)) - core
+    connectivity: Dict[int, List[int]] = get_connectivity(mol)
+
+    def _weight(idx: int) -> int:
+        """Return the atomic number as a priority weight (higher = heavier)."""
+        return mol.atoms[idx].number
+
+    def _pick_next(prev: int, current: int, prefer_spectators: bool = True) -> Optional[int]:
+        """
+        Pick the best continuation atom from the neighbors of *current*, excluding *prev*.
+
+        Priority order:
+          1. spectator + non-breaking bond (if prefer_spectators)
+          2. any non-breaking bond
+          3. any neighbor (last resort)
+        Within each tier, the heaviest atom wins.
+        """
+        candidates = [nbr for nbr in connectivity[current] if nbr != prev]
+        if not candidates:
+            return None
+        if prefer_spectators:
+            tier1 = [nbr for nbr in candidates if nbr in spectators and not _is_breaking(current, nbr)]
+            if tier1:
+                return max(tier1, key=_weight)
+        tier2 = [nbr for nbr in candidates if not _is_breaking(current, nbr)]
+        if tier2:
+            return max(tier2, key=_weight)
+        return max(candidates, key=_weight)
+
+    anchor0: Optional[int] = None
+    anchor1: Optional[int] = None
+    anchor2: Optional[int] = None
+
+    # ------------------------------------------------------------------ #
+    # Step 2: ideal spectator backbone – root is a spectator adjacent to  #
+    # the reactive core.                                                    #
+    # ------------------------------------------------------------------ #
+    spectators_near_core = [
+        s for s in spectators
+        if any(nbr in core for nbr in connectivity[s])
+    ]
+
+    if spectators_near_core:
+        anchor0 = max(spectators_near_core, key=_weight)
+        # Anchor 1: neighbor of anchor0, prefer spectators.
+        anchor1_candidates = [nbr for nbr in connectivity[anchor0]]
+        tier1 = [nbr for nbr in anchor1_candidates if nbr in spectators and not _is_breaking(anchor0, nbr)]
+        tier2 = [nbr for nbr in anchor1_candidates if not _is_breaking(anchor0, nbr)]
+        if tier1:
+            anchor1 = max(tier1, key=_weight)
+        elif tier2:
+            anchor1 = max(tier2, key=_weight)
+        elif anchor1_candidates:
+            anchor1 = max(anchor1_candidates, key=_weight)
+
+        if anchor1 is not None and n >= 3:
+            anchor2 = _pick_next(anchor0, anchor1)
+
+    elif spectators:
+        # ---------------------------------------------------------------- #
+        # Step 3 (partial): spectators exist but none border the core.      #
+        # Start from the heaviest spectator and walk outward.               #
+        # ---------------------------------------------------------------- #
+        anchor0 = max(spectators, key=_weight)
+        anchor1 = _pick_next(-1, anchor0)   # -1 acts as a "no previous" sentinel
+        if anchor1 is not None and n >= 3:
+            anchor2 = _pick_next(anchor0, anchor1)
+
+    else:
+        # ---------------------------------------------------------------- #
+        # Step 4: no spectators – entire molecule is reactive.              #
+        # ---------------------------------------------------------------- #
+        anchor0 = max(range(n), key=_weight)
+        # Prefer a non-breaking neighbor for anchor1.
+        nbrs = connectivity[anchor0]
+        non_break = [nbr for nbr in nbrs if not _is_breaking(anchor0, nbr)]
+        anchor1_pool = non_break if non_break else nbrs
+        if anchor1_pool:
+            anchor1 = max(anchor1_pool, key=_weight)
+        if anchor1 is not None and n >= 3:
+            anchor2 = _pick_next(anchor0, anchor1)
+
+    # If anchor1 is sp-hybridized (linear geometry), the triple
+    # anchor0–anchor1–anchor2 would be collinear.  Detect sp by checking
+    # for exactly 2 neighbors that are ALL heavy atoms (no H).  Atoms
+    # like O in H₂O₂ have 2 neighbors but include H, so they are sp3.
+    if anchor2 is not None and anchor1 is not None:
+        nbrs_1 = connectivity[anchor1]
+        if len(nbrs_1) == 2 and all(mol.atoms[nbr].symbol != 'H' for nbr in nbrs_1):
+            anchor2 = None
+
+    return [a for a in (anchor0, anchor1, anchor2) if a is not None]
+
+
 def order_fragments_by_constraints(fragments: List[List[int]],
                                    constraints_dict: Optional[Dict[str, List[tuple]]] = None,
                                    ) -> List[List[int]]:
