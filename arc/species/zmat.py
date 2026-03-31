@@ -1353,6 +1353,152 @@ def get_connectivity(mol: Molecule) -> dict[int, list[int]]:
     return connectivity
 
 
+def find_smart_anchors(mol: Molecule,
+                       breaking_bonds: list[tuple[int, int]] | None = None,
+                       forming_bonds: list[tuple[int, int]] | None = None,
+                       ) -> list[int]:
+    """
+    Find up to 3 contiguous atom indices to serve as a stable Z-matrix coordinate frame.
+
+    The algorithm prioritizes "spectator" atoms (those not participating in any breaking
+    or forming bonds) that are directly adjacent to the reactive core. The returned list
+    forms a contiguous chain: result[0] is bonded to result[1], and result[1] is bonded
+    to result[2]. The list has length 1, 2, or 3 depending on the size of the molecule.
+
+    Selection hierarchy:
+
+    Step 1 – Define the reactive core as the union of all atom indices appearing in
+             ``breaking_bonds`` and ``forming_bonds``. If both are absent the core is empty.
+
+    Step 2 – Spectator-rooted backbone: pick the heaviest spectator adjacent to the core
+             as Anchor 0, then extend along its neighbors using a tiered preference
+             (spectator + non-breaking bond > any non-breaking bond > any neighbor).
+             Within each tier the heaviest atom wins. Reactive-core atoms are accepted
+             at later positions when no spectator continuation is available, so long as
+             the connecting bond is not in ``breaking_bonds``.
+
+    Step 3 – Detached-spectator fallback: no spectator borders the core but some exist.
+             Root at the heaviest spectator and walk outward via the same tier rules.
+
+    Step 4 – Fully-reactive fallback (no spectators): pick the heaviest atom as Anchor 0,
+             its heaviest non-breaking neighbor as Anchor 1, and a non-Anchor-0 neighbor
+             of Anchor 1 as Anchor 2.
+
+    Step 5 – Collinearity correction: drop Anchor 2 if Anchor 1 is sp-hybridized (exactly
+             two heavy-atom neighbors, no H), since the triad would otherwise be collinear
+             and could not define a torsional plane.
+
+    Args:
+        mol (Molecule): The RMG Molecule object whose graph will be traversed.
+        breaking_bonds (list[tuple[int, int]], optional): Pairs of 0-indexed atom indices
+            whose bond is breaking in the reaction.
+        forming_bonds (list[tuple[int, int]], optional): Pairs of 0-indexed atom indices
+            whose bond is forming in the reaction.
+
+    Returns:
+        list[int]: A list of 1–3 unique, contiguous atom indices (0-indexed) ordered so
+                   that consecutive entries are bonded to one another.
+    """
+    num_atoms = len(mol.atoms)
+    if num_atoms == 0:
+        return []
+    if num_atoms == 1:
+        return [0]
+
+    breaking_bond_set: set = {(min(i, j), max(i, j)) for i, j in (breaking_bonds or [])}
+    forming_bond_set: set = {(min(i, j), max(i, j)) for i, j in (forming_bonds or [])}
+
+    def _is_breaking(i: int, j: int) -> bool:
+        return (min(i, j), max(i, j)) in breaking_bond_set
+
+    # Step 1: define the reactive core.
+    reactive_core: set = set()
+    for bond in breaking_bond_set | forming_bond_set:
+        reactive_core.update(bond)
+
+    spectator_atoms: set = set(range(num_atoms)) - reactive_core
+    connectivity: dict[int, list[int]] = get_connectivity(mol)
+
+    def _atomic_number(atom_index: int) -> int:
+        """Return the atomic number, used as a priority weight (higher = heavier)."""
+        return mol.atoms[atom_index].number
+
+    def _is_sp_hybridized(atom_index: int) -> bool:
+        """Detect sp hybridization (linear geometry) by exactly two heavy-atom neighbors."""
+        neighbors = connectivity[atom_index]
+        return len(neighbors) == 2 and all(mol.atoms[nbr].symbol != 'H' for nbr in neighbors)
+
+    def _pick_next(previous_atom: int, current_atom: int, prefer_spectators: bool = True) -> int | None:
+        """
+        Pick the best continuation atom from the neighbors of *current_atom*, excluding *previous_atom*.
+
+        Priority order:
+          1. spectator + non-breaking bond (if prefer_spectators)
+          2. any non-breaking bond
+          3. any neighbor (last resort)
+        Within each tier, the heaviest atom wins. Pass ``previous_atom = -1`` to indicate
+        no atom should be excluded.
+        """
+        candidates = [nbr for nbr in connectivity[current_atom] if nbr != previous_atom]
+        if not candidates:
+            return None
+        if prefer_spectators:
+            spectator_non_breaking = [nbr for nbr in candidates
+                                      if nbr in spectator_atoms and not _is_breaking(current_atom, nbr)]
+            if spectator_non_breaking:
+                return max(spectator_non_breaking, key=_atomic_number)
+        non_breaking = [nbr for nbr in candidates if not _is_breaking(current_atom, nbr)]
+        if non_breaking:
+            return max(non_breaking, key=_atomic_number)
+        return max(candidates, key=_atomic_number)
+
+    anchor_0: int | None = None
+    anchor_1: int | None = None
+    anchor_2: int | None = None
+
+    spectators_bordering_core = [atom for atom in spectator_atoms if any(nbr in reactive_core for nbr in connectivity[atom])]
+
+    if spectators_bordering_core:
+        # Step 2: spectator-rooted backbone.
+        anchor_0 = max(spectators_bordering_core, key=_atomic_number)
+        anchor_1_candidates = list(connectivity[anchor_0])
+        spectator_non_breaking = [nbr for nbr in anchor_1_candidates if nbr in spectator_atoms and not _is_breaking(anchor_0, nbr)]
+        non_breaking = [nbr for nbr in anchor_1_candidates if not _is_breaking(anchor_0, nbr)]
+        if spectator_non_breaking:
+            anchor_1 = max(spectator_non_breaking, key=_atomic_number)
+        elif non_breaking:
+            anchor_1 = max(non_breaking, key=_atomic_number)
+        elif anchor_1_candidates:
+            anchor_1 = max(anchor_1_candidates, key=_atomic_number)
+
+        if anchor_1 is not None and num_atoms >= 3:
+            anchor_2 = _pick_next(anchor_0, anchor_1)
+
+    elif spectator_atoms:
+        # Step 3: detached-spectator fallback.
+        anchor_0 = max(spectator_atoms, key=_atomic_number)
+        anchor_1 = _pick_next(previous_atom=-1, current_atom=anchor_0)
+        if anchor_1 is not None and num_atoms >= 3:
+            anchor_2 = _pick_next(anchor_0, anchor_1)
+
+    else:
+        # Step 4: fully-reactive fallback.
+        anchor_0 = max(range(num_atoms), key=_atomic_number)
+        anchor_0_neighbors = connectivity[anchor_0]
+        non_breaking_neighbors = [nbr for nbr in anchor_0_neighbors if not _is_breaking(anchor_0, nbr)]
+        anchor_1_candidates = non_breaking_neighbors or anchor_0_neighbors
+        if anchor_1_candidates:
+            anchor_1 = max(anchor_1_candidates, key=_atomic_number)
+        if anchor_1 is not None and num_atoms >= 3:
+            anchor_2 = _pick_next(anchor_0, anchor_1)
+
+    # Step 5: drop anchor_2 when the triad would be collinear.
+    if anchor_2 is not None and anchor_1 is not None and _is_sp_hybridized(anchor_1):
+        anchor_2 = None
+
+    return [a for a in (anchor_0, anchor_1, anchor_2) if a is not None]
+
+
 def order_fragments_by_constraints(fragments: list[list[int]],
                                    constraints_dict: dict[str, list[tuple]] | None = None,
                                    ) -> list[list[int]]:
