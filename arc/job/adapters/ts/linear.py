@@ -674,6 +674,143 @@ def _fix_broken_ring_bonds(xyz: dict,
     return xyz
 
 
+def _fix_rh_add_motif(xyz: dict,
+                      r_mol: 'Molecule',
+                      forming_bonds: List[Tuple[int, int]],
+                      breaking_bonds: List[Tuple[int, int]],
+                      changed_bonds: List[Tuple[int, int]],
+                      ) -> dict:
+    """
+    Build the 4-membered ring TS motif for Intra_RH_Add reactions.
+
+    In these reactions an X-H bond breaks, X attacks one end (Z) of a Y=Z
+    multiple bond while H attacks the other end (Y), forming a 4-membered
+    ring TS: ``X--H···Y==Z--X``.  This function:
+
+    1. Stretches the X-H bond by moving H partway toward Y.
+    2. Stretches the Y=Z multiple bond.
+
+    The pattern is detected from the bond lists: a breaking X-H bond, a
+    forming Y-H bond, and a changed Y=Z bond where Z is also involved in
+    a forming X-Z bond.
+
+    Args:
+        xyz: TS guess XYZ dictionary (modified in-place).
+        r_mol: Reactant molecule topology.
+        forming_bonds: Forming-bond pairs.
+        breaking_bonds: Breaking-bond pairs.
+        changed_bonds: Bond-order-changed pairs (e.g. C=C → C-C).
+
+    Returns:
+        The corrected XYZ dictionary.
+    """
+    import numpy as np
+    if not breaking_bonds or not forming_bonds or not changed_bonds:
+        return xyz
+    coords = np.array(xyz['coords'], dtype=float)
+    symbols = xyz['symbols']
+
+    # Find the pattern: breaking X-H, forming Y-H, changed Y=Z, forming X-Z
+    for bx, bh in breaking_bonds:
+        if symbols[bh] != 'H':
+            bx, bh = bh, bx
+        if symbols[bh] != 'H':
+            continue
+        h_idx, x_idx = bh, bx
+        # Find forming bond Y-H
+        y_idx = None
+        for fa, fb in forming_bonds:
+            if fa == h_idx and fb != x_idx:
+                y_idx = fb
+            elif fb == h_idx and fa != x_idx:
+                y_idx = fa
+        if y_idx is None:
+            continue
+        # Find changed bond involving Y → that's the Y=Z double bond
+        z_idx = None
+        for ca, cb in changed_bonds:
+            if ca == y_idx:
+                z_idx = cb
+            elif cb == y_idx:
+                z_idx = ca
+        if z_idx is None:
+            continue
+        # Verify X-Z is a forming bond (ring closure)
+        xz = (min(x_idx, z_idx), max(x_idx, z_idx))
+        if not any((min(a, b), max(a, b)) == xz for a, b in forming_bonds):
+            continue
+
+        # Found the 4-membered ring motif: X--H--Y==Z--X
+        # Only apply if the ring-closure distance X-Z is reasonable;
+        # if X and Z are too far apart, the ring isn't closing and the
+        # motif would produce wrong geometry.
+        xz_dist = float(np.linalg.norm(coords[x_idx] - coords[z_idx]))
+        if xz_dist > 3.0:
+            continue
+
+        # 1. Place H via triangulation between X and Y
+        xy_vec = coords[y_idx] - coords[x_idx]
+        xy_len = float(np.linalg.norm(xy_vec))
+        if xy_len < 0.01:
+            continue
+        # Pauling TS estimates
+        if symbols[x_idx] == 'O':
+            d_xh = 0.97 + 0.15   # stretched O-H
+        elif symbols[x_idx] == 'C':
+            d_xh = 1.09 + 0.38   # stretched C-H
+        else:
+            d_xh = 1.09 + 0.15
+        if symbols[y_idx] == 'C':
+            d_hy = 1.09 + 0.35   # forming C-H bond in TS
+        elif symbols[y_idx] == 'O':
+            d_hy = 0.97 + 0.35   # forming O-H bond in TS
+        else:
+            d_hy = 1.09 + 0.35
+        # Triangulation: find point at distance d_xh from X and d_hy from Y
+        # along the X-Y axis, offset perpendicular to stay near original H
+        xy_dir = xy_vec / xy_len
+        # Project H onto X-Y axis
+        xh_vec = coords[h_idx] - coords[x_idx]
+        proj = float(np.dot(xh_vec, xy_dir))
+        # Target projection from X along X→Y
+        if d_xh + d_hy <= xy_len:
+            # Circles don't overlap — place linearly
+            t_proj = d_xh
+        else:
+            # Intersection of two spheres: solve for projection
+            t_proj = (xy_len**2 + d_xh**2 - d_hy**2) / (2.0 * xy_len)
+        perp = xh_vec - proj * xy_dir
+        perp_len = float(np.linalg.norm(perp))
+        # Perpendicular distance from X-Y axis
+        r_sq = d_xh**2 - t_proj**2
+        if r_sq < 0.01:
+            r_perp = 0.0
+        else:
+            r_perp = float(np.sqrt(r_sq))
+        if perp_len > 0.01:
+            perp_dir = perp / perp_len
+        else:
+            # H is on the X-Y axis — pick an arbitrary perpendicular
+            arb = np.array([1.0, 0.0, 0.0])
+            if abs(np.dot(xy_dir, arb)) > 0.9:
+                arb = np.array([0.0, 1.0, 0.0])
+            perp_dir = np.cross(xy_dir, arb)
+            perp_dir /= np.linalg.norm(perp_dir)
+        coords[h_idx] = coords[x_idx] + t_proj * xy_dir + r_perp * perp_dir
+
+        # 2. Stretch the Y=Z double bond by ~5%
+        yz_vec = coords[z_idx] - coords[y_idx]
+        yz_len = float(np.linalg.norm(yz_vec))
+        if yz_len > 0.01:
+            stretch = 0.05 * yz_len
+            yz_dir = yz_vec / yz_len
+            coords[z_idx] += 0.5 * stretch * yz_dir
+            coords[y_idx] -= 0.5 * stretch * yz_dir
+
+    xyz['coords'] = tuple(tuple(row) for row in coords)
+    return xyz
+
+
 def _clear_forming_bond_path(xyz: dict,
                               r_mol: 'Molecule',
                               forming_bonds: List[Tuple[int, int]],
@@ -1197,6 +1334,10 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         set(_r_mol_copy.atoms.index(a) for a in ring)
         for ring in _r_mol_copy.get_smallest_set_of_smallest_rings()
     ]
+    # Stash fallback bond lists for end-of-function post-processing.
+    _fallback_fb: Optional[List[Tuple[int, int]]] = None
+    _fallback_bb: Optional[List[Tuple[int, int]]] = None
+    _fallback_changed: Optional[List[Tuple[int, int]]] = None
 
     seen_bond_signatures: Set[tuple] = set()
     for i, product_dict in enumerate(rxn.product_dicts):
@@ -1405,18 +1546,19 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         p_xyz = rxn.p_species[0].get_xyz()
         p_mol = rxn.p_species[0].mol
 
+        bb_map_from_reorder = None
         if r_xyz['symbols'] != p_xyz['symbols']:
             # Symbols differ (different atom ordering).  Try backbone_atom_map
             # which now handles ring-forming reactions (P has one extra edge).
-            bb_reorder = backbone_atom_map(r_mol, p_mol)
-            if bb_reorder is not None:
-                p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_reorder)
+            bb_map_from_reorder = backbone_atom_map(r_mol, p_mol)
+            if bb_map_from_reorder is not None:
+                p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map_from_reorder)
                 try:
-                    p_mol = order_mol_by_atom_map(p_mol, bb_reorder)
+                    p_mol = order_mol_by_atom_map(p_mol, bb_map_from_reorder)
                 except Exception:
                     pass
                 if rxn.atom_map is None:
-                    rxn.atom_map = bb_reorder
+                    rxn.atom_map = bb_map_from_reorder
                 logger.debug(f'Linear (rxn={rxn.label}): trivial-map fallback — '
                              f'reordered P atoms via backbone atom map.')
             else:
@@ -1435,8 +1577,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             # biradicals) by matching heavy-atom connectivity ignoring
             # bond orders.  Fall back to the identity atom map only when
             # backbone matching fails.
-            bb_map = backbone_atom_map(r_mol, p_mol) if rxn.atom_map is None else None
-            if bb_map is not None:
+            bb_map = bb_map_from_reorder or (backbone_atom_map(r_mol, p_mol) if rxn.atom_map is None else None)
+            if bb_map is not None and bb_map_from_reorder is None:
                 rxn.atom_map = bb_map
                 p_xyz = order_xyz_by_atom_map(xyz=p_xyz, atom_map=bb_map)
                 try:
@@ -1464,15 +1606,18 @@ def interpolate_isomerization(rxn: 'ARCReaction',
 
             # Restore original atom_map to avoid side effects.
             rxn.atom_map = original_atom_map
+            # Stash for end-of-function RH_Add motif post-processing.
+            _fallback_fb = list(fb)
+            _fallback_bb = list(bb)
+            _fallback_changed = list(changed)
 
             if bb_map is not None:
                 # Backbone map produces correct atom correspondences, so
                 # H-bond changes represent real reactive bonds (e.g. H
-                # migration) — keep them.  Bond-order changes in the
-                # backbone are a *consequence* of the reactive event, not
-                # independent reactive sites; including them would inflate
-                # the reactive set and distort the bicyclic backbone.
-                pass
+                # migration) — keep them.  Also include bond-order changes
+                # (e.g. C=C → C-C) as forming bonds so the multiple bond
+                # gets stretched in the TS.
+                fb = fb + changed
             else:
                 # The identity atom map can misassign H atoms (an H bonded
                 # to C0 in R may be bonded to C1 in P even though both H's
@@ -1514,15 +1659,31 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         else:
                             reactive_xyz_indices.discard(rb[0])
 
-                # Skip near-attack for backbone-map cases: the forming
-                # bond is across a rigid ring, so rotating the molecule to
-                # bring the atoms closer just distorts the backbone.
-                if bb_map is not None:
+                # Skip near-attack for backbone-map cases where the
+                # reaction occurs within a pre-existing ring — rotating
+                # the molecule to bring the forming-bond atoms closer
+                # just distorts the backbone.  For ring-FORMING reactions
+                # (open chain → ring), NAC is essential to fold the chain.
+                if bb_map is not None and bb_map_from_reorder is None:
                     r_xyz_na = r_xyz
                     op_xyz_na = p_xyz
                 else:
                     r_xyz_na = get_near_attack_xyz(r_xyz, r_mol, bonds=list(fb))
                     op_xyz_na = get_near_attack_xyz(p_xyz, p_mol, bonds=list(bb))
+
+                # When the backbone map detects an H migration but RMG
+                # couldn't assign a family, override the family so the
+                # H-migration postprocessor fires (it places the migrating
+                # H via triangulation, which Z-mat interpolation can't do
+                # when the forming bond isn't a direct Z-mat variable).
+                effective_family = rxn.family
+                if bb_map is not None and effective_family is None:
+                    symbols = r_xyz['symbols']
+                    has_h_transfer = any(
+                        symbols[b[0]] == 'H' or symbols[b[1]] == 'H'
+                        for b in fb)
+                    if has_h_transfer:
+                        effective_family = 'intra_H_migration'
 
                 # Ring-closure fast path (mirrors the per-product_dict check):
                 # when a forming-bond distance exceeds the threshold, use the
@@ -1549,16 +1710,23 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             rc_xyz = _ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
-                                rc_xyz, migrating_hs_rc = _postprocess_ts_guess(
-                                    rc_xyz, r_mol, list(fb), list(bb),
-                                    family=rxn.family)
-                                is_valid, _ = _validate_ts_guess(
-                                    rc_xyz, migrating_hs_rc, fb, r_mol,
-                                    label=f'rxn={rxn.label}, trivial, ring-closure',
-                                    family=rxn.family)
-                                if is_valid:
-                                    ts_xyzs.append(rc_xyz)
-                                    used_ring_closure = True
+                                # Try H-migration postprocessing first (places
+                                # migrating H via triangulation), fall back to
+                                # generic if H-migration validation rejects it.
+                                import copy
+                                for fam in ([effective_family, rxn.family]
+                                            if effective_family != rxn.family else [rxn.family]):
+                                    rc_try = copy.deepcopy(rc_xyz)
+                                    rc_try, mhs = _postprocess_ts_guess(
+                                        rc_try, r_mol, list(fb), list(bb), family=fam)
+                                    ok, _ = _validate_ts_guess(
+                                        rc_try, mhs, fb, r_mol,
+                                        label=f'rxn={rxn.label}, trivial, ring-closure',
+                                        family=fam)
+                                    if ok:
+                                        ts_xyzs.append(rc_try)
+                                        used_ring_closure = True
+                                        break
 
                 if not used_ring_closure and not needs_ring_closure:
                     # With the backbone atom map the reactive set is small and
@@ -1567,19 +1735,6 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     # inflated to nearly all atoms and postprocessing would
                     # perturb the geometry — skip it.
                     skip_pp = bb_map is None
-                    # When the backbone map detects an H migration but RMG
-                    # couldn't assign a family, override the family so the
-                    # H-migration postprocessor fires (it places the migrating
-                    # H via triangulation, which Z-mat interpolation can't do
-                    # when the forming bond isn't a direct Z-mat variable).
-                    effective_family = rxn.family
-                    if bb_map is not None and effective_family is None:
-                        symbols = r_xyz['symbols']
-                        has_h_transfer = any(
-                            symbols[b[0]] == 'H' or symbols[b[1]] == 'H'
-                            for b in fb)
-                        if has_h_transfer:
-                            effective_family = 'intra_H_migration'
                     ts_r = _generate_zmat_branch(
                         anchor_xyz=r_xyz_na, anchor_mol=r_mol, target_xyz=op_xyz_na,
                         weight=weight, reactive_xyz_indices=reactive_xyz_indices,
@@ -1644,6 +1799,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # Reflect H atoms that project into forming-bond paths (blocking ring closure).
         if all_forming:
             unique = [_clear_forming_bond_path(xyz, r_mol, all_forming)
+                      for xyz in unique]
+        # Build the 4-membered ring TS motif for Intra_RH_Add patterns
+        # (stretch X-H, stretch Y=Z, move H toward Y).
+        if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
+            unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
                       for xyz in unique]
 
     return unique
