@@ -584,9 +584,80 @@ def _get_ring_preservation_bonds(mol: 'Molecule',
                 bond_pair = (min(reactive_idx, bonded_idx), max(reactive_idx, bonded_idx))
                 if bond_pair in changing_bonds:
                     continue
-                ring_bond_pairs.append((reactive_idx, bonded_idx))
+                ring_bond_pairs.append((bonded_idx, reactive_idx))
                 expanded.add(bonded_idx)
     return ring_bond_pairs, expanded
+
+
+def _fix_broken_ring_bonds(xyz: dict,
+                           r_mol: 'Molecule',
+                           ring_sets: List[Set[int]],
+                           reactive_xyz_indices: Set[int],
+                           changing_bonds: Set[Tuple[int, int]],
+                           max_ring_bond: float = 1.75,
+                           ) -> dict:
+    """
+    Repair ring bonds that were broken during Z-matrix interpolation.
+
+    When the Z-matrix topology opens a ring between a reactive atom and its spectator
+    neighbor, the interpolated TS geometry may have ring bond distances of 2+ Angstrom.
+    This function detects such bonds and slides the spectator atom (and its non-reactive
+    subtree) along the broken bond vector to restore a reasonable distance.
+
+    Args:
+        xyz: TS guess XYZ dictionary.
+        r_mol: Reactant molecule topology.
+        ring_sets: Pre-computed SSSR ring index sets.
+        reactive_xyz_indices: Atom indices in the reactive event.
+        changing_bonds: Breaking/forming bond pairs ``{(min_i, max_i), ...}``.
+        max_ring_bond: Threshold above which a ring bond is considered broken.
+
+    Returns:
+        Corrected XYZ dictionary (modified in-place coords).
+    """
+    import numpy as np
+    coords = np.array(xyz['coords'], dtype=float)
+    for ring_set in ring_sets:
+        for atom_idx in ring_set:
+            atom = r_mol.atoms[atom_idx]
+            for bonded_atom in atom.edges:
+                bonded_idx = r_mol.atoms.index(bonded_atom)
+                if bonded_idx > atom_idx and bonded_idx in ring_set:
+                    pair = (min(atom_idx, bonded_idx), max(atom_idx, bonded_idx))
+                    if pair in changing_bonds:
+                        continue
+                    dist = float(np.linalg.norm(coords[atom_idx] - coords[bonded_idx]))
+                    if dist <= max_ring_bond:
+                        continue
+                    # Determine which atom is the spectator (to be moved)
+                    if atom_idx in reactive_xyz_indices and bonded_idx not in reactive_xyz_indices:
+                        mobile, anchor = bonded_idx, atom_idx
+                    elif bonded_idx in reactive_xyz_indices and atom_idx not in reactive_xyz_indices:
+                        mobile, anchor = atom_idx, bonded_idx
+                    elif atom_idx not in reactive_xyz_indices and bonded_idx not in reactive_xyz_indices:
+                        # Both spectator — move the one with fewer non-ring bonds
+                        mobile, anchor = atom_idx, bonded_idx
+                    else:
+                        continue  # both reactive — skip
+                    # Compute target distance from the reactant geometry
+                    r_coords = np.array(xyz['coords'], dtype=float)  # reuse pre-interpolation
+                    # Use a standard single-bond length as target (ring bonds are 1.3–1.5 Å)
+                    target = 1.45
+                    vec = coords[mobile] - coords[anchor]
+                    vec_norm = np.linalg.norm(vec)
+                    if vec_norm < 0.01:
+                        continue
+                    shift = vec / vec_norm * (target - vec_norm)
+                    # Move the mobile atom and its bonded H atoms
+                    moved = {mobile}
+                    for sub_bonded in r_mol.atoms[mobile].edges:
+                        sub_idx = r_mol.atoms.index(sub_bonded)
+                        if sub_idx not in ring_set and sub_idx not in reactive_xyz_indices:
+                            moved.add(sub_idx)
+                    for idx in moved:
+                        coords[idx] += shift
+    xyz['coords'] = tuple(tuple(row) for row in coords)
+    return xyz
 
 
 def interpolate(rxn: 'ARCReaction',
@@ -944,6 +1015,21 @@ def interpolate_addition(rxn: 'ARCReaction',
 
     # Deduplicate near-identical guesses (including against existing_xyzs
     # from prior weight iterations to avoid wasting downstream DFT resources).
+    # Repair ring bonds broken by Z-matrix interpolation before deduplication.
+    if _ring_sets:
+        changing_all = set()
+        for pd in rxn.product_dicts:
+            rl = pd.get('r_label_map')
+            if rl:
+                bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
+                for b in list(bb_i or []) + list(fb_i or []):
+                    changing_all.add((min(b), max(b)))
+        reactive_all: Set[int] = set()
+        for b in changing_all:
+            reactive_all.update(b)
+        ts_xyzs = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
+                    for xyz in ts_xyzs]
+
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[dict] = []
     for xyz_candidate in ts_xyzs:
