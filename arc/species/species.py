@@ -1627,10 +1627,15 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
+            n_rad_hint = self.number_of_radicals
+            if n_rad_hint is None:
+                mol_n_rad = sum(a.radical_electrons for a in self.mol.atoms)
+                if mol_n_rad:
+                    n_rad_hint = mol_n_rad
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
-                                                       n_radicals=self.number_of_radicals,
+                                                       n_radicals=n_rad_hint,
                                                        n_fragments=self.get_n_fragments(),
                                                        )
             if perceived_mol is not None:
@@ -1649,7 +1654,7 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
                 if not self.keep_mol:
-                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
+                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=n_rad_hint):
                         self.mol = perceived_mol
                     else:
                         try:
