@@ -2489,3 +2489,48 @@ def order_xyz_by_atom_map(xyz: dict,
     isotopes = [xyz['isotopes'][i] for i in atom_map] if 'isotopes' in xyz else None
     coords = [xyz['coords'][i] for i in atom_map]
     return xyz_from_data(coords=coords, symbols=symbols, isotopes=isotopes)
+
+
+def order_mol_by_atom_map(mol: Molecule,
+                          atom_map: list[int],
+                          ) -> Molecule:
+    """
+    Return a deep copy of ``mol`` whose atoms list has been reordered so that
+    index *i* in the returned molecule corresponds to the atom at
+    ``atom_map[i]`` in the original.
+
+    This is the molecular-graph counterpart of :func:`order_xyz_by_atom_map`.
+    Both functions use the same ``atom_map`` convention:
+    ``atom_map[reactant_i] = product_i``.
+
+    The bonds in the returned molecule are **unchanged** — they are references
+    between the same Atom objects, so the original topology is preserved exactly.
+    Calling ``mol.update()`` after the reorder refreshes any cached ring/
+    aromaticity information.
+
+    Args:
+        mol (Molecule): An RMG Molecule in its original atom ordering.
+        atom_map (list[int]): ``atom_map[i]`` is the index of the atom that should
+            appear at position *i* in the returned molecule.
+
+    Raises:
+        ValueError: If ``atom_map`` length does not match the number of atoms in ``mol``,
+            or if any mapped index is out of range.
+
+    Returns:
+        Molecule: A deep copy of ``mol`` with atoms reordered according to ``atom_map``.
+    """
+    n = len(mol.atoms)
+    if len(atom_map) != n:
+        raise ValueError(f'order_mol_by_atom_map: atom_map length ({len(atom_map)}) does not match '
+                         f'mol atom count ({n}).')
+    for i, src in enumerate(atom_map):
+        if not (0 <= src < n):
+            raise ValueError(f'order_mol_by_atom_map: atom_map[{i}] = {src} is out of range '
+                             f'for a molecule with {n} atoms.')
+    reordered = mol.copy(deep=True)
+    reordered.atoms = [reordered.atoms[atom_map[i]] for i in range(n)]
+    explicit_order = reordered.atoms[:]   # save our ordering before update() reorders
+    reordered.update()
+    reordered.atoms = explicit_order      # restore explicit ordering
+    return reordered
