@@ -11,7 +11,7 @@ import unittest
 
 import numpy as np
 
-from arc.common import ARC_PATH, almost_equal_coords, almost_equal_coords_lists, get_single_bond_length
+from arc.common import ARC_PATH, almost_equal_coords, get_single_bond_length
 from arc.job.adapters.ts.linear import (BASE_WEIGHT_GRID,
                                         HAMMOND_DELTA,
                                         LinearAdapter,
@@ -22,10 +22,8 @@ from arc.job.adapters.ts.linear import (BASE_WEIGHT_GRID,
                                         _get_all_referenced_atoms,
                                         _get_all_zmat_rows,
                                         _postprocess_generic,
-                                        _postprocess_h_migration,
                                         _postprocess_ts_guess,
                                         _stretch_bond,
-                                        _try_insertion_ring,
                                         _validate_h_migration,
                                         _validate_ts_guess,
                                         average_zmat_params,
@@ -2682,7 +2680,7 @@ H      -0.36583394   -1.89034834    0.81324667"""
         # Ring closure with cumulated-bond flex weighting + collinear-substituent
         # bending: the 5-membered ring C1-C2-C3-C4-C5 forms (C1-C5 ≈ 2.3 Å),
         # while the exocyclic C0=C1 is bent to ~120° (sp2) away from the ring.
-        expected_ts = """C      -2.66296545   -0.44995581   -1.06241133
+        expected_ts_0 = """C      -2.66296545   -0.44995581   -1.06241133
 C      -1.77136356   -0.00875193   -0.22839960
 C      -0.51035344   -0.23538255   -0.44913569
 C       0.12419475    0.40075232    0.67471320
@@ -2694,9 +2692,9 @@ H      -0.21122278   -0.79551043   -1.33506888
 H       1.21100627    0.36736162    0.75104005
 H      -2.63995829    0.55525007    2.40497150
 H      -2.52256615    2.15509630    1.43307430"""
-        self.assertTrue(almost_equal_coords_lists(ts_xyzs, str_to_xyz(expected_ts)))
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
-    def test_interpolate_intra_diels_alder_monocyclic(self):  # TODO: not great
+    def test_interpolate_intra_diels_alder_monocyclic(self):
         """Test the interpolate_isomerization() function for Intra_Diels_alder_monocyclic: C=C1C=CC=C1 <=> C1=CC2CC2=C1"""
         r_xyz = """C       1.98835311   -0.06142285   -0.00200142
 C       0.65433874   -0.02021339   -0.00065871
@@ -2726,14 +2724,20 @@ H       1.65446241   -1.85341259    0.04404524"""
         p = ARCSpecies(label='P', smiles='C1=CC2CC2=C1', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
         self.assertIsNotNone(ts_xyzs)
         self.assertGreater(len(ts_xyzs), 0)
         for ts_xyz in ts_xyzs:
             self.assertEqual(len(ts_xyz['symbols']), 12)
             self.assertFalse(colliding_atoms(ts_xyz))
+        # At least one TS guess must preserve the 5-membered ring scaffold (atoms 1-5).
+        ring_bonds = [(1, 2), (2, 3), (3, 4), (4, 5), (5, 1)]
+        has_good = False
+        for ts_xyz in ts_xyzs:
+            coords = np.array(ts_xyz['coords'])
+            if all(1.2 < np.linalg.norm(coords[a] - coords[b]) < 2.0
+                   for a, b in ring_bonds):
+                has_good = True
+        self.assertTrue(has_good, 'No TS guess preserves the 5-membered ring scaffold.')
 
     def test_interpolate_intra_disproportionation(self):  # TODO: 0 guesses (singlet biradical mol_from_xyz issue)
         """Test the interpolate_isomerization() function for Intra_Disproportionation: C=C1[CH]C[C]2C=CC=CC21 <=> C=C1CCC2=C1C=CC=C2"""
@@ -2936,6 +2940,22 @@ H      -0.37927447   -1.71441733   -0.79057319"""
         for ts_xyz in ts_xyzs:
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
+        expected_ts_0 = """ C                 -0.38491731    1.07243910   -0.85782157
+ C                 -0.68551431    0.45892587    0.49997463
+ C                 -1.40976858    1.08605820    1.45847754
+ C                 -0.06959028   -0.99560247    0.67972488
+ C                  1.12397282   -1.26028823   -0.35244644
+ C                  1.14436038   -0.44219360   -1.49284973
+ H                 -1.24167542    1.13270824   -1.49596980
+ H                  0.03479465    2.05419666   -0.78786477
+ H                 -1.80102856    2.06554149    1.27839947
+ H                 -1.59034456    0.60172808    2.39534287
+ H                 -0.84286056   -1.70540396    0.47203539
+ H                  0.27883831   -1.12345486    1.68329415
+ H                  1.85928283   -2.01957508   -0.18600523
+ H                  0.88471254   -0.97119742   -2.38595552
+ H                  2.09919472    0.01524858   -1.64756893"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_intra_r_add_exotetcyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_ExoTetCyclic: [CH2]CCOOC <=> C1COOC1 + [CH3]"""

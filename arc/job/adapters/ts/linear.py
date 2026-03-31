@@ -594,7 +594,7 @@ def _fix_broken_ring_bonds(xyz: dict,
                            ring_sets: List[Set[int]],
                            reactive_xyz_indices: Set[int],
                            changing_bonds: Set[Tuple[int, int]],
-                           max_ring_bond: float = 1.75,
+                           max_ring_bond: float = 2.0,
                            ) -> dict:
     """
     Repair ring bonds that were broken during Z-matrix interpolation.
@@ -618,6 +618,20 @@ def _fix_broken_ring_bonds(xyz: dict,
     import numpy as np
     coords = np.array(xyz['coords'], dtype=float)
     for ring_set in ring_sets:
+        # Only repair rings whose bonds are NOT themselves breaking or forming.
+        # If a ring bond is in changing_bonds, the ring is part of the reactive
+        # event and should not be rigidly repaired.
+        ring_has_changing_bond = False
+        for ai in ring_set:
+            for ba in r_mol.atoms[ai].edges:
+                bi = r_mol.atoms.index(ba)
+                if bi in ring_set and (min(ai, bi), max(ai, bi)) in changing_bonds:
+                    ring_has_changing_bond = True
+                    break
+            if ring_has_changing_bond:
+                break
+        if ring_has_changing_bond:
+            continue
         for atom_idx in ring_set:
             atom = r_mol.atoms[atom_idx]
             for bonded_atom in atom.edges:
@@ -1015,21 +1029,6 @@ def interpolate_addition(rxn: 'ARCReaction',
 
     # Deduplicate near-identical guesses (including against existing_xyzs
     # from prior weight iterations to avoid wasting downstream DFT resources).
-    # Repair ring bonds broken by Z-matrix interpolation before deduplication.
-    if _ring_sets:
-        changing_all = set()
-        for pd in rxn.product_dicts:
-            rl = pd.get('r_label_map')
-            if rl:
-                bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
-                for b in list(bb_i or []) + list(fb_i or []):
-                    changing_all.add((min(b), max(b)))
-        reactive_all: Set[int] = set()
-        for b in changing_all:
-            reactive_all.update(b)
-        ts_xyzs = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
-                    for xyz in ts_xyzs]
-
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[dict] = []
     for xyz_candidate in ts_xyzs:
@@ -1230,11 +1229,13 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             constrained_atoms = {a for pair in constraints.get('R_atom', []) for a in pair}
             existing = set(map(tuple, constraints.get('R_atom', [])))
             for rb in ring_bonds:
-                if (rb[0] in constrained_atoms
+                # rb = (ring_neighbor, reactive_atom): the neighbor is the constrained
+                # atom and the reactive atom is its Z-mat reference.
+                if (rb[1] in constrained_atoms
                         and rb not in existing and (rb[1], rb[0]) not in existing):
                     constraints['R_atom'].append(rb)
                 else:
-                    reactive_xyz_indices.discard(rb[1])
+                    reactive_xyz_indices.discard(rb[0])
 
         # Pre-rotate to near-attack conformation: rotate along the donor→acceptor
         # path so forming-bond atoms are geometrically close before Z-matrix
@@ -1424,11 +1425,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     constrained_atoms_fb = {a for pair in constraints.get('R_atom', []) for a in pair}
                     existing_fb = set(map(tuple, constraints.get('R_atom', [])))
                     for rb in ring_bonds_fb:
-                        if (rb[0] in constrained_atoms_fb
+                        if (rb[1] in constrained_atoms_fb
                                 and rb not in existing_fb and (rb[1], rb[0]) not in existing_fb):
                             constraints['R_atom'].append(rb)
                         else:
-                            reactive_xyz_indices.discard(rb[1])
+                            reactive_xyz_indices.discard(rb[0])
 
                 # Skip near-attack for backbone-map cases: the forming
                 # bond is across a rigid ring, so rotating the molecule to
@@ -1537,6 +1538,22 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         if not any(almost_equal_coords(xyz, other)
                    for other in unique + prior):
             unique.append(xyz)
+
+    # Repair ring bonds broken by Z-matrix interpolation.
+    if _ring_sets and unique:
+        changing_all: Set[Tuple[int, int]] = set()
+        for pd in rxn.product_dicts:
+            rl = pd.get('r_label_map')
+            if rl:
+                bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
+                for b in list(bb_i or []) + list(fb_i or []):
+                    changing_all.add((min(b), max(b)))
+        reactive_all: Set[int] = set()
+        for b in changing_all:
+            reactive_all.update(b)
+        unique = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
+                  for xyz in unique]
+
     return unique
 
 
