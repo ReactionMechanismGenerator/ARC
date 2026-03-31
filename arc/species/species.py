@@ -1631,10 +1631,19 @@ class ARCSpecies(object):
             if len(self.mol.atoms) != len(xyz['symbols']):
                 raise SpeciesError(f'The number of atoms in the molecule and in the coordinates of {self.label} is different.'
                                    f'\nGot:\n{self.mol.copy(deep=True).to_adjacency_list()}\nand:\n{xyz}')
+            # Use the mol's radical count as a perception hint only when
+            # the user didn't specify n_radicals AND the mol's multiplicity
+            # matches the species multiplicity (avoids e.g., forcing triplet
+            # perception on a user-specified singlet O atom).
+            _n_rad_for_perception = self.number_of_radicals
+            if _n_rad_for_perception is None and self.multiplicity is not None:
+                _mol_n_rad = sum(a.radical_electrons for a in self.mol.atoms)
+                if _mol_n_rad and self.mol.multiplicity == self.multiplicity:
+                    _n_rad_for_perception = _mol_n_rad
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
                                                        multiplicity=self.multiplicity,
-                                                       n_radicals=self.number_of_radicals,
+                                                       n_radicals=_n_rad_for_perception,
                                                        n_fragments=self.get_n_fragments(),
                                                        )
             if perceived_mol is not None:
