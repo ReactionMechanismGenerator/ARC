@@ -674,6 +674,75 @@ def _fix_broken_ring_bonds(xyz: dict,
     return xyz
 
 
+def _clear_forming_bond_path(xyz: dict,
+                              r_mol: 'Molecule',
+                              forming_bonds: List[Tuple[int, int]],
+                              ) -> dict:
+    """
+    Reflect H atoms that project into the forming-bond path during ring closure.
+
+    When a new bond forms between two atoms, H atoms bonded to either endpoint may
+    point inward (toward the partner) rather than outward.  This physically blocks
+    ring closure and produces TS guesses with unrealistically short H-to-partner
+    distances.
+
+    For each H on a forming-bond atom, if the H-parent-partner angle is acute
+    (< 90 deg), the H is reflected through the plane perpendicular to the forming
+    bond that passes through its parent atom.
+
+    Args:
+        xyz: TS guess XYZ dictionary (modified in-place).
+        r_mol: Reactant molecule topology.
+        forming_bonds: List of forming-bond ``(atom_i, atom_j)`` pairs.
+
+    Returns:
+        The corrected XYZ dictionary.
+    """
+    import numpy as np
+    coords = np.array(xyz['coords'], dtype=float)
+    for a, b in forming_bonds:
+        # Only clear for heavy-atom forming bonds that close a ring across a
+        # substantial chain (topological distance >= 4 in the reactant graph).
+        # Skip H-migration bonds (endpoint is H) and short-range bonds.
+        if xyz['symbols'][a] == 'H' or xyz['symbols'][b] == 'H':
+            continue
+        # BFS for topological distance between a and b in the reactant
+        from collections import deque
+        visited = {a}
+        queue = deque([(a, 0)])
+        topo_dist = 0
+        while queue:
+            node, depth = queue.popleft()
+            if node == b:
+                topo_dist = depth
+                break
+            for nb in r_mol.atoms[node].edges:
+                nb_idx = r_mol.atoms.index(nb)
+                if nb_idx not in visited:
+                    visited.add(nb_idx)
+                    queue.append((nb_idx, depth + 1))
+        if topo_dist < 4:
+            continue
+        for endpoint, partner in [(a, b), (b, a)]:
+            bond_vec = coords[partner] - coords[endpoint]
+            bond_len = np.linalg.norm(bond_vec)
+            if bond_len < 0.01:
+                continue
+            bond_dir = bond_vec / bond_len
+            atom = r_mol.atoms[endpoint]
+            for bonded_atom in atom.edges:
+                h_idx = r_mol.atoms.index(bonded_atom)
+                if xyz['symbols'][h_idx] != 'H':
+                    continue
+                h_vec = coords[h_idx] - coords[endpoint]
+                proj = float(np.dot(h_vec, bond_dir))
+                if proj > 0:
+                    # H projects toward the partner — reflect it away
+                    coords[h_idx] -= 2.0 * proj * bond_dir
+    xyz['coords'] = tuple(tuple(row) for row in coords)
+    return xyz
+
+
 def interpolate(rxn: 'ARCReaction',
                 weight: float = 0.5,
                 existing_xyzs: Optional[List[dict]] = None,
@@ -1539,20 +1608,29 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                    for other in unique + prior):
             unique.append(xyz)
 
-    # Repair ring bonds broken by Z-matrix interpolation.
-    if _ring_sets and unique:
-        changing_all: Set[Tuple[int, int]] = set()
-        for pd in rxn.product_dicts:
-            rl = pd.get('r_label_map')
-            if rl:
-                bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
-                for b in list(bb_i or []) + list(fb_i or []):
-                    changing_all.add((min(b), max(b)))
-        reactive_all: Set[int] = set()
-        for b in changing_all:
-            reactive_all.update(b)
-        unique = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
-                  for xyz in unique]
+    # Collect all forming bonds across paths for post-processing.
+    all_forming: List[Tuple[int, int]] = []
+    changing_all: Set[Tuple[int, int]] = set()
+    for pd in rxn.product_dicts:
+        rl = pd.get('r_label_map')
+        if rl:
+            bb_i, fb_i = rxn.get_expected_changing_bonds(r_label_dict=rl)
+            for b in list(bb_i or []) + list(fb_i or []):
+                changing_all.add((min(b), max(b)))
+            all_forming.extend(fb_i or [])
+    reactive_all: Set[int] = set()
+    for b in changing_all:
+        reactive_all.update(b)
+
+    if unique:
+        # Repair ring bonds broken by Z-matrix interpolation.
+        if _ring_sets:
+            unique = [_fix_broken_ring_bonds(xyz, r_mol, _ring_sets, reactive_all, changing_all)
+                      for xyz in unique]
+        # Reflect H atoms that project into forming-bond paths (blocking ring closure).
+        if all_forming:
+            unique = [_clear_forming_bond_path(xyz, r_mol, all_forming)
+                      for xyz in unique]
 
     return unique
 

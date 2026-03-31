@@ -2900,7 +2900,7 @@ H       2.88277623   -1.03926992   -1.24983116"""
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
 
-    def test_interpolate_intra_r_add_endocyclic(self):  # TODO: nice, not bad, but still got H's in the way
+    def test_interpolate_intra_r_add_endocyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_Endocyclic: [CH2]C(=C)CC=C <=> C=C1C[CH]CC1"""
         r_xyz = """C      -1.27823088    1.00022129    0.80097658
 C      -1.01917913   -0.22955078    0.09026125
@@ -2937,25 +2937,22 @@ H      -0.37927447   -1.71441733   -0.79057319"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
         self.assertGreater(len(ts_xyzs), 0)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
-        expected_ts_0 = """ C                 -0.38491731    1.07243910   -0.85782157
- C                 -0.68551431    0.45892587    0.49997463
- C                 -1.40976858    1.08605820    1.45847754
- C                 -0.06959028   -0.99560247    0.67972488
- C                  1.12397282   -1.26028823   -0.35244644
- C                  1.14436038   -0.44219360   -1.49284973
- H                 -1.24167542    1.13270824   -1.49596980
- H                  0.03479465    2.05419666   -0.78786477
- H                 -1.80102856    2.06554149    1.27839947
- H                 -1.59034456    0.60172808    2.39534287
- H                 -0.84286056   -1.70540396    0.47203539
- H                  0.27883831   -1.12345486    1.68329415
- H                  1.85928283   -2.01957508   -0.18600523
- H                  0.88471254   -0.97119742   -2.38595552
- H                  2.09919472    0.01524858   -1.64756893"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
+        expected_ts_1 = """C       0.08529154   -0.02047020    2.12080314
+C       0.08529154   -0.02047020    0.78201213
+C       0.60479283   -1.07806229    0.30802780
+C       0.02862768    1.20134210   -0.08760707
+C      -0.45046973    0.68544216   -1.40102540
+C      -0.21329249   -0.67814168   -1.70312787
+H       0.08529154    0.90762085    2.68388303
+H       0.08732806   -0.94820117    2.68435418
+H       1.41931794   -1.80062633    0.25752967
+H      -0.11625283   -1.85368618    0.56609896
+H       1.02326745    1.64240461   -0.20275442
+H      -0.66448483    1.94939660    0.30816137
+H      -0.68822312    1.31227568   -2.24707710
+H      -0.33262802   -1.49626625   -2.41343147
+H      -1.24657590   -0.88001569   -1.42086510"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
 
     def test_interpolate_intra_r_add_exotetcyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_ExoTetCyclic: [CH2]CCOOC <=> C1COOC1 + [CH3]"""
