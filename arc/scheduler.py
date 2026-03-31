@@ -1185,6 +1185,7 @@ class Scheduler(object):
                 else:
                     self.run_composite_job(label)
                 self.species_dict[label].chosen_ts_method = self.species_dict[label].ts_guesses[0].method
+                self.species_dict[label].successful_methods = [self.species_dict[label].ts_guesses[0].method]
                 if getattr(self.species_dict[label].ts_guesses[0], 'log_path', None):
                     self.output[label]['paths']['neb'] = self.species_dict[label].ts_guesses[0].log_path
 
@@ -2534,7 +2535,6 @@ class Scheduler(object):
                 return False
             else:
                 self.output[label]['job_types']['freq'] = True
-                self.output[label]['paths']['geo'] = job.local_path_to_output_file
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 if not self.testing:
                     # Update restart dictionary and save the yaml restart file:
@@ -2565,7 +2565,6 @@ class Scheduler(object):
                 logger.info(f'TS {label} has exactly one imaginary frequency: {neg_freqs[0]}')
                 self.output[label]['info'] += f'Imaginary frequency: {neg_freqs[0] if len(neg_freqs) == 1 else neg_freqs}; '
                 self.output[label]['job_types']['freq'] = True
-                self.output[label]['paths']['geo'] = job.local_path_to_output_file
                 self.output[label]['paths']['freq'] = job.local_path_to_output_file
                 plotter.save_conformers_file(
                     project_directory=self.project_directory,

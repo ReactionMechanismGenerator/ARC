@@ -513,6 +513,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         for rxn in self.reactions:
             parse_reaction_kinetics(rxn, output_content)
 
+        # Parse conformer statmech (external_symmetry, optical_isomers) for all
+        # species involved in the kinetics — the thermo path handles this via
+        # parse_species_thermo, but kinetics-only runs skip thermo entirely.
+        for species in self.species:
+            _parse_conformer_statmech(species, output_content)
+        for rxn in self.reactions:
+            _parse_conformer_statmech(rxn.ts_species, output_content)
+
 
 def run_arkane(statmech_dir: str) -> bool:
     """

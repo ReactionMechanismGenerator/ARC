@@ -437,13 +437,15 @@ class TestGetEssVersions(unittest.TestCase):
         self.assertIn('sp', result)
         self.assertIn('Gaussian 09', result['sp'])
 
-    def test_deduplicates_same_path(self):
-        """When sp and geo point to the same file, only one entry should appear."""
+    def test_shared_log_file_reports_all_job_types(self):
+        """When sp and geo point to the same file, both job types should appear with the same version."""
         log = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
         paths = {'sp': log, 'geo': log}
         result = _get_ess_versions(paths, '/dummy')
-        # Should have only one key since the paths are identical
-        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result), 2)
+        self.assertIn('sp', result)
+        self.assertIn('opt', result)
+        self.assertEqual(result['sp'], result['opt'])
 
     def test_no_paths(self):
         self.assertIsNone(_get_ess_versions({}, '/dummy'))

@@ -32,6 +32,7 @@ def write_output_yml(
     opt_level=None,
     freq_level=None,
     sp_level=None,
+    neb_level=None,
     freq_scale_factor: Optional[float] = None,
     freq_scale_factor_user_provided: bool = False,
     bac_type: Optional[str] = None,
@@ -53,6 +54,7 @@ def write_output_yml(
         opt_level (Level, optional): Level of theory for geometry optimization.
         freq_level (Level, optional): Level of theory for frequency calculations.
         sp_level (Level, optional): Level of theory for single-point energies.
+        neb_level (Level, optional): Level of theory for NEB TS search (from orca_neb_settings).
         freq_scale_factor (float, optional): The harmonic frequencies scaling factor used.
         freq_scale_factor_user_provided (bool): Whether the user explicitly set the scale factor.
         bac_type (str, optional): The BAC type ('p', 'm', or None).
@@ -74,6 +76,8 @@ def write_output_yml(
     doc['opt_level'] = _level_to_dict(opt_level)
     doc['freq_level'] = _level_to_dict(freq_level)
     doc['sp_level'] = _level_to_dict(sp_level)
+    if neb_level is not None:
+        doc['neb_level'] = _level_to_dict(neb_level)
     doc['arkane_level_of_theory'] = _level_to_dict(arkane_level_of_theory)
     doc['freq_scale_factor'] = freq_scale_factor
     doc['freq_scale_factor_source'] = (
@@ -243,26 +247,29 @@ def _get_ess_versions(paths: Dict, project_directory: str) -> Optional[Dict[str,
     Parse ESS version strings from each available log file (sp, opt, freq, neb).
 
     Returns a dict like ``{'sp': 'ORCA 5.0.4', 'opt': 'Gaussian 16, Revision C.01'}``,
-    keyed by job type.  Skips duplicate log files (e.g. when opt == sp at the same level).
+    keyed by job type.  Caches parsed versions to avoid re-parsing shared log files.
     Returns ``None`` if nothing could be parsed.
     """
     from arc.parser.parser import parse_ess_version
     key_map = {'sp': 'sp', 'geo': 'opt', 'freq': 'freq', 'neb': 'neb'}
     versions: Dict[str, str] = {}
-    seen_paths: set = set()
+    parsed_cache: Dict[str, str] = {}
     for path_key, label in key_map.items():
         log_path = paths.get(path_key) or None
         if not log_path:
             continue
         if not os.path.isabs(log_path):
             log_path = os.path.join(project_directory, log_path)
-        if not os.path.isfile(log_path) or log_path in seen_paths:
+        if not os.path.isfile(log_path):
             continue
-        seen_paths.add(log_path)
+        if log_path in parsed_cache:
+            versions[label] = parsed_cache[log_path]
+            continue
         try:
             version = parse_ess_version(log_path)
             if version:
                 versions[label] = version
+                parsed_cache[log_path] = version
         except Exception:
             pass
     return versions or None

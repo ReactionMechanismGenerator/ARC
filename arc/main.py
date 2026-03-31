@@ -47,9 +47,10 @@ from arc.utils.scale import determine_scaling_factors
 
 logger = get_logger()
 
-default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings = \
+default_levels_of_theory, servers, valid_chars, default_job_types, default_job_settings, global_ess_settings, \
+    orca_neb_settings = \
     settings['default_levels_of_theory'], settings['servers'], settings['valid_chars'], settings['default_job_types'], \
-    settings['default_job_settings'], settings['global_ess_settings']
+    settings['default_job_settings'], settings['global_ess_settings'], settings['orca_neb_settings']
 
 
 class ARC(object):
@@ -643,6 +644,13 @@ class ARC(object):
         _yml_scale = assign_frequency_scale_factor(level=_freq_level_for_lookup) if _freq_level_for_lookup is not None else None
         _user_provided_scale = (_yml_scale is None or _yml_scale != self.freq_scale_factor)
 
+        # Include NEB level of theory if NEB was a configured TS adapter.
+        neb_level = None
+        if self.ts_adapters and 'orca_neb' in (a.lower() for a in self.ts_adapters):
+            neb_level_repr = orca_neb_settings.get('level')
+            if neb_level_repr:
+                neb_level = Level(repr=neb_level_repr)
+
         try:
             write_output_yml(
                 project=self.project,
@@ -653,6 +661,7 @@ class ARC(object):
                 opt_level=self.opt_level,
                 freq_level=self.freq_level,
                 sp_level=self.sp_level,
+                neb_level=neb_level,
                 freq_scale_factor=self.freq_scale_factor,
                 freq_scale_factor_user_provided=_user_provided_scale,
                 bac_type=self.bac_type,
