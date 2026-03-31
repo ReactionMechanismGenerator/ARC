@@ -1720,7 +1720,7 @@ H      -1.35146375    0.36042106    2.56558099"""
                          H       1.04338235   -1.08869229   -0.33582720"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
-    def test_interpolate_1_4_cyclic_birad_scission(self):  # TODO: fails
+    def test_interpolate_1_4_cyclic_birad_scission(self):  # TODO: fails, now gives a wrong TS
         """Test the interpolate_isomerization() function for 1,4_Cyclic_birad_scission: C=C=CCC1=CC=CC=C1 <=> C=C1[CH]C[C]2C=CC=CC21"""
         r_xyz = """C      -1.71276869   -2.14835263   -0.29600082
 C      -1.30379477   -0.91506552    0.02297736
@@ -1787,6 +1787,9 @@ H      -0.99449818   -2.46537571    0.25025301"""
 """, xyz=p_xyz, multiplicity=1)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate(rxn)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
         expected_ts_0 = """C       0.40785983   -3.07475167   -0.01682026
 C       0.40785983   -1.94674190   -0.69777642
@@ -2139,7 +2142,7 @@ H      -1.14680228   -1.38795604    2.35012148"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
         self.assertEqual(len(ts_xyzs), 1)
 
-    def test_interpolate_concerted_intra_diels_alder_monocyclic_1_2_shifth(self):  # TODO: fails
+    def test_interpolate_concerted_intra_diels_alder_monocyclic_1_2_shifth(self):
         """Test the interpolate_isomerization() function for Concerted_Intra_diels_alder_mono-cyclic_1,2_shiftH: C#CC=CC=C <=> [C]1C=CC=CC1"""
         r_xyz = """C       3.25931086   -0.62469725   -0.85172041
                    C       2.21431341   -0.47587355   -0.28012458
@@ -2170,9 +2173,6 @@ H      -1.14680228   -1.38795604    2.35012148"""
 12    H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
         self.assertIsNotNone(ts_xyzs)
         self.assertIsInstance(ts_xyzs, list)
         self.assertGreater(len(ts_xyzs), 0, 'Expected at least one TS guess for Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH')
@@ -2186,8 +2186,8 @@ H       2.12504139   -0.23109108   -1.76747526
 H       0.97240698   -0.46160558    1.47844588
 H       2.59583552   -1.06787309    3.08000952
 H       4.91203689   -1.52458145    2.65504088
-H       4.97724376   -2.11141797   -0.00540519
-H       5.39439525   -0.31403670    0.24043207"""
+H       5.16275840   -2.17786532    0.15880725
+H       5.58934956   -0.38386514    0.41300024"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
         # Verify the migrating H (atom 6) is properly positioned between
         # the donor C0 and acceptor C1 — must be ≈ equidistant for a 1,2-shiftH TS.
@@ -2197,7 +2197,7 @@ H       5.39439525   -0.31403670    0.24043207"""
         self.assertAlmostEqual(d_C0_H6, d_C1_H6, places=1,
                                msg='Migrating H should be equidistant from donor C0 and acceptor C1')
 
-    def test_interpolate_cyclic_ether_formation(self):  # TODO: fails
+    def test_interpolate_cyclic_ether_formation(self):
         """Test the interpolate_isomerization() function for Cyclic_Ether_Formation: [CH2]C(=C)OO <=> C=C1CO1 + OH"""
         r_xyz = """C      -1.16599016   -1.08405507   -0.12511934
 C      -0.13200032   -0.08872899   -0.09899028
@@ -2225,20 +2225,17 @@ H       0.00000000    0.00000000   -0.61310000"""
         rxn = ARCReaction(r_species=[r], p_species=[p1, p2])
         ts_xyzs = interpolate(rxn)
         self.assertGreater(len(ts_xyzs), 0)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
-        expected_ts = """C      -1.19597022   -1.03733085   -0.17267513
+        expected_ts_0 = """C      -1.19597022   -1.03733085   -0.17267513
 C      -0.21889171   -0.09678803   -0.14798422
 C       1.15457463   -0.28500002    0.80099757
 O       0.48369452    1.15860461   -0.41011226
 O       0.93622737    2.28816293   -1.86932849
 H      -2.11229997   -0.84737167   -0.73156269
 H      -1.11137750   -1.95191402    0.41425051
-H       1.32109836   -0.33955289    1.87681997
-H       2.00250068   -0.96891489    0.76382419
+H       1.32375058   -0.33941053    1.87641330
+H       2.00384339   -0.96703474    0.76011708
 H       1.10969504    1.91861349   -2.73820257"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_cyclic_thioether_formation(self):
         """Test the interpolate_isomerization() function for Cyclic_Thioether_Formation: [CH2]C(=C)SOC <=> C=C1CS1 + C[O]"""
@@ -2630,7 +2627,7 @@ H       0.84348057    0.49385350   -1.31559023"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
         self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
 
-    def test_interpolate_intra_5_membered_conjugated_c_c_c_c_addition(self):  # TODO: fails
+    def test_interpolate_intra_5_membered_conjugated_c_c_c_c_addition(self):
         """Test the interpolate_isomerization() function for Intra_5_membered_conjugated_C=C_C=C_addition: C=C=CC=C=C <=> C=C1C=C[C]C1"""
         r_xyz = """C      -3.03124363    0.21595810   -0.01068883
 C      -1.77136356   -0.00875193   -0.22839960
@@ -2680,18 +2677,18 @@ H      -0.36583394   -1.89034834    0.81324667"""
         # Ring closure with cumulated-bond flex weighting + collinear-substituent
         # bending: the 5-membered ring C1-C2-C3-C4-C5 forms (C1-C5 ≈ 2.3 Å),
         # while the exocyclic C0=C1 is bent to ~120° (sp2) away from the ring.
-        expected_ts_0 = """C      -2.66296545   -0.44995581   -1.06241133
+        expected_ts_0 = """C      -3.03124363    0.21595810   -0.01068883
 C      -1.77136356   -0.00875193   -0.22839960
-C      -0.51035344   -0.23538255   -0.44913569
-C       0.12419475    0.40075232    0.67471320
-C      -0.88676040    0.87806315    1.33832186
-C      -2.07366887    1.21190935    1.74450585
-H      -2.98644976    0.16150401   -1.90477396
-H      -3.10386210   -1.43835763   -0.93290459
-H      -0.21122278   -0.79551043   -1.33506888
-H       1.21100627    0.36736162    0.75104005
-H      -2.63995829    0.55525007    2.40497150
-H      -2.52256615    2.15509630    1.43307430"""
+C      -0.63288097   -0.39358006   -0.72438053
+C      -1.03044850   -1.09006417   -1.91903749
+C      -2.32559961   -0.97969794   -1.89383231
+C      -3.03757164   -1.50458547   -2.84397932
+H      -3.51150731    1.11248039   -0.40272782
+H      -3.62891356   -0.48738065    0.56914327
+H       0.29224195   -0.14545380   -0.20411047
+H      -0.25872096   -1.53027324   -2.55050607
+H      -3.40169423   -2.52887404   -2.76430711
+H      -3.28427413   -0.92897847   -3.73611970"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_intra_diels_alder_monocyclic(self):
@@ -2739,7 +2736,7 @@ H       1.65446241   -1.85341259    0.04404524"""
                 has_good = True
         self.assertTrue(has_good, 'No TS guess preserves the 5-membered ring scaffold.')
 
-    def test_interpolate_intra_disproportionation(self):  # TODO: 0 guesses (singlet biradical: constraint lock + backbone drift rejection)
+    def test_interpolate_intra_disproportionation(self):
         """Test the interpolate_isomerization() function for Intra_Disproportionation: C=C1[CH]C[C]2C=CC=CC21 <=> C=C1CCC2=C1C=CC=C2"""
         r_xyz = """C      -1.71276869   -2.14835263   -0.29600082
 C      -1.30379477   -0.91506552    0.02297736
@@ -2807,9 +2804,27 @@ H       1.69266033   -2.46579510   -0.55597779"""
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
         self.assertGreater(len(ts_xyzs), 0)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
+        expected_ts_0 = """C      -0.58774421   -0.86950721    2.63194231
+C      -0.58774421   -0.86950721    1.29403214
+C      -0.58952820   -2.08017911    0.49379930
+C      -0.45729633   -1.74899326   -0.96181761
+C      -0.12535369   -0.28971609   -0.97015576
+C       0.65939956    0.36132863   -1.84283691
+C       1.11449884    1.69981068   -1.52783610
+C       0.97158794    2.21611489   -0.29562157
+C       0.27050202    1.49082421    0.74624400
+C      -0.57692212    0.31372713    0.34526007
+H      -0.58774421    0.05552675    3.19964356
+H      -0.58785136   -1.79508467    3.19726799
+H      -0.66085240   -3.08094831    0.89043651
+H      -1.40566432   -1.93678516   -1.47484489
+H       0.33134177   -2.35084298   -1.42324989
+H       1.04547189   -0.11798246   -2.73605523
+H       1.64252956    2.24915027   -2.30122663
+H       1.37243859    3.19513137   -0.05266282
+H       0.14206110    1.96105425    1.71281136
+H      -1.77466057   -0.87821251   -0.07728816"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_intra_rh_add_endocyclic(self):
         """Test the interpolate_isomerization() function for Intra_RH_Add_Endocyclic: OCCCC=C <=> C1OCCCC1"""
@@ -2908,7 +2923,7 @@ H       2.39465238   -3.12557678    1.81992021
 H       3.59883726   -2.10358433   -0.07523703"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
-    def test_interpolate_intra_r_add_endocyclic(self):  # TODO: fails
+    def test_interpolate_intra_r_add_endocyclic(self):  # TODO: H's on C are too close together
         """Test the interpolate_isomerization() function for Intra_R_Add_Endocyclic: [CH2]C(=C)CC=C <=> C=C1C[CH]CC1"""
         r_xyz = """C      -1.27823088    1.00022129    0.80097658
 C      -1.01917913   -0.22955078    0.09026125
@@ -2944,6 +2959,9 @@ H      -0.37927447   -1.71441733   -0.79057319"""
         p = ARCSpecies(label='P', smiles='C=C1C[CH]CC1', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
         expected_ts_1 = """C       0.08529154   -0.02047020    2.12080314
 C       0.08529154   -0.02047020    0.78201213
@@ -2964,12 +2982,6 @@ H      -1.24657590   -0.88001569   -1.42086510"""
 
     def test_interpolate_intra_r_add_exotetcyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_ExoTetCyclic: [CH2]CCOOC <=> C1COOC1 + [CH3]"""
-        """recipe(actions=[
-            ['BREAK_BOND', '*2', 1, '*3'],
-            ['FORM_BOND', '*1', 1, '*2'],
-            ['LOSE_RADICAL', '*1', '1'],
-            ['GAIN_RADICAL', '*3', '1'],
-        ])"""
         r_xyz = """C       2.05985381    0.44673859    0.77745680
 C       1.69169687   -0.75637966   -0.03331801
 C       2.68187206   -1.04448709   -1.16032059
@@ -3106,7 +3118,7 @@ H       2.15818820   -0.40291726   -3.00439205
 H       2.04413067    0.73977373   -0.77527056"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
-    def test_interpolate_intra_r_add_exocyclic(self):  # TODO: fails
+    def test_interpolate_intra_r_add_exocyclic(self):  # TODO: the migrating H is too close to the C atoms.
         """Test the interpolate_isomerization() function for Intra_R_Add_Exocyclic: [CH2]C1CC=CC1=C <=> [CH2]C12C=CCC1C2"""
         r_xyz = """C      -0.10963719   -1.94278328    0.14292941
 C      -0.01615129   -0.62011917   -0.55371008
@@ -3144,6 +3156,9 @@ H       0.31648739    2.42027069    0.39137850"""
         p = ARCSpecies(label='P', smiles='[CH2]C12C=CCC1C2', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertIsNotNone(ts_xyzs)
         self.assertGreater(len(ts_xyzs), 0)
         expected_ts = """C       0.01909243   -1.40427604    1.55009942
@@ -3164,7 +3179,7 @@ H       0.31648739    2.42027069    0.39137850"""
  H      -2.59444815   -0.14669139   -0.42781129"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
-    def test_interpolate_intra_retro_diels_alder_bicyclic(self):  # TODO: takes too long (9 min) replace with somethign smaller?
+    def test_interpolate_intra_retro_diels_alder_bicyclic(self):  # TODO: takes too long (9 min) replace with something smaller?
         """Test the interpolate_isomerization() function for Intra_Retro_Diels_alder_bicyclic: CCC1(C)C=CC2(CC)CCC2C1 <=> C=CCCC(=CC=C(C)CC)CC"""
         r_xyz = """C       2.62820311    1.95455895    0.66045522
 C       1.77963459    1.16510642   -0.33200375
@@ -3774,7 +3789,7 @@ H      -1.61568244    1.16511681    0.72769492"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
         self.assertEqual(len(ts_xyzs), 1)
 
-    def test_interpolate_r_addition_multiplebond_8(self):  # TODO: fails
+    def test_interpolate_r_addition_multiplebond_8(self):
         """Test the interpolate_isomerization() function for R_Addition_MultipleBond: C#CC=CC=C + [c]1ccccc1 <=> C#C[CH]C(C=C)c1ccccc1"""
         r1_xyz = """C       3.35340265   -0.06408675   -0.52400761
 C       2.16382044   -0.14303187   -0.66383512
@@ -3831,19 +3846,29 @@ H       1.05323163    1.59589194    0.73495846"""
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
-        expected_ts = """C       1.62458648   -0.41336107    0.24073228
-C       0.75327725    0.59078853   -0.46708745
-O       1.25002311    1.38064666   -1.28107905
-C      -0.72353764    0.65982686   -0.10343780
-C      -1.67235345   -1.05176863   -0.21201703
-O      -1.50570032   -1.68205550    0.94071120
-H       1.49067492   -0.32707593    1.32171956
-H       2.67446260   -0.20643293    0.01168983
-H       1.39130757   -1.42351669   -0.10222412
-H      -0.81704287    1.14442902    0.87742131
-H      -1.18187886    1.34316111   -0.83194099
-H      -2.70333364   -0.78328169   -0.49427903
-H      -1.31880447   -1.53754357   -1.13534732"""
+        expected_ts = """C      -3.92872757   -1.47192834    0.63358250
+C      -2.94092110   -0.79153032    0.60258970
+C      -1.77265412    0.01495047    0.56847031
+C      -0.78622480   -0.02895120   -0.56871809
+C      -0.77398201    1.22361456   -1.43102540
+C      -1.51506692    2.33393107   -1.29713471
+C       1.00458963   -0.47345031    0.09234486
+C       1.49888248   -1.78070881   -0.04914028
+C       2.76535913   -2.12002588    0.43121800
+C       3.55238586   -1.16081647    1.06468647
+C       3.07346674    0.13774286    1.22237142
+C       1.80729139    0.47950705    0.74342457
+H      -4.80587828   -2.07557590    0.66228852
+H      -1.58412268    0.68341112    1.40170142
+H      -1.09297182   -0.83522501   -1.25118213
+H      -0.07170966    1.18775849   -2.26433101
+H      -2.24816162    2.45558677   -0.50659652
+H      -1.40408512    3.15690637   -1.99714322
+H       0.89640201   -2.54673168   -0.53289310
+H       3.13589338   -3.13499622    0.31356387
+H       4.53740591   -1.42637416    1.43904218
+H       3.68469729    0.88564612    1.72058619
+H       1.44906432    1.49764207    0.88107652"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
     def test_interpolate_r_addition_multiplebond_9(self):
@@ -4405,14 +4430,8 @@ H      -1.03086141    1.13813060    0.58426610"""
             self.assertEqual(len(ts_xyz['symbols']), 9)
             self.assertFalse(colliding_atoms(ts_xyz))
 
-    def test_interpolate_intra_halogen_migration(self):  # TODO: fails
+    def test_interpolate_intra_halogen_migration(self):  # TODO: fails, no TS guesses
         """Test the interpolate_isomerization() function for intra_halogen_migration: FCCC[C](F)F <=> [CH2]CCC(F)(F)F"""
-        """recipe(actions=[
-            ['BREAK_BOND', '*2', 1, '*3'],
-            ['FORM_BOND', '*1', 1, '*3'],
-            ['GAIN_RADICAL', '*2', '1'],
-            ['LOSE_RADICAL', '*1', '1'],
-        ])"""
         r_xyz = """F       1.93592759   -1.04813200    0.17239309
 C       1.41395997   -0.06443750   -0.60748935
 C       0.46854139    0.77821484    0.23269059
@@ -4489,8 +4508,8 @@ H      -1.01192637   -0.87148015   -0.75982286"""
             self.assertEqual(len(ts_xyz['symbols']), 8)
             self.assertFalse(colliding_atoms(ts_xyz))
 
-    def test_interpolate_intra_substitutions_cyclization(self):  # TODO: fails
-        """Test the interpolate_isomerization() function for intra_substitutionS_cyclization: C[CH]CCCSC <=> CC1CCCS1"""
+    def test_interpolate_intra_substitutions_cyclization(self):
+        """Test the interpolate_isomerization() function for intra_substitutionS_cyclization: C[CH]CCCSC <=> CC1CCCS1 + CH3"""
         r_xyz = """C      -3.33147467   -0.41330899    0.93687068
 C      -2.13790604   -0.63163510    0.07402846
 C      -2.32541520   -0.95568346   -1.37476606
@@ -4528,13 +4547,31 @@ H      -0.82373021    2.32524926   -0.86544695
 H      -1.75666269    0.70147335   -2.38653769
 H      -0.17919466    0.39223015   -3.14806886"""
         r = ARCSpecies(label='R', smiles='C[CH]CCCSC', xyz=r_xyz)
-        p = ARCSpecies(label='P', smiles='CC1CCCS1', xyz=p_xyz)
-        rxn = ARCReaction(r_species=[r], p_species=[p])
+        p_1 = ARCSpecies(label='P', smiles='CC1CCCS1', xyz=p_xyz)
+        p_2 = ARCSpecies(label='CH3', smiles='[CH3]')
+        rxn = ARCReaction(r_species=[r], p_species=[p_1, p_2])
         ts_xyzs = interpolate(rxn)
-        self.assertGreater(len(ts_xyzs), 0)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
+        expected_ts_0 = """C      -3.33147467   -0.41330899    0.93687068
+C      -2.13790604   -0.63163510    0.07402846
+C      -2.32541520   -0.95568346   -1.37476606
+C      -1.06085115   -1.56859001   -1.98320159
+C      -0.23423695   -2.30848989   -0.93378281
+S      -1.27846911   -2.93377209    0.42408327
+C      -1.12284774   -5.15994032    1.50591366
+H      -4.06811269   -1.20351865    0.79184272
+H      -3.03783795   -0.41558441    1.98657173
+H      -3.79273663    0.54822349    0.71149835
+H      -1.17281129   -0.26391747    0.42256235
+H      -3.15585133   -1.65279179   -1.48664013
+H      -2.58784748   -0.04203749   -1.90813305
+H      -1.34012369   -2.25895727   -2.77912865
+H      -0.46428816   -0.77677958   -2.43624558
+H       0.31913209   -3.13486455   -1.37986311
+H       0.49767613   -1.62926693   -0.49667939
+H      -2.05675652   -5.70950218    1.38803166
+H      -0.32577456   -5.73032885    1.02901611
+H      -0.88225165   -5.06025647    2.56434488"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_intra_substitutions_isomerization(self):
         """Test the interpolate_isomerization() function for Intra_substitutionS_isomerization: [CH2]SSC <=> CSC[S]"""

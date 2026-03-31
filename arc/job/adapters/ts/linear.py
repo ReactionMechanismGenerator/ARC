@@ -1414,6 +1414,24 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         reactive_xyz_indices: Set[int] = set()
         for bond in list(bb) + list(fb):
             reactive_xyz_indices.update(bond)
+
+        # Guard: when the atom map causes large Cartesian displacements for
+        # reactive heavy atoms (e.g. ring traversal reversal), interpolating
+        # their Z-mat coordinates distorts the backbone.  Remove such atoms
+        # from the reactive set — keep only the truly-moving atoms (H's).
+        r_coords = np.array(r_xyz['coords'], dtype=float)
+        op_coords = np.array(op_xyz['coords'], dtype=float)
+        drop = set()
+        for idx in reactive_xyz_indices:
+            if r_xyz['symbols'][idx] != 'H':
+                disp = float(np.linalg.norm(r_coords[idx] - op_coords[idx]))
+                if disp > 1.5:
+                    drop.add(idx)
+        if drop:
+            reactive_xyz_indices -= drop
+            logger.debug(f'Linear (rxn={rxn.label}, path={i}): dropped heavy atoms {drop} '
+                         f'from reactive set (large R→P displacement, likely atom-map artifact).')
+
         # When a reactive atom sits in a ring, include its ring-bonded spectator
         # neighbors so they can track the reactive atom's motion during interpolation.
         changing_bonds = {(min(a, b), max(a, b)) for a, b in list(bb) + list(fb)}
@@ -1433,14 +1451,21 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # ring bond distances as explicit (interpolatable) Z-mat variables.
         # Only add when the reactive atom is already in the constraint tree.
         if ring_bonds:
-            constrained_atoms = {a for pair in constraints.get('R_atom', []) for a in pair}
+            # Count how many times each atom already appears in R_atom constraints.
+            # xyz_to_zmat cannot handle an atom appearing more than once as a
+            # reference, so only add a ring constraint when the reactive atom
+            # has no existing R_atom entry.
+            ref_counts: Dict[int, int] = {}
+            for pair in constraints.get('R_atom', []):
+                for a in pair:
+                    ref_counts[a] = ref_counts.get(a, 0) + 1
             existing = set(map(tuple, constraints.get('R_atom', [])))
             for rb in ring_bonds:
-                # rb = (ring_neighbor, reactive_atom): the neighbor is the constrained
-                # atom and the reactive atom is its Z-mat reference.
-                if (rb[1] in constrained_atoms
+                if (ref_counts.get(rb[1], 0) == 0
                         and rb not in existing and (rb[1], rb[0]) not in existing):
                     constraints['R_atom'].append(rb)
+                    ref_counts[rb[0]] = ref_counts.get(rb[0], 0) + 1
+                    ref_counts[rb[1]] = ref_counts.get(rb[1], 0) + 1
                 else:
                     reactive_xyz_indices.discard(rb[0])
 
@@ -1450,10 +1475,37 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # reactive atoms into proximity (e.g. O–O rotation in intra-H migrations)
         # are absent from both R and P equilibrium geometries and would never be
         # captured by interpolation alone.
-        r_xyz_na = get_near_attack_xyz(r_xyz, r_mol, bonds=list(fb))
+        # Skip near-attack when the reactive heavy atoms share a ring:
+        # they are already geometrically close and rotation distorts the ring.
+        # For H-migration bonds like (H, acceptor), check whether the H's
+        # heavy-atom donor shares a ring with the acceptor instead.
+        def _reactive_heavy_atoms_share_ring(bonds_to_check: list, mol: 'Molecule') -> bool:
+            atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+            for a, b in bonds_to_check:
+                ha, hb = a, b
+                # Replace H index with its heavy-atom neighbor (the donor/acceptor).
+                if r_xyz['symbols'][ha] == 'H':
+                    for nbr in mol.atoms[ha].bonds:
+                        ni = atom_to_idx[nbr]
+                        if r_xyz['symbols'][ni] != 'H':
+                            ha = ni
+                            break
+                if r_xyz['symbols'][hb] == 'H':
+                    for nbr in mol.atoms[hb].bonds:
+                        ni = atom_to_idx[nbr]
+                        if r_xyz['symbols'][ni] != 'H':
+                            hb = ni
+                            break
+                for ring_set in _ring_sets:
+                    if ha in ring_set and hb in ring_set:
+                        return True
+            return False
+        fb_in_ring = _reactive_heavy_atoms_share_ring(list(fb), r_mol)
+        bb_in_ring = _reactive_heavy_atoms_share_ring(list(bb), r_mol)
+        r_xyz_na = r_xyz if fb_in_ring else get_near_attack_xyz(r_xyz, r_mol, bonds=list(fb))
         # For the product frame, approach-relevant torsions involve the breaking
         # bonds (atoms that are bonded in R but separate in P).
-        op_xyz_na = get_near_attack_xyz(op_xyz, mapped_p_mol, bonds=list(bb))
+        op_xyz_na = op_xyz if bb_in_ring else get_near_attack_xyz(op_xyz, mapped_p_mol, bonds=list(bb))
 
         # Ring-closure fast path: when the forming-bond distance exceeds the threshold,
         # the reactive sites are too far apart for Z-matrix interpolation to produce a
@@ -1647,12 +1699,17 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 constraints = get_r_constraints(expected_breaking_bonds=list(bb),
                                                 expected_forming_bonds=list(fb))
                 if ring_bonds_fb:
-                    constrained_atoms_fb = {a for pair in constraints.get('R_atom', []) for a in pair}
+                    ref_counts_fb: Dict[int, int] = {}
+                    for pair in constraints.get('R_atom', []):
+                        for a in pair:
+                            ref_counts_fb[a] = ref_counts_fb.get(a, 0) + 1
                     existing_fb = set(map(tuple, constraints.get('R_atom', [])))
                     for rb in ring_bonds_fb:
-                        if (rb[1] in constrained_atoms_fb
+                        if (ref_counts_fb.get(rb[1], 0) == 0
                                 and rb not in existing_fb and (rb[1], rb[0]) not in existing_fb):
                             constraints['R_atom'].append(rb)
+                            ref_counts_fb[rb[0]] = ref_counts_fb.get(rb[0], 0) + 1
+                            ref_counts_fb[rb[1]] = ref_counts_fb.get(rb[1], 0) + 1
                         else:
                             reactive_xyz_indices.discard(rb[0])
 
