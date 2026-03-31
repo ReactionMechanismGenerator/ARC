@@ -20,6 +20,7 @@ import arc.species.converter as converter
 from arc.common import ARC_PATH, ARC_TESTING_PATH, almost_equal_coords, almost_equal_coords_lists, almost_equal_lists
 from arc.exceptions import ConverterError
 from arc.molecule.molecule import Molecule
+from arc.species.converter import order_mol_by_atom_map
 from arc.species.perceive import perceive_molecule_from_xyz
 from arc.species.species import ARCSpecies
 from arc.species.vectors import calculate_dihedral_angle, calculate_param
@@ -5104,6 +5105,92 @@ H      -1.88123946   -2.00923795    0.23313156"""
                                                         isotopes=aspirin_xyz["isotopes"])
         score = converter.kabsch(aspirin_xyz, aspirin_perturbed_xyz)
         self.assertGreater(score, 0.01)
+
+    def test_order_mol_by_atom_map_identity(self):
+        """Identity map: result matches the element ordering of a plain deep copy."""
+        mol = ARCSpecies(label='ethanol', smiles='CCO').mol
+        n = len(mol.atoms)
+        # Deep-copy gives the canonical post-copy ordering; identity map must not change it.
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        result = order_mol_by_atom_map(mol, list(range(n)))
+        result_symbols = [a.element.symbol for a in result.atoms]
+        self.assertEqual(result_symbols, ref_symbols,
+                         msg='Identity map must not alter the atom sequence relative to a plain copy.')
+
+    def test_order_mol_by_atom_map_swap_two_atoms(self):
+        """Swapping two positions in atom_map transposes those atoms in the result."""
+        mol = ARCSpecies(label='methanol', smiles='CO').mol
+        n = len(mol.atoms)
+        # Reference copy to get the stable post-copy ordering.
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        # Find a pair of positions with different element symbols.
+        pos_a, pos_b = next(
+            (i, j) for i in range(n) for j in range(i + 1, n)
+            if ref_symbols[i] != ref_symbols[j]
+        )
+        atom_map = list(range(n))
+        atom_map[pos_a], atom_map[pos_b] = atom_map[pos_b], atom_map[pos_a]
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual(result.atoms[pos_a].element.symbol, ref_symbols[pos_b],
+                         msg=f'Position {pos_a} should hold the atom from position {pos_b}.')
+        self.assertEqual(result.atoms[pos_b].element.symbol, ref_symbols[pos_a],
+                         msg=f'Position {pos_b} should hold the atom from position {pos_a}.')
+        for i in range(n):
+            if i not in (pos_a, pos_b):
+                self.assertEqual(result.atoms[i].element.symbol, ref_symbols[i])
+
+    def test_order_mol_by_atom_map_deep_copy(self):
+        """The original molecule is not modified by reordering."""
+        mol = ARCSpecies(label='methanol', smiles='CO').mol
+        original_symbols = [a.element.symbol for a in mol.atoms]
+        n = len(mol.atoms)
+        order_mol_by_atom_map(mol, list(range(n - 1, -1, -1)))  # reverse
+        after_symbols = [a.element.symbol for a in mol.atoms]
+        self.assertEqual(original_symbols, after_symbols,
+                         msg='order_mol_by_atom_map must not mutate the input molecule.')
+
+    def test_order_mol_by_atom_map_bond_topology_preserved(self):
+        """Bond connectivity survives the atom reorder."""
+        mol = ARCSpecies(label='propane', smiles='CCC').mol
+        n = len(mol.atoms)
+
+        def bond_multiset(m):
+            bonds = []
+            for atom in m.atoms:
+                for nbr in atom.bonds.keys():
+                    bonds.append(tuple(sorted([atom.element.symbol, nbr.element.symbol])))
+            return sorted(bonds)
+
+        original_bonds = bond_multiset(mol)
+        atom_map = [(i + 1) % n for i in range(n)]
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual(bond_multiset(result), original_bonds,
+                         msg='Bond multiset must be unchanged after reordering.')
+        self.assertEqual(len(result.atoms), n)
+
+    def test_order_mol_by_atom_map_length_mismatch_raises(self):
+        """ValueError is raised when atom_map length does not match mol size."""
+        mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1])  # too short
+
+    def test_order_mol_by_atom_map_out_of_range_raises(self):
+        """ValueError is raised when any atom_map index is out of range."""
+        mol = ARCSpecies(label='water', smiles='O').mol  # 3 atoms
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1, 5])  # index 5 is out of range
+        with self.assertRaises(ValueError):
+            order_mol_by_atom_map(mol, [0, 1, -1])  # negative index
+
+    def test_order_mol_by_atom_map_full_reversal(self):
+        """A reverse map produces the reverse of the plain deep-copy atom sequence."""
+        mol = ARCSpecies(label='ethanol', smiles='CCO').mol
+        n = len(mol.atoms)
+        ref_symbols = [a.element.symbol for a in mol.copy(deep=True).atoms]
+        atom_map = list(range(n - 1, -1, -1))
+        result = order_mol_by_atom_map(mol, atom_map)
+        self.assertEqual([a.element.symbol for a in result.atoms],
+                         list(reversed(ref_symbols)))
 
     @classmethod
     def tearDownClass(cls):
