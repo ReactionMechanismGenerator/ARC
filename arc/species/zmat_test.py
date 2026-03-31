@@ -9,6 +9,7 @@ import unittest
 
 import arc.species.zmat as zmat
 from arc.exceptions import ZMatError
+from arc.molecule.molecule import Molecule
 from arc.species.converter import str_to_xyz
 from arc.species.species import ARCSpecies
 
@@ -2304,6 +2305,97 @@ H   1.3230  -1.0712   1.2760""")
         # CO2 is linear: O(0) - C(1) - O(2) with angle ~180° at C.
         with self.assertRaises(ValueError):
             zmat.xyz_to_zmat(self.co2, anchors=[0, 1, 2])
+
+    def test_find_smart_anchors_spectator_backbone(self):
+        """
+        Test 1: 1-pentanol (CCCCCO) with a breaking C-O bond.
+
+        The reactive core is {O, C_bonded_to_O}.  The algorithm must return 3 contiguous
+        carbon atoms from the spectator alkyl tail — none of which belong to the core.
+        """
+        mol = Molecule(smiles='CCCCCO')
+        connectivity = zmat.get_connectivity(mol)
+
+        # Locate the O atom and the C directly bonded to it.
+        o_idx = next(i for i, a in enumerate(mol.atoms) if a.symbol == 'O')
+        c_adj_o = next(
+            mol.atoms.index(nbr)
+            for nbr in mol.atoms[o_idx].edges
+            if nbr.symbol == 'C'
+        )
+        breaking_bonds = [(o_idx, c_adj_o)]
+        core = {o_idx, c_adj_o}
+
+        result = zmat.find_smart_anchors(mol, breaking_bonds=breaking_bonds)
+
+        # Must return exactly 3 anchors.
+        self.assertEqual(len(result), 3, msg=f'Expected 3 anchors, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # All anchors are spectators (not in reactive core).
+        for idx in result:
+            self.assertNotIn(idx, core, msg=f'Anchor {idx} is in the reactive core {core}')
+        # All anchors are carbon atoms.
+        for idx in result:
+            self.assertEqual(mol.atoms[idx].symbol, 'C',
+                             msg=f'Anchor {idx} is {mol.atoms[idx].symbol}, expected C')
+        # Contiguous chain: result[k] bonded to result[k+1].
+        for k in range(len(result) - 1):
+            self.assertIn(result[k + 1], connectivity[result[k]],
+                          msg=f'Atoms {result[k]} and {result[k+1]} are not bonded')
+
+    def test_find_smart_anchors_fully_reactive(self):
+        """
+        Test 2: Hydrogen peroxide (OO) with the O-O bond breaking.
+
+        The entire heavy-atom backbone is in the reactive core.  The algorithm must fall
+        back and still return 3 unique, contiguous indices (two O atoms and one H).
+        """
+        mol = Molecule(smiles='OO')
+        connectivity = zmat.get_connectivity(mol)
+
+        # Locate the two O atoms.
+        o_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'O']
+        self.assertEqual(len(o_indices), 2, msg='Expected exactly 2 O atoms in H2O2')
+        breaking_bonds = [tuple(o_indices)]
+
+        result = zmat.find_smart_anchors(mol, breaking_bonds=breaking_bonds)
+
+        # Must return exactly 3 anchors.
+        self.assertEqual(len(result), 3, msg=f'Expected 3 anchors, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # The result must contain both O atoms and exactly one H.
+        result_symbols = [mol.atoms[i].symbol for i in result]
+        self.assertEqual(result_symbols.count('O'), 2,
+                         msg=f'Expected 2 O atoms in result, got {result_symbols}')
+        self.assertEqual(result_symbols.count('H'), 1,
+                         msg=f'Expected 1 H atom in result, got {result_symbols}')
+        # Contiguous chain.
+        for k in range(len(result) - 1):
+            self.assertIn(result[k + 1], connectivity[result[k]],
+                          msg=f'Atoms {result[k]} and {result[k+1]} are not bonded')
+
+    def test_find_smart_anchors_diatomic(self):
+        """
+        Test 3: Carbon monoxide ([C-]#[O+]) — a diatomic molecule.
+
+        The function must return exactly 2 indices without raising an IndexError.
+        """
+        mol = Molecule(smiles='[C-]#[O+]')
+        connectivity = zmat.get_connectivity(mol)
+
+        result = zmat.find_smart_anchors(mol)
+
+        # Diatomic: can only return 2 anchors.
+        self.assertEqual(len(result), 2, msg=f'Expected 2 anchors for diatomic, got {result}')
+        # No duplicates.
+        self.assertEqual(len(result), len(set(result)))
+        # Both atoms of the molecule are present.
+        self.assertEqual(sorted(result), [0, 1])
+        # They must be bonded.
+        self.assertIn(result[1], connectivity[result[0]],
+                      msg=f'Atoms {result[0]} and {result[1]} are not bonded')
 
 
 if __name__ == '__main__':
