@@ -68,6 +68,8 @@ class TestReactionFamily(unittest.TestCase):
         rxn_0a = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'), ARCSpecies(label='O2', smiles='[O][O]')],
                              p_species=[ARCSpecies(label='CH3', smiles='[CH3]'), ARCSpecies(label='HO2', smiles='O[O]')])
         products = get_reaction_family_products(rxn_0a)
+        # Sort by family name to ensure deterministic order
+        products.sort(key=lambda d: (d['family'], tuple(sorted(d['r_label_map'].items()))))
         expected_products = [{'discovered_in_reverse': False,
                               'family': 'H_Abstraction',
                               'group_labels': ('X_H', 'Y_rad'),
@@ -259,6 +261,7 @@ H      -0.83821148   -0.26602407    0.00000000"""
         rxn_3 = ARCReaction(r_species=[ARCSpecies(label='NH', smiles='[NH]'), ARCSpecies(label='N2H3', smiles='N[NH]')],
                              p_species=[ARCSpecies(label='NH2', smiles='[NH2]'), ARCSpecies(label='N2H2(T)', smiles='[NH][NH]')])
         products = get_reaction_family_products(rxn_3)
+        products.sort(key=lambda d: (d['family'], tuple(sorted(d['r_label_map'].items()))))
         expected_products = [{'family': 'H_Abstraction',
                               'group_labels': ('Y_1centerbirad', 'Xrad_H'),
                               'products': [Molecule(smiles="[NH-][NH+]"), Molecule(smiles="[NH2]")],
@@ -1064,6 +1067,213 @@ H       1.24252625    0.91583948   -0.84155142"""
                                                       mol_2=spc_2.mol,
                                                       )
         self.assertEqual(isomorphic_subgraph, {0: '*3', 4: '*1', 7: '*2'})
+
+    def test_get_reaction_family_products_h_abstraction_nitrogen(self):
+        """Test determining the H_Abstraction family for nitrogen-containing reactions.
+        These reactions are marked forbidden in the RMG-database but should still be identifiable."""
+        reactions = [
+            ('[NH][NH]', 'N', '[NH2]', '[NH]N', 'H2N2_116 + ammonia_5 <=> NH2_3 + H3N2_4'),
+            ('[NH][NH]', 'NN', '[NH]N', '[NH]N', 'H2N2_116 + H4N2_1 <=> H3N2_4 + H3N2_4'),
+            ('N=N', '[NH][NH]', '[N]=N', '[NH]N', 'N2H2_19 + H2N2_116 <=> HN2_6 + H3N2_4'),
+            ('[H]', '[NH]N', '[H][H]', '[NH][NH]', 'H_8 + H3N2_4 <=> H2_2 + H2N2_116'),
+        ]
+        for r1_smi, r2_smi, p1_smi, p2_smi, label in reactions:
+            rxn = ARCReaction(r_species=[ARCSpecies(label='R1', smiles=r1_smi),
+                                         ARCSpecies(label='R2', smiles=r2_smi)],
+                              p_species=[ARCSpecies(label='P1', smiles=p1_smi),
+                                         ARCSpecies(label='P2', smiles=p2_smi)])
+            products = get_reaction_family_products(rxn, rmg_family_set=['H_Abstraction'])
+            self.assertGreater(len(products), 0, f'No H_Abstraction match for {label}')
+            self.assertTrue(all(p['family'] == 'H_Abstraction' for p in products))
+
+    def test_get_reaction_family_products_1_2_cycloaddition(self):
+        """Test determining the 1+2_Cycloaddition family for singlet CH2 + C=C => cyclopropane"""
+        carbene = ARCSpecies(label='CH2', adjlist="""multiplicity 1
+1 C u0 p1 c0 {2,S} {3,S}
+2 H u0 p0 c0 {1,S}
+3 H u0 p0 c0 {1,S}
+""")
+        rxn = ARCReaction(r_species=[carbene, ARCSpecies(label='C2H4', smiles='C=C')],
+                          p_species=[ARCSpecies(label='cC3H6', smiles='C1CC1')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['1+2_Cycloaddition'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == '1+2_Cycloaddition' for p in products))
+        self.assertFalse(products[0]['own_reverse'])
+
+    def test_get_reaction_family_products_1_2_cycloaddition_o_atom(self):
+        """Test determining the 1+2_Cycloaddition family for O atom + alkene => epoxide"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C3H6', smiles='CC=C'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=1)],
+                          p_species=[ARCSpecies(label='C3H6O', smiles='CC1OC1')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['1+2_Cycloaddition'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == '1+2_Cycloaddition' for p in products))
+        # Also verify with the default family set (was crashing before due to unsupported atom types)
+        products_default = get_reaction_family_products(rxn)
+        self.assertTrue(any(p['family'] == '1+2_Cycloaddition' for p in products_default))
+
+        for r_smi, p_smi in [('C=C(C)C', 'CC1(C)CO1'), ('CC=CC', 'CC1OC1C'), ('CC(C)=C(C)C', 'CC1(C)OC1(C)C')]:
+            rxn_i = ARCReaction(r_species=[ARCSpecies(label='R', smiles=r_smi),
+                                           ARCSpecies(label='O', smiles='[O]', multiplicity=1)],
+                                p_species=[ARCSpecies(label='P', smiles=p_smi)])
+            products_i = get_reaction_family_products(rxn_i, rmg_family_set=['1+2_Cycloaddition'])
+            self.assertGreater(len(products_i), 0, f'No 1+2_Cycloaddition match for {r_smi} + O => {p_smi}')
+            self.assertTrue(all(p['family'] == '1+2_Cycloaddition' for p in products_i))
+
+    def test_get_reaction_family_products_no_crash_on_unsupported_groups(self):
+        """Test that scanning all families doesn't crash on families with unsupported atom types (e.g., Na)"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='r1', smiles='[CH2]'),
+                                     ARCSpecies(label='r2', smiles='C=C')],
+                          p_species=[ARCSpecies(label='p1', smiles='C1CC1')])
+        # This should not raise an exception even though some families have unsupported atom types
+        products = get_reaction_family_products(rxn)
+        self.assertIsInstance(products, list)
+
+    def test_get_reaction_family_products_h_abstraction_2(self):
+        """Test determining the H_Abstraction family for [O]C(=C=O)C=O + C1CO1 <=> O=C=C(O)C=O + [CH]1CO1"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R1', smiles='[O]C(=C=O)C=O'),
+                                     ARCSpecies(label='R2', smiles='C1CO1')],
+                          p_species=[ARCSpecies(label='P1', smiles='O=C=C(O)C=O'),
+                                     ARCSpecies(label='P2', smiles='[CH]1CO1')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['H_Abstraction'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'H_Abstraction' for p in products))
+        self.assertTrue(products[0]['own_reverse'])
+
+    def test_get_reaction_family_products_h_abstraction_from_xyz(self):
+        """Test determining H_Abstraction when species are defined with XYZ only (no SMILES).
+        Regression test: XYZ perception of O=C=C(O)C=O gives O=C[C-](O)C#[O+] which has
+        different Lewis structure but same InChI. Family recognition must still work."""
+        r1 = ARCSpecies(label='R1', multiplicity=2, charge=0,
+                        xyz={'symbols': ('O', 'C', 'C', 'O', 'C', 'O', 'H'),
+                             'isotopes': (16, 12, 12, 16, 12, 16, 1),
+                             'coords': ((0.2957, 1.7744, -0.2652),
+                                        (0.1775, 0.5509, -0.0655),
+                                        (1.3133, -0.2016, 0.2938),
+                                        (2.2819, -0.7248, 0.5787),
+                                        (-1.0599, -0.2683, -0.1587),
+                                        (-1.0578, -1.4528, 0.0574),
+                                        (-1.9632, 0.3007, -0.4391))})
+        r2 = ARCSpecies(label='R2', multiplicity=1, charge=0,
+                        xyz={'symbols': ('C', 'C', 'O', 'H', 'H', 'H', 'H'),
+                             'isotopes': (12, 12, 16, 1, 1, 1, 1),
+                             'coords': ((0.0962, -0.6686, 0.4416),
+                                        (0.0324, -0.0447, -0.8663),
+                                        (-0.1504, 0.6716, 0.3839),
+                                        (1.1107, -0.8545, 0.788),
+                                        (-0.6217, -1.3284, 0.9242),
+                                        (0.9608, 0.1789, -1.378),
+                                        (-0.87, -0.1102, -1.4639))})
+        p1 = ARCSpecies(label='P1', multiplicity=1, charge=0,
+                        xyz={'symbols': ('O', 'C', 'C', 'O', 'C', 'O', 'H', 'H'),
+                             'isotopes': (16, 12, 12, 16, 12, 16, 1, 1),
+                             'coords': ((-0.435, -1.5213, -0.12),
+                                        (-0.0438, -0.2523, 0.0186),
+                                        (-0.0254, 0.2851, 1.2551),
+                                        (0.0263, 0.7305, 2.3095),
+                                        (0.3338, 0.6205, -1.0876),
+                                        (0.2619, 0.2956, -2.2471),
+                                        (0.6902, 1.6267, -0.7884),
+                                        (-1.3368, -1.5428, -0.4486))})
+        p2 = ARCSpecies(label='P2', multiplicity=2, charge=0,
+                        xyz={'symbols': ('C', 'C', 'O', 'H', 'H', 'H'),
+                             'isotopes': (12, 12, 16, 1, 1, 1),
+                             'coords': ((0.8244, -0.2363, -0.2765),
+                                        (-0.5734, 0.0492, -0.0604),
+                                        (0.2695, -0.6651, 0.8832),
+                                        (1.7087, 0.3935, -0.2928),
+                                        (-0.9043, 1.0205, 0.2951),
+                                        (-1.3249, -0.5618, -0.5486))})
+        rxn = ARCReaction(r_species=[r1, r2], p_species=[p1, p2])
+        products = get_reaction_family_products(rxn, rmg_family_set=['H_Abstraction'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'H_Abstraction' for p in products))
+        self.assertTrue(products[0]['own_reverse'])
+
+    def test_get_reaction_family_products_intra_disproportionation(self):
+        """Test determining the Intra_Disproportionation family for a singlet biradical reaction"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='R', smiles='C=C1[CH]C[C]2C=CC=CC21', multiplicity=1)],
+                          p_species=[ARCSpecies(label='P', smiles='C=C1CCC2=C1C=CC=C2')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['Intra_Disproportionation'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'Intra_Disproportionation' for p in products))
+        self.assertTrue(all(not p['own_reverse'] for p in products))
+        self.assertTrue(all(not p['discovered_in_reverse'] for p in products))
+        # Check that at least one product matches the expected product
+        self.assertTrue(any(any(mol.is_isomorphic(Molecule(smiles='C=C1CCC2=C1C=CC=C2'))
+                                for mol in p['products']) for p in products))
+        self.assertFalse(products[0]['own_reverse'])
+
+    def test_get_reaction_family_products_bimolec_hydroperoxide_decomposition(self):
+        """Test determining the Bimolec_Hydroperoxide_Decomposition family for HOOH + HOOH => HOO. + HO. + H2O"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='HOOH_1', smiles='OO'), ARCSpecies(label='HOOH_2', smiles='OO')],
+                          p_species=[ARCSpecies(label='HOOrad', smiles='O[O]'),
+                                     ARCSpecies(label='HOrad', smiles='[OH]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['Bimolec_Hydroperoxide_Decomposition'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'Bimolec_Hydroperoxide_Decomposition' for p in products))
+        self.assertFalse(products[0]['own_reverse'])
+        # Me3COOH + Me3COOH => Me3COO. + Me3CO. + H2O
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='R1', smiles='CC(C)(C)OO'),
+                                       ARCSpecies(label='R2', smiles='CC(C)(C)OO')],
+                            p_species=[ARCSpecies(label='P1', smiles='CC(C)(C)O[O]'),
+                                       ARCSpecies(label='P2', smiles='CC(C)(C)[O]'),
+                                       ARCSpecies(label='P3', smiles='O')])
+        products_2 = get_reaction_family_products(rxn_2, rmg_family_set=['Bimolec_Hydroperoxide_Decomposition'])
+        self.assertGreater(len(products_2), 0)
+        self.assertTrue(all(p['family'] == 'Bimolec_Hydroperoxide_Decomposition' for p in products_2))
+
+    def test_get_reaction_family_products_birad_r_recombination(self):
+        """Test determining the Birad_R_Recombination family for H + O(triplet) => OH"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                     ARCSpecies(label='O', smiles='[O]', multiplicity=3)],
+                          p_species=[ARCSpecies(label='OH', smiles='[OH]')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['Birad_R_Recombination'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'Birad_R_Recombination' for p in products))
+        self.assertFalse(products[0]['own_reverse'])
+        # S(triplet) + NO => SNO
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='S', smiles='[S]', multiplicity=3),
+                                       ARCSpecies(label='NO', smiles='[N]=O')],
+                            p_species=[ARCSpecies(label='SNO', smiles='S=N[O]')])
+        products_2 = get_reaction_family_products(rxn_2, rmg_family_set=['Birad_R_Recombination'])
+        self.assertGreater(len(products_2), 0)
+        self.assertTrue(all(p['family'] == 'Birad_R_Recombination' for p in products_2))
+
+    def test_get_reaction_family_products_birad_recombination(self):
+        """Test determining the Birad_recombination family for [CH2]CC[CH2] => cyclobutane"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C4H8', smiles='[CH2]CC[CH2]')],
+                          p_species=[ARCSpecies(label='cC4H8', smiles='C1CCC1')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['Birad_recombination'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'Birad_recombination' for p in products))
+        self.assertFalse(products[0]['own_reverse'])
+        # [CH2]CCC[CH2] => cyclopentane
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='C5H10', smiles='[CH2]CCC[CH2]')],
+                            p_species=[ARCSpecies(label='cC5H10', smiles='C1CCCC1')])
+        products_2 = get_reaction_family_products(rxn_2, rmg_family_set=['Birad_recombination'])
+        self.assertGreater(len(products_2), 0)
+        self.assertTrue(all(p['family'] == 'Birad_recombination' for p in products_2))
+
+    def test_get_reaction_family_products_br_abstraction(self):
+        """Test determining the Br_Abstraction family for H + CH3Br => HBr + CH3"""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                     ARCSpecies(label='CH3Br', smiles='CBr')],
+                          p_species=[ARCSpecies(label='HBr', smiles='Br'),
+                                     ARCSpecies(label='CH3', smiles='[CH3]')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['Br_Abstraction'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'Br_Abstraction' for p in products))
+        self.assertTrue(products[0]['own_reverse'])
+        # CH3 + C=C(C)Br => C=[C]C + CH3Br
+        rxn_2 = ARCReaction(r_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                       ARCSpecies(label='C3H5Br', smiles='C=C(C)Br')],
+                            p_species=[ARCSpecies(label='C3H5', smiles='C=[C]C'),
+                                       ARCSpecies(label='CH3Br', smiles='CBr')])
+        products_2 = get_reaction_family_products(rxn_2, rmg_family_set=['Br_Abstraction'])
+        self.assertGreater(len(products_2), 0)
+        self.assertTrue(all(p['family'] == 'Br_Abstraction' for p in products_2))
 
     def test_check_family_name(self):
         """Test check family name function"""
