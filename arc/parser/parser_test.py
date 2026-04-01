@@ -1001,5 +1001,45 @@ H      -1.69381305    0.40788834    0.90078104"""
         self.assertEqual(active, {'e_o': (5, 4), 'occ': [3, 1, 1, 0, 1, 0, 0, 0], 'closed': [1, 0, 0, 0, 0, 0, 0, 0]})
 
 
+    def test_parse_opt_steps(self):
+        """Test parsing the number of optimization steps from various ESS output files."""
+        # Gaussian opt
+        path1 = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        path2 = os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out')
+        path3 = os.path.join(ARC_TESTING_PATH, 'opt', 'TS_nC3H7-iC3H7.out')
+        self.assertEqual(parser.parse_opt_steps(path1), 4)
+        self.assertEqual(parser.parse_opt_steps(path2), 3)
+        self.assertEqual(parser.parse_opt_steps(path3), 4)
+
+        # Gaussian freq files include a single verification opt step
+        path4 = os.path.join(ARC_TESTING_PATH, 'freq', 'iC3H7.out')
+        self.assertEqual(parser.parse_opt_steps(path4), 1)
+
+    def test_parse_ess_version(self):
+        """Test parsing the ESS software version string from various ESS output files."""
+        # Gaussian
+        path1 = os.path.join(ARC_TESTING_PATH, 'opt', 'iC3H7.out')
+        self.assertEqual(parser.parse_ess_version(path1), 'Gaussian 09, Revision D.01')
+
+        path2 = os.path.join(ARC_TESTING_PATH, 'opt', 'nC3H7.out')
+        self.assertEqual(parser.parse_ess_version(path2), 'Gaussian 09, Revision D.01')
+
+        # ORCA 5
+        path3 = os.path.join(ARC_TESTING_PATH, 'freq', 'orca_neg_freq_ts.out')
+        self.assertEqual(parser.parse_ess_version(path3), 'ORCA 5.0.4')
+
+        # ORCA 6
+        path3b = os.path.join(ARC_TESTING_PATH, 'freq', 'orca6_example.out')
+        self.assertEqual(parser.parse_ess_version(path3b), 'ORCA 6.0.0')
+
+        # Q-Chem
+        path4 = os.path.join(ARC_TESTING_PATH, 'N2H4_opt_QChem.out')
+        self.assertEqual(parser.parse_ess_version(path4), 'Q-Chem 4.4')
+
+        # Molpro
+        path5 = os.path.join(ARC_TESTING_PATH, 'freq', 'CH2O_freq_molpro.out')
+        self.assertEqual(parser.parse_ess_version(path5), 'Molpro 2015.1.37')
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))
