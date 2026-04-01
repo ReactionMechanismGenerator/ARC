@@ -1293,6 +1293,12 @@ def plot_2d_rotor_scan(results: dict,
     if len(results['scans']) != 2:
         raise InputError(f'results must represent a 2D rotor, got {len(results["scans"])}D')
 
+    # Dispatch to sparse plotting for adaptive scans
+    if is_sparse_2d_scan(results):
+        _plot_2d_rotor_scan_sparse(results, path=path, label=label, cmap=cmap,
+                                   resolution=resolution, original_dihedrals=original_dihedrals)
+        return
+
     results['directed_scan'] = clean_scan_results(results['directed_scan'])
 
     # phis0 and phis1 correspond to columns and rows in energies, respectively
@@ -1357,9 +1363,9 @@ def plot_2d_rotor_scan(results: dict,
     label = ' for ' + label if label else ''
     plt.title(f'2D scan energies (kJ/mol){label}')
     min_x = min_y = -180
-    plt.xlim = (min_x, min_x + 360)
+    plt.gca().set_xlim(min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
-    plt.ylim = (min_y, min_y + 360)
+    plt.gca().set_ylim(min_y, min_y + 360)
     plt.yticks(np.arange(min_y, min_y + 361, step=60))
 
     if mark_lowest_conformations:
@@ -1371,6 +1377,207 @@ def plot_2d_rotor_scan(results: dict,
 
     if path is not None:
         fig_name = f'{results["directed_scan_type"]}_{results["scans"]}.png'
+        fig_path = os.path.join(path, fig_name)
+        plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait',
+                    format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
+
+    plt.show()
+    plt.close(fig=fig)
+
+
+def is_sparse_2d_scan(results: dict) -> bool:
+    """
+    Detect whether a 2D scan results dict represents a sparse/adaptive scan.
+
+    A scan is considered sparse if the results contain
+    ``sampling_policy == 'adaptive'``.
+
+    Args:
+        results (dict): The results dictionary from a 2D directed scan.
+
+    Returns:
+        bool: ``True`` if the scan is sparse/adaptive.
+    """
+    return results.get('sampling_policy') == 'adaptive'
+
+
+def extract_sparse_2d_points(results: dict) -> dict:
+    """
+    Extract sampled point coordinates and energies from a sparse 2D scan result.
+
+    Args:
+        results (dict): The results dictionary from a 2D directed scan.
+
+    Returns:
+        dict: A dictionary with keys ``'x'``, ``'y'``, ``'energy'`` (lists of floats for
+              completed points with non-None energy), plus ``'failed_points'`` and
+              ``'invalid_points'`` (lists of ``[x, y]`` pairs).
+    """
+    xs, ys, energies = [], [], []
+    for key, entry in results.get('directed_scan', {}).items():
+        e = entry.get('energy')
+        if e is not None:
+            xs.append(float(key[0]))
+            ys.append(float(key[1]))
+            energies.append(float(e))
+    summary = results.get('adaptive_scan_summary', {})
+    return {
+        'x': xs,
+        'y': ys,
+        'energy': energies,
+        'failed_points': summary.get('failed_points', []),
+        'invalid_points': summary.get('invalid_points', []),
+    }
+
+
+def interpolate_sparse_2d_scan(points_x: list,
+                               points_y: list,
+                               energies: list,
+                               grid_resolution: float = 2.0,
+                               ) -> tuple:
+    """
+    Interpolate sparse 2D scan data onto a dense grid for contour plotting.
+
+    Uses ``scipy.interpolate.griddata`` with periodic boundary augmentation
+    to reduce artifacts at the -180/+180 wrap boundary.
+
+    Args:
+        points_x (list): Sampled dihedral angles for dimension 0 (degrees).
+        points_y (list): Sampled dihedral angles for dimension 1 (degrees).
+        energies (list): Energy values at sampled points (kJ/mol).
+        grid_resolution (float): Spacing of the dense output grid in degrees.
+
+    Returns:
+        tuple: ``(grid_x, grid_y, grid_energies)`` where each is a 2D numpy array
+               suitable for ``plt.contourf``.
+    """
+    from scipy.interpolate import griddata
+
+    px = np.array(points_x, dtype=np.float64)
+    py = np.array(points_y, dtype=np.float64)
+    pe = np.array(energies, dtype=np.float64)
+
+    # Augment with periodic image points for wrap-around
+    aug_x, aug_y, aug_e = list(px), list(py), list(pe)
+    for dx in (-360.0, 0.0, 360.0):
+        for dy in (-360.0, 0.0, 360.0):
+            if dx == 0.0 and dy == 0.0:
+                continue
+            aug_x.extend(px + dx)
+            aug_y.extend(py + dy)
+            aug_e.extend(pe)
+    aug_x = np.array(aug_x)
+    aug_y = np.array(aug_y)
+    aug_e = np.array(aug_e)
+
+    # Dense grid from -180 to 180
+    n_pts = int(360.0 / grid_resolution) + 1
+    gx = np.linspace(-180.0, 180.0, n_pts)
+    gy = np.linspace(-180.0, 180.0, n_pts)
+    grid_x, grid_y = np.meshgrid(gx, gy, indexing='ij')
+
+    # Interpolate: try cubic, fall back to linear, then nearest
+    pts = np.column_stack([aug_x, aug_y])
+    grid_e = None
+    for method in ('cubic', 'linear'):
+        try:
+            grid_e = griddata(pts, aug_e, (grid_x, grid_y), method=method)
+            if not np.all(np.isnan(grid_e)):
+                break
+        except (ValueError, Exception):
+            grid_e = None
+    if grid_e is None or np.all(np.isnan(grid_e)):
+        grid_e = griddata(pts, aug_e, (grid_x, grid_y), method='nearest')
+    # Fill any remaining NaN with nearest-neighbor
+    mask = np.isnan(grid_e)
+    if mask.any():
+        grid_nearest = griddata(pts, aug_e, (grid_x, grid_y), method='nearest')
+        grid_e[mask] = grid_nearest[mask]
+
+    return grid_x, grid_y, grid_e
+
+
+def _plot_2d_rotor_scan_sparse(results: dict,
+                               path: Optional[str] = None,
+                               label: str = '',
+                               cmap: str = 'Blues',
+                               resolution: int = 90,
+                               original_dihedrals: Optional[List[float]] = None,
+                               ):
+    """
+    Plot a sparse/adaptive 2D rotor scan using interpolation for contours
+    and overlaying sampled, failed, and invalid points.
+
+    This is called internally by :func:`plot_2d_rotor_scan` when the results
+    are detected as sparse.
+
+    Args:
+        results (dict): The results dictionary from a 2D directed scan.
+        path (str, optional): Folder path to save the plot image.
+        label (str, optional): Species label.
+        cmap (str, optional): Matplotlib colormap name.
+        resolution (int, optional): Image DPI.
+        original_dihedrals (list, optional): Original dihedral angles for marker.
+    """
+    data = extract_sparse_2d_points(results)
+    xs, ys, energies = data['x'], data['y'], data['energy']
+
+    if len(xs) < 3:
+        logger.warning(f'Not enough sparse points to plot 2D scan ({len(xs)} points)')
+        return
+
+    # Normalize energies to min = 0
+    e_min = min(energies)
+    energies_norm = [e - e_min for e in energies]
+
+    # Interpolate to dense grid
+    grid_x, grid_y, grid_e = interpolate_sparse_2d_scan(xs, ys, energies_norm, grid_resolution=2.0)
+
+    fig = plt.figure(num=None, figsize=(12, 8), dpi=resolution, facecolor='w', edgecolor='k')
+
+    plt.contourf(grid_x, grid_y, grid_e, 20, cmap=cmap)
+    plt.colorbar()
+    contours = plt.contour(grid_x, grid_y, grid_e, 4, colors='black')
+    plt.clabel(contours, inline=True, fontsize=8)
+
+    # Overlay sampled points
+    plt.scatter(xs, ys, c='black', s=12, zorder=5, label='sampled')
+
+    # Overlay failed points
+    failed = data.get('failed_points', [])
+    if failed:
+        fx = [p[0] for p in failed]
+        fy = [p[1] for p in failed]
+        plt.scatter(fx, fy, c='red', marker='x', s=40, zorder=6, label='failed')
+
+    # Overlay invalid points
+    invalid = data.get('invalid_points', [])
+    if invalid:
+        ix = [p[0] for p in invalid]
+        iy = [p[1] for p in invalid]
+        plt.scatter(ix, iy, edgecolors='orange', marker='s', facecolors='none',
+                    s=40, zorder=6, label='invalid')
+
+    # Mark original dihedral
+    if original_dihedrals is not None and len(original_dihedrals) >= 2:
+        plt.plot(original_dihedrals[0], original_dihedrals[1], color='r',
+                 marker='.', markersize=15, linewidth=0, label='original')
+
+    plt.xlabel(f'Dihedral 1 for {results["scans"][0]} (degrees)')
+    plt.ylabel(f'Dihedral 2 for {results["scans"][1]} (degrees)')
+    label_str = ' for ' + label if label else ''
+    summary = results.get('adaptive_scan_summary', {})
+    n_pts = summary.get('completed_count', len(xs))
+    plt.title(f'2D scan energies (kJ/mol){label_str} [adaptive, {n_pts} pts]')
+    plt.gca().set_xlim(-180, 180)
+    plt.xticks(np.arange(-180, 181, step=60))
+    plt.gca().set_ylim(-180, 180)
+    plt.yticks(np.arange(-180, 181, step=60))
+
+    plt.legend(loc='upper right', fontsize=8)
+
+    if path is not None:
+        fig_name = f'{results["directed_scan_type"]}_{results["scans"]}_adaptive.png'
         fig_path = os.path.join(path, fig_name)
         plt.savefig(fig_path, dpi=resolution, facecolor='w', edgecolor='w', orientation='portrait',
                     format='png', transparent=False, bbox_inches=None, pad_inches=0.1, metadata=None)
@@ -1486,7 +1693,7 @@ def plot_2d_scan_bond_dihedral(results: dict,
     label = ' for ' + label if label else ''
     plt.title(f'2D scan energies (kJ/mol){label}')
     min_x = -180
-    plt.xlim = (min_x, min_x + 360)
+    plt.gca().set_xlim(min_x, min_x + 360)
     plt.xticks(np.arange(min_x, min_x + 361, step=60))
 
     if original_dihedrals is not None:
