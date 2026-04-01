@@ -1416,21 +1416,30 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             reactive_xyz_indices.update(bond)
 
         # Guard: when the atom map causes large Cartesian displacements for
-        # reactive heavy atoms (e.g. ring traversal reversal), interpolating
-        # their Z-mat coordinates distorts the backbone.  Remove such atoms
-        # from the reactive set — keep only the truly-moving atoms (H's).
+        # reactive heavy atoms in a ring whose only reactive bond involves H
+        # (H-migration donor/acceptor), interpolating their Z-mat coordinates
+        # distorts the backbone.  Remove them — only the migrating H needs
+        # to be interpolated.  Skip atoms that participate in heavy-atom
+        # forming/breaking bonds (genuine ring-forming reactions).
         r_coords = np.array(r_xyz['coords'], dtype=float)
         op_coords = np.array(op_xyz['coords'], dtype=float)
+        ring_atom_indices = set().union(*_ring_sets) if _ring_sets else set()
+        heavy_bond_atoms: Set[int] = set()
+        for a, b in list(bb) + list(fb):
+            if r_xyz['symbols'][a] != 'H' and r_xyz['symbols'][b] != 'H':
+                heavy_bond_atoms.add(a)
+                heavy_bond_atoms.add(b)
         drop = set()
         for idx in reactive_xyz_indices:
-            if r_xyz['symbols'][idx] != 'H':
+            if r_xyz['symbols'][idx] != 'H' and idx in ring_atom_indices \
+                    and idx not in heavy_bond_atoms:
                 disp = float(np.linalg.norm(r_coords[idx] - op_coords[idx]))
                 if disp > 1.5:
                     drop.add(idx)
         if drop:
             reactive_xyz_indices -= drop
-            logger.debug(f'Linear (rxn={rxn.label}, path={i}): dropped heavy atoms {drop} '
-                         f'from reactive set (large R→P displacement, likely atom-map artifact).')
+            logger.debug(f'Linear (rxn={rxn.label}, path={i}): dropped ring heavy atoms {drop} '
+                         f'from reactive set (large R→P displacement, H-migration donor/acceptor).')
 
         # When a reactive atom sits in a ring, include its ring-bonded spectator
         # neighbors so they can track the reactive atom's motion during interpolation.
@@ -1451,21 +1460,18 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # ring bond distances as explicit (interpolatable) Z-mat variables.
         # Only add when the reactive atom is already in the constraint tree.
         if ring_bonds:
-            # Count how many times each atom already appears in R_atom constraints.
-            # xyz_to_zmat cannot handle an atom appearing more than once as a
-            # reference, so only add a ring constraint when the reactive atom
-            # has no existing R_atom entry.
-            ref_counts: Dict[int, int] = {}
-            for pair in constraints.get('R_atom', []):
-                for a in pair:
-                    ref_counts[a] = ref_counts.get(a, 0) + 1
-            existing = set(map(tuple, constraints.get('R_atom', [])))
+            # Add at most one ring constraint, and only when it doesn't share
+            # any atom with reactive-bond endpoints or existing constraints.
+            # Conflicts create circular dependencies (Z-mat constraint lock).
+            reactive_bond_atoms = {a for bond in list(bb) + list(fb) for a in bond}
+            constrained_atoms = reactive_bond_atoms | {a for pair in constraints.get('R_atom', []) for a in pair}
+            added = False
             for rb in ring_bonds:
-                if (ref_counts.get(rb[1], 0) == 0
-                        and rb not in existing and (rb[1], rb[0]) not in existing):
+                if not added and rb[0] not in constrained_atoms and rb[1] not in constrained_atoms:
                     constraints['R_atom'].append(rb)
-                    ref_counts[rb[0]] = ref_counts.get(rb[0], 0) + 1
-                    ref_counts[rb[1]] = ref_counts.get(rb[1], 0) + 1
+                    constrained_atoms.add(rb[0])
+                    constrained_atoms.add(rb[1])
+                    added = True
                 else:
                     reactive_xyz_indices.discard(rb[0])
 
@@ -1699,17 +1705,15 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 constraints = get_r_constraints(expected_breaking_bonds=list(bb),
                                                 expected_forming_bonds=list(fb))
                 if ring_bonds_fb:
-                    ref_counts_fb: Dict[int, int] = {}
-                    for pair in constraints.get('R_atom', []):
-                        for a in pair:
-                            ref_counts_fb[a] = ref_counts_fb.get(a, 0) + 1
-                    existing_fb = set(map(tuple, constraints.get('R_atom', [])))
+                    reactive_bond_atoms_fb = {a for bond in bb + fb for a in bond}
+                    constrained_atoms_fb = reactive_bond_atoms_fb | {a for pair in constraints.get('R_atom', []) for a in pair}
+                    added_fb = False
                     for rb in ring_bonds_fb:
-                        if (ref_counts_fb.get(rb[1], 0) == 0
-                                and rb not in existing_fb and (rb[1], rb[0]) not in existing_fb):
+                        if not added_fb and rb[0] not in constrained_atoms_fb and rb[1] not in constrained_atoms_fb:
                             constraints['R_atom'].append(rb)
-                            ref_counts_fb[rb[0]] = ref_counts_fb.get(rb[0], 0) + 1
-                            ref_counts_fb[rb[1]] = ref_counts_fb.get(rb[1], 0) + 1
+                            constrained_atoms_fb.add(rb[0])
+                            constrained_atoms_fb.add(rb[1])
+                            added_fb = True
                         else:
                             reactive_xyz_indices.discard(rb[0])
 
