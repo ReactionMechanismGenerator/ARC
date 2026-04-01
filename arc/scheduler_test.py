@@ -281,7 +281,7 @@ H      -1.82570782    0.42754384   -0.56130718"""
                                             'opt': False,
                                             'orbitals': False,
                                             'sp': False},
-                              'paths': {'composite': '', 'freq': '', 'geo': '', 'sp': ''},
+                              'paths': {'composite': '', 'freq': '', 'geo': '', 'geo_coarse': '', 'sp': ''},
                               'restart': '', 'warnings': ''}
         initialized_output_dict = {'C2H6': empty_species_dict,
                                    'CtripCO': empty_species_dict,
