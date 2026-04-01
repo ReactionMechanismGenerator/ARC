@@ -267,16 +267,19 @@ class GaussianAdapter(JobAdapter):
             self.level.method = 'cbs-qb3'
 
         # Job type specific options
-        max_c = 100
+        max_c = 200
+        use_calcall = False
         if 'trsh' in self.args and 'trsh' in self.args['trsh']:
             for item in self.args['trsh']['trsh']:
                 match = re.search(r'maxcycle=(\d+)', item)
                 if match:
                     max_c = int(match.group(1))
-                    break
+                if 'calcall' in item:
+                    use_calcall = True
 
         if self.job_type in ['opt', 'conf_opt', 'optfreq', 'composite']:
-            keywords = ['ts', 'calcfc', 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else ['calcfc']
+            hessian_kw = 'calcall' if use_calcall else 'calcfc'
+            keywords = ['ts', hessian_kw, 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else [hessian_kw, f'maxcycle={max_c}']
             if self.level.method in ['rocbs-qb3']:
                 # There are no analytical 2nd derivatives (FC) for this method.
                 keywords = ['ts', 'noeigentest', f'maxcycle={max_c}'] if self.is_ts else []
@@ -302,7 +305,7 @@ class GaussianAdapter(JobAdapter):
                 if self.is_ts:
                     keywords.extend(['tight', 'maxstep=5'])
                 else:
-                    keywords.extend(['tight', 'maxstep=5', f'maxcycle={max_c}'])
+                    keywords.extend(['tight', 'maxstep=5'])
             input_dict['job_type_1'] = "opt" if self.level.method_type not in ['dft', 'composite', 'wavefunction']\
                 else f"opt=({', '.join(key for key in keywords)})"
 
