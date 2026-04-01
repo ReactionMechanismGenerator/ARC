@@ -218,7 +218,9 @@ class xTBAdapter(JobAdapter):
         directives, block = '', ''
         uhf = self.species[0].number_of_radicals or self.multiplicity - 1
 
-        if self.job_type in ['opt', 'conf_opt', 'scan']:
+        if self.job_type in ['opt', 'conf_opt', 'scan'] \
+                or (self.job_type == 'directed_scan' and self.directed_scan_type is not None
+                    and 'opt' in self.directed_scan_type):
             directives += ' --opt'
             directives += self.add_accuracy()
             if self.constraints and self.job_type != 'scan':
