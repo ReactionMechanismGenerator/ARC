@@ -554,6 +554,17 @@ def check_product_isomorphism(products: List['Molecule'],
     """
     prods_a = [generate_resonance_structures_safely(mol) or [mol.copy(deep=True)] for mol in products]
     prods_b = [spc.mol_list or [spc.mol] for spc in p_species]
+    # For singlet biradicals (multiplicity forced below the natural value),
+    # add a copy with the natural multiplicity so template-generated products
+    # (which use the high-spin default) can match.
+    for i, spc in enumerate(p_species):
+        n_rad = spc.mol.get_radical_count()
+        natural_mult = n_rad + 1
+        if n_rad and spc.mol.multiplicity < natural_mult:
+            aug = [m.copy(deep=True) for m in prods_b[i]]
+            for m in aug:
+                m.multiplicity = natural_mult
+            prods_b[i] = prods_b[i] + aug
     if len(prods_a) == 1:
         prod_a = prods_a[0]
         prod_b = prods_b[0]
