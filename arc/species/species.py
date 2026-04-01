@@ -489,6 +489,7 @@ class ARCSpecies(object):
                                f'xyz coordinates only. For better thermodynamic properties, provide bond corrections.')
 
             self.neg_freqs_trshed = list()
+            self.freqs = None  # harmonic vibrational frequencies in cm⁻¹, set after a successful freq job
 
         if self.charge is None:
             self.charge = 0
@@ -1580,6 +1581,7 @@ class ARCSpecies(object):
             tsg = TSGuess(method='orca_neb',
                           success=True,
                           xyz=xyz,
+                          log_path=path,
                           )
             if tsg.initial_xyz is not None and not colliding_atoms(tsg.initial_xyz):
                 if tsg.index is None:
@@ -2199,6 +2201,7 @@ class TSGuess(object):
         energy (float, optional): Relative energy of all TS conformers in kJ/mol.
         t0 (datetime.datetime, optional): Initial time of spawning the guess job.
         execution_time (datetime.timedelta, optional): Overall execution time for the TS guess method.
+        log_path (str, optional): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
         project_directory (str, optional): The path to the project directory.
 
     Attributes:
@@ -2222,6 +2225,7 @@ class TSGuess(object):
         successful_normal_mode (bool): Whether a normal mode check was successful.
         errors (str): Problems experienced with this TSGuess. Used for logging.
         cluster (List[int]): Indices of TSGuess object instances clustered together.
+        log_path (str): The path to the ESS log file produced by the TS guess method (e.g., NEB output).
     """
 
     def __init__(self,
@@ -2239,6 +2243,7 @@ class TSGuess(object):
                  ts_dict: Optional[dict] = None,
                  energy: Optional[float] = None,
                  cluster: Optional[List[int]] = None,
+                 log_path: Optional[str] = None,
                  project_directory: Optional[str] = None,
                  ):
 
@@ -2260,6 +2265,7 @@ class TSGuess(object):
             self.success = success
             self.energy = energy
             self.cluster = cluster
+            self.log_path = log_path
             if 'user guess' in self.method:
                 if self.initial_xyz is None:
                     raise TSError('If no method is specified, an xyz guess must be given')
@@ -2347,6 +2353,8 @@ class TSGuess(object):
                 ts_dict['family'] = self.family
             if self.errors:
                 ts_dict['errors'] = self.errors
+            if self.log_path is not None:
+                ts_dict['log_path'] = self.log_path
         return ts_dict
 
     def from_dict(self, ts_dict: dict):
@@ -2378,6 +2386,7 @@ class TSGuess(object):
             self.success = self.success if self.success is not None else True
             self.execution_time = datetime.timedelta(seconds=0)
         self.family = ts_dict['family'] if 'family' in ts_dict else None
+        self.log_path = ts_dict['log_path'] if 'log_path' in ts_dict else None
         self.errors = ts_dict['errors'] if 'errors' in ts_dict else ''
 
     def process_xyz(self,
@@ -2471,6 +2480,9 @@ class ThermoData(object):
                  Tmax=None,
                  data=None,
                  comment='',
+                 nasa_low=None,
+                 nasa_high=None,
+                 cp_data=None,
                  ):
         """
         Args:
@@ -2484,6 +2496,9 @@ class ThermoData(object):
             Tmax (tuple): Maximum temperature as (value, units)
             data (str): the thermo data block from the RMG library
             comment (str): Additional comments or description
+            nasa_low (dict): Low-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            nasa_high (dict): High-temperature NASA polynomial: {tmin_k, tmax_k, coeffs}.
+            cp_data (list): Tabulated Cp: list of {temperature_k, cp_j_mol_k} dicts.
         """
         self.H298 = H298
         self.S298 = S298
@@ -2495,6 +2510,9 @@ class ThermoData(object):
         self.Tmax = Tmax
         self.data = data
         self.comment = comment
+        self.nasa_low = nasa_low
+        self.nasa_high = nasa_high
+        self.cp_data = cp_data
 
     def __repr__(self):
         """
@@ -2528,6 +2546,25 @@ class ThermoData(object):
         return (ThermoData, (self.H298, self.S298, self.Tdata, self.Cpdata,
                              self.Cp0, self.CpInf, self.Tmin, self.Tmax,
                              self.comment))
+
+    def update(self, data: dict):
+        """
+        Update attributes from a dictionary.
+
+        Handles both top-level keys (H298, S298, nasa_low, ...) and the nested
+        'thermo_data' sub-dict produced by parse_thermo_block(), which carries
+        Tdata, Cpdata, Tmin, Tmax, Cp0, CpInf.
+
+        Args:
+            data (dict): Mapping of attribute names to values.
+        """
+        for key, value in data.items():
+            if key == 'thermo_data' and isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    if hasattr(self, sub_key):
+                        setattr(self, sub_key, sub_value)
+            elif hasattr(self, key):
+                setattr(self, key, value)
 
 
 class TransportData(object):

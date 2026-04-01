@@ -350,5 +350,17 @@ class OrcaParser(ESSAdapter, ABC):
         # Not implemented for Orca.
         return None
 
+    def parse_ess_version(self) -> Optional[str]:
+        """
+        Parse the ORCA version string, e.g. ``'ORCA 5.0.4'``.
+        """
+        with open(self.log_file_path, 'r') as f:
+            for line in f:
+                # "Program Version 5.0.4 -  RELEASE  -"
+                m = re.search(r'Program Version\s+([\d.]+)', line)
+                if m:
+                    return f'ORCA {m.group(1)}'
+        return None
+
 
 register_ess_adapter('orca', OrcaParser)
