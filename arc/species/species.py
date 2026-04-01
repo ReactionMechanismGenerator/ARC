@@ -1654,13 +1654,25 @@ class ARCSpecies(object):
                                    f'{self.mol.copy(deep=True).to_adjacency_list()}')
                     raise SpeciesError(f'XYZ and the 2D graph representation for {self.label} are not compliant.')
                 if not self.keep_mol:
-                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=n_rad_hint):
-                        self.mol = perceived_mol
+                    if is_mol_valid(perceived_mol, charge=self.charge, multiplicity=self.multiplicity, n_radicals=self.number_of_radicals):
+                        # Guard: don't replace if the perceived mol gained lone
+                        # pairs on carbon atoms (perception artifact, e.g.
+                        # allene C=C=C perceived as C-C(lp)-C).
+                        orig_c_lp = sum(a.lone_pairs for a in self.mol.atoms if a.element.symbol == 'C')
+                        perc_c_lp = sum(a.lone_pairs for a in perceived_mol.atoms if a.element.symbol == 'C')
+                        if perc_c_lp <= orig_c_lp:
+                            self.mol = perceived_mol
                     else:
                         try:
                             order_atoms(ref_mol=perceived_mol, mol=self.mol)
                         except SanitizationError:
-                            self.mol = perceived_mol
+                            # order_atoms failed (e.g. aromatic vs Kekulé mismatch).
+                            # If element symbols already match positionally, the mol
+                            # was defined in xyz order — keep it as-is rather than
+                            # replacing with a potentially wrong perceived mol.
+                            mol_symbols = tuple(a.element.symbol for a in self.mol.atoms)
+                            if mol_symbols != xyz['symbols']:
+                                self.mol = perceived_mol
         else:
             perceived_mol = perceive_molecule_from_xyz(xyz,
                                                        charge=self.charge,
