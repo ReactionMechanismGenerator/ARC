@@ -950,7 +950,25 @@ def trsh_ess_job(label: str,
         # Troubleshoot by increasing opt max cycles
         #P opt=(calcfc,maxstep=5,tight,maxcycle=200) guess=mix wb97xd/def2tzvp integral=(grid=ultrafine, Acc2E=14) IOp(2/9=2000) scf=(direct,tight,maxcycle=512) iop(3/33=1)
         ess_trsh_methods, trsh_keyword, couldnt_trsh = trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh)
-        # print out any words that beging with 'opt='
+
+        # Handle basis set step-down: optimize at a cheaper basis to get a better
+        # starting geometry, then the scheduler restarts at the intended level.
+        if 'basis_step_down' in trsh_keyword:
+            trsh_keyword.remove('basis_step_down')
+            step_down_basis = 'def2svp'
+            original_basis = (level_of_theory.basis or '').lower()
+            small_bases = {'def2-svp', 'def2svp', 'sto-3g', 'sto3g', '3-21g', '321g',
+                           '6-31g', '631g', '6-31g*', '6-31g(d)', 'cc-pvdz'}
+            if original_basis not in small_bases:
+                level_of_theory = level_of_theory.copy()
+                level_of_theory.basis = step_down_basis
+                remove_checkfile = True
+                logger_info.append(f'stepping down basis to {step_down_basis}')
+            else:
+                ess_trsh_methods.remove('basis_step_down')
+                couldnt_trsh = True
+
+        # print out any words that begin with 'opt='
         opt_list = [i for i in ess_trsh_methods if i.startswith('opt=')]
         if opt_list:
             formatted_string = f'using {opt_list[0]}'
@@ -1861,26 +1879,54 @@ def trsh_keyword_nosymm(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
     """
-    Check if the job requires change of opt(maxcycle=200)
+    Troubleshoot MaxOptCycles errors by trying progressively more aggressive strategies.
+
+    Sequence:
+        1–3. Try alternative optimizers: RFO, GDIIS, GEDIIS.
+        4. Switch to Cartesian coordinates (avoids internal-coordinate coupling issues).
+        5. Use ``calcall`` (recompute Hessian every step) — expensive but addresses
+           oscillating optimizations caused by a poor Hessian.
+        6. Combine ``calcall`` with GDIIS for a final attempt.
+        7. Basis set step-down — optimize at a cheaper basis (def2-SVP), then restart
+           at the intended level. Handled by ``trsh_ess_job`` and the scheduler.
+
+    Note:
+        ``maxcycle=200`` is set by default in the Gaussian adapter, so it is not
+        included as a troubleshooting step here.
     """
     opt_pattern = r"opt=\((.*?)\)"
-    if 'MaxOptCycles' in job_status['keywords'] and 'opt=(maxcycle=200)' not in ess_trsh_methods:
-        ess_trsh_methods.append('opt=(maxcycle=200)')
-        trsh_keyword.append('opt=(maxcycle=200)')
-        couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords'] and 'opt=(RFO)' not in ess_trsh_methods:
+    if 'MaxOptCycles' not in job_status['keywords']:
+        return ess_trsh_methods, trsh_keyword, couldnt_trsh
+
+    if 'opt=(RFO)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(RFO)')
         trsh_keyword.append('opt=(RFO)')
         couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' not in ess_trsh_methods:
+    elif 'opt=(GDIIS)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(GDIIS)')
         trsh_keyword.append('opt=(GDIIS)')
         couldnt_trsh = False
-    elif 'MaxOptCycles' in job_status['keywords']  and 'opt=(RFO)' in ess_trsh_methods and 'opt=(GDIIS)' in ess_trsh_methods and 'opt=(GEDIIS)' not in ess_trsh_methods:
+    elif 'opt=(GEDIIS)' not in ess_trsh_methods:
         ess_trsh_methods.append('opt=(GEDIIS)')
         trsh_keyword.append('opt=(GEDIIS)')
         couldnt_trsh = False
-    
+    elif 'opt=(cartesian)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(cartesian)')
+        trsh_keyword.append('opt=(cartesian)')
+        couldnt_trsh = False
+    elif 'opt=(calcall)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(calcall)')
+        trsh_keyword.append('opt=(calcall)')
+        couldnt_trsh = False
+    elif 'opt=(calcall,GDIIS)' not in ess_trsh_methods:
+        ess_trsh_methods.append('opt=(calcall,GDIIS)')
+        trsh_keyword.append('opt=(calcall,GDIIS)')
+        couldnt_trsh = False
+    elif 'basis_step_down' not in ess_trsh_methods:
+        ess_trsh_methods.append('basis_step_down')
+        trsh_keyword.append('basis_step_down')
+        couldnt_trsh = False
+
     if any('opt' in keyword for keyword in ess_trsh_methods):
         opt_list = [match for element in ess_trsh_methods for match in re.findall(opt_pattern, element)] if any(re.search(opt_pattern, element) for element in ess_trsh_methods) else []
 
@@ -1891,7 +1937,7 @@ def trsh_keyword_opt_maxcycles(job_status, ess_trsh_methods, trsh_keyword, could
             new_opt_keyword = 'opt=(' + ','.join(filtered_methods) + ')'
 
             trsh_keyword = [kw if not kw.startswith('opt') else new_opt_keyword for kw in trsh_keyword]
-    
+
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 def trsh_keyword_inaccurate_quadrature(job_status, ess_trsh_methods, trsh_keyword, couldnt_trsh) -> Tuple[List, List, bool]:
@@ -1977,15 +2023,53 @@ def trsh_keyword_neg_eigen(job_status, ess_trsh_methods, trsh_keyword, couldnt_t
     return ess_trsh_methods, trsh_keyword, couldnt_trsh
 
 def prioritize_opt_methods(opt_methods):
+    """
+    Select a single optimizer algorithm (GEDIIS > GDIIS > RFO) and keep all
+    non-optimizer options (maxcycle, calcall, cartesian, etc.).
 
+    ``calcall`` and ``cartesian`` are escalation strategies tried after optimizer
+    swaps have failed.  When either is present, previous standalone optimizer
+    entries are dropped — they already failed without that strategy.  An optimizer
+    is only retained if it appears in a combination entry (e.g. ``calcall,GDIIS``).
+    """
     preferred_order = ['GEDIIS', 'GDIIS', 'RFO']
+    escalation_strategies = ['calcall', 'cartesian']
+
+    # Check for escalation strategies (calcall, cartesian).
+    active_strategies = [s for s in escalation_strategies if any(s in m for m in opt_methods)]
+
+    if active_strategies:
+        # Find the latest entry that contains any escalation strategy.
+        strategy_entries = [m for m in opt_methods if any(s in m for s in escalation_strategies)]
+        latest_entry = strategy_entries[-1]
+
+        # Check if the latest strategy entry explicitly includes an optimizer.
+        paired_optimizer = None
+        for method in preferred_order:
+            if method in latest_entry:
+                paired_optimizer = method
+                break
+
+        # Keep only maxcycle and other non-strategy, non-optimizer entries,
+        # plus the latest strategy keyword(s) and any explicitly paired optimizer.
+        filtered = [m for m in opt_methods
+                    if m not in preferred_order
+                    and not any(s in m for s in escalation_strategies)]
+        # Add the latest strategy keyword (just the strategy name, not combo entries).
+        latest_strategy = [s for s in escalation_strategies if s in latest_entry]
+        for s in latest_strategy:
+            if s not in filtered:
+                filtered.append(s)
+        if paired_optimizer:
+            filtered.append(paired_optimizer)
+        return filtered
+
     selected_method = None
-    
     for method in preferred_order:
         if method in opt_methods:
             selected_method = method
             break
-    
+
     filtered_methods = [method for method in opt_methods if method not in preferred_order or method == selected_method]
 
     return filtered_methods
