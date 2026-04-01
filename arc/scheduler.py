@@ -2361,7 +2361,23 @@ class Scheduler(object):
                     if spc.multi_species == label:
                         multi_species_opt_xyzs[spc.label] = parser.parse_geometry(log_file_path=self.multi_species_path_dict[spc.label])
 
-            if not job.fine and self.job_types['fine'] \
+            if 'basis_step_down' in (job.ess_trsh_methods or []) \
+                    and job.level is not None and self.opt_level is not None \
+                    and job.level.basis is not None and self.opt_level.basis is not None \
+                    and job.level.basis.lower() != self.opt_level.basis.lower():
+                # A basis step-down job converged. Restart at the intended level
+                # using the converged geometry as the starting point.
+                logger.info(f'Basis step-down optimization for {label} converged at '
+                            f'{job.level.simple()}. Restarting at {self.opt_level.simple()}.')
+                self.species_dict[label].initial_xyz = opt_xyz
+                self.run_job(label=label,
+                             xyz=opt_xyz,
+                             level_of_theory=self.opt_level,
+                             job_type='opt',
+                             fine=False,
+                             ess_trsh_methods=job.ess_trsh_methods,
+                             )
+            elif not job.fine and self.job_types['fine'] \
                     and not job.level.method_type == 'wavefunction' \
                     and self.species_dict[label].irc_label is None:
                 # Run opt again using a finer grid.
