@@ -471,11 +471,39 @@ class TestNDScan(unittest.TestCase):
 
         def mock_parse(log_file_path):
             self.assertEqual(log_file_path, '/fake/path.log')
-            return [mock_results]
+            # The real parser returns the results dict itself, not a list containing it:
+            # parse_nd_scan_energies is built by make_parser with return_type=Optional[Dict],
+            # and every ESS adapter declares -> Optional[Dict]. The mock must honour that
+            # contract rather than the caller's former (buggy) [0] subscript.
+            return mock_results
 
         results, trshed = finalize_directed_scan_results(rotor_dict, parse_nd_scan_energies_func=mock_parse)
         self.assertEqual(trshed, 0)
         self.assertIs(results, mock_results)
+
+    def test_finalize_directed_scan_results_ess_parser_returns_dict_not_list(self):
+        """A parser returning a bare dict must not be subscripted with [0].
+
+        Regression test: finalize_directed_scan_results used to do
+        ``parse_nd_scan_energies_func(...)[0]``, which raises KeyError: 0 on a dict.
+        That crash landed at finalization - after a multi-hour ESS scan had already
+        completed, and before the rotor YAML was written - so the entire run was lost.
+        """
+        mock_results = {'directed_scan_type': 'ess', 'scans': [[1, 2, 3, 4]], 'directed_scan': {}}
+        rotor_dict = {
+            'directed_scan_type': 'ess',
+            'scan_path': '/fake/path.log',
+            'scan': [[1, 2, 3, 4]],
+            'directed_scan': {},
+        }
+
+        results, trshed = finalize_directed_scan_results(
+            rotor_dict,
+            parse_nd_scan_energies_func=lambda log_file_path: mock_results,
+        )
+        self.assertIsInstance(results, dict)
+        self.assertIs(results, mock_results)
+        self.assertEqual(trshed, 0)
 
     def test_finalize_directed_scan_results_ess_no_func_raises(self):
         """Test that ESS finalize raises if no parser func is given."""

@@ -312,8 +312,8 @@ def finalize_directed_scan_results(rotor_dict: dict,
     Args:
         rotor_dict (dict): A single entry from ``species.rotors_dict``.
         parse_nd_scan_energies_func (callable, optional): A callable that takes
-            ``log_file_path`` and returns a list whose first element is the
-            results dict.  Only needed for ESS scans.  Pass
+            ``log_file_path`` and returns the results dict.  Only needed for
+            ESS scans.  Pass
             ``parser.parse_nd_scan_energies`` from the caller to avoid importing
             the parser here (which would create a circular import through
             ``arc.__init__``).
@@ -328,7 +328,12 @@ def finalize_directed_scan_results(rotor_dict: dict,
     if rotor_dict['directed_scan_type'] == 'ess':
         if parse_nd_scan_energies_func is None:
             raise ValueError('parse_nd_scan_energies_func must be provided for ESS directed scans')
-        results = parse_nd_scan_energies_func(log_file_path=rotor_dict['scan_path'])[0]
+        # parse_nd_scan_energies returns the results dict itself, not a list
+        # containing it (see GaussianParser.parse_nd_scan_energies -> Optional[Dict],
+        # and make_parser, which returns the adapter's value unwrapped).
+        # Subscripting with [0] raised KeyError: 0 at finalization, i.e. after a
+        # multi-hour scan had already completed - losing the entire run.
+        results = parse_nd_scan_energies_func(log_file_path=rotor_dict['scan_path'])
         return results, 0
     results, trshed_points = normalize_directed_scan_energies(rotor_dict)
     # Attach optional sparse metadata for adaptive scans (non-breaking addition)
