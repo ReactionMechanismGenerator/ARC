@@ -55,6 +55,26 @@ _TS_RING_DIHEDRALS: Dict[int, List[float]] = {
 _TS_RING_DIHEDRAL_DEFAULT: float = 60.0   # per-bond fallback for ring sizes outside the table
 
 
+def _get_path_length(mol: 'Molecule', src: int, dst: int) -> Optional[int]:
+    """Return the shortest-path length (number of bonds) between *src* and *dst*, or None if disconnected."""
+    from collections import deque
+    if src == dst:
+        return 0
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    queue = deque([(src, 0)])
+    visited = {src}
+    while queue:
+        current, depth = queue.popleft()
+        for nbr in mol.atoms[current].bonds:
+            nbr_idx = atom_to_idx[nbr]
+            if nbr_idx == dst:
+                return depth + 1
+            if nbr_idx not in visited:
+                visited.add(nbr_idx)
+                queue.append((nbr_idx, depth + 1))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Backbone atom mapping (fallback when RMG template matching fails)
 # ---------------------------------------------------------------------------

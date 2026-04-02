@@ -221,6 +221,7 @@ from arc.job.adapters.ts.linear_utils.isomerization import (  # noqa: F401
     _RING_CLOSURE_THRESHOLD,
     _build_4center_interchange_ts,
     _generate_zmat_branch,
+    _get_path_length,
     _ring_closure_xyz,
     backbone_atom_map,
     get_near_attack_xyz,
@@ -539,6 +540,59 @@ def _frag_composition_key(uni_mol: 'Molecule',
             formula[sym] = formula.get(sym, 0) + 1
         frag_formulas.append(tuple(sorted(formula.items())))
     return tuple(sorted(frag_formulas))
+
+
+def _reposition_migrating_atom(xyz: dict,
+                               coords: np.ndarray,
+                               mig_idx: int,
+                               don_idx: int,
+                               acc_idx: int,
+                               ) -> dict:
+    """Reposition a non-H migrating atom symmetrically between donor and acceptor.
+
+    Places the atom at the donor-acceptor midpoint, then offsets it along the
+    original migration direction so that d(mig, donor) ≈ d(mig, acceptor) ≈
+    the average of the original donor distance and a stretched TS estimate
+    (1.5× the original bond length).
+
+    Args:
+        xyz: XYZ dictionary (used for symbols/isotopes).
+        coords: Coordinate array (modified in-place).
+        mig_idx: Index of the migrating atom.
+        don_idx: Index of the donor heavy atom.
+        acc_idx: Index of the acceptor heavy atom.
+
+    Returns:
+        Updated XYZ dictionary.
+    """
+    midpoint = (coords[don_idx] + coords[acc_idx]) / 2.0
+    half_da = float(np.linalg.norm(coords[don_idx] - coords[acc_idx])) / 2.0
+    # Original bond length to donor; target TS distance ≈ 1.5× (stretched).
+    d_orig = float(np.linalg.norm(coords[mig_idx] - coords[don_idx]))
+    d_target = max(d_orig * 1.5, half_da + 0.3)
+    # Direction perpendicular to the donor-acceptor axis, in the plane
+    # defined by donor, acceptor, and the original migrating atom position.
+    da_vec = coords[acc_idx] - coords[don_idx]
+    da_unit = da_vec / max(np.linalg.norm(da_vec), 1e-8)
+    mig_to_mid = coords[mig_idx] - midpoint
+    # Remove the component along the donor-acceptor axis.
+    perp = mig_to_mid - np.dot(mig_to_mid, da_unit) * da_unit
+    perp_norm = float(np.linalg.norm(perp))
+    if perp_norm > 1e-6:
+        offset_dir = perp / perp_norm
+    else:
+        # Degenerate: pick an arbitrary perpendicular direction.
+        cross = np.cross(da_vec, np.array([1.0, 0.0, 0.0]))
+        if np.linalg.norm(cross) < 1e-6:
+            cross = np.cross(da_vec, np.array([0.0, 1.0, 0.0]))
+        offset_dir = cross / np.linalg.norm(cross)
+    # Height above midpoint so that d(mig, donor) = d_target.
+    height_sq = d_target ** 2 - half_da ** 2
+    height = np.sqrt(max(height_sq, 0.1))
+    coords[mig_idx] = midpoint + offset_dir * height
+    return {'symbols': xyz['symbols'],
+            'isotopes': xyz['isotopes'],
+            'coords': tuple(tuple(row) for row in coords)}
 
 
 def _get_ring_preservation_bonds(mol: 'Molecule',
@@ -1525,12 +1579,37 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         for bond_pair in list(fb):
             r_coords = np.array(r_xyz_na['coords'], dtype=float)
             site_dist = float(np.linalg.norm(r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
-            use_rc = site_dist > _RING_CLOSURE_THRESHOLD or path_has_cumulated_bonds(r_mol, bond_pair)
+            # For non-H atom migrations (F, Cl, etc.) connected by a path in
+            # the reactant, always use ring closure to form the cyclic TS.
+            # H migrations are handled by Z-mat interpolation + postprocessing.
+            both_h = (r_xyz['symbols'][bond_pair[0]] == 'H'
+                      or r_xyz['symbols'][bond_pair[1]] == 'H')
+            path_len = _get_path_length(r_mol, bond_pair[0], bond_pair[1])
+            use_rc = (site_dist > _RING_CLOSURE_THRESHOLD
+                      or path_has_cumulated_bonds(r_mol, bond_pair)
+                      or (not both_h and path_len is not None and path_len >= 3))
             if use_rc:
                 needs_ring_closure = True
                 if abs(weight - 0.5) <= 0.01:
                     rc_xyz = _ring_closure_xyz(r_xyz_na, r_mol, forming_bond=bond_pair)
                     if rc_xyz is not None:
+                        # For non-H migrating atoms (F, Cl, etc.), reposition
+                        # symmetrically between donor and acceptor at a TS-like
+                        # distance.  H atoms are handled by the postprocessing.
+                        mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
+                        if r_xyz['symbols'][mig_idx] != 'H':
+                            acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
+                            atom_to_idx_rc2 = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                            don_idx = None
+                            for nbr in r_mol.atoms[mig_idx].bonds:
+                                ni = atom_to_idx_rc2[nbr]
+                                if ni != acc_idx and r_mol.atoms[ni].symbol != 'H':
+                                    don_idx = ni
+                                    break
+                            if don_idx is not None:
+                                rc_coords = np.array(rc_xyz['coords'], dtype=float)
+                                rc_xyz = _reposition_migrating_atom(
+                                    rc_xyz, rc_coords, mig_idx, don_idx, acc_idx)
                         # Ring closure only handles the ring-forming bond;
                         # apply the full postprocessing pipeline so that
                         # other reactive atoms (e.g. a migrating H in
@@ -1769,13 +1848,39 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     r_coords = np.array(r_xyz['coords'], dtype=float)
                     site_dist = float(np.linalg.norm(
                         r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
-                    use_rc = site_dist > _RING_CLOSURE_THRESHOLD or path_has_cumulated_bonds(r_mol, bond_pair)
+                    # Use ring closure when the forming-bond distance exceeds
+                    # the threshold, when cumulated bonds are present, or when
+                    # the forming-bond atoms are connected by a path in the
+                    # reactant (intramolecular ring-forming TS).
+                    both_h_fb = (r_xyz['symbols'][bond_pair[0]] == 'H'
+                                 or r_xyz['symbols'][bond_pair[1]] == 'H')
+                    path_len = _get_path_length(r_mol, bond_pair[0], bond_pair[1])
+                    use_rc = (site_dist > _RING_CLOSURE_THRESHOLD
+                              or path_has_cumulated_bonds(r_mol, bond_pair)
+                              or (not both_h_fb and path_len is not None and path_len >= 3))
                     if use_rc:
                         needs_ring_closure = True
                         if abs(weight - 0.5) <= 0.01:
                             rc_xyz = _ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
+                                # For non-H migrating atoms (F, Cl, etc.),
+                                # reposition to the midpoint between donor and
+                                # acceptor for a symmetric TS ring.
+                                mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
+                                if r_xyz['symbols'][mig_idx] != 'H':
+                                    acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
+                                    atom_to_idx_rc = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                                    don_idx = None
+                                    for nbr in r_mol.atoms[mig_idx].bonds:
+                                        ni = atom_to_idx_rc[nbr]
+                                        if ni != acc_idx and r_mol.atoms[ni].symbol != 'H':
+                                            don_idx = ni
+                                            break
+                                    if don_idx is not None:
+                                        rc_coords = np.array(rc_xyz['coords'], dtype=float)
+                                        rc_xyz = _reposition_migrating_atom(
+                                            rc_xyz, rc_coords, mig_idx, don_idx, acc_idx)
                                 # Try H-migration postprocessing first (places
                                 # migrating H via triangulation), fall back to
                                 # generic if H-migration validation rejects it.

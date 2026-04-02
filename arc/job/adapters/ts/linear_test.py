@@ -1814,26 +1814,6 @@ H       0.22968212    3.44185145    1.33476939
 H      -0.16652518    1.74607229    3.17489327
 H      -0.69280023   -0.61529450    2.58345167
 H      -1.35044181   -1.00228968    0.31313344"""
-        expected_ts_0 = """C      -0.72691765   -2.67944861    0.80703156
-C       0.52050067   -1.70193004   -1.85630243
-C      -0.72691765   -1.49037287   -1.34319743
-C      -0.59256467   -0.07672693   -1.82230531
-C      -0.25946653    0.69317134   -0.58293145
-C       0.52691269    1.77631078   -0.48451427
-C       0.98265906    2.20726115    0.82103238
-C       0.83857800    1.42732459    1.90559922
-C       0.13559145    0.16102977    1.83239647
-C      -0.55760090   -0.19189216    0.60820091
-H      -0.72691765   -2.67944861    1.89237599
-H      -0.72847412   -3.64540516    0.31386599
-H      -0.79953422   -2.35178020   -1.98868289
-H      -1.54042290    0.26371973   -2.25070407
-H       0.19619039    0.00056243   -2.57661606
-H       0.91375062    2.28630802   -1.36023635
-H       1.51210926    3.15296303    0.88470177
-H       1.23988594    1.73173559    2.86709250
-H       0.00628372   -0.41661881    2.73874489
-H      -1.58097608    0.12140668    0.81471257"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_1_4_linear_birad_scission(self):
@@ -4460,7 +4440,7 @@ H      -1.03086141    1.13813060    0.58426610"""
             self.assertEqual(len(ts_xyz['symbols']), 9)
             self.assertFalse(colliding_atoms(ts_xyz))
 
-    def test_interpolate_intra_halogen_migration(self):  # TODO: fails, no TS guesses
+    def test_interpolate_intra_halogen_migration(self):
         """Test the interpolate_isomerization() function for intra_halogen_migration: FCCC[C](F)F <=> [CH2]CCC(F)(F)F"""
         r_xyz = """F       1.93592759   -1.04813200    0.17239309
 C       1.41395997   -0.06443750   -0.60748935
@@ -4492,24 +4472,34 @@ H      -0.11333646    0.63795904    1.75659256"""
         p = ARCSpecies(label='P', smiles='[CH2]CCC(F)(F)F', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate(rxn)
-        for ts_xyz in ts_xyzs:
-            print('\n\n***********')
-            print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
-        expected_ts = """ F                 -1.36765118   -0.69928250    1.14832822
- C                  0.48065092   -1.05898127    1.84778138
- C                  1.41225665   -0.33116754    0.83001861
- C                  0.87252234   -0.69441720   -0.56815543
- C                 -0.58635817   -0.14421099   -0.61698066
- F                 -1.24880224   -0.65767349   -1.67529258
- F                 -0.60872733    1.20276791   -0.70443049
- H                  0.65171319   -2.11519451    1.85494303
- H                  0.63762437   -0.67936179    2.83578360
- H                  2.42845477   -0.63538201    0.97035728
- H                  1.34704555    0.72982749    0.95223584
- H                  0.87632182   -1.75997497   -0.66548064
- H                  1.45779728   -0.27121704   -1.35762036"""
+        expected_ts = """F       2.21799943   -1.28754688    0.81245705
+C       1.41395997   -0.06443750   -0.60748935
+C       0.45625732    0.81675140    0.17742679
+C       0.74664756    0.75941886    1.67676302
+C       2.16974166    0.40956936    1.94214350
+F       2.47092410   -0.55086431    2.84104033
+F       3.16065330    1.10354741    1.34497274
+H       2.23720722    0.51753902   -1.02181687
+H       0.87788909   -0.54064611   -1.42843598
+H       0.51255833    1.83986235   -0.19429110
+H      -0.55990796    0.46279524    0.00357873
+H       0.53484045    1.73374895    2.11712497
+H       0.08803888    0.04052072    2.16412333"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
+        # Check 5-membered ring backbone distances (F-C-C-C-C).
+        coords_arr = np.array(ts_xyzs[0]['coords'], dtype=float)
+        ring_atoms = [0, 1, 2, 3, 4]  # F, C, C, C, C
+        for a, b in zip(ring_atoms, ring_atoms[1:] + [ring_atoms[0]]):
+            d = float(np.linalg.norm(coords_arr[a] - coords_arr[b]))
+            if ts_xyzs[0]['symbols'][a] == 'F' or ts_xyzs[0]['symbols'][b] == 'F':
+                # Migrating F should be ~2.0 Å from both C endpoints (TS stretch).
+                self.assertAlmostEqual(d, 2.04, delta=0.15,
+                                       msg=f'F migration bond {a}-{b}: {d:.3f} Å')
+            else:
+                # C-C backbone bonds should be near typical single bond (~1.54 Å).
+                self.assertAlmostEqual(d, 1.52, delta=0.10,
+                                       msg=f'C-C backbone bond {a}-{b}: {d:.3f} Å')
 
     def test_interpolate_intra_substitutioncs_cyclization(self):  # TODO: no TS guesses
         """Test the interpolate_isomerization() function for intra_substitutionCS_cyclization: [CH2]CCC(=O)CSC <=> C1CCC(=O)C1 + [S]CH3"""
