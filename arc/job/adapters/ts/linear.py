@@ -542,6 +542,70 @@ def _frag_composition_key(uni_mol: 'Molecule',
     return tuple(sorted(frag_formulas))
 
 
+def _build_ring_scission_ts(product_xyz: dict,
+                            breaking_bonds: List[Tuple[int, int]],
+                            weight: float = 0.5,
+                            stretch_factor: float = 1.8,
+                            ) -> Optional[dict]:
+    """Build a TS guess for ring-scission reactions from the product geometry.
+
+    For reactions where the product has a ring that the reactant doesn't
+    (ring-scission in reverse = ring-formation in forward), the TS is
+    product-like with the breaking bond stretched.
+
+    The breaking bond is elongated by ``stretch_factor`` (default 1.8×),
+    adjusted by ``weight`` (0.5 = halfway between product and fully stretched).
+    Only the first atom of each breaking bond is displaced; the rest of the
+    molecule stays fixed.
+
+    Args:
+        product_xyz: Atom-mapped product XYZ dictionary.
+        breaking_bonds: List of (i, j) pairs for bonds that break.
+        weight: Interpolation weight (0 = product-like, 1 = reactant-like).
+        stretch_factor: Maximum stretch multiplier for the breaking bond.
+
+    Returns:
+        XYZ dictionary or ``None`` if no breaking bonds.
+    """
+    if not breaking_bonds:
+        return None
+    coords = np.array(product_xyz['coords'], dtype=float)
+    for i, j in breaking_bonds:
+        vec = coords[i] - coords[j]
+        d_orig = float(np.linalg.norm(vec))
+        if d_orig < 1e-6:
+            continue
+        direction = vec / d_orig
+        d_target = d_orig * (1.0 + (stretch_factor - 1.0) * weight)
+        displacement = direction * (d_target - d_orig)
+        # Identify the fragment connected to i that doesn't include j
+        # (BFS from i, not crossing j).  Move the entire fragment.
+        from collections import deque
+        fragment: Set[int] = set()
+        queue: deque = deque([i])
+        n_atoms = len(product_xyz['symbols'])
+        # Build adjacency from distances (bonded if < 1.8 Å for heavy, 1.3 for H).
+        adj: Dict[int, Set[int]] = {k: set() for k in range(n_atoms)}
+        for a in range(n_atoms):
+            for b in range(a + 1, n_atoms):
+                d_ab = float(np.linalg.norm(coords[a] - coords[b]))
+                thresh = 1.3 if 'H' in (product_xyz['symbols'][a], product_xyz['symbols'][b]) else 1.8
+                if d_ab < thresh:
+                    adj[a].add(b)
+                    adj[b].add(a)
+        while queue:
+            node = queue.popleft()
+            if node in fragment or node == j:
+                continue
+            fragment.add(node)
+            queue.extend(adj[node] - fragment - {j})
+        for k in fragment:
+            coords[k] += displacement
+    return {'symbols': product_xyz['symbols'],
+            'isotopes': product_xyz['isotopes'],
+            'coords': tuple(tuple(row) for row in coords)}
+
+
 def _reposition_migrating_atom(xyz: dict,
                                coords: np.ndarray,
                                mig_idx: int,
@@ -1457,6 +1521,21 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                            f'{op_xyz["symbols"]} do not match reactant symbols {r_xyz["symbols"]}; '
                            f'skipping path.')
             continue
+
+        # Ring-scission fast path: when the family was discovered in reverse
+        # (product has a ring that the reactant doesn't) and there are only
+        # breaking bonds (no forming), build the TS by ring-closing the
+        # reactant geometry then stretching the breaking bond.
+        if product_dict.get('discovered_in_reverse') and bb and not fb:
+            # Use ring closure to fold the chain into the ring (the breaking
+            # bond in reverse = forming bond in forward).
+            rc_scission = _ring_closure_xyz(r_xyz, r_mol, forming_bond=bb[0])
+            if rc_scission is not None:
+                ts_scission = _build_ring_scission_ts(rc_scission, bb, weight)
+                if ts_scission is not None and not colliding_atoms(ts_scission):
+                    ts_xyzs.append(ts_scission)
+                    logger.debug(f'Linear (rxn={rxn.label}, path={i}): used ring-scission builder.')
+                    continue
 
         # Smart anchor selection: prefer spectator atoms adjacent to the reactive core
         # so the Z-matrix coordinate frame is stable across the interpolation.
