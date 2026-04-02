@@ -3104,6 +3104,10 @@ H       6.03724721    2.13554246   -0.93004450"""
         p = ARCSpecies(label='P', smiles='C#CC([CH2])c1ccccc1', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
+        self.assertGreater(len(ts_xyzs), 0)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertIsNotNone(ts_xyzs)
         self.assertIsInstance(ts_xyzs, list)
         self.assertGreaterEqual(len(ts_xyzs), 1)
@@ -4492,6 +4496,20 @@ H      -0.11333646    0.63795904    1.75659256"""
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
+        expected_ts = """ F                 -1.36765118   -0.69928250    1.14832822
+ C                  0.48065092   -1.05898127    1.84778138
+ C                  1.41225665   -0.33116754    0.83001861
+ C                  0.87252234   -0.69441720   -0.56815543
+ C                 -0.58635817   -0.14421099   -0.61698066
+ F                 -1.24880224   -0.65767349   -1.67529258
+ F                 -0.60872733    1.20276791   -0.70443049
+ H                  0.65171319   -2.11519451    1.85494303
+ H                  0.63762437   -0.67936179    2.83578360
+ H                  2.42845477   -0.63538201    0.97035728
+ H                  1.34704555    0.72982749    0.95223584
+ H                  0.87632182   -1.75997497   -0.66548064
+ H                  1.45779728   -0.27121704   -1.35762036"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
     def test_interpolate_intra_substitutioncs_cyclization(self):  # TODO: no TS guesses
         """Test the interpolate_isomerization() function for intra_substitutionCS_cyclization: [CH2]CCC(=O)CSC <=> C1CCC(=O)C1 + [S]CH3"""

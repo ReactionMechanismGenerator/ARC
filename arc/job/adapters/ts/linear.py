@@ -1697,6 +1697,14 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 reactive_xyz_indices: Set[int] = set()
                 for bond in bb + fb:
                     reactive_xyz_indices.update(bond)
+                # Also mark direct neighbors of reactive atoms: they shift
+                # when a reactive atom moves and should not trigger backbone
+                # drift rejection (e.g. F's on a C that participates in a
+                # halogen migration).
+                atom_to_idx_fb = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                for idx in list(reactive_xyz_indices):
+                    for nbr in r_mol.atoms[idx].bonds:
+                        reactive_xyz_indices.add(atom_to_idx_fb[nbr])
                 changing_bonds_fb = {(min(a, b), max(a, b)) for a, b in bb + fb}
                 ring_bonds_fb, reactive_xyz_indices = _get_ring_preservation_bonds(
                     r_mol, reactive_xyz_indices, changing_bonds_fb, _ring_sets)
