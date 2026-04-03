@@ -508,7 +508,18 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                 template_mols, r_label_dict = product_list[0], product_list[1]
                 if not isomorphic_products(rxn=rxn, products=template_mols):
                     continue
-                r_label_map = {val: key for key, val in r_label_dict.items() if val}
+                # Build r_label_map preserving duplicate labels by suffixing
+                # (e.g., R_Recombination has two atoms labeled '*' → '*' and '*_2').
+                r_label_map = {}
+                for key, val in r_label_dict.items():
+                    if not val:
+                        continue
+                    label = val
+                    suffix = 2
+                    while label in r_label_map:
+                        label = f'{val}_{suffix}'
+                        suffix += 1
+                    r_label_map[label] = key
                 offsets = [0]
                 for mol in template_mols:
                     offsets.append(offsets[-1] + len(mol.atoms))
@@ -517,7 +528,12 @@ def determine_possible_reaction_products_from_family(rxn: 'ARCReaction',
                     base = offsets[i]
                     for j, atom in enumerate(mol.atoms):
                         if atom.label:
-                            p_label_map[atom.label] = base + j
+                            label = atom.label
+                            suffix = 2
+                            while label in p_label_map:
+                                label = f'{atom.label}_{suffix}'
+                                suffix += 1
+                            p_label_map[label] = base + j
                 product_dicts.append({
                     'family': family_label,
                     'group_labels': group_labels,

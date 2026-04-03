@@ -1496,7 +1496,18 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
     breaking_bonds = list()
     for action in family.actions:
         if action[0].lower() == ("break_bond" if r_direction else "form_bond"):
-            breaking_bonds.append(tuple(sorted((label_dict[action[1]], label_dict[action[3]]))))
+            label_1, label_2 = action[1], action[3]
+            if label_1 == label_2:
+                # Same label on two atoms (e.g., R_Recombination: * + * → *-*).
+                # The label_map disambiguates duplicates with suffixed keys
+                # (e.g., '*' and '*_2'), so collect all matching keys.
+                indices = sorted(v for k, v in label_dict.items()
+                                 if k == label_1 or k.startswith(f'{label_1}_'))
+                if len(indices) >= 2:
+                    breaking_bonds.append(tuple(sorted((indices[0], indices[1]))))
+            else:
+                if label_1 in label_dict and label_2 in label_dict:
+                    breaking_bonds.append(tuple(sorted((label_dict[label_1], label_dict[label_2]))))
     if not r_direction:
         breaking_bonds = translate_bdes_based_on_ref_species(
             species=rxn.get_reactants_and_products()[1],
