@@ -1539,11 +1539,14 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
         rc_xyz = ring_closure_xyz(src_xyz, ctx.r_mol, forming_bond=bond_pair)
         if rc_xyz is None:
             continue
-        # Reposition migrating atom only for true atom migration
-        # (atom in both bb and fb), not pure ring closure.
+        # Reposition migrating atom only for true atom migration:
+        # the atom must be non-H, monovalent in the reactant (F, Cl, Br —
+        # exactly 1 bond), and present in both a breaking and forming bond.
+        # Carbon atoms forming ring closures are never repositioned.
         mig_idx = bond_pair[0] if ctx.r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
         atom_in_bb = any(mig_idx in b for b in ctx.bb)
-        if ctx.r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
+        n_bonds = len(ctx.r_mol.atoms[mig_idx].bonds)
+        if ctx.r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb and n_bonds == 1:
             acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
             atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
             don_idx = None
@@ -2018,11 +2021,12 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             rc_xyz = ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
-                                # Reposition only for true atom migration (atom
-                                # in both bb and fb), not pure ring closure.
+                                # Reposition only for true monovalent atom migration
+                                # (F, Cl — 1 bond in reactant), not ring closure.
                                 mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
                                 atom_in_bb = any(mig_idx in b for b in bb)
-                                if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
+                                n_bonds_fb = len(r_mol.atoms[mig_idx].bonds)
+                                if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb and n_bonds_fb == 1:
                                     acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
                                     atom_to_idx_rc = {a: idx for idx, a in enumerate(r_mol.atoms)}
                                     don_idx = None

@@ -2182,6 +2182,9 @@ H      -1.14680228   -1.38795604    2.35012148"""
 12    H u0 p0 c0 {5,S}""")
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertIsNotNone(ts_xyzs)
         self.assertIsInstance(ts_xyzs, list)
         self.assertGreater(len(ts_xyzs), 0, 'Expected at least one TS guess for Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH')
@@ -2904,6 +2907,9 @@ H       2.88277623   -1.03926992   -1.24983116"""
         p = ARCSpecies(label='P', smiles='OC1CCCC1', xyz=p_xyz)
         rxn = ARCReaction(r_species=[r], p_species=[p])
         ts_xyzs = interpolate_isomerization(rxn)
+        for ts_xyz in ts_xyzs:
+            print('\n\n***********')
+            print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
         expected_ts_0 = """C       2.37622772    0.13188036   -0.10043648
 C       1.09261098   -0.13889783    0.66802441
@@ -2923,7 +2929,7 @@ H       2.39465238   -3.12557678    1.81992021
 H       3.59883726   -2.10358433   -0.07523703"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
-    def test_interpolate_intra_r_add_endocyclic(self):  # TODO: H's on C are too close together
+    def test_interpolate_intra_r_add_endocyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_Endocyclic: [CH2]C(=C)CC=C <=> C=C1C[CH]CC1"""
         r_xyz = """C      -1.27823088    1.00022129    0.80097658
 C      -1.01917913   -0.22955078    0.09026125
@@ -2963,22 +2969,22 @@ H      -0.37927447   -1.71441733   -0.79057319"""
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
         self.assertGreater(len(ts_xyzs), 0)
-        expected_ts_1 = """C       0.08529154   -0.02047020    2.12080314
-C       0.08529154   -0.02047020    0.78201213
-C       0.60479283   -1.07806229    0.30802780
-C       0.02862768    1.20134210   -0.08760707
-C      -0.45046973    0.68544216   -1.40102540
-C      -0.21329249   -0.67814168   -1.70312787
-H       0.08529154    0.90762085    2.68388303
-H       0.08732806   -0.94820117    2.68435418
-H       1.41931794   -1.80062633    0.25752967
-H      -0.11625283   -1.85368618    0.56609896
-H       1.02326745    1.64240461   -0.20275442
-H      -0.66448483    1.94939660    0.30816137
-H      -0.68822312    1.31227568   -2.24707710
-H      -0.33262802   -1.49626625   -2.41343147
-H      -1.24657590   -0.88001569   -1.42086510"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
+        expected_ts_0 = """C      -1.27823088    1.00022129    0.80097658
+C      -1.01917913   -0.22955078    0.09026125
+C      -0.02594686   -0.29346779   -0.80997590
+C      -1.79704196   -1.50841486    0.31877750
+C      -1.36543647   -2.70170557   -0.49034054
+C      -0.33816012   -2.50757119   -1.32811827
+H      -2.11481303    1.06214613    1.49696194
+H      -0.68293046    1.89399909    0.61421829
+H       1.00845879   -0.44360803   -0.50084348
+H      -0.18833769    0.01370611   -1.84311355
+H      -2.85677966   -1.32505310    0.14147980
+H      -1.71870130   -1.81564435    1.36164508
+H      -1.92665412   -3.62330539   -0.33610528
+H       0.67921798   -2.77369515   -1.04137826
+H      -0.52685625   -2.29636523   -2.38067982"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
 
     def test_interpolate_intra_r_add_exotetcyclic(self):
         """Test the interpolate_isomerization() function for Intra_R_Add_ExoTetCyclic: [CH2]CCOOC <=> C1COOC1 + [CH3]"""
@@ -3116,7 +3122,7 @@ H       6.03724721    2.13554246   -0.93004450"""
         self.assertAlmostEqual(d_34, 2.1, delta=0.30,
                                msg=f'C3-C4 breaking bond: {d_34:.3f} Å')
 
-    def test_interpolate_intra_r_add_exocyclic(self):  # TODO: the migrating H is too close to the C atoms.
+    def test_interpolate_intra_r_add_exocyclic(self):  # TODO: not following the recipe, diagnose
         """Test the interpolate_isomerization() function for Intra_R_Add_Exocyclic: [CH2]C1CC=CC1=C <=> [CH2]C12C=CCC1C2"""
         r_xyz = """C      -0.10963719   -1.94278328    0.14292941
 C      -0.01615129   -0.62011917   -0.55371008
