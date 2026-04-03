@@ -1278,7 +1278,14 @@ H       1.24252625    0.91583948   -0.84155142"""
     def test_get_reaction_family_products_r_recombination(self):
         """Test determining the R_Recombination family for CH3 + CH3 => C2H6.
         Only one r_species is provided since both reactants are identical;
-        ARC should duplicate it based on the reaction label."""
+        ARC should duplicate it based on the reaction label.
+
+        R_Recombination uses the same label '*' for both radical atoms in its
+        template group. This tests that:
+        1. apply_recipe correctly handles FORM_BOND with duplicate labels
+        2. apply_recipe applies LOSE_RADICAL to all atoms with the same label
+        3. r_label_map and p_label_map disambiguate duplicates with suffixed keys
+        """
         rxn = ARCReaction(label='CH3 + CH3 <=> C2H6',
                           r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
                           p_species=[ARCSpecies(label='C2H6', smiles='CC')])
@@ -1286,6 +1293,50 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertGreater(len(products), 0)
         self.assertTrue(all(p['family'] == 'R_Recombination' for p in products))
         self.assertEqual(rxn.family, 'R_Recombination')
+        # Verify that label maps preserve both atoms with the same label.
+        # The raw template uses '*' for both; the maps should have '*' and '*_2'.
+        pd = products[0]
+        r_labels = set(pd['r_label_map'].keys())
+        self.assertIn('*', r_labels)
+        self.assertIn('*_2', r_labels)
+        self.assertNotEqual(pd['r_label_map']['*'], pd['r_label_map']['*_2'])
+        p_labels = set(pd['p_label_map'].keys())
+        self.assertIn('*', p_labels)
+        self.assertIn('*_2', p_labels)
+        self.assertNotEqual(pd['p_label_map']['*'], pd['p_label_map']['*_2'])
+
+    def test_r_recombination_other_radicals(self):
+        """Test R_Recombination for H + OH => H2O and H + H => H2."""
+        # H + OH => H2O
+        rxn1 = ARCReaction(r_species=[ARCSpecies(label='H', smiles='[H]'),
+                                      ARCSpecies(label='OH', smiles='[OH]')],
+                           p_species=[ARCSpecies(label='H2O', smiles='O')])
+        products1 = get_reaction_family_products(rxn1, rmg_family_set=['R_Recombination'])
+        self.assertGreater(len(products1), 0)
+        self.assertTrue(all(p['family'] == 'R_Recombination' for p in products1))
+        # H + H => H2 (identical reactants)
+        rxn2 = ARCReaction(label='H + H <=> H2',
+                           r_species=[ARCSpecies(label='H', smiles='[H]')],
+                           p_species=[ARCSpecies(label='H2', smiles='[H][H]')])
+        products2 = get_reaction_family_products(rxn2, rmg_family_set=['R_Recombination'])
+        self.assertGreater(len(products2), 0)
+        self.assertTrue(all(p['family'] == 'R_Recombination' for p in products2))
+
+    def test_label_map_no_duplicate_for_normal_families(self):
+        """Verify that normal families (unique labels like *1, *2, *3) are unaffected
+        by the duplicate-label handling."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['H_Abstraction'])
+        self.assertGreater(len(products), 0)
+        pd = products[0]
+        # H_Abstraction uses unique labels *1, *2, *3 — no suffixing should occur
+        for label in pd['r_label_map']:
+            self.assertNotIn('_2', label, f'Unexpected suffix in r_label_map key: {label}')
+        for label in pd['p_label_map']:
+            self.assertNotIn('_2', label, f'Unexpected suffix in p_label_map key: {label}')
 
     def test_check_family_name(self):
         """Test check family name function"""
