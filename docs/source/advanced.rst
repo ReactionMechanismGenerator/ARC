@@ -918,4 +918,61 @@ Alternatively, the user may request to compute the rate coefficients in the clas
 instructs the relevant statmech program to compute rate coefficients in the classical two-parameter Arrhenius format for
 all reactions in the same ARC project.
 
+.. _pipe_mode:
+
+Pipe mode (distributed HPC execution)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Pipe mode allows ARC to batch many independent jobs (e.g., conformer optimizations)
+into a single SLURM/PBS/SGE/HTCondor array allocation.
+Instead of submitting hundreds of individual cluster jobs, ARC stages all tasks on
+disk and launches a small number of array workers that claim and execute tasks from
+a shared task directory.
+
+**When does ARC use pipe mode?**
+
+ARC automatically evaluates pipe eligibility when scheduling batches of homogeneous
+jobs (same engine, level of theory, and resource requirements).
+By default, pipe mode activates when a batch has 10 or more tasks.
+Below that threshold, ARC uses its normal per-job submission path.
+
+**Supported job types:**
+
+- Conformer optimization (``conf_opt``) and single-point (``conf_sp``)
+- TS guess generation and TS optimization
+- Species single-point, frequency, and IRC calculations
+- 1D rotor scans
+
+**What pipe mode does and does not do:**
+
+- Pipe executes only ready "leaf" jobs. All quality checks, troubleshooting,
+  and downstream decision-making remain in ARC's main scheduler.
+- Failed tasks are retried automatically (configurable).
+  If a task exhausts its retry budget, it is marked as terminally failed
+  and reported to the scheduler for manual review.
+- Each array worker verifies task ownership before writing results,
+  preventing stale workers from overwriting state after lease expiration.
+
+**Configuration:**
+
+Pipe mode is configured via ``pipe_settings`` in ``arc/settings/settings.py``
+(or in ``~/.arc/settings.py`` to override per-installation)::
+
+    pipe_settings = {
+        'enabled': True,           # Set to False to disable pipe mode entirely.
+        'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
+        'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+        'max_attempts': 3,         # Retry budget per task before terminal failure.
+        'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+    }
+
+**Submit scripts:**
+
+Pipe mode generates array submit scripts under the run directory
+(``<project>/runs/pipe_<run_id>/submit.sh``).
+The templates follow ARC's existing submit-script conventions from
+``arc/settings/submit.py`` and support SLURM, PBS, SGE, and HTCondor.
+Users who customize their submit templates can edit the ``pipe_submit``
+dictionary in ``submit.py``.
+
 .. include:: links.txt
