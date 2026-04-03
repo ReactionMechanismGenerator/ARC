@@ -168,6 +168,7 @@ to work without modification.
 
 import datetime
 from collections import deque
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
@@ -215,6 +216,35 @@ from arc.job.adapters.ts.linear_utils.addition import (
 
 
 logger = get_logger()
+
+
+@dataclass
+class _PathContext:
+    """Bundle of per-path state for TS-building strategies."""
+    r_xyz: dict
+    r_mol: 'Molecule'
+    op_xyz: dict
+    mapped_p_mol: 'Molecule'
+    bb: List[Tuple[int, int]]
+    fb: List[Tuple[int, int]]
+    family: Optional[str]
+    r_label_map: Optional[dict]
+    weight: float
+    ring_sets: List[Set[int]]
+    label: str
+    discovered_in_reverse: bool = False
+    reactive_xyz_indices: Set[int] = field(default_factory=set)
+    anchors: Optional[list] = None
+    constraints: Optional[dict] = None
+    r_xyz_na: Optional[dict] = None
+    op_xyz_na: Optional[dict] = None
+
+
+@dataclass
+class _StrategyResult:
+    """Result of a TS-building strategy."""
+    guesses: List[dict] = field(default_factory=list)
+    halt: bool = False
 
 
 class LinearAdapter(JobAdapter):
@@ -1358,6 +1388,257 @@ def interpolate_addition(rxn: 'ARCReaction',
     return unique if unique else []
 
 
+# ---------------------------------------------------------------------------
+# Per-path context builder and TS-building strategies
+# ---------------------------------------------------------------------------
+
+def _reactive_heavy_atoms_share_ring(bonds_to_check: list,
+                                     mol: 'Molecule',
+                                     symbols: tuple,
+                                     ring_sets: List[Set[int]],
+                                     ) -> bool:
+    """Check whether the reactive heavy atoms in any bond share a ring."""
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    for a, b in bonds_to_check:
+        ha, hb = a, b
+        if symbols[ha] == 'H':
+            for nbr in mol.atoms[ha].bonds:
+                ni = atom_to_idx[nbr]
+                if symbols[ni] != 'H':
+                    ha = ni
+                    break
+        if symbols[hb] == 'H':
+            for nbr in mol.atoms[hb].bonds:
+                ni = atom_to_idx[nbr]
+                if symbols[ni] != 'H':
+                    hb = ni
+                    break
+        for ring_set in ring_sets:
+            if ha in ring_set and hb in ring_set:
+                return True
+    return False
+
+
+def _build_path_context(r_xyz: dict, r_mol: 'Molecule', op_xyz: dict,
+                        mapped_p_mol: 'Molecule',
+                        bb: list, fb: list,
+                        family: Optional[str], r_label_map: Optional[dict],
+                        weight: float, ring_sets: List[Set[int]],
+                        label: str, discovered_in_reverse: bool,
+                        ) -> _PathContext:
+    """Build a fully-populated _PathContext for the strategy pipeline."""
+    # Smart anchor selection.
+    anchors = find_smart_anchors(r_mol, breaking_bonds=bb, forming_bonds=fb)
+
+    # Reactive indices: atoms involved in forming/breaking bonds.
+    reactive_xyz_indices: Set[int] = set()
+    for bond in bb + fb:
+        reactive_xyz_indices.update(bond)
+
+    # Drop ring heavy atoms with large R→P displacement (atom-map artifact).
+    r_coords = np.array(r_xyz['coords'], dtype=float)
+    op_coords = np.array(op_xyz['coords'], dtype=float)
+    ring_atom_indices = set().union(*ring_sets) if ring_sets else set()
+    heavy_bond_atoms: Set[int] = set()
+    for a, b in bb + fb:
+        if r_xyz['symbols'][a] != 'H' and r_xyz['symbols'][b] != 'H':
+            heavy_bond_atoms.add(a)
+            heavy_bond_atoms.add(b)
+    drop = set()
+    for idx in reactive_xyz_indices:
+        if r_xyz['symbols'][idx] != 'H' and idx in ring_atom_indices \
+                and idx not in heavy_bond_atoms:
+            disp = float(np.linalg.norm(r_coords[idx] - op_coords[idx]))
+            if disp > 1.5:
+                drop.add(idx)
+    if drop:
+        reactive_xyz_indices -= drop
+        logger.debug(f'Linear ({label}): dropped ring heavy atoms {drop} '
+                     f'from reactive set (large R→P displacement).')
+
+    # Ring-preservation bonds.
+    changing_bonds = {(min(a, b), max(a, b)) for a, b in bb + fb}
+    ring_bonds, reactive_xyz_indices = _get_ring_preservation_bonds(
+        r_mol, reactive_xyz_indices, changing_bonds, ring_sets)
+
+    # Constraints.
+    constraints = get_r_constraints(expected_breaking_bonds=bb, expected_forming_bonds=fb)
+    if ring_bonds:
+        reactive_bond_atoms = {a for bond in bb + fb for a in bond}
+        constrained_atoms = reactive_bond_atoms | {a for pair in constraints.get('R_atom', []) for a in pair}
+        added = False
+        for rb in ring_bonds:
+            if not added and rb[0] not in constrained_atoms and rb[1] not in constrained_atoms:
+                constraints['R_atom'].append(rb)
+                constrained_atoms.add(rb[0])
+                constrained_atoms.add(rb[1])
+                added = True
+            else:
+                reactive_xyz_indices.discard(rb[0])
+
+    # Near-attack rotation.
+    fb_in_ring = _reactive_heavy_atoms_share_ring(fb, r_mol, r_xyz['symbols'], ring_sets)
+    bb_in_ring = _reactive_heavy_atoms_share_ring(bb, r_mol, r_xyz['symbols'], ring_sets)
+    r_xyz_na = r_xyz if fb_in_ring else get_near_attack_xyz(r_xyz, r_mol, bonds=fb)
+    op_xyz_na = op_xyz if bb_in_ring else get_near_attack_xyz(op_xyz, mapped_p_mol, bonds=bb)
+
+    return _PathContext(
+        r_xyz=r_xyz, r_mol=r_mol, op_xyz=op_xyz, mapped_p_mol=mapped_p_mol,
+        bb=bb, fb=fb, family=family, r_label_map=r_label_map,
+        weight=weight, ring_sets=ring_sets, label=label,
+        discovered_in_reverse=discovered_in_reverse,
+        reactive_xyz_indices=reactive_xyz_indices,
+        anchors=anchors, constraints=constraints,
+        r_xyz_na=r_xyz_na, op_xyz_na=op_xyz_na,
+    )
+
+def _strategy_ring_scission(ctx: _PathContext) -> _StrategyResult:
+    """Build TS for ring-scission reactions discovered in reverse.
+
+    Folds the reactant chain into a ring via torsion rotation, then
+    stretches the breaking bond.  Dominant: halts the pipeline on success.
+    """
+    if not (ctx.discovered_in_reverse and ctx.bb and not ctx.fb):
+        return _StrategyResult()
+    rc = ring_closure_xyz(ctx.r_xyz, ctx.r_mol, forming_bond=ctx.bb[0])
+    if rc is None:
+        return _StrategyResult()
+    ts = _build_ring_scission_ts(rc, ctx.bb, ctx.weight)
+    if ts is not None and not colliding_atoms(ts):
+        logger.debug(f'Linear ({ctx.label}): used ring-scission builder.')
+        return _StrategyResult(guesses=[ts], halt=True)
+    return _StrategyResult()
+
+
+def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
+    """Build TS via torsion-driven ring closure for forming bonds.
+
+    For each forming bond whose atoms are far apart or connected by a long
+    molecular-graph path, rotate torsions to bring them close.  For non-H
+    atom migrations (e.g. halogen shift), also reposition the migrating atom
+    symmetrically.  Dominant: halts the pipeline on success.
+    """
+    if not ctx.fb:
+        return _StrategyResult()
+    guesses = []
+    used = False
+    for bond_pair in ctx.fb:
+        r_coords = np.array(ctx.r_xyz_na['coords'] if ctx.r_xyz_na else ctx.r_xyz['coords'], dtype=float)
+        site_dist = float(np.linalg.norm(r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
+        both_h = (ctx.r_xyz['symbols'][bond_pair[0]] == 'H'
+                  or ctx.r_xyz['symbols'][bond_pair[1]] == 'H')
+        path_len = get_path_length(ctx.r_mol, bond_pair[0], bond_pair[1])
+        use_rc = (site_dist > RING_CLOSURE_THRESHOLD
+                  or path_has_cumulated_bonds(ctx.r_mol, bond_pair)
+                  or (not both_h and path_len is not None and path_len >= 3))
+        if not use_rc:
+            continue
+        if abs(ctx.weight - 0.5) > 0.01:
+            continue
+        src_xyz = ctx.r_xyz_na if ctx.r_xyz_na is not None else ctx.r_xyz
+        rc_xyz = ring_closure_xyz(src_xyz, ctx.r_mol, forming_bond=bond_pair)
+        if rc_xyz is None:
+            continue
+        # Reposition migrating atom only for true atom migration
+        # (atom in both bb and fb), not pure ring closure.
+        mig_idx = bond_pair[0] if ctx.r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
+        atom_in_bb = any(mig_idx in b for b in ctx.bb)
+        if ctx.r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
+            acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
+            atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
+            don_idx = None
+            for nbr in ctx.r_mol.atoms[mig_idx].bonds:
+                ni = atom_to_idx[nbr]
+                if ni != acc_idx and ctx.r_mol.atoms[ni].symbol != 'H':
+                    don_idx = ni
+                    break
+            if don_idx is not None:
+                rc_coords = np.array(rc_xyz['coords'], dtype=float)
+                rc_xyz = _reposition_migrating_atom(
+                    rc_xyz, rc_coords, mig_idx, don_idx, acc_idx)
+        # Postprocess and validate.
+        rc_xyz, migrating_hs = postprocess_ts_guess(
+            rc_xyz, ctx.r_mol, list(ctx.fb), list(ctx.bb),
+            family=ctx.family, r_label_map=ctx.r_label_map)
+        is_valid, _ = validate_ts_guess(
+            rc_xyz, migrating_hs, list(ctx.fb), ctx.r_mol,
+            label=f'{ctx.label}, ring-closure', family=ctx.family)
+        if is_valid:
+            guesses.append(rc_xyz)
+            used = True
+    return _StrategyResult(guesses=guesses, halt=used)
+
+
+def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
+    """Build TS by Z-matrix chimera interpolation (Type R and Type P).
+
+    Builds two Z-matrix branches: one anchored on the reactant topology,
+    one on the product topology.  Always runs (no early exit).
+    """
+    forming_bonds_list = list(ctx.fb)
+    breaking_bonds_list = list(ctx.bb)
+    guesses = []
+
+    # Type R: reactant-topology Z-matrix chimera
+    ts_r = generate_zmat_branch(
+        anchor_xyz=ctx.r_xyz_na, anchor_mol=ctx.r_mol, target_xyz=ctx.op_xyz_na,
+        weight=ctx.weight, reactive_xyz_indices=ctx.reactive_xyz_indices,
+        anchors=ctx.anchors, constraints=ctx.constraints, r_mol=ctx.r_mol,
+        forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
+        label=f'{ctx.label}, type=R', family=ctx.family, r_label_map=ctx.r_label_map)
+    if ts_r is not None:
+        guesses.append(ts_r)
+
+    # Type P: product-topology Z-matrix chimera
+    ts_p = generate_zmat_branch(
+        anchor_xyz=ctx.op_xyz_na, anchor_mol=ctx.mapped_p_mol, target_xyz=ctx.r_xyz_na,
+        weight=1.0 - ctx.weight, reactive_xyz_indices=ctx.reactive_xyz_indices,
+        anchors=ctx.anchors, constraints=ctx.constraints, r_mol=ctx.r_mol,
+        forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
+        label=f'{ctx.label}, type=P', family=ctx.family, r_label_map=ctx.r_label_map)
+    if ts_p is not None:
+        guesses.append(ts_p)
+
+    # 4-center interchange fallback: when both Z-mat branches fail.
+    if ts_r is None and ts_p is None:
+        ts_4c = build_4center_interchange_ts(
+            r_xyz=ctx.r_xyz, r_mol=ctx.r_mol,
+            bb=breaking_bonds_list, fb=forming_bonds_list,
+            weight=ctx.weight, label=ctx.label)
+        if ts_4c is not None:
+            guesses.append(ts_4c)
+            logger.debug(f'Linear ({ctx.label}): used 4-center interchange builder.')
+
+    return _StrategyResult(guesses=guesses, halt=False)
+
+
+def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
+    """Build TS for 3-center atom shifts (e.g. 1,2_shiftC).
+
+    When breaking and forming bonds share a non-H atom, reposition it
+    symmetrically between the other two atoms.  Supplementary: never halts.
+    """
+    if len(ctx.bb) != 1 or len(ctx.fb) != 1:
+        return _StrategyResult()
+    bb_atoms = {a for bond in ctx.bb for a in bond}
+    fb_atoms = {a for bond in ctx.fb for a in bond}
+    shared = bb_atoms & fb_atoms
+    if len(shared) != 1:
+        return _StrategyResult()
+    pivot = next(iter(shared))
+    if ctx.r_xyz['symbols'][pivot] == 'H':
+        return _StrategyResult()
+    bb_other = ctx.bb[0][0] if ctx.bb[0][1] == pivot else ctx.bb[0][1]
+    fb_other = ctx.fb[0][0] if ctx.fb[0][1] == pivot else ctx.fb[0][1]
+    ts_3c = _reposition_migrating_atom(
+        dict(ctx.r_xyz), np.array(ctx.r_xyz['coords'], dtype=float),
+        mig_idx=pivot, don_idx=bb_other, acc_idx=fb_other)
+    if ts_3c is not None and not colliding_atoms(ts_3c):
+        logger.debug(f'Linear ({ctx.label}): used 3-center shift builder (pivot={pivot}).')
+        return _StrategyResult(guesses=[ts_3c], halt=False)
+    return _StrategyResult()
+
+
 def interpolate_isomerization(rxn: 'ARCReaction',
                               weight: float = 0.5,
                               existing_xyzs: Optional[List[dict]] = None,
@@ -1521,255 +1802,26 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                            f'skipping path.')
             continue
 
-        # Ring-scission fast path: when the family was discovered in reverse
-        # (product has a ring that the reactant doesn't) and there are only
-        # breaking bonds (no forming), build the TS by ring-closing the
-        # reactant geometry then stretching the breaking bond.
-        if product_dict.get('discovered_in_reverse') and bb and not fb:
-            # Use ring closure to fold the chain into the ring (the breaking
-            # bond in reverse = forming bond in forward).
-            rc_scission = ring_closure_xyz(r_xyz, r_mol, forming_bond=bb[0])
-            if rc_scission is not None:
-                ts_scission = _build_ring_scission_ts(rc_scission, bb, weight)
-                if ts_scission is not None and not colliding_atoms(ts_scission):
-                    ts_xyzs.append(ts_scission)
-                    logger.debug(f'Linear (rxn={rxn.label}, path={i}): used ring-scission builder.')
-                    continue
+        # --- Build the path context and run the strategy pipeline ---
+        ctx = _build_path_context(
+            r_xyz=r_xyz, r_mol=r_mol, op_xyz=op_xyz,
+            mapped_p_mol=mapped_p_mol, bb=list(bb), fb=list(fb),
+            family=path_family, r_label_map=r_label_dict,
+            weight=weight, ring_sets=_ring_sets,
+            label=f'rxn={rxn.label}, path={i}',
+            discovered_in_reverse=bool(product_dict.get('discovered_in_reverse')),
+        )
 
-        # Smart anchor selection: prefer spectator atoms adjacent to the reactive core
-        # so the Z-matrix coordinate frame is stable across the interpolation.
-        anchors = find_smart_anchors(r_mol, breaking_bonds=list(bb), forming_bonds=list(fb))
-
-        # XYZ indices of atoms involved in the reactive event (forming + breaking bonds).
-        # Only these coordinates will be interpolated; spectator coordinates are preserved
-        # from the anchor to avoid washing out good TS geometry.
-        reactive_xyz_indices: Set[int] = set()
-        for bond in list(bb) + list(fb):
-            reactive_xyz_indices.update(bond)
-
-        # Guard: when the atom map causes large Cartesian displacements for
-        # reactive heavy atoms in a ring whose only reactive bond involves H
-        # (H-migration donor/acceptor), interpolating their Z-mat coordinates
-        # distorts the backbone.  Remove them — only the migrating H needs
-        # to be interpolated.  Skip atoms that participate in heavy-atom
-        # forming/breaking bonds (genuine ring-forming reactions).
-        r_coords = np.array(r_xyz['coords'], dtype=float)
-        op_coords = np.array(op_xyz['coords'], dtype=float)
-        ring_atom_indices = set().union(*_ring_sets) if _ring_sets else set()
-        heavy_bond_atoms: Set[int] = set()
-        for a, b in list(bb) + list(fb):
-            if r_xyz['symbols'][a] != 'H' and r_xyz['symbols'][b] != 'H':
-                heavy_bond_atoms.add(a)
-                heavy_bond_atoms.add(b)
-        drop = set()
-        for idx in reactive_xyz_indices:
-            if r_xyz['symbols'][idx] != 'H' and idx in ring_atom_indices \
-                    and idx not in heavy_bond_atoms:
-                disp = float(np.linalg.norm(r_coords[idx] - op_coords[idx]))
-                if disp > 1.5:
-                    drop.add(idx)
-        if drop:
-            reactive_xyz_indices -= drop
-            logger.debug(f'Linear (rxn={rxn.label}, path={i}): dropped ring heavy atoms {drop} '
-                         f'from reactive set (large R→P displacement, H-migration donor/acceptor).')
-
-        # When a reactive atom sits in a ring, include its ring-bonded spectator
-        # neighbors so they can track the reactive atom's motion during interpolation.
-        changing_bonds = {(min(a, b), max(a, b)) for a, b in list(bb) + list(fb)}
-        ring_bonds, reactive_xyz_indices = _get_ring_preservation_bonds(
-            r_mol, reactive_xyz_indices, changing_bonds, _ring_sets)
-
-        # Force the Z-matrix to measure every reactive bond distance explicitly,
-        # regardless of whether that bond exists in the current molecule graph.
-        # Type R misses forming bonds (not in r_mol); Type P misses breaking bonds
-        # (not in mapped_p_mol).  A shared 'R_atom' constraint set covers both:
-        # xyz_to_zmat will insert R_atom rows for each (i, j) pair before normal
-        # atom ordering, so the interpolated Z-matrix captures the full reaction path.
-        constraints = get_r_constraints(expected_breaking_bonds=list(bb),
-                                        expected_forming_bonds=list(fb))
-        # Also constrain ring bonds adjacent to reactive atoms so the Z-mat tree
-        # directly connects the reactive atom to its ring neighbors, keeping
-        # ring bond distances as explicit (interpolatable) Z-mat variables.
-        # Only add when the reactive atom is already in the constraint tree.
-        if ring_bonds:
-            # Add at most one ring constraint, and only when it doesn't share
-            # any atom with reactive-bond endpoints or existing constraints.
-            # Conflicts create circular dependencies (Z-mat constraint lock).
-            reactive_bond_atoms = {a for bond in list(bb) + list(fb) for a in bond}
-            constrained_atoms = reactive_bond_atoms | {a for pair in constraints.get('R_atom', []) for a in pair}
-            added = False
-            for rb in ring_bonds:
-                if not added and rb[0] not in constrained_atoms and rb[1] not in constrained_atoms:
-                    constraints['R_atom'].append(rb)
-                    constrained_atoms.add(rb[0])
-                    constrained_atoms.add(rb[1])
-                    added = True
-                else:
-                    reactive_xyz_indices.discard(rb[0])
-
-        # Pre-rotate to near-attack conformation: rotate along the donor→acceptor
-        # path so forming-bond atoms are geometrically close before Z-matrix
-        # construction.  Without this, conformational changes required to bring
-        # reactive atoms into proximity (e.g. O–O rotation in intra-H migrations)
-        # are absent from both R and P equilibrium geometries and would never be
-        # captured by interpolation alone.
-        # Skip near-attack when the reactive heavy atoms share a ring:
-        # they are already geometrically close and rotation distorts the ring.
-        # For H-migration bonds like (H, acceptor), check whether the H's
-        # heavy-atom donor shares a ring with the acceptor instead.
-        def _reactive_heavy_atoms_share_ring(bonds_to_check: list, mol: 'Molecule') -> bool:
-            atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
-            for a, b in bonds_to_check:
-                ha, hb = a, b
-                # Replace H index with its heavy-atom neighbor (the donor/acceptor).
-                if r_xyz['symbols'][ha] == 'H':
-                    for nbr in mol.atoms[ha].bonds:
-                        ni = atom_to_idx[nbr]
-                        if r_xyz['symbols'][ni] != 'H':
-                            ha = ni
-                            break
-                if r_xyz['symbols'][hb] == 'H':
-                    for nbr in mol.atoms[hb].bonds:
-                        ni = atom_to_idx[nbr]
-                        if r_xyz['symbols'][ni] != 'H':
-                            hb = ni
-                            break
-                for ring_set in _ring_sets:
-                    if ha in ring_set and hb in ring_set:
-                        return True
-            return False
-        fb_in_ring = _reactive_heavy_atoms_share_ring(list(fb), r_mol)
-        bb_in_ring = _reactive_heavy_atoms_share_ring(list(bb), r_mol)
-        r_xyz_na = r_xyz if fb_in_ring else get_near_attack_xyz(r_xyz, r_mol, bonds=list(fb))
-        # For the product frame, approach-relevant torsions involve the breaking
-        # bonds (atoms that are bonded in R but separate in P).
-        op_xyz_na = op_xyz if bb_in_ring else get_near_attack_xyz(op_xyz, mapped_p_mol, bonds=list(bb))
-
-        # Ring-closure fast path: when the forming-bond distance exceeds the threshold,
-        # the reactive sites are too far apart for Z-matrix interpolation to produce a
-        # connected TS geometry.  Use a dedicated ring-closure algorithm instead.
-        # Ring closure is weight-independent (purely geometric), so only produce it
-        # at the canonical weight (0.5) to avoid duplicates across weight iterations.
-        # At non-0.5 weights, the zmat branch still runs — it has proper reactive
-        # bond info and can produce valid weight-dependent guesses.
-        used_ring_closure = False
-        needs_ring_closure = False
-        for bond_pair in list(fb):
-            r_coords = np.array(r_xyz_na['coords'], dtype=float)
-            site_dist = float(np.linalg.norm(r_coords[bond_pair[0]] - r_coords[bond_pair[1]]))
-            # For non-H atom migrations (F, Cl, etc.) connected by a path in
-            # the reactant, always use ring closure to form the cyclic TS.
-            # H migrations are handled by Z-mat interpolation + postprocessing.
-            both_h = (r_xyz['symbols'][bond_pair[0]] == 'H'
-                      or r_xyz['symbols'][bond_pair[1]] == 'H')
-            path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
-            use_rc = (site_dist > RING_CLOSURE_THRESHOLD
-                      or path_has_cumulated_bonds(r_mol, bond_pair)
-                      or (not both_h and path_len is not None and path_len >= 3))
-            if use_rc:
-                needs_ring_closure = True
-                if abs(weight - 0.5) <= 0.01:
-                    rc_xyz = ring_closure_xyz(r_xyz_na, r_mol, forming_bond=bond_pair)
-                    if rc_xyz is not None:
-                        # Reposition the migrating atom only when it participates
-                        # in BOTH a breaking and forming bond (true atom migration,
-                        # e.g. F shifting from one C to another).  For pure ring
-                        # closure (fb only, no bb) no atom migrates — both chain
-                        # ends stay bonded to their neighbors.
-                        mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
-                        atom_in_bb = any(mig_idx in b for b in bb)
-                        if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
-                            acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
-                            atom_to_idx_rc2 = {a: idx for idx, a in enumerate(r_mol.atoms)}
-                            don_idx = None
-                            for nbr in r_mol.atoms[mig_idx].bonds:
-                                ni = atom_to_idx_rc2[nbr]
-                                if ni != acc_idx and r_mol.atoms[ni].symbol != 'H':
-                                    don_idx = ni
-                                    break
-                            if don_idx is not None:
-                                rc_coords = np.array(rc_xyz['coords'], dtype=float)
-                                rc_xyz = _reposition_migrating_atom(
-                                    rc_xyz, rc_coords, mig_idx, don_idx, acc_idx)
-                        # Ring closure only handles the ring-forming bond;
-                        # apply the full postprocessing pipeline so that
-                        # other reactive atoms (e.g. a migrating H in
-                        # Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH)
-                        # are also repositioned to their TS positions.
-                        rc_xyz, migrating_hs_rc = postprocess_ts_guess(
-                            rc_xyz, r_mol, list(fb), list(bb),
-                            family=path_family, r_label_map=r_label_dict)
-                        is_valid, _ = validate_ts_guess(
-                            rc_xyz, migrating_hs_rc, list(fb), r_mol,
-                            label=f'rxn={rxn.label}, path={i}, ring-closure',
-                            family=path_family)
-                        if is_valid:
-                            ts_xyzs.append(rc_xyz)
-                            used_ring_closure = True
-                            logger.debug(f'Linear (rxn={rxn.label}, path={i}): used ring-closure algorithm '
-                                         f'(forming-bond distance {site_dist:.2f} Å, cumulated={path_has_cumulated_bonds(r_mol, bond_pair)}).')
-        if used_ring_closure:
-            continue
-
-        forming_bonds_list = list(fb)
-        breaking_bonds_list = list(bb)
-
-        # Type R: reactant-topology Z-matrix chimera
-        ts_xyz_r = generate_zmat_branch(
-            anchor_xyz=r_xyz_na, anchor_mol=r_mol, target_xyz=op_xyz_na,
-            weight=weight, reactive_xyz_indices=reactive_xyz_indices,
-            anchors=anchors, constraints=constraints, r_mol=r_mol,
-            forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
-            label=f'rxn={rxn.label}, path={i}, type=R',
-            family=path_family, r_label_map=r_label_dict)
-        if ts_xyz_r is not None:
-            ts_xyzs.append(ts_xyz_r)
-
-        # Type P: product-topology Z-matrix chimera (symmetric to Type R).
-        # mapped_p_mol has product bond topology but with atoms reindexed to match op_xyz
-        # (reactant atom ordering).
-        ts_xyz_p = generate_zmat_branch(
-            anchor_xyz=op_xyz_na, anchor_mol=mapped_p_mol, target_xyz=r_xyz_na,
-            weight=1.0 - weight, reactive_xyz_indices=reactive_xyz_indices,
-            anchors=anchors, constraints=constraints, r_mol=r_mol,
-            forming_bonds=forming_bonds_list, breaking_bonds=breaking_bonds_list,
-            label=f'rxn={rxn.label}, path={i}, type=P',
-            family=path_family, r_label_map=r_label_dict)
-        if ts_xyz_p is not None:
-            ts_xyzs.append(ts_xyz_p)
-
-        # 4-center interchange fallback: when Z-mat chimeras produce nothing for
-        # this path, try direct geometry construction for 4-center swap reactions
-        # (e.g. 1,2_XY_interchange: X-C-C-Y → Y-C-C-X).
-        if ts_xyz_r is None and ts_xyz_p is None:
-            ts_4c = build_4center_interchange_ts(
-                r_xyz=r_xyz, r_mol=r_mol,
-                bb=breaking_bonds_list, fb=forming_bonds_list,
-                weight=weight, label=f'rxn={rxn.label}, path={i}')
-            if ts_4c is not None:
-                ts_xyzs.append(ts_4c)
-                logger.debug(f'Linear (rxn={rxn.label}, path={i}): used 4-center interchange builder.')
-
-        # 3-center shift: when breaking and forming bonds share a non-H
-        # atom (e.g. 1,2_shiftC, Intra_R_Add_Exo_scission), reposition
-        # the shared atom symmetrically between the other two to form a
-        # 3-membered ring TS.
-        if len(bb) == 1 and len(fb) == 1:
-            bb_atoms = {a for bond in bb for a in bond}
-            fb_atoms = {a for bond in fb for a in bond}
-            shared_3c = bb_atoms & fb_atoms
-            if len(shared_3c) == 1:
-                pivot = next(iter(shared_3c))
-                if r_xyz['symbols'][pivot] != 'H':
-                    bb_other = bb[0][0] if bb[0][1] == pivot else bb[0][1]
-                    fb_other = fb[0][0] if fb[0][1] == pivot else fb[0][1]
-                    ts_3c = _reposition_migrating_atom(
-                        dict(r_xyz), np.array(r_xyz['coords'], dtype=float),
-                        mig_idx=pivot, don_idx=bb_other, acc_idx=fb_other)
-                    if ts_3c is not None and not colliding_atoms(ts_3c):
-                        ts_xyzs.append(ts_3c)
-                        logger.debug(f'Linear (rxn={rxn.label}, path={i}): '
-                                     f'used 3-center shift builder (pivot={pivot}).')
+        # Strategy pipeline: dominant strategies halt on success.
+        for strategy in [_strategy_ring_scission,
+                         _strategy_ring_closure,
+                         _strategy_zmat_interpolation,
+                         _strategy_3center_shift]:
+            result = strategy(ctx)
+            if result.guesses:
+                ts_xyzs.extend(result.guesses)
+            if result.halt:
+                break
 
     # Trivial atom-map fallback: when no product_dicts could be determined (e.g., the
     # reaction family is unknown) fall back to an identity atom map and determine
