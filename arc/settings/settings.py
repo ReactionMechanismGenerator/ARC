@@ -299,6 +299,16 @@ default_job_settings = {
     'job_max_server_node_memory_allocation': 0.95,  # e.g., at most 95% node memory will be used per job **if needed**
 }
 
+# Pipe mode settings: distributed HPC execution via job arrays.
+# These can be overridden in ~/.arc/settings.py.
+pipe_settings = {
+    'enabled': True,           # Set to False to disable pipe mode entirely.
+    'min_tasks': 10,           # Minimum batch size to trigger pipe mode.
+    'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
+    'max_attempts': 3,         # Retry budget per task before terminal failure.
+    'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
+}
+
 # Criteria for identification of imaginary frequencies for transition states.
 # An imaginary frequency is valid if it is between the following range (in cm-1):
 LOWEST_MAJOR_TS_FREQ, HIGHEST_MAJOR_TS_FREQ = 75.0, 10000.0
