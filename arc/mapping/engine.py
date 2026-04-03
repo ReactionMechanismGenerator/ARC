@@ -1483,9 +1483,12 @@ def find_all_breaking_bonds(rxn: "ARCReaction",
         pdi (int): The product dictionary index to consider. Defaults to 0.
 
     Returns:
-        List[Tuple[int, int]]: Entries are tuples of the form (atom_index1, atom_index2) for each broken bond (1-indexed),
-                               representing the atom indices to be cut.
+        Optional[List[Tuple[int, int]]]: Entries are tuples of the form (atom_index1, atom_index2) for each
+            broken bond (1-indexed), representing the atom indices to be cut.
+            Returns ``None`` if ``rxn.family`` is not set or ``rxn.product_dicts`` is empty.
     """
+    if rxn.family is None:
+        return None
     family = ReactionFamily(label=rxn.family)
     if not len(rxn.product_dicts):
         return None
