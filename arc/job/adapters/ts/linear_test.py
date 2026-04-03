@@ -12,31 +12,34 @@ import unittest
 import numpy as np
 
 from arc.common import ARC_PATH, almost_equal_coords, get_single_bond_length
-from arc.job.adapters.ts.linear import (BASE_WEIGHT_GRID,
-                                        HAMMOND_DELTA,
-                                        LinearAdapter,
-                                        _FAMILY_POSTPROCESSORS,
-                                        _FAMILY_VALIDATORS,
-                                        _clip01,
-                                        _find_split_bonds_by_fragmentation,
-                                        _get_all_referenced_atoms,
-                                        _get_all_zmat_rows,
-                                        _postprocess_generic,
-                                        _postprocess_ts_guess,
-                                        _stretch_bond,
-                                        _validate_h_migration,
-                                        _validate_ts_guess,
-                                        average_zmat_params,
-                                        get_near_attack_xyz,
-                                        get_r_constraints,
-                                        get_rxn_weight,
-                                        get_weight_grid,
-                                        has_inward_migrating_group_h,
-                                        interp_dihedral_deg,
+from arc.job.adapters.ts.linear import (LinearAdapter,
                                         interpolate,
                                         interpolate_addition,
                                         interpolate_isomerization,
                                         )
+from arc.job.adapters.ts.linear_utils.math_zmat import (BASE_WEIGHT_GRID,
+                                                         HAMMOND_DELTA,
+                                                         average_zmat_params,
+                                                         clip01,
+                                                         get_all_referenced_atoms,
+                                                         get_all_zmat_rows,
+                                                         get_r_constraints,
+                                                         get_rxn_weight,
+                                                         get_weight_grid,
+                                                         interp_dihedral_deg,
+                                                         )
+from arc.job.adapters.ts.linear_utils.postprocess import (FAMILY_POSTPROCESSORS,
+                                                           FAMILY_VALIDATORS,
+                                                           has_inward_migrating_group_h,
+                                                           postprocess_generic,
+                                                           postprocess_ts_guess,
+                                                           validate_h_migration,
+                                                           validate_ts_guess,
+                                                           )
+from arc.job.adapters.ts.linear_utils.isomerization import get_near_attack_xyz
+from arc.job.adapters.ts.linear_utils.addition import (find_split_bonds_by_fragmentation,
+                                                        stretch_bond,
+                                                        )
 from arc.mapping.driver import map_rxn
 from arc.reaction import ARCReaction
 from arc.species.converter import compare_zmats, order_mol_by_atom_map, order_xyz_by_atom_map, str_to_xyz, xyz_to_str, zmat_from_xyz
@@ -492,47 +495,47 @@ H       2.05354047   -0.10415729    1.58865243"""
                                 'have different bond topologies.')
 
     def test_get_all_zmat_rows(self):
-        """Test the _get_all_zmat_rows() helper returns every packed row index."""
+        """Test the get_all_zmat_rows() helper returns every packed row index."""
         # Simple (non-consolidated) variables return a single-element list.
-        self.assertEqual(_get_all_zmat_rows('R_1_0'), [1])
-        self.assertEqual(_get_all_zmat_rows('A_3_1_0'), [3])
-        self.assertEqual(_get_all_zmat_rows('D_4_1_0_2'), [4])
-        self.assertEqual(_get_all_zmat_rows('DX_5_1_0_2'), [5])
+        self.assertEqual(get_all_zmat_rows('R_1_0'), [1])
+        self.assertEqual(get_all_zmat_rows('A_3_1_0'), [3])
+        self.assertEqual(get_all_zmat_rows('D_4_1_0_2'), [4])
+        self.assertEqual(get_all_zmat_rows('DX_5_1_0_2'), [5])
         # Consolidated variables (multiple rows packed with '|') return all row indices.
-        self.assertEqual(_get_all_zmat_rows('R_2|4_0|0'), [2, 4])
-        self.assertEqual(_get_all_zmat_rows('A_2|4_0|0_1|1'), [2, 4])
-        self.assertEqual(_get_all_zmat_rows('R_3|6_1|1'), [3, 6])
+        self.assertEqual(get_all_zmat_rows('R_2|4_0|0'), [2, 4])
+        self.assertEqual(get_all_zmat_rows('A_2|4_0|0_1|1'), [2, 4])
+        self.assertEqual(get_all_zmat_rows('R_3|6_1|1'), [3, 6])
         # Three-way consolidation.
-        self.assertEqual(_get_all_zmat_rows('R_1|3|5_0|0|0'), [1, 3, 5])
+        self.assertEqual(get_all_zmat_rows('R_1|3|5_0|0|0'), [1, 3, 5])
         # Unparseable names return an empty list (not None, not an exception).
-        self.assertEqual(_get_all_zmat_rows('R'), [])
-        self.assertEqual(_get_all_zmat_rows('notavar'), [])
-        self.assertEqual(_get_all_zmat_rows(''), [])
+        self.assertEqual(get_all_zmat_rows('R'), [])
+        self.assertEqual(get_all_zmat_rows('notavar'), [])
+        self.assertEqual(get_all_zmat_rows(''), [])
 
     def test_get_all_referenced_atoms(self):
-        """Test that _get_all_referenced_atoms returns every atom index in a Z-matrix variable name."""
-        self.assertEqual(_get_all_referenced_atoms('R_1_0'), [1, 0])
-        self.assertEqual(_get_all_referenced_atoms('A_3_1_0'), [3, 1, 0])
-        self.assertEqual(_get_all_referenced_atoms('D_4_3_0_2'), [4, 3, 0, 2])
-        self.assertEqual(_get_all_referenced_atoms('DX_5_1_0_2'), [5, 1, 0, 2])
-        self.assertEqual(_get_all_referenced_atoms('R_2|4_0|0'), [2, 4, 0, 0])
-        self.assertEqual(_get_all_referenced_atoms('A_2|4_0|0_1|1'), [2, 4, 0, 0, 1, 1])
-        self.assertEqual(_get_all_referenced_atoms('R'), [])
-        self.assertEqual(_get_all_referenced_atoms(''), [])
+        """Test that get_all_referenced_atoms returns every atom index in a Z-matrix variable name."""
+        self.assertEqual(get_all_referenced_atoms('R_1_0'), [1, 0])
+        self.assertEqual(get_all_referenced_atoms('A_3_1_0'), [3, 1, 0])
+        self.assertEqual(get_all_referenced_atoms('D_4_3_0_2'), [4, 3, 0, 2])
+        self.assertEqual(get_all_referenced_atoms('DX_5_1_0_2'), [5, 1, 0, 2])
+        self.assertEqual(get_all_referenced_atoms('R_2|4_0|0'), [2, 4, 0, 0])
+        self.assertEqual(get_all_referenced_atoms('A_2|4_0|0_1|1'), [2, 4, 0, 0, 1, 1])
+        self.assertEqual(get_all_referenced_atoms('R'), [])
+        self.assertEqual(get_all_referenced_atoms(''), [])
 
     def test_family_dispatch_tables_populated(self):
         """Test that the family dispatch tables are populated for known families."""
-        self.assertIn('intra_H_migration', _FAMILY_POSTPROCESSORS)
-        self.assertIn('intra_H_migration', _FAMILY_VALIDATORS)
-        self.assertIn('1,2_shiftC', _FAMILY_POSTPROCESSORS)
-        self.assertIn('1,2_shiftC', _FAMILY_VALIDATORS)
-        self.assertIs(_FAMILY_POSTPROCESSORS['Ketoenol'],
-                      _FAMILY_POSTPROCESSORS['intra_H_migration'])
-        self.assertIs(_FAMILY_VALIDATORS['Ketoenol'],
-                      _FAMILY_VALIDATORS['intra_H_migration'])
+        self.assertIn('intra_H_migration', FAMILY_POSTPROCESSORS)
+        self.assertIn('intra_H_migration', FAMILY_VALIDATORS)
+        self.assertIn('1,2_shiftC', FAMILY_POSTPROCESSORS)
+        self.assertIn('1,2_shiftC', FAMILY_VALIDATORS)
+        self.assertIs(FAMILY_POSTPROCESSORS['Ketoenol'],
+                      FAMILY_POSTPROCESSORS['intra_H_migration'])
+        self.assertIs(FAMILY_VALIDATORS['Ketoenol'],
+                      FAMILY_VALIDATORS['intra_H_migration'])
 
     def test_postprocess_dispatch_known_family(self):
-        """Test that _postprocess_ts_guess dispatches to the correct family handler."""
+        """Test that postprocess_ts_guess dispatches to the correct family handler."""
         xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
                'isotopes': (12, 1, 1, 1, 1),
                'coords': ((0.0, 0.0, 0.0),
@@ -542,11 +545,11 @@ H       2.05354047   -0.10415729    1.58865243"""
                            (-0.51, -0.89, -0.36))}
         from arc.molecule import Molecule
         mol = Molecule(smiles='C')
-        result_xyz, mig_hs = _postprocess_ts_guess(
+        result_xyz, mig_hs = postprocess_ts_guess(
             xyz, mol, forming_bonds=[], breaking_bonds=[], family=None)
         self.assertIsInstance(result_xyz, dict)
         self.assertIsInstance(mig_hs, set)
-        result_xyz2, _ = _postprocess_ts_guess(
+        result_xyz2, _ = postprocess_ts_guess(
             xyz, mol, forming_bonds=[], breaking_bonds=[], family='SomeFutureFamily')
         self.assertIsInstance(result_xyz2, dict)
 
@@ -557,32 +560,32 @@ H       2.05354047   -0.10415729    1.58865243"""
                          'coords': ((0.0, 0.0, 0.0), (0.01, 0.0, 0.0))}
         from arc.molecule import Molecule
         mol = Molecule(smiles='[CH2][CH2]')
-        is_valid, reason = _validate_ts_guess(
+        is_valid, reason = validate_ts_guess(
             xyz_collision, set(), [], mol, label='test', family='intra_H_migration')
         self.assertFalse(is_valid)
         self.assertEqual(reason, 'colliding atoms')
-        is_valid2, reason2 = _validate_ts_guess(
+        is_valid2, reason2 = validate_ts_guess(
             xyz_collision, set(), [], mol, label='test', family='SomeFutureFamily')
         self.assertFalse(is_valid2)
         self.assertEqual(reason2, 'colliding atoms')
-        is_valid3, reason3 = _validate_ts_guess(
+        is_valid3, reason3 = validate_ts_guess(
             xyz_collision, set(), [], mol, label='test', family=None)
         self.assertFalse(is_valid3)
         self.assertEqual(reason3, 'colliding atoms')
 
     def test_validate_h_migration_filters(self):
-        """Test that _validate_h_migration is a no-op when migrating_hs is empty."""
+        """Test that validate_h_migration is a no-op when migrating_hs is empty."""
         xyz = {'symbols': ('C', 'C', 'H'),
                'isotopes': (12, 12, 1),
                'coords': ((0.0, 0.0, 0.0), (1.5, 0.0, 0.0), (0.75, 0.0, 0.0))}
         from arc.molecule import Molecule
         mol = Molecule(smiles='[CH2][CH2]')
-        is_valid, reason = _validate_h_migration(xyz, set(), [(0, 2)], mol, 'test')
+        is_valid, reason = validate_h_migration(xyz, set(), [(0, 2)], mol, 'test')
         self.assertTrue(is_valid)
         self.assertEqual(reason, '')
 
     def test_postprocess_generic_no_op(self):
-        """Test that _postprocess_generic returns empty migrating_hs."""
+        """Test that postprocess_generic returns empty migrating_hs."""
         xyz = {'symbols': ('C', 'H', 'H', 'H', 'H'),
                'isotopes': (12, 1, 1, 1, 1),
                'coords': ((0.0, 0.0, 0.0),
@@ -592,7 +595,7 @@ H       2.05354047   -0.10415729    1.58865243"""
                            (-0.51, -0.89, -0.36))}
         from arc.molecule import Molecule
         mol = Molecule(smiles='C')
-        result_xyz, mig_hs = _postprocess_generic(xyz, mol, [], [])
+        result_xyz, mig_hs = postprocess_generic(xyz, mol, [], [])
         self.assertEqual(mig_hs, set())
         self.assertEqual(len(result_xyz['symbols']), 5)
 
@@ -610,7 +613,7 @@ H       2.05354047   -0.10415729    1.58865243"""
                            (1.90, -0.51, -0.89))}
         from arc.molecule import Molecule
         mol = Molecule(smiles='CC')
-        is_valid, reason = _validate_ts_guess(
+        is_valid, reason = validate_ts_guess(
             xyz, set(), [], mol, label='test', family='SomeFutureFamily')
         self.assertTrue(is_valid)
         self.assertEqual(reason, '')
@@ -899,9 +902,9 @@ H       2.05354047   -0.10415729    1.58865243"""
         for w in BASE_WEIGHT_GRID:
             if round(w, 3) not in [round(cw, 3) for cw in custom_grid]:
                 w0 = get_rxn_weight(rxn)
-                hammond_values = {round(_clip01(w0 - 0.05), 3),
+                hammond_values = {round(clip01(w0 - 0.05), 3),
                                   round(w0, 3),
-                                  round(_clip01(w0 + 0.05), 3)}
+                                  round(clip01(w0 + 0.05), 3)}
                 if round(w, 3) not in hammond_values:
                     self.assertNotIn(round(w, 3), grid)
         # Always sorted and unique.
@@ -4689,14 +4692,14 @@ H       1.61593633   -0.33730052   -2.83543977"""
         self.assertEqual(interp_dihedral_deg(178, -170, 0.5), -176)
 
     def test_clip01(self):
-        """Test the _clip01 helper."""
-        self.assertEqual(_clip01(0.5), 0.5)
-        self.assertEqual(_clip01(0.0), 0.0)
-        self.assertEqual(_clip01(1.0), 1.0)
-        self.assertEqual(_clip01(-1.0), 0.0)
-        self.assertEqual(_clip01(2.0), 1.0)
-        self.assertEqual(_clip01(-0.001), 0.0)
-        self.assertEqual(_clip01(1.001), 1.0)
+        """Test the clip01 helper."""
+        self.assertEqual(clip01(0.5), 0.5)
+        self.assertEqual(clip01(0.0), 0.0)
+        self.assertEqual(clip01(1.0), 1.0)
+        self.assertEqual(clip01(-1.0), 0.0)
+        self.assertEqual(clip01(2.0), 1.0)
+        self.assertEqual(clip01(-0.001), 0.0)
+        self.assertEqual(clip01(1.001), 1.0)
 
     # -----------------------------------------------------------------------
     # Integration tests for the dual-topology Z-matrix chimera engine
@@ -4876,7 +4879,7 @@ H    3.62554580    0.48341866   -0.56587535"""
     # ------------------------------------------------------------------ #
 
     def test_find_split_bonds_by_fragmentation_simple(self):
-        """Test _find_split_bonds_by_fragmentation for a simple A -> B + C dissociation."""
+        """Test find_split_bonds_by_fragmentation for a simple A -> B + C dissociation."""
         # Ethane C2H6: cutting the C-C bond gives two CH3 fragments.
         uni = ARCSpecies(label='ethane', smiles='CC',
                          xyz=str_to_xyz("""C      -0.75560000    0.00000000    0.00000000
@@ -4897,7 +4900,7 @@ H      -0.53950000   -0.93440000    0.00000000"""))
 H       1.07900000    0.00000000    0.00000000
 H      -0.53950000    0.93440000    0.00000000
 H      -0.53950000   -0.93440000    0.00000000"""))
-        cuts = _find_split_bonds_by_fragmentation(uni.mol, [p1, p2])
+        cuts = find_split_bonds_by_fragmentation(uni.mol, [p1, p2])
         self.assertEqual(len(cuts), 1)
         self.assertEqual(len(cuts[0]), 1)
         # The C-C bond should be (0, 1).
@@ -4905,7 +4908,7 @@ H      -0.53950000   -0.93440000    0.00000000"""))
         self.assertEqual(bond, (0, 1))
 
     def test_find_split_bonds_by_fragmentation_no_valid_cut(self):
-        """Test _find_split_bonds_by_fragmentation returns empty when no cut matches."""
+        """Test find_split_bonds_by_fragmentation returns empty when no cut matches."""
         # Methane can't be split into two CH3 fragments.
         uni = ARCSpecies(label='methane', smiles='C',
                          xyz=str_to_xyz("""C       0.00000000    0.00000000    0.00000000
@@ -4918,11 +4921,11 @@ H       0.62910000   -0.62910000   -0.62910000"""))
 H       1.07900000    0.00000000    0.00000000
 H      -0.53950000    0.93440000    0.00000000
 H      -0.53950000   -0.93440000    0.00000000"""))
-        cuts = _find_split_bonds_by_fragmentation(uni.mol, [p, p])
+        cuts = find_split_bonds_by_fragmentation(uni.mol, [p, p])
         self.assertEqual(cuts, [])
 
     def test_find_split_bonds_by_fragmentation_relaxed_h(self):
-        """Test _find_split_bonds_by_fragmentation with H redistribution (relaxed matching)."""
+        """Test find_split_bonds_by_fragmentation with H redistribution (relaxed matching)."""
         # H2O2 -> OH + OH: strict match. Single bond cut O-O gives two OH.
         uni = ARCSpecies(label='H2O2', smiles='OO',
                          xyz=str_to_xyz("""O       0.00000000    0.72720000   -0.05290000
@@ -4935,12 +4938,12 @@ H       0.00000000    0.00000000   -0.87120000"""))
         p2 = ARCSpecies(label='OH2', smiles='[OH]',
                         xyz=str_to_xyz("""O       0.00000000    0.00000000    0.10890000
 H       0.00000000    0.00000000   -0.87120000"""))
-        cuts = _find_split_bonds_by_fragmentation(uni.mol, [p1, p2])
+        cuts = find_split_bonds_by_fragmentation(uni.mol, [p1, p2])
         self.assertEqual(len(cuts), 1)
         self.assertEqual(cuts[0][0], (0, 1))
 
     def test_stretch_bond_simple_dissociation(self):
-        """Test _stretch_bond for a simple 2-fragment stretch."""
+        """Test stretch_bond for a simple 2-fragment stretch."""
         # Use ethane: cut C-C bond, stretch the smaller fragment away.
         uni = ARCSpecies(label='ethane', smiles='CC',
                          xyz=str_to_xyz("""C      -0.75560000    0.00000000    0.00000000
@@ -4952,7 +4955,7 @@ H       1.16560000   -0.99270000    0.00000000
 H       1.16560000    0.49640000   -0.85960000
 H       1.16560000    0.49640000    0.85960000"""))
         split_bonds = [(0, 1)]
-        ts_xyz = _stretch_bond(uni.get_xyz(), uni.mol, split_bonds, weight=0.5)
+        ts_xyz = stretch_bond(uni.get_xyz(), uni.mol, split_bonds, weight=0.5)
         self.assertIsNotNone(ts_xyz)
         # The C-C distance in the TS should be larger than in ethane (~1.54 Å).
         coords = np.array(ts_xyz['coords'])
@@ -4962,7 +4965,7 @@ H       1.16560000    0.49640000    0.85960000"""))
         self.assertFalse(colliding_atoms(ts_xyz))
 
     def test_stretch_bond_returns_none_for_no_fragmentation(self):
-        """Test _stretch_bond returns None when split bonds don't fragment the molecule."""
+        """Test stretch_bond returns None when split bonds don't fragment the molecule."""
         # Try to split ethane on a C-H bond — doesn't fragment into 2 heavy fragments,
         # but does give 2 fragments (H and C2H5).
         uni = ARCSpecies(label='ethane', smiles='CC',
@@ -4975,7 +4978,7 @@ H       1.16560000   -0.99270000    0.00000000
 H       1.16560000    0.49640000   -0.85960000
 H       1.16560000    0.49640000    0.85960000"""))
         # Split on a non-existent bond — should not fragment.
-        ts_xyz = _stretch_bond(uni.get_xyz(), uni.mol, [(3, 5)], weight=0.5)
+        ts_xyz = stretch_bond(uni.get_xyz(), uni.mol, [(3, 5)], weight=0.5)
         # Bond (3,5) doesn't exist in ethane mol graph, so removing it won't fragment.
         # This should return None since fragments < 2.
         self.assertIsNone(ts_xyz)

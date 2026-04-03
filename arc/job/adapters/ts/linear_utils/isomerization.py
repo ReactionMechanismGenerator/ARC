@@ -22,10 +22,10 @@ from arc.job.adapters.ts.linear_utils.geom_utils import (
     dihedral_deg as _dihedral_deg,
 )
 from arc.job.adapters.ts.linear_utils.postprocess import (
-    _PAULING_DELTA,
+    PAULING_DELTA,
     _build_zmat_with_retry,
-    _postprocess_ts_guess,
-    _validate_ts_guess,
+    postprocess_ts_guess,
+    validate_ts_guess,
     fix_crowded_h_atoms,
 )
 from arc.job.adapters.ts.linear_utils.math_zmat import average_zmat_params
@@ -39,7 +39,7 @@ logger = get_logger()
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_RING_CLOSURE_THRESHOLD: float = 4.5  # Angstroms; forming-bond distance above which ring-closure algorithm is used
+RING_CLOSURE_THRESHOLD: float = 4.5  # Angstroms; forming-bond distance above which ring-closure algorithm is used
 
 # Per-position backbone dihedral magnitudes (degrees) for cyclic TS of a given ring size.
 # Each list has (N-3) entries, one per rotatable interior bond (outer-to-inner order).
@@ -55,7 +55,7 @@ _TS_RING_DIHEDRALS: Dict[int, List[float]] = {
 _TS_RING_DIHEDRAL_DEFAULT: float = 60.0   # per-bond fallback for ring sizes outside the table
 
 
-def _get_path_length(mol: 'Molecule', src: int, dst: int) -> Optional[int]:
+def get_path_length(mol: 'Molecule', src: int, dst: int) -> Optional[int]:
     """Return the shortest-path length (number of bonds) between *src* and *dst*, or None if disconnected."""
     from collections import deque
     if src == dst:
@@ -442,7 +442,7 @@ def get_near_attack_xyz(xyz: dict,
     return new_xyz
 
 
-def _ring_closure_xyz(xyz: dict,
+def ring_closure_xyz(xyz: dict,
                       mol: 'Molecule',
                       forming_bond: Tuple[int, int],
                       target_distance: float = 2.3,
@@ -456,7 +456,7 @@ def _ring_closure_xyz(xyz: dict,
     apart (> 4.5 Å) in the reactant geometry, making standard Z-matrix
     interpolation unreliable.
 
-    Also used for intra-fragment ring contraction after ``_stretch_bond()``
+    Also used for intra-fragment ring contraction after ``stretch_bond()``
     when a forming bond connects two atoms within the same fragment — e.g.,
     cyclic ether/thioether formation where the O–O or S–O bond breaks and a
     C–O or C–S ring forms simultaneously.
@@ -966,7 +966,7 @@ def _ring_closure_xyz(xyz: dict,
     return new_xyz
 
 
-def _build_4center_interchange_ts(r_xyz: dict,
+def build_4center_interchange_ts(r_xyz: dict,
                                   r_mol: 'Molecule',
                                   bb: List[Tuple[int, int]],
                                   fb: List[Tuple[int, int]],
@@ -1043,8 +1043,8 @@ def _build_4center_interchange_ts(r_xyz: dict,
 
     for migrant in [m1, m2]:
         sym_m = symbols[migrant]
-        target_mc1 = get_single_bond_length(sym_m, symbols[c1]) + _PAULING_DELTA * scale
-        target_mc2 = get_single_bond_length(sym_m, symbols[c2]) + _PAULING_DELTA * scale
+        target_mc1 = get_single_bond_length(sym_m, symbols[c1]) + PAULING_DELTA * scale
+        target_mc2 = get_single_bond_length(sym_m, symbols[c2]) + PAULING_DELTA * scale
 
         x_along = (axis_len ** 2 + target_mc1 ** 2 - target_mc2 ** 2) / (2.0 * axis_len)
         h_sq = target_mc1 ** 2 - x_along ** 2
@@ -1094,7 +1094,7 @@ def _build_4center_interchange_ts(r_xyz: dict,
     ts_xyz = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
               'coords': tuple(tuple(c) for c in ts_coords)}
 
-    is_valid, reason = _validate_ts_guess(
+    is_valid, reason = validate_ts_guess(
         ts_xyz, set(), fb, r_mol, label=f'{label}, 4center', family=None)
     if not is_valid:
         logger.debug(f'Linear ({label}): 4-center TS rejected — {reason}.')
@@ -1102,7 +1102,7 @@ def _build_4center_interchange_ts(r_xyz: dict,
     return ts_xyz
 
 
-def _generate_zmat_branch(anchor_xyz: dict,
+def generate_zmat_branch(anchor_xyz: dict,
                           anchor_mol: 'Molecule',
                           target_xyz: dict,
                           weight: float,
@@ -1170,13 +1170,13 @@ def _generate_zmat_branch(anchor_xyz: dict,
     if skip_postprocess:
         migrating_hs: Set[int] = set()
     else:
-        ts_xyz, migrating_hs = _postprocess_ts_guess(
+        ts_xyz, migrating_hs = postprocess_ts_guess(
             ts_xyz, r_mol, forming_bonds, breaking_bonds,
             family=family, r_label_map=r_label_map)
     if redistribute_ch2:
         ts_xyz = fix_crowded_h_atoms(ts_xyz, r_mol,
                                      skip_h_indices=migrating_hs,
                                      redistribute_ch2=True)
-    is_valid, _ = _validate_ts_guess(
+    is_valid, _ = validate_ts_guess(
         ts_xyz, migrating_hs, forming_bonds, r_mol, label=label, family=family)
     return ts_xyz if is_valid else None

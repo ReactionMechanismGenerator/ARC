@@ -13,14 +13,14 @@ import numpy as np
 from arc.molecule.molecule import Molecule
 
 from arc.job.adapters.ts.linear_utils.postprocess import (
-    _PAULING_DELTA,
+    PAULING_DELTA,
     _has_detached_hydrogen,
     _has_h_close_contact,
     _has_too_many_fragments,
     _has_misoriented_migrating_h,
     _has_migrating_h_nearer_to_nonreactive,
     _has_bad_ts_motif,
-    _has_excessive_backbone_drift,
+    has_excessive_backbone_drift,
     fix_forming_bond_distances,
     fix_nonreactive_h_distances,
     fix_crowded_h_atoms,
@@ -183,11 +183,11 @@ class TestRejectionFilters(unittest.TestCase):
         self.assertTrue(_has_h_close_contact(xyz_slightly_close, threshold=1.0))
 
     # ------------------------------------------------------------------
-    # _has_excessive_backbone_drift
+    # has_excessive_backbone_drift
     # ------------------------------------------------------------------
     def test_has_excessive_backbone_drift_false_no_drift(self):
         """Identical geometries have zero drift."""
-        self.assertFalse(_has_excessive_backbone_drift(self.water_xyz, self.water_xyz))
+        self.assertFalse(has_excessive_backbone_drift(self.water_xyz, self.water_xyz))
 
     def test_has_excessive_backbone_drift_true(self):
         """Large shift in heavy atoms triggers drift detection."""
@@ -198,7 +198,7 @@ class TestRejectionFilters(unittest.TestCase):
                        (5.96, 5.0, 5.0),
                        (4.76, 5.93, 5.0)),
         }
-        self.assertTrue(_has_excessive_backbone_drift(shifted, self.water_xyz,
+        self.assertTrue(has_excessive_backbone_drift(shifted, self.water_xyz,
                                                        max_mean_heavy_disp=1.0))
 
     def test_has_excessive_backbone_drift_reactive_excluded(self):
@@ -210,7 +210,7 @@ class TestRejectionFilters(unittest.TestCase):
                        (0.96, 0.0, 0.0),
                        (-0.24, 0.93, 0.0)),
         }
-        self.assertFalse(_has_excessive_backbone_drift(
+        self.assertFalse(has_excessive_backbone_drift(
             shifted, self.water_xyz, max_mean_heavy_disp=1.0,
             reactive_indices={0}))
 
@@ -476,7 +476,7 @@ class TestPostprocessConstants(unittest.TestCase):
 
     def test_pauling_delta_value(self):
         """PAULING_DELTA is approximately 0.6*ln(2) ~ 0.42."""
-        self.assertAlmostEqual(_PAULING_DELTA, 0.42, places=2)
+        self.assertAlmostEqual(PAULING_DELTA, 0.42, places=2)
 
 
 if __name__ == '__main__':

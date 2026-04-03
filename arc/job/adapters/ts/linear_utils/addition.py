@@ -14,10 +14,10 @@ from arc.species.species import ARCSpecies, colliding_atoms
 
 from arc.job.adapters.ts.linear_utils.geom_utils import bfs_path as _bfs_path
 from arc.job.adapters.ts.linear_utils.postprocess import (
-    _PAULING_DELTA,
-    _validate_ts_guess,
+    PAULING_DELTA,
+    validate_ts_guess,
 )
-from arc.job.adapters.ts.linear_utils.isomerization import _ring_closure_xyz
+from arc.job.adapters.ts.linear_utils.isomerization import ring_closure_xyz
 
 if TYPE_CHECKING:
     from arc.molecule import Molecule
@@ -30,7 +30,7 @@ logger = get_logger()
 # Fragment helpers
 # ---------------------------------------------------------------------------
 
-def _find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
+def find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
                                        product_species: List[ARCSpecies],
                                        ) -> List[List[Tuple[int, int]]]:
     """
@@ -168,7 +168,7 @@ def _find_split_bonds_by_fragmentation(uni_mol: 'Molecule',
     return results
 
 
-def _map_and_verify_fragments(uni_mol: 'Molecule',
+def map_and_verify_fragments(uni_mol: 'Molecule',
                               split_bonds: List[Tuple[int, int]],
                               multi_species: List[ARCSpecies],
                               cross_bonds: Optional[List[Tuple[int, int]]] = None,
@@ -388,7 +388,7 @@ def _map_and_verify_fragments(uni_mol: 'Molecule',
     return None
 
 
-def _stretch_bond(uni_xyz: dict,
+def stretch_bond(uni_xyz: dict,
                   uni_mol: 'Molecule',
                   split_bonds: List[Tuple[int, int]],
                   cross_bonds: Optional[List[Tuple[int, int]]] = None,
@@ -400,7 +400,7 @@ def _stretch_bond(uni_xyz: dict,
 
     For 2-fragment splits (simple dissociation), the smaller fragment is rigidly
     translated away along the inter-fragment axis so that each split bond
-    reaches its Pauling TS estimate (single-bond length + ``_PAULING_DELTA``).
+    reaches its Pauling TS estimate (single-bond length + ``PAULING_DELTA``).
 
     For 3+-fragment splits with a cross bond (insertion/elimination pattern),
     the insertion-ring geometry builder is used instead: the mobile and migrating
@@ -455,7 +455,7 @@ def _stretch_bond(uni_xyz: dict,
 
     # --- 3-membered insertion ring pattern ---
     if len(fragments) >= 3 and cross_bonds:
-        result = _try_insertion_ring(uni_xyz, uni_mol, fragments, split_bonds, cross_bonds, weight, n_atoms)
+        result = try_insertion_ring(uni_xyz, uni_mol, fragments, split_bonds, cross_bonds, weight, n_atoms)
         if result is not None:
             return result
 
@@ -498,7 +498,7 @@ def _stretch_bond(uni_xyz: dict,
             sym_a = uni_xyz['symbols'][a]
             sym_b = uni_xyz['symbols'][b]
             sbl = get_single_bond_length(sym_a, sym_b)
-            target_dists.append(sbl + _PAULING_DELTA)
+            target_dists.append(sbl + PAULING_DELTA)
             current_dists.append(float(np.linalg.norm(coords[a] - coords[b])))
 
     if not target_dists:
@@ -524,7 +524,7 @@ def _stretch_bond(uni_xyz: dict,
     # split_bonds are passed as forming_bonds: for addition the TS "forms"
     # the bonds that are being stretched apart, so both names refer to the
     # same bond set from the TS perspective.
-    is_valid, reason = _validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label=label)
+    is_valid, reason = validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label=label)
     if not is_valid:
         logger.debug(f'Linear addition ({label}): rejected — {reason}.')
         return None
@@ -532,7 +532,7 @@ def _stretch_bond(uni_xyz: dict,
     return ts_xyz
 
 
-def _try_insertion_ring(uni_xyz: dict,
+def try_insertion_ring(uni_xyz: dict,
                         uni_mol: 'Molecule',
                         fragments: List[Set[int]],
                         split_bonds: List[Tuple[int, int]],
@@ -616,7 +616,7 @@ def _try_insertion_ring(uni_xyz: dict,
 
     sym_mob = uni_xyz['symbols'][mobile_atom]
     sym_anch = uni_xyz['symbols'][anchor_atom]
-    target_ma = get_single_bond_length(sym_mob, sym_anch) + _PAULING_DELTA
+    target_ma = get_single_bond_length(sym_mob, sym_anch) + PAULING_DELTA
     vec_ma = coords[mobile_atom] - coords[anchor_atom]
     dist_ma = float(np.linalg.norm(vec_ma))
     if dist_ma < 1e-6:
@@ -627,8 +627,8 @@ def _try_insertion_ring(uni_xyz: dict,
         ts_coords[idx] += dir_ma * delta_ma
 
     sym_mig = uni_xyz['symbols'][mig_atom]
-    target_mob_mig = get_single_bond_length(sym_mob, sym_mig) + _PAULING_DELTA
-    target_anch_mig = get_single_bond_length(sym_anch, sym_mig) + _PAULING_DELTA
+    target_mob_mig = get_single_bond_length(sym_mob, sym_mig) + PAULING_DELTA
+    target_anch_mig = get_single_bond_length(sym_anch, sym_mig) + PAULING_DELTA
 
     pos_mob = ts_coords[mobile_atom].copy()
     pos_anch = ts_coords[anchor_atom].copy()
@@ -666,14 +666,14 @@ def _try_insertion_ring(uni_xyz: dict,
         'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(n_atoms))),
         'coords': tuple(tuple(float(c) for c in row) for row in ts_coords),
     }
-    is_valid, reason = _validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label='insertion-ring')
+    is_valid, reason = validate_ts_guess(ts_xyz, set(), split_bonds, uni_mol, label='insertion-ring')
     if not is_valid:
         logger.debug(f'Linear (insertion-ring): rejected — {reason}.')
         return None
     return ts_xyz
 
 
-def _stretch_core_from_large(ts_xyz: dict,
+def stretch_core_from_large(ts_xyz: dict,
                              uni_mol: 'Molecule',
                              split_bonds: List[Tuple[int, int]],
                              core: Set[int],
@@ -684,7 +684,7 @@ def _stretch_core_from_large(ts_xyz: dict,
     """Stretch the core of the small product away from the large product.
 
     When fragmenting the reactant produces 3+ fragments (e.g. in elimination
-    reactions), ``_stretch_bond`` only moves the smallest fragment.  This
+    reactions), ``stretch_bond`` only moves the smallest fragment.  This
     function handles the remaining split bonds: those that connect the *core*
     of the small product to the large product.
 
@@ -692,7 +692,7 @@ def _stretch_core_from_large(ts_xyz: dict,
     rigidly translated so that the relevant split bonds reach TS-like distances.
 
     Args:
-        ts_xyz: Current TS guess XYZ (after ``_stretch_bond``).
+        ts_xyz: Current TS guess XYZ (after ``stretch_bond``).
         uni_mol: RMG Molecule of the unimolecular species.
         split_bonds: All breaking bonds.
         core: Atom indices forming the connected core of the small product.
@@ -732,7 +732,7 @@ def _stretch_core_from_large(ts_xyz: dict,
     current_dists = []
     for ca, la in zip(core_anchors, large_anchors):
         sbl = get_single_bond_length(symbols[ca], symbols[la])
-        target_dists.append(sbl + _PAULING_DELTA)
+        target_dists.append(sbl + PAULING_DELTA)
         current_dists.append(float(np.linalg.norm(coords[ca] - coords[la])))
 
     avg_target = float(np.mean(target_dists))
@@ -752,7 +752,7 @@ def _stretch_core_from_large(ts_xyz: dict,
     }
 
 
-def _migrate_verified_atoms(ts_xyz: dict,
+def migrate_verified_atoms(ts_xyz: dict,
                             uni_mol: 'Molecule',
                             migrating_atoms: Set[int],
                             core: Set[int],
@@ -760,9 +760,9 @@ def _migrate_verified_atoms(ts_xyz: dict,
                             weight: float = 0.5,
                             cross_bonds: Optional[List[Tuple[int, int]]] = None,
                             ) -> dict:
-    """Migrate specific atoms identified by ``_map_and_verify_fragments``.
+    """Migrate specific atoms identified by ``map_and_verify_fragments``.
 
-    Unlike ``_migrate_h_between_fragments`` (which guesses which H to move by
+    Unlike ``migrate_h_between_fragments`` (which guesses which H to move by
     composition matching), this function moves exactly the atoms in
     *migrating_atoms* — the set of atom indices that belong to one product but
     are bonded only to atoms in the other product in the reactant graph.
@@ -774,7 +774,7 @@ def _migrate_verified_atoms(ts_xyz: dict,
     nearest heavy atom in *core*.
 
     Args:
-        ts_xyz: TS guess XYZ (already stretched by ``_stretch_bond``).
+        ts_xyz: TS guess XYZ (already stretched by ``stretch_bond``).
         uni_mol: RMG Molecule of the unimolecular species.
         migrating_atoms: Atom indices that need to move between product groups.
         core: Atom indices forming the connected core of the small product.
@@ -829,11 +829,11 @@ def _migrate_verified_atoms(ts_xyz: dict,
             continue
         da_hat = da_vec / da_dist
 
-        d_DH = get_single_bond_length(symbols[donor], symbols[h_idx]) + _PAULING_DELTA
-        d_AH = get_single_bond_length(symbols[acceptor], symbols[h_idx]) + _PAULING_DELTA
+        d_DH = get_single_bond_length(symbols[donor], symbols[h_idx]) + PAULING_DELTA
+        d_AH = get_single_bond_length(symbols[acceptor], symbols[h_idx]) + PAULING_DELTA
 
         if da_dist <= d_DH + d_AH:
-            # Spheres overlap — triangulate (same algorithm as _migrate_h_between_fragments).
+            # Spheres overlap — triangulate (same algorithm as migrate_h_between_fragments).
             x = (da_dist ** 2 + d_DH ** 2 - d_AH ** 2) / (2.0 * da_dist)
             h_sq = d_DH ** 2 - x ** 2
             h_perp = np.sqrt(max(h_sq, 0.0))
@@ -867,7 +867,7 @@ def _migrate_verified_atoms(ts_xyz: dict,
     }
 
 
-def _migrate_h_between_fragments(ts_xyz: dict,
+def migrate_h_between_fragments(ts_xyz: dict,
                                  uni_mol: 'Molecule',
                                  split_bonds: List[Tuple[int, int]],
                                  product_species: List[ARCSpecies],
@@ -877,7 +877,7 @@ def _migrate_h_between_fragments(ts_xyz: dict,
     Partially displace H atoms that need to migrate between fragments
     to match the product species' compositions.
 
-    After ``_stretch_bond`` rigidly translates fragments apart, H atoms
+    After ``stretch_bond`` rigidly translates fragments apart, H atoms
     remain on their original fragment.  In reactions where H redistribution
     occurs (e.g. 1,3_Insertion_CO2: R-C(=O)OH → R-H + O=C=O), the TS
     should show the migrating H partially displaced toward its destination.
@@ -894,7 +894,7 @@ def _migrate_h_between_fragments(ts_xyz: dict,
        with other atoms in the source fragment (e.g. the C in a CO₂ group).
 
     Args:
-        ts_xyz: TS guess XYZ from ``_stretch_bond`` (already stretched).
+        ts_xyz: TS guess XYZ from ``stretch_bond`` (already stretched).
         uni_mol: RMG Molecule of the unimolecular species.
         split_bonds: Bonds that were cut to create fragments.
         product_species: Product species for composition matching.
@@ -1061,8 +1061,8 @@ def _migrate_h_between_fragments(ts_xyz: dict,
                 continue
             da_hat = da_vec / da_dist
 
-            d_DH = get_single_bond_length(symbols[donor_heavy], 'H') + _PAULING_DELTA
-            d_AH = get_single_bond_length(symbols[nearest_heavy], 'H') + _PAULING_DELTA
+            d_DH = get_single_bond_length(symbols[donor_heavy], 'H') + PAULING_DELTA
+            d_AH = get_single_bond_length(symbols[nearest_heavy], 'H') + PAULING_DELTA
 
             if da_dist <= d_DH + d_AH:
                 # Spheres overlap → triangulate.
@@ -1168,12 +1168,12 @@ def _reposition_leaving_groups(xyz: dict,
         current_dist = float(np.linalg.norm(coords[leaving_anchor] - coords[ring_anchor]))
         sym_a = xyz['symbols'][ring_anchor]
         sym_b = xyz['symbols'][leaving_anchor]
-        ts_target = get_single_bond_length(sym_a, sym_b) + _PAULING_DELTA + extra_stretch
+        ts_target = get_single_bond_length(sym_a, sym_b) + PAULING_DELTA + extra_stretch
 
         # Only reposition when the leaving group is stranded TOO FAR from
         # the ring anchor after closure.  When the distance is too short
         # (leaving group followed the anchor, e.g. via centroid correction
-        # in small rings), ``_stretch_bond()`` downstream will stretch it
+        # in small rings), ``stretch_bond()`` downstream will stretch it
         # to the TS target — no repositioning needed here.
         if current_dist <= ts_target + 0.5:
             continue
@@ -1205,7 +1205,7 @@ def _reposition_leaving_groups(xyz: dict,
     }
 
 
-def _apply_intra_frag_contraction(xyz: dict,
+def apply_intra_frag_contraction(xyz: dict,
                                   mol: 'Molecule',
                                   split_bonds: List[Tuple[int, int]],
                                   cross_bonds: Optional[List[Tuple[int, int]]],
@@ -1216,21 +1216,21 @@ def _apply_intra_frag_contraction(xyz: dict,
     """
     Apply angular ring contraction for intra-fragment forming bonds.
 
-    After ``_stretch_bond()`` separates fragments by stretching the split bonds,
+    After ``stretch_bond()`` separates fragments by stretching the split bonds,
     any forming bond (cross bond) whose two atoms remain in the same fragment
     requires angular contraction to bring them closer together.  This function
-    identifies such bonds and applies ``_ring_closure_xyz()`` for each one,
+    identifies such bonds and applies ``ring_closure_xyz()`` for each one,
     returning a separate TS guess per candidate forming bond.
 
     Forming bonds are detected from product ring topology via
-    ``_detect_intra_frag_ring_bonds()``.  When multiple candidates exist
+    ``detect_intra_frag_ring_bonds()``.  When multiple candidates exist
     (e.g. due to resonance-equivalent atom assignments), each produces an
     independent TS guess so that the best one can be selected downstream.
 
     Args:
         xyz: Post-stretch XYZ geometry.
         mol: RMG Molecule of the unimolecular species.
-        split_bonds: Bonds severed by ``_stretch_bond()``.
+        split_bonds: Bonds severed by ``stretch_bond()``.
         cross_bonds: Unused (kept for call-site compatibility).
         multi_species: Product species (multi-species side).
         weight: Interpolation weight (0 = no contraction, 0.5 = TS-like).
@@ -1241,7 +1241,7 @@ def _apply_intra_frag_contraction(xyz: dict,
         Returns ``[xyz]`` (the original geometry) if no contraction was
         needed or applicable.
     """
-    forming = _detect_intra_frag_ring_bonds(mol, split_bonds, multi_species, xyz)
+    forming = detect_intra_frag_ring_bonds(mol, split_bonds, multi_species, xyz)
     if not forming:
         return [xyz]
 
@@ -1325,12 +1325,12 @@ def _apply_intra_frag_contraction(xyz: dict,
             has_small_leaving_frag and ({a, b} & split_endpoints) and ring_correction == 0.0
         )
         leaving_group_correction = 0.25 if has_leaving_group else 0.0
-        ts_target = sbl + _PAULING_DELTA + ring_correction + leaving_group_correction
+        ts_target = sbl + PAULING_DELTA + ring_correction + leaving_group_correction
         target = current_dist + (ts_target - current_dist) * min(2.0 * weight, 1.0)
         if target >= current_dist - 0.01:
             continue
 
-        contracted = _ring_closure_xyz(
+        contracted = ring_closure_xyz(
             xyz, mol, forming_bond=bond,
             target_distance=target, exclude_bonds=split_bonds)
         if contracted is not None:
@@ -1341,7 +1341,7 @@ def _apply_intra_frag_contraction(xyz: dict,
             # leaving group stayed put, the split-bond distance can grow
             # far beyond the TS target.  Only reposition when the leaving
             # group is too FAR (stranded); when it is too close,
-            # ``_stretch_bond()`` downstream will handle the distance.
+            # ``stretch_bond()`` downstream will handle the distance.
             if has_leaving_group:
                 contracted = _reposition_leaving_groups(
                     contracted, xyz, mol, split_bonds, adj, frag_id, n_atoms,
@@ -1350,7 +1350,7 @@ def _apply_intra_frag_contraction(xyz: dict,
     return results if results else [xyz]
 
 
-def _detect_intra_frag_ring_bonds(mol: 'Molecule',
+def detect_intra_frag_ring_bonds(mol: 'Molecule',
                                   split_bonds: List[Tuple[int, int]],
                                   multi_species: List[ARCSpecies],
                                   xyz: dict,
@@ -1372,7 +1372,7 @@ def _detect_intra_frag_ring_bonds(mol: 'Molecule',
     Args:
         mol (Molecule): RMG Molecule of the unimolecular species.
         split_bonds (List[Tuple[int, int]]): Bonds already severed by
-            ``_stretch_bond()``.
+            ``stretch_bond()``.
         multi_species (List[ARCSpecies]): Product species on the
             multi-species side.
         xyz (dict): Current XYZ coordinates (used for distance-based sorting).

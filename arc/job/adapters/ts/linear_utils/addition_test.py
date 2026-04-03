@@ -16,17 +16,17 @@ from arc.species import ARCSpecies
 _MASS_NUMBER = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32}
 
 from arc.job.adapters.ts.linear_utils.addition import (
-    _find_split_bonds_by_fragmentation,
-    _map_and_verify_fragments,
-    _stretch_bond,
-    _detect_intra_frag_ring_bonds,
-    _apply_intra_frag_contraction,
+    find_split_bonds_by_fragmentation,
+    map_and_verify_fragments,
+    stretch_bond,
+    detect_intra_frag_ring_bonds,
+    apply_intra_frag_contraction,
     _reposition_leaving_groups,
 )
 
 
 class TestFindSplitBondsByFragmentation(unittest.TestCase):
-    """Tests for the _find_split_bonds_by_fragmentation function."""
+    """Tests for the find_split_bonds_by_fragmentation function."""
 
     @classmethod
     def setUpClass(cls):
@@ -37,7 +37,7 @@ class TestFindSplitBondsByFragmentation(unittest.TestCase):
         """A single product means no fragmentation is needed."""
         mol = Molecule().from_smiles('CC')
         spc = ARCSpecies(label='CC', smiles='CC')
-        result = _find_split_bonds_by_fragmentation(mol, [spc])
+        result = find_split_bonds_by_fragmentation(mol, [spc])
         self.assertEqual(result, [])
 
     def test_ethane_to_two_methyls(self):
@@ -45,7 +45,7 @@ class TestFindSplitBondsByFragmentation(unittest.TestCase):
         mol = Molecule().from_smiles('CC')
         spc1 = ARCSpecies(label='CH3_a', smiles='[CH3]')
         spc2 = ARCSpecies(label='CH3_b', smiles='[CH3]')
-        result = _find_split_bonds_by_fragmentation(mol, [spc1, spc2])
+        result = find_split_bonds_by_fragmentation(mol, [spc1, spc2])
         self.assertTrue(len(result) >= 1)
         for bonds in result:
             self.assertEqual(len(bonds), 1)
@@ -58,7 +58,7 @@ class TestFindSplitBondsByFragmentation(unittest.TestCase):
         mol = Molecule().from_smiles('CCC')
         spc1 = ARCSpecies(label='CH3', smiles='[CH3]')
         spc2 = ARCSpecies(label='C2H5', smiles='C[CH2]')
-        result = _find_split_bonds_by_fragmentation(mol, [spc1, spc2])
+        result = find_split_bonds_by_fragmentation(mol, [spc1, spc2])
         self.assertTrue(len(result) >= 1)
         for bonds in result:
             self.assertEqual(len(bonds), 1)
@@ -68,12 +68,12 @@ class TestFindSplitBondsByFragmentation(unittest.TestCase):
         mol = Molecule().from_smiles('CC')
         spc1 = ARCSpecies(label='N', smiles='[N]')
         spc2 = ARCSpecies(label='O', smiles='[O]')
-        result = _find_split_bonds_by_fragmentation(mol, [spc1, spc2])
+        result = find_split_bonds_by_fragmentation(mol, [spc1, spc2])
         self.assertEqual(result, [])
 
 
 class TestMapAndVerifyFragments(unittest.TestCase):
-    """Tests for the _map_and_verify_fragments function."""
+    """Tests for the map_and_verify_fragments function."""
 
     @classmethod
     def setUpClass(cls):
@@ -87,7 +87,7 @@ class TestMapAndVerifyFragments(unittest.TestCase):
         spc2 = ARCSpecies(label='CH3_b', smiles='[CH3]')
         c_indices = [i for i, a in enumerate(mol.atoms) if a.symbol == 'C']
         split_bond = (c_indices[0], c_indices[1])
-        result = _map_and_verify_fragments(mol, [split_bond], [spc1, spc2])
+        result = map_and_verify_fragments(mol, [split_bond], [spc1, spc2])
         self.assertIsNotNone(result)
         self.assertEqual(len(result), len(mol.atoms))
 
@@ -96,12 +96,12 @@ class TestMapAndVerifyFragments(unittest.TestCase):
         mol = Molecule().from_smiles('CCC')
         spc1 = ARCSpecies(label='N', smiles='[N]')
         spc2 = ARCSpecies(label='O', smiles='[O]')
-        result = _map_and_verify_fragments(mol, [(0, 1)], [spc1, spc2])
+        result = map_and_verify_fragments(mol, [(0, 1)], [spc1, spc2])
         self.assertIsNone(result)
 
 
 class TestStretchBond(unittest.TestCase):
-    """Tests for the _stretch_bond function."""
+    """Tests for the stretch_bond function."""
 
     @classmethod
     def setUpClass(cls):
@@ -151,7 +151,7 @@ class TestStretchBond(unittest.TestCase):
             np.array(self.ethane_xyz['coords'][c0]) -
             np.array(self.ethane_xyz['coords'][c1]))
 
-        result = _stretch_bond(self.ethane_xyz, self.ethane_mol,
+        result = stretch_bond(self.ethane_xyz, self.ethane_mol,
                                [split_bond], weight=0.5, label='test')
         if result is not None:
             d_after = np.linalg.norm(
@@ -162,7 +162,7 @@ class TestStretchBond(unittest.TestCase):
     def test_stretch_bond_preserves_symbols(self):
         """Stretch preserves atom symbols."""
         c0, c1 = self.ethane_c_indices
-        result = _stretch_bond(self.ethane_xyz, self.ethane_mol,
+        result = stretch_bond(self.ethane_xyz, self.ethane_mol,
                                [(c0, c1)], weight=0.5, label='test')
         if result is not None:
             self.assertEqual(result['symbols'], self.ethane_xyz['symbols'])
@@ -179,13 +179,13 @@ class TestStretchBond(unittest.TestCase):
                        (-0.363, -0.514, 0.890),
                        (-0.363, -0.514, -0.890)),
         }
-        result = _stretch_bond(xyz, mol, [(0, 1)], weight=0.5, label='test')
+        result = stretch_bond(xyz, mol, [(0, 1)], weight=0.5, label='test')
         if result is not None:
             self.assertIn('coords', result)
 
 
 class TestDetectIntraFragRingBonds(unittest.TestCase):
-    """Tests for the _detect_intra_frag_ring_bonds function."""
+    """Tests for the detect_intra_frag_ring_bonds function."""
 
     @classmethod
     def setUpClass(cls):
@@ -220,7 +220,7 @@ class TestDetectIntraFragRingBonds(unittest.TestCase):
             'isotopes': tuple(_MASS_NUMBER[a.symbol] for a in mol.atoms),
             'coords': tuple(tuple(c) for c in coords),
         }
-        result = _detect_intra_frag_ring_bonds(mol, [], [spc], xyz)
+        result = detect_intra_frag_ring_bonds(mol, [], [spc], xyz)
         if result:
             for (a, b), ring_size in result:
                 self.assertGreaterEqual(ring_size, 3)

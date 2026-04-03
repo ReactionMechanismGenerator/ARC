@@ -187,56 +187,30 @@ if TYPE_CHECKING:
     from arc.molecule import Molecule
     from arc.reaction import ARCReaction
 
-from arc.job.adapters.ts.linear_utils.math_zmat import (  # noqa: F401
-    BASE_WEIGHT_GRID,
-    HAMMOND_DELTA,
-    WEIGHT_ROUND,
-    _ANGLE_MAX,
-    _ANGLE_MIN,
-    _BOND_LENGTH_MIN,
-    _clip01,
-    _get_all_referenced_atoms,
-    _get_all_zmat_rows,
-    average_zmat_params,
-    get_r_constraints,
-    get_rxn_weight,
-    get_weight_grid,
-    interp_dihedral_deg,
+from arc.job.adapters.ts.linear_utils.math_zmat import get_r_constraints, get_weight_grid
+from arc.job.adapters.ts.linear_utils.postprocess import (
+    has_excessive_backbone_drift,
+    postprocess_ts_guess,
+    validate_ts_guess,
 )
-from arc.job.adapters.ts.linear_utils.postprocess import (  # noqa: F401
-    FamilyPostprocessor,
-    FamilyValidator,
-    _FAMILY_POSTPROCESSORS,
-    _FAMILY_VALIDATORS,
-    _PAULING_DELTA,
-    _postprocess_generic,
-    _postprocess_h_migration,
-    _postprocess_ts_guess,
-    _validate_h_migration,
-    _has_excessive_backbone_drift,
-    _validate_ts_guess,
-    has_inward_migrating_group_h,
-)
-from arc.job.adapters.ts.linear_utils.isomerization import (  # noqa: F401
-    _RING_CLOSURE_THRESHOLD,
-    _build_4center_interchange_ts,
-    _generate_zmat_branch,
-    _get_path_length,
-    _ring_closure_xyz,
+from arc.job.adapters.ts.linear_utils.isomerization import (
+    RING_CLOSURE_THRESHOLD,
     backbone_atom_map,
+    build_4center_interchange_ts,
+    generate_zmat_branch,
     get_near_attack_xyz,
+    get_path_length,
     path_has_cumulated_bonds,
+    ring_closure_xyz,
 )
-from arc.job.adapters.ts.linear_utils.addition import (  # noqa: F401
-    _apply_intra_frag_contraction,
-    _detect_intra_frag_ring_bonds,
-    _find_split_bonds_by_fragmentation,
-    _map_and_verify_fragments,
-    _migrate_h_between_fragments,
-    _migrate_verified_atoms,
-    _stretch_bond,
-    _stretch_core_from_large,
-    _try_insertion_ring,
+from arc.job.adapters.ts.linear_utils.addition import (
+    apply_intra_frag_contraction,
+    find_split_bonds_by_fragmentation,
+    map_and_verify_fragments,
+    migrate_h_between_fragments,
+    migrate_verified_atoms,
+    stretch_bond,
+    stretch_core_from_large,
 )
 
 
@@ -1069,10 +1043,10 @@ def interpolate_addition(rxn: 'ARCReaction',
         selects cuts whose fragments match the product species' element
         compositions.
 
-    In both strategies the actual TS geometry is built by ``_stretch_bond``,
+    In both strategies the actual TS geometry is built by ``stretch_bond``,
     which rigidly translates the smaller fragment(s) so that the split bonds
     reach their Pauling TS estimates (single-bond length + 0.42 Å).  For 3-fragment
-    insertion/elimination patterns, ``_try_insertion_ring`` positions the
+    insertion/elimination patterns, ``try_insertion_ring`` positions the
     fragments in a 3-membered TS ring using triangle geometry.
 
     Args:
@@ -1155,7 +1129,7 @@ def interpolate_addition(rxn: 'ARCReaction',
         seen_split_sets.add(sb_key)
 
         # ---- Verify fragments via subgraph isomorphism ----
-        frag_map = _map_and_verify_fragments(
+        frag_map = map_and_verify_fragments(
             uni_mol=uni_mol,
             split_bonds=split_bonds,
             multi_species=multi_species,
@@ -1209,7 +1183,7 @@ def interpolate_addition(rxn: 'ARCReaction',
             # first ensures the break-bond stretch operates from the
             # correct geometry.  When no contraction applies, bases is
             # just [uni_xyz] (identity).
-            bases = _apply_intra_frag_contraction(
+            bases = apply_intra_frag_contraction(
                 uni_xyz, uni_mol, split_bonds, cross_bonds, multi_species,
                 weight, label=f'rxn={rxn.label}, path={i}')
             # When contraction produced modified geometries, also keep
@@ -1218,20 +1192,20 @@ def interpolate_addition(rxn: 'ARCReaction',
                 bases.append(uni_xyz)
 
             for base_xyz in bases:
-                ts_xyz = _stretch_bond(base_xyz, uni_mol, split_bonds,
+                ts_xyz = stretch_bond(base_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
                                        label=f'rxn={rxn.label}, path={i}')
                 if ts_xyz is not None and migrating_atoms:
-                    # _stretch_bond only moves the smallest fragment (often
+                    # stretch_bond only moves the smallest fragment (often
                     # just the migrating atom).  When there are 3+ fragments,
                     # the core of the small product may still need to be
                     # stretched away from the large product (e.g. C-O in
                     # HO2 elimination).
-                    ts_xyz = _stretch_core_from_large(
+                    ts_xyz = stretch_core_from_large(
                         ts_xyz, uni_mol, split_bonds, core, large_prod_atoms,
                         small_prod_atoms, weight)
                     # Reset migrating atoms to their pre-stretch positions
-                    # before calling _migrate_verified_atoms.  _stretch_bond
+                    # before calling migrate_verified_atoms.  stretch_bond
                     # may have moved them in the wrong direction.
                     ts_coords_arr = np.array(ts_xyz['coords'], dtype=float)
                     base_coords = np.array(base_xyz['coords'], dtype=float)
@@ -1246,10 +1220,10 @@ def interpolate_addition(rxn: 'ARCReaction',
                     }
                     # Place migrating atoms at TS-like positions between
                     # donor (in large_prod_atoms) and acceptor (in core).
-                    ts_xyz = _migrate_verified_atoms(
+                    ts_xyz = migrate_verified_atoms(
                         ts_xyz, uni_mol, migrating_atoms, core,
                         large_prod_atoms, weight, cross_bonds=cross_bonds)
-                    is_valid, reason = _validate_ts_guess(
+                    is_valid, reason = validate_ts_guess(
                         ts_xyz, set(), split_bonds, uni_mol,
                         label=f'rxn={rxn.label}, path={i}-post-migrate')
                     if not is_valid:
@@ -1266,22 +1240,22 @@ def interpolate_addition(rxn: 'ARCReaction',
                          f'fragment verification failed, falling back to direct stretch.')
             # Try direct stretch first (works for Diels–Alder and other
             # simple additions where no intra-fragment contraction is needed).
-            ts_xyz = _stretch_bond(uni_xyz, uni_mol, split_bonds,
+            ts_xyz = stretch_bond(uni_xyz, uni_mol, split_bonds,
                                    cross_bonds, weight,
                                    label=f'rxn={rxn.label}, path={i}-fallback')
             if ts_xyz is not None:
                 ts_xyzs.append(ts_xyz)
             # Also try ring contraction then stretch for reactions that need
             # it (e.g. cyclic ether formation).
-            ring_xyzs = _apply_intra_frag_contraction(
+            ring_xyzs = apply_intra_frag_contraction(
                 uni_xyz, uni_mol, split_bonds, cross_bonds, multi_species,
                 weight, label=f'rxn={rxn.label}, path={i}-fallback')
             for ring_xyz in ring_xyzs:
-                ts_xyz = _stretch_bond(ring_xyz, uni_mol, split_bonds,
+                ts_xyz = stretch_bond(ring_xyz, uni_mol, split_bonds,
                                        cross_bonds, weight,
                                        label=f'rxn={rxn.label}, path={i}-fallback')
                 if ts_xyz is not None:
-                    is_valid, reason = _validate_ts_guess(
+                    is_valid, reason = validate_ts_guess(
                         ts_xyz, set(), split_bonds, uni_mol,
                         label=f'rxn={rxn.label}, path={i}-fallback-contracted')
                     if is_valid:
@@ -1294,7 +1268,7 @@ def interpolate_addition(rxn: 'ARCReaction',
     # 1,3_Insertion_ROR), so fragmentation supplements those results.
     #
     # Two-tier filtering of fragmentation cuts:
-    # 1. Subgraph isomorphism (via _map_and_verify_fragments) is the gold
+    # 1. Subgraph isomorphism (via map_and_verify_fragments) is the gold
     #    standard: it checks that each fragment is topologically isomorphic
     #    to one of the multi_species.  This catches wrong-reaction cuts
     #    (e.g. H removal from the wrong C atom producing a different radical).
@@ -1304,11 +1278,11 @@ def interpolate_addition(rxn: 'ARCReaction',
     # 2. Composition dedup: when a cut fails the subgraph check, fall back
     #    to keeping one representative per unique set of fragment element
     #    compositions.  This is coarser but works for all cut types.
-    cut_lists = _find_split_bonds_by_fragmentation(uni_mol, multi_species)
+    cut_lists = find_split_bonds_by_fragmentation(uni_mol, multi_species)
     isomorphism_verified: List[List[Tuple[int, int]]] = []
     isomorphism_unverified: List[List[Tuple[int, int]]] = []
     for cut in cut_lists:
-        frag_map = _map_and_verify_fragments(
+        frag_map = map_and_verify_fragments(
             uni_mol=uni_mol,
             split_bonds=cut,
             multi_species=multi_species,
@@ -1352,17 +1326,17 @@ def interpolate_addition(rxn: 'ARCReaction',
             continue
         seen_split_sets.add(sb_key)
         # Apply ring contraction on original geometry first, then stretch.
-        ring_xyzs = _apply_intra_frag_contraction(
+        ring_xyzs = apply_intra_frag_contraction(
             uni_xyz, uni_mol, cut, None, multi_species,
             weight, label=f'rxn={rxn.label}, frag-fallback')
         for ring_xyz in ring_xyzs:
-            ts_xyz = _stretch_bond(ring_xyz, uni_mol, cut, cross_bonds=None,
+            ts_xyz = stretch_bond(ring_xyz, uni_mol, cut, cross_bonds=None,
                                    weight=weight,
                                    label=f'rxn={rxn.label}, frag-fallback')
             if ts_xyz is not None:
-                ts_xyz = _migrate_h_between_fragments(
+                ts_xyz = migrate_h_between_fragments(
                     ts_xyz, uni_mol, cut, multi_species, weight)
-                is_valid, reason = _validate_ts_guess(
+                is_valid, reason = validate_ts_guess(
                     ts_xyz, set(), cut, uni_mol,
                     label=f'rxn={rxn.label}, frag-fallback-post-migrate')
                 if not is_valid:
@@ -1413,7 +1387,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     frame is stable across the interpolation.
 
     Generated geometries pass through a shared postprocessing pipeline
-    (:func:`_postprocess_ts_guess`) and validation pipeline (:func:`_validate_ts_guess`)
+    (:func:`postprocess_ts_guess`) and validation pipeline (:func:`validate_ts_guess`)
     before being added to the output.  Near-identical surviving guesses are deduplicated.
 
     When species E0 or e_elect energies are pre-populated, :func:`get_weight_grid`
@@ -1547,7 +1521,6 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                            f'skipping path.')
             continue
 
-
         # Ring-scission fast path: when the family was discovered in reverse
         # (product has a ring that the reactant doesn't) and there are only
         # breaking bonds (no forming), build the TS by ring-closing the
@@ -1555,7 +1528,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         if product_dict.get('discovered_in_reverse') and bb and not fb:
             # Use ring closure to fold the chain into the ring (the breaking
             # bond in reverse = forming bond in forward).
-            rc_scission = _ring_closure_xyz(r_xyz, r_mol, forming_bond=bb[0])
+            rc_scission = ring_closure_xyz(r_xyz, r_mol, forming_bond=bb[0])
             if rc_scission is not None:
                 ts_scission = _build_ring_scission_ts(rc_scission, bb, weight)
                 if ts_scission is not None and not colliding_atoms(ts_scission):
@@ -1689,14 +1662,14 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             # H migrations are handled by Z-mat interpolation + postprocessing.
             both_h = (r_xyz['symbols'][bond_pair[0]] == 'H'
                       or r_xyz['symbols'][bond_pair[1]] == 'H')
-            path_len = _get_path_length(r_mol, bond_pair[0], bond_pair[1])
-            use_rc = (site_dist > _RING_CLOSURE_THRESHOLD
+            path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
+            use_rc = (site_dist > RING_CLOSURE_THRESHOLD
                       or path_has_cumulated_bonds(r_mol, bond_pair)
                       or (not both_h and path_len is not None and path_len >= 3))
             if use_rc:
                 needs_ring_closure = True
                 if abs(weight - 0.5) <= 0.01:
-                    rc_xyz = _ring_closure_xyz(r_xyz_na, r_mol, forming_bond=bond_pair)
+                    rc_xyz = ring_closure_xyz(r_xyz_na, r_mol, forming_bond=bond_pair)
                     if rc_xyz is not None:
                         # Reposition the migrating atom only when it participates
                         # in BOTH a breaking and forming bond (true atom migration,
@@ -1707,6 +1680,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         atom_in_bb = any(mig_idx in b for b in bb)
                         if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
                             acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
+                            atom_to_idx_rc2 = {a: idx for idx, a in enumerate(r_mol.atoms)}
                             don_idx = None
                             for nbr in r_mol.atoms[mig_idx].bonds:
                                 ni = atom_to_idx_rc2[nbr]
@@ -1722,10 +1696,10 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         # other reactive atoms (e.g. a migrating H in
                         # Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH)
                         # are also repositioned to their TS positions.
-                        rc_xyz, migrating_hs_rc = _postprocess_ts_guess(
+                        rc_xyz, migrating_hs_rc = postprocess_ts_guess(
                             rc_xyz, r_mol, list(fb), list(bb),
                             family=path_family, r_label_map=r_label_dict)
-                        is_valid, _ = _validate_ts_guess(
+                        is_valid, _ = validate_ts_guess(
                             rc_xyz, migrating_hs_rc, list(fb), r_mol,
                             label=f'rxn={rxn.label}, path={i}, ring-closure',
                             family=path_family)
@@ -1741,7 +1715,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         breaking_bonds_list = list(bb)
 
         # Type R: reactant-topology Z-matrix chimera
-        ts_xyz_r = _generate_zmat_branch(
+        ts_xyz_r = generate_zmat_branch(
             anchor_xyz=r_xyz_na, anchor_mol=r_mol, target_xyz=op_xyz_na,
             weight=weight, reactive_xyz_indices=reactive_xyz_indices,
             anchors=anchors, constraints=constraints, r_mol=r_mol,
@@ -1754,7 +1728,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # Type P: product-topology Z-matrix chimera (symmetric to Type R).
         # mapped_p_mol has product bond topology but with atoms reindexed to match op_xyz
         # (reactant atom ordering).
-        ts_xyz_p = _generate_zmat_branch(
+        ts_xyz_p = generate_zmat_branch(
             anchor_xyz=op_xyz_na, anchor_mol=mapped_p_mol, target_xyz=r_xyz_na,
             weight=1.0 - weight, reactive_xyz_indices=reactive_xyz_indices,
             anchors=anchors, constraints=constraints, r_mol=r_mol,
@@ -1768,7 +1742,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # this path, try direct geometry construction for 4-center swap reactions
         # (e.g. 1,2_XY_interchange: X-C-C-Y → Y-C-C-X).
         if ts_xyz_r is None and ts_xyz_p is None:
-            ts_4c = _build_4center_interchange_ts(
+            ts_4c = build_4center_interchange_ts(
                 r_xyz=r_xyz, r_mol=r_mol,
                 bb=breaking_bonds_list, fb=forming_bonds_list,
                 weight=weight, label=f'rxn={rxn.label}, path={i}')
@@ -1982,14 +1956,14 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     # reactant (intramolecular ring-forming TS).
                     both_h_fb = (r_xyz['symbols'][bond_pair[0]] == 'H'
                                  or r_xyz['symbols'][bond_pair[1]] == 'H')
-                    path_len = _get_path_length(r_mol, bond_pair[0], bond_pair[1])
-                    use_rc = (site_dist > _RING_CLOSURE_THRESHOLD
+                    path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
+                    use_rc = (site_dist > RING_CLOSURE_THRESHOLD
                               or path_has_cumulated_bonds(r_mol, bond_pair)
                               or (not both_h_fb and path_len is not None and path_len >= 3))
                     if use_rc:
                         needs_ring_closure = True
                         if abs(weight - 0.5) <= 0.01:
-                            rc_xyz = _ring_closure_xyz(r_xyz, r_mol,
+                            rc_xyz = ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
                                 # Reposition only for true atom migration (atom
@@ -2016,9 +1990,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                                 for fam in ([effective_family, rxn.family]
                                             if effective_family != rxn.family else [rxn.family]):
                                     rc_try = copy.deepcopy(rc_xyz)
-                                    rc_try, mhs = _postprocess_ts_guess(
+                                    rc_try, mhs = postprocess_ts_guess(
                                         rc_try, r_mol, list(fb), list(bb), family=fam)
-                                    ok, _ = _validate_ts_guess(
+                                    ok, _ = validate_ts_guess(
                                         rc_try, mhs, fb, r_mol,
                                         label=f'rxn={rxn.label}, trivial, ring-closure',
                                         family=fam)
@@ -2034,7 +2008,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     # inflated to nearly all atoms and postprocessing would
                     # perturb the geometry — skip it.
                     skip_pp = bb_map is None
-                    ts_r = _generate_zmat_branch(
+                    ts_r = generate_zmat_branch(
                         anchor_xyz=r_xyz_na, anchor_mol=r_mol, target_xyz=op_xyz_na,
                         weight=weight, reactive_xyz_indices=reactive_xyz_indices,
                         anchors=anchors, constraints=constraints, r_mol=r_mol,
@@ -2042,7 +2016,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         label=f'rxn={rxn.label}, trivial, w={weight}, type=R',
                         skip_postprocess=skip_pp, family=effective_family,
                         redistribute_ch2=bb_map is not None)
-                    if ts_r is not None and not _has_excessive_backbone_drift(
+                    if ts_r is not None and not has_excessive_backbone_drift(
                             ts_r, r_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
                         ts_xyzs.append(ts_r)
@@ -2050,7 +2024,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=R): '
                                      f'discarded — excessive backbone drift from anchor.')
 
-                    ts_p = _generate_zmat_branch(
+                    ts_p = generate_zmat_branch(
                         anchor_xyz=op_xyz_na, anchor_mol=p_mol, target_xyz=r_xyz_na,
                         weight=1.0 - weight, reactive_xyz_indices=reactive_xyz_indices,
                         anchors=anchors, constraints=constraints, r_mol=r_mol,
@@ -2058,7 +2032,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         label=f'rxn={rxn.label}, trivial, w={weight}, type=P',
                         skip_postprocess=skip_pp, family=effective_family,
                         redistribute_ch2=bb_map is not None)
-                    if ts_p is not None and not _has_excessive_backbone_drift(
+                    if ts_p is not None and not has_excessive_backbone_drift(
                             ts_p, op_xyz_na, max_mean_heavy_disp=3.0,
                             reactive_indices=reactive_xyz_indices):
                         ts_xyzs.append(ts_p)

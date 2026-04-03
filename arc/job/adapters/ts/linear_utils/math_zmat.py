@@ -18,9 +18,9 @@ logger = get_logger()
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_BOND_LENGTH_MIN: float = 0.4    # minimum physically meaningful bond length, Angstroms
-_ANGLE_MIN: float = 1.0          # singularity-safe lower bound for Z-matrix angles, degrees
-_ANGLE_MAX: float = 179.0        # singularity-safe upper bound for Z-matrix angles, degrees
+BOND_LENGTH_MIN: float = 0.4    # minimum physically meaningful bond length, Angstroms
+ANGLE_MIN: float = 1.0          # singularity-safe lower bound for Z-matrix angles, degrees
+ANGLE_MAX: float = 179.0        # singularity-safe upper bound for Z-matrix angles, degrees
 
 BASE_WEIGHT_GRID = (0.35, 0.50, 0.65)
 HAMMOND_DELTA = 0.10
@@ -31,7 +31,7 @@ WEIGHT_ROUND = 3
 # Z-matrix helpers
 # ---------------------------------------------------------------------------
 
-def _get_all_zmat_rows(var_name: str) -> List[int]:
+def get_all_zmat_rows(var_name: str) -> List[int]:
     """
     Return every Z-matrix row index encoded in a variable name.
 
@@ -62,11 +62,11 @@ def _get_all_zmat_rows(var_name: str) -> List[int]:
         return []
 
 
-def _get_all_referenced_atoms(var_name: str) -> List[int]:
+def get_all_referenced_atoms(var_name: str) -> List[int]:
     """
     Return every atom index referenced anywhere in a Z-matrix variable name.
 
-    Unlike :func:`_get_all_zmat_rows`, which returns only the *defined* row(s),
+    Unlike :func:`get_all_zmat_rows`, which returns only the *defined* row(s),
     this helper returns **all** atom indices encoded in the variable name —
     including the reference atoms used for distance, angle, and dihedral
     definitions.
@@ -158,7 +158,7 @@ def average_zmat_params(zmat_1: dict,
       division or NumPy scalar type issues.
 
     If ``reactive_xyz_indices`` is provided, only variables that reference at least
-    one reactive XYZ atom (extracted by :func:`_get_all_referenced_atoms`) are
+    one reactive XYZ atom (extracted by :func:`get_all_referenced_atoms`) are
     interpolated.  All other (spectator) variables are preserved from ``zmat_1``
     (the reactant anchor).  This prevents remote torsions and unrelated bond lengths
     from being averaged, which can wash out good TS geometry or introduce noise.
@@ -215,7 +215,7 @@ def average_zmat_params(zmat_1: dict,
         b = float(b_raw)
 
         if reactive_xyz_indices is not None:
-            all_refs = _get_all_referenced_atoms(key)
+            all_refs = get_all_referenced_atoms(key)
             if all_refs:
                 covered_xyz = {zmat_map[r] for r in all_refs if r in zmat_map}
                 if covered_xyz and not (covered_xyz & reactive_xyz_indices):
@@ -227,25 +227,25 @@ def average_zmat_params(zmat_1: dict,
 
         elif key in angle_vars:
             result = a + weight * (b - a)
-            if result < _ANGLE_MIN:
+            if result < ANGLE_MIN:
                 logger.debug(f'average_zmat_params: angle {key!r} clamped from '
-                             f'{result:.4f}° to {_ANGLE_MIN}° (singularity floor).')
-                result = _ANGLE_MIN
-            elif result > _ANGLE_MAX:
+                             f'{result:.4f}° to {ANGLE_MIN}° (singularity floor).')
+                result = ANGLE_MIN
+            elif result > ANGLE_MAX:
                 logger.debug(f'average_zmat_params: angle {key!r} clamped from '
-                             f'{result:.4f}° to {_ANGLE_MAX}° (singularity ceiling).')
-                result = _ANGLE_MAX
+                             f'{result:.4f}° to {ANGLE_MAX}° (singularity ceiling).')
+                result = ANGLE_MAX
             ts_zmat['vars'][key] = result
 
         elif key in bond_vars:
             result = a + weight * (b - a)
-            if result < _BOND_LENGTH_MIN:
+            if result < BOND_LENGTH_MIN:
                 logger.warning(
                     f'average_zmat_params: interpolated bond length for {key!r} '
                     f'({result:.4f} Å) is below the physical minimum '
-                    f'({_BOND_LENGTH_MIN} Å); clamping.'
+                    f'({BOND_LENGTH_MIN} Å); clamping.'
                 )
-                result = _BOND_LENGTH_MIN
+                result = BOND_LENGTH_MIN
             ts_zmat['vars'][key] = result
 
         else:
@@ -359,7 +359,7 @@ def get_weight_grid(rxn: 'ARCReaction',
         w0 = get_rxn_weight(rxn)
         if w0 is not None:
             weights.extend([w0 - hammond_delta, w0, w0 + hammond_delta])
-    uniq = {round(_clip01(w), WEIGHT_ROUND) for w in weights}
+    uniq = {round(clip01(w), WEIGHT_ROUND) for w in weights}
     return sorted(uniq)
 
 
@@ -386,6 +386,6 @@ def interp_dihedral_deg(a: float, b: float, w: float = 0.5) -> float:
     return get_angle_in_180_range(a + w * d, round_to=None)
 
 
-def _clip01(x: float) -> float:
+def clip01(x: float) -> float:
     """Clip a float to the [0, 1] range."""
     return max(0.0, min(1.0, x))

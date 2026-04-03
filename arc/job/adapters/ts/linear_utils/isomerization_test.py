@@ -18,7 +18,7 @@ from arc.job.adapters.ts.linear_utils.isomerization import (
     backbone_atom_map,
     get_near_attack_xyz,
     path_has_cumulated_bonds,
-    _ring_closure_xyz,
+    ring_closure_xyz,
 )
 
 
@@ -204,7 +204,7 @@ class TestGetNearAttackXyz(unittest.TestCase):
 
 
 class TestRingClosureXyz(unittest.TestCase):
-    """Tests for the _ring_closure_xyz function."""
+    """Tests for the ring_closure_xyz function."""
 
     @classmethod
     def setUpClass(cls):
@@ -251,7 +251,7 @@ class TestRingClosureXyz(unittest.TestCase):
         """Ring closure returns either a valid xyz dict or None."""
         c0 = self.butadiene_c_indices[0]
         c3 = self.butadiene_c_indices[3]
-        result = _ring_closure_xyz(
+        result = ring_closure_xyz(
             self.butadiene_xyz, self.butadiene_mol,
             forming_bond=(c0, c3), target_distance=2.3)
         if result is not None:
@@ -263,7 +263,7 @@ class TestRingClosureXyz(unittest.TestCase):
         """Ring closure preserves atom symbols."""
         c0 = self.butadiene_c_indices[0]
         c3 = self.butadiene_c_indices[3]
-        result = _ring_closure_xyz(
+        result = ring_closure_xyz(
             self.butadiene_xyz, self.butadiene_mol,
             forming_bond=(c0, c3), target_distance=2.3)
         if result is not None:
@@ -277,7 +277,7 @@ class TestRingClosureXyz(unittest.TestCase):
             np.array(self.butadiene_xyz['coords'][c0]) -
             np.array(self.butadiene_xyz['coords'][c3]))
         target = 2.3
-        result = _ring_closure_xyz(
+        result = ring_closure_xyz(
             self.butadiene_xyz, self.butadiene_mol,
             forming_bond=(c0, c3), target_distance=target)
         if result is not None:
@@ -290,7 +290,7 @@ class TestRingClosureXyz(unittest.TestCase):
         """Forming bond between adjacent atoms (path too short) returns None."""
         c0 = self.butadiene_c_indices[0]
         c1 = self.butadiene_c_indices[1]
-        result = _ring_closure_xyz(
+        result = ring_closure_xyz(
             self.butadiene_xyz, self.butadiene_mol,
             forming_bond=(c0, c1), target_distance=2.3)
         self.assertIsNone(result)

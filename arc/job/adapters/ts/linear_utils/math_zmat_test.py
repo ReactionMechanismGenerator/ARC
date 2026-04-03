@@ -14,9 +14,9 @@ from arc.reaction import ARCReaction
 from arc.job.adapters.ts.linear_utils.math_zmat import (
     BASE_WEIGHT_GRID,
     HAMMOND_DELTA,
-    _clip01,
-    _get_all_referenced_atoms,
-    _get_all_zmat_rows,
+    clip01,
+    get_all_referenced_atoms,
+    get_all_zmat_rows,
     average_zmat_params,
     get_r_constraints,
     get_rxn_weight,
@@ -44,90 +44,90 @@ class TestMathZmat(unittest.TestCase):
         cls.maxDiff = None
 
     # ------------------------------------------------------------------
-    # _get_all_zmat_rows
+    # get_all_zmat_rows
     # ------------------------------------------------------------------
     def test_get_all_zmat_rows_simple_bond(self):
         """Standard bond-length variable encodes one row."""
-        self.assertEqual(_get_all_zmat_rows('R_1_0'), [1])
+        self.assertEqual(get_all_zmat_rows('R_1_0'), [1])
 
     def test_get_all_zmat_rows_consolidated(self):
         """Consolidated variable encodes multiple rows via pipe separator."""
-        self.assertEqual(_get_all_zmat_rows('R_2|4_0|0'), [2, 4])
+        self.assertEqual(get_all_zmat_rows('R_2|4_0|0'), [2, 4])
 
     def test_get_all_zmat_rows_angle(self):
         """Angle variable has a single row."""
-        self.assertEqual(_get_all_zmat_rows('A_3_1_0'), [3])
+        self.assertEqual(get_all_zmat_rows('A_3_1_0'), [3])
 
     def test_get_all_zmat_rows_dihedral(self):
         """Dihedral variable has a single row."""
-        self.assertEqual(_get_all_zmat_rows('D_4_1_0_2'), [4])
+        self.assertEqual(get_all_zmat_rows('D_4_1_0_2'), [4])
 
     def test_get_all_zmat_rows_dummy_dihedral(self):
         """Dummy-atom dihedral has a single row."""
-        self.assertEqual(_get_all_zmat_rows('DX_5_1_0_2'), [5])
+        self.assertEqual(get_all_zmat_rows('DX_5_1_0_2'), [5])
 
     def test_get_all_zmat_rows_unparseable(self):
         """Unparseable variable name returns empty list."""
-        self.assertEqual(_get_all_zmat_rows('garbage'), [])
+        self.assertEqual(get_all_zmat_rows('garbage'), [])
 
     def test_get_all_zmat_rows_empty_string(self):
         """Empty string returns empty list."""
-        self.assertEqual(_get_all_zmat_rows(''), [])
+        self.assertEqual(get_all_zmat_rows(''), [])
 
     def test_get_all_zmat_rows_non_numeric(self):
         """Non-numeric row index returns empty list."""
-        self.assertEqual(_get_all_zmat_rows('R_abc_0'), [])
+        self.assertEqual(get_all_zmat_rows('R_abc_0'), [])
 
     # ------------------------------------------------------------------
-    # _get_all_referenced_atoms
+    # get_all_referenced_atoms
     # ------------------------------------------------------------------
     def test_get_all_referenced_atoms_bond(self):
         """Bond variable references two atoms."""
-        self.assertEqual(_get_all_referenced_atoms('R_1_0'), [1, 0])
+        self.assertEqual(get_all_referenced_atoms('R_1_0'), [1, 0])
 
     def test_get_all_referenced_atoms_consolidated(self):
         """Consolidated variable references all packed indices."""
-        self.assertEqual(_get_all_referenced_atoms('R_2|4_0|0'), [2, 4, 0, 0])
+        self.assertEqual(get_all_referenced_atoms('R_2|4_0|0'), [2, 4, 0, 0])
 
     def test_get_all_referenced_atoms_angle(self):
         """Angle variable references three atoms."""
-        self.assertEqual(_get_all_referenced_atoms('A_3_1_0'), [3, 1, 0])
+        self.assertEqual(get_all_referenced_atoms('A_3_1_0'), [3, 1, 0])
 
     def test_get_all_referenced_atoms_dihedral(self):
         """Dihedral variable references four atoms."""
-        self.assertEqual(_get_all_referenced_atoms('D_4_3_0_2'), [4, 3, 0, 2])
+        self.assertEqual(get_all_referenced_atoms('D_4_3_0_2'), [4, 3, 0, 2])
 
     def test_get_all_referenced_atoms_dummy_dihedral(self):
         """DX prefix is stripped, remaining indices are parsed."""
-        result = _get_all_referenced_atoms('DX_5_1_0_2')
+        result = get_all_referenced_atoms('DX_5_1_0_2')
         self.assertEqual(result, [5, 1, 0, 2])
 
     def test_get_all_referenced_atoms_unparseable(self):
         """Unparseable returns empty list."""
-        self.assertEqual(_get_all_referenced_atoms('x'), [])
+        self.assertEqual(get_all_referenced_atoms('x'), [])
 
     # ------------------------------------------------------------------
-    # _clip01
+    # clip01
     # ------------------------------------------------------------------
     def test_clip01_in_range(self):
         """Value in [0, 1] is returned unchanged."""
-        self.assertEqual(_clip01(0.5), 0.5)
+        self.assertEqual(clip01(0.5), 0.5)
 
     def test_clip01_below_zero(self):
         """Negative value is clipped to 0."""
-        self.assertEqual(_clip01(-0.1), 0.0)
+        self.assertEqual(clip01(-0.1), 0.0)
 
     def test_clip01_above_one(self):
         """Value above 1 is clipped to 1."""
-        self.assertEqual(_clip01(1.5), 1.0)
+        self.assertEqual(clip01(1.5), 1.0)
 
     def test_clip01_boundary_zero(self):
         """Exact 0 passes through."""
-        self.assertEqual(_clip01(0.0), 0.0)
+        self.assertEqual(clip01(0.0), 0.0)
 
     def test_clip01_boundary_one(self):
         """Exact 1 passes through."""
-        self.assertEqual(_clip01(1.0), 1.0)
+        self.assertEqual(clip01(1.0), 1.0)
 
     # ------------------------------------------------------------------
     # interp_dihedral_deg

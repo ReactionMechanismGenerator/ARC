@@ -37,8 +37,8 @@ FamilyValidator = Callable[
 # Maps family names → handler functions.  Populated after the handler functions
 # are defined (see "Family handlers" section below).  Multiple families may
 # point to the same handler when they share identical post-processing logic.
-_FAMILY_POSTPROCESSORS: Dict[str, FamilyPostprocessor] = {}
-_FAMILY_VALIDATORS: Dict[str, FamilyValidator] = {}
+FAMILY_POSTPROCESSORS: Dict[str, FamilyPostprocessor] = {}
+FAMILY_VALIDATORS: Dict[str, FamilyValidator] = {}
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -56,7 +56,7 @@ _EQ_BOND_TO_H_DEFAULT: float = 1.09
 
 # At a symmetric TS (bond order n = 0.5), Pauling's equation gives
 # d_TS = d0 - 0.6 * ln(n) = d0 + 0.6 * ln(2) ≈ d0 + 0.42 Å.
-_PAULING_DELTA: float = 0.42
+PAULING_DELTA: float = 0.42
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +410,8 @@ def fix_forming_bond_distances(xyz: dict,
 
         donor_sym = symbols[donor_idx]
         acceptor_sym = symbols[acceptor_atom]
-        d_DH = _EQ_BOND_TO_H.get(donor_sym, _EQ_BOND_TO_H_DEFAULT) + _PAULING_DELTA
-        d_AH = _EQ_BOND_TO_H.get(acceptor_sym, _EQ_BOND_TO_H_DEFAULT) + _PAULING_DELTA
+        d_DH = _EQ_BOND_TO_H.get(donor_sym, _EQ_BOND_TO_H_DEFAULT) + PAULING_DELTA
+        d_AH = _EQ_BOND_TO_H.get(acceptor_sym, _EQ_BOND_TO_H_DEFAULT) + PAULING_DELTA
 
         d_pos = np.array(coords[donor_idx], dtype=float)
         a_pos = np.array(coords[acceptor_atom], dtype=float)
@@ -1112,7 +1112,7 @@ def _build_zmat_with_retry(xyz: dict,
 # Family-specific post-processing handlers
 # ---------------------------------------------------------------------------
 
-def _postprocess_generic(xyz: dict,
+def postprocess_generic(xyz: dict,
                          r_mol: 'Molecule',
                          forming_bonds: List[Tuple[int, int]],
                          breaking_bonds: List[Tuple[int, int]],
@@ -1140,7 +1140,7 @@ def _postprocess_generic(xyz: dict,
     return xyz, set()
 
 
-def _postprocess_h_migration(xyz: dict,
+def postprocess_h_migration(xyz: dict,
                               r_mol: 'Molecule',
                               forming_bonds: List[Tuple[int, int]],
                               breaking_bonds: List[Tuple[int, int]],
@@ -1223,7 +1223,7 @@ for _fam in ('intra_H_migration', 'Ketoenol', 'Intra_Disproportionation',
              'Intra_ene_reaction', 'intra_OH_migration',
              'Intra_RH_Add_Endocyclic', 'Intra_RH_Add_Exocyclic',
              'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH'):
-    _FAMILY_POSTPROCESSORS[_fam] = _postprocess_h_migration
+    FAMILY_POSTPROCESSORS[_fam] = postprocess_h_migration
 
 def _postprocess_cc_shift(xyz: dict,
                           r_mol: 'Molecule',
@@ -1262,16 +1262,16 @@ def _postprocess_cc_shift(xyz: dict,
 for _fam in ('1,2_shiftC', '1,2_shiftS',
              '1,3_sigmatropic_rearrangement',
              'intra_substitutionCS_isomerization'):
-    _FAMILY_POSTPROCESSORS[_fam] = _postprocess_group_shift
+    FAMILY_POSTPROCESSORS[_fam] = _postprocess_group_shift
 
-_FAMILY_POSTPROCESSORS['6_membered_central_C-C_shift'] = _postprocess_cc_shift
+FAMILY_POSTPROCESSORS['6_membered_central_C-C_shift'] = _postprocess_cc_shift
 
 
 # ---------------------------------------------------------------------------
 # Family-specific validation handlers
 # ---------------------------------------------------------------------------
 
-def _validate_h_migration(xyz: dict,
+def validate_h_migration(xyz: dict,
                            migrating_hs: Set[int],
                            forming_bonds: List[Tuple[int, int]],
                            r_mol: 'Molecule',
@@ -1313,7 +1313,7 @@ for _fam in ('intra_H_migration', 'Ketoenol', 'Intra_Disproportionation',
              'Concerted_Intra_Diels_alder_monocyclic_1,2_shiftH',
              '1,3_sigmatropic_rearrangement',
              'intra_substitutionCS_isomerization'):
-    _FAMILY_VALIDATORS[_fam] = _validate_h_migration
+    FAMILY_VALIDATORS[_fam] = validate_h_migration
 
 
 def _validate_group_shift(xyz: dict,
@@ -1347,20 +1347,20 @@ def _validate_group_shift(xyz: dict,
         if d < 1.5 or d > 4.0:
             return False, f'forming bond distance {d:.2f} outside TS range'
     if migrating_hs:
-        return _validate_h_migration(xyz, migrating_hs, forming_bonds, r_mol, label)
+        return validate_h_migration(xyz, migrating_hs, forming_bonds, r_mol, label)
     return True, ''
 
 
 # Register group-shift validator for heavy-atom migration families.
 for _fam in ('1,2_shiftC', '1,2_shiftS', '6_membered_central_C-C_shift'):
-    _FAMILY_VALIDATORS[_fam] = _validate_group_shift
+    FAMILY_VALIDATORS[_fam] = _validate_group_shift
 
 
 # ---------------------------------------------------------------------------
 # Dispatch wrappers
 # ---------------------------------------------------------------------------
 
-def _postprocess_ts_guess(xyz: dict,
+def postprocess_ts_guess(xyz: dict,
                           r_mol: 'Molecule',
                           forming_bonds: List[Tuple[int, int]],
                           breaking_bonds: List[Tuple[int, int]],
@@ -1372,17 +1372,17 @@ def _postprocess_ts_guess(xyz: dict,
 
     Three handler tiers are available:
 
-    * :func:`_postprocess_h_migration` — for H-transfer families (intra_H_migration,
+    * :func:`postprocess_h_migration` — for H-transfer families (intra_H_migration,
       Ketoenol, etc.).  Full pipeline: forming-bond triangulation, donor terminal H
       staggering, non-reactive H distance fix, crowded-H redistribution, umbrella flip.
     * :func:`_postprocess_group_shift` — for non-H group migrations (1,2_shiftC/S,
       sigmatropic, etc.).  Applies forming-bond fix, umbrella, and universal H fixes
       but omits H-transfer-specific donor staggering.
-    * :func:`_postprocess_generic` — safe default for unknown families.  Only universal
+    * :func:`postprocess_generic` — safe default for unknown families.  Only universal
       H fixes (distance and crowding).
 
-    Looks up ``family`` in :data:`_FAMILY_POSTPROCESSORS`.  If no handler is
-    registered, :func:`_postprocess_generic` is used.
+    Looks up ``family`` in :data:`FAMILY_POSTPROCESSORS`.  If no handler is
+    registered, :func:`postprocess_generic` is used.
 
     Args:
         xyz: Raw TS guess XYZ dictionary.
@@ -1397,11 +1397,11 @@ def _postprocess_ts_guess(xyz: dict,
         Tuple of (corrected XYZ dict, set of special atom indices such as
         migrating H atoms).
     """
-    handler = _FAMILY_POSTPROCESSORS.get(family, _postprocess_generic)
+    handler = FAMILY_POSTPROCESSORS.get(family, postprocess_generic)
     return handler(xyz, r_mol, forming_bonds, breaking_bonds, r_label_map)
 
 
-def _has_excessive_backbone_drift(xyz: dict,
+def has_excessive_backbone_drift(xyz: dict,
                                   anchor_xyz: dict,
                                   max_mean_heavy_disp: float = 2.0,
                                   reactive_indices: Optional[Set[int]] = None,
@@ -1438,7 +1438,7 @@ def _has_excessive_backbone_drift(xyz: dict,
     return float(np.mean(heavy_disp)) > max_mean_heavy_disp
 
 
-def _validate_ts_guess(xyz: dict,
+def validate_ts_guess(xyz: dict,
                        migrating_hs: Set[int],
                        forming_bonds: List[Tuple[int, int]],
                        r_mol: 'Molecule',
@@ -1452,7 +1452,7 @@ def _validate_ts_guess(xyz: dict,
 
     Generic filters (collisions, detached H, fragment count, backbone drift)
     are always applied.  Family-specific filters are applied only if a handler
-    is registered in :data:`_FAMILY_VALIDATORS`.
+    is registered in :data:`FAMILY_VALIDATORS`.
 
     Args:
         xyz: Postprocessed TS guess XYZ dictionary.
@@ -1479,12 +1479,12 @@ def _validate_ts_guess(xyz: dict,
         reason = 'detached hydrogen'
     elif _has_too_many_fragments(xyz):
         reason = 'too many fragments (3+)'
-    elif anchor_xyz is not None and _has_excessive_backbone_drift(
+    elif anchor_xyz is not None and has_excessive_backbone_drift(
             xyz, anchor_xyz, max_mean_heavy_disp=3.0,
             reactive_indices=reactive_indices):
         reason = 'excessive backbone drift from anchor'
     else:
-        family_validator = _FAMILY_VALIDATORS.get(family)
+        family_validator = FAMILY_VALIDATORS.get(family)
         if family_validator is not None:
             is_valid, reason = family_validator(xyz, migrating_hs, forming_bonds, r_mol, label)
             if not is_valid:
