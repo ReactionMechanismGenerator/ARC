@@ -1275,6 +1275,18 @@ H       1.24252625    0.91583948   -0.84155142"""
         self.assertGreater(len(products_2), 0)
         self.assertTrue(all(p['family'] == 'Br_Abstraction' for p in products_2))
 
+    def test_get_reaction_family_products_r_recombination(self):
+        """Test determining the R_Recombination family for CH3 + CH3 => C2H6.
+        Only one r_species is provided since both reactants are identical;
+        ARC should duplicate it based on the reaction label."""
+        rxn = ARCReaction(label='CH3 + CH3 <=> C2H6',
+                          r_species=[ARCSpecies(label='CH3', smiles='[CH3]')],
+                          p_species=[ARCSpecies(label='C2H6', smiles='CC')])
+        products = get_reaction_family_products(rxn, rmg_family_set=['R_Recombination'])
+        self.assertGreater(len(products), 0)
+        self.assertTrue(all(p['family'] == 'R_Recombination' for p in products))
+        self.assertEqual(rxn.family, 'R_Recombination')
+
     def test_check_family_name(self):
         """Test check family name function"""
         self.assertTrue(check_family_name('H_Abstraction'))
