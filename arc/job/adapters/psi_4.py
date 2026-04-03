@@ -275,7 +275,6 @@ class Psi4Adapter(JobAdapter):
         self.iterate_by = list()
         self.number_of_processes = 0
         self.incore_capacity = 5
-        self.determine_job_array_parameters()  # Writes the local HDF5 file if needed.
 
         self.files_to_upload = list()
         self.files_to_download = list()

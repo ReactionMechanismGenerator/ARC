@@ -750,26 +750,6 @@ O       0.00000000    0.00000000    1.00000000
         self.assertEqual(self.job_3.files_to_upload, job_3_files_to_upload)
         self.assertEqual(self.job_3.files_to_download, job_3_files_to_download)
 
-    def test_set_files_for_pipe(self):
-        """Test setting files for a pipe job"""
-        job_2_files_to_upload = [{'file_name': 'submit.sub',
-                                  'local': os.path.join(self.job_2.local_path, 'submit.sub'),
-                                  'remote': os.path.join(self.job_2.remote_path, 'submit.sub'),
-                                  'source': 'path',
-                                  'make_x': False},
-                                 {'file_name': 'data.hdf5',
-                                  'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
-                                  'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
-                                  'source': 'path',
-                                  'make_x': False}]
-        job_2_files_to_download = [{'file_name': 'data.hdf5',
-                                    'local': os.path.join(self.job_2.local_path, 'data.hdf5'),
-                                    'remote': os.path.join(self.job_2.remote_path, 'data.hdf5'),
-                                    'source': 'path',
-                                    'make_x': False}]
-        self.assertEqual(self.job_2.files_to_upload, job_2_files_to_upload)
-        self.assertEqual(self.job_2.files_to_download, job_2_files_to_download)
-
     def test_gaussian_def2tzvp(self):
         """Test a Gaussian job using def2-tzvp"""
         self.assertEqual(self.job_9.level.basis.lower(), 'def2tzvp')
