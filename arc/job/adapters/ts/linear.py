@@ -1698,13 +1698,15 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                 if abs(weight - 0.5) <= 0.01:
                     rc_xyz = _ring_closure_xyz(r_xyz_na, r_mol, forming_bond=bond_pair)
                     if rc_xyz is not None:
-                        # For non-H migrating atoms (F, Cl, etc.), reposition
-                        # symmetrically between donor and acceptor at a TS-like
-                        # distance.  H atoms are handled by the postprocessing.
+                        # Reposition the migrating atom only when it participates
+                        # in BOTH a breaking and forming bond (true atom migration,
+                        # e.g. F shifting from one C to another).  For pure ring
+                        # closure (fb only, no bb) no atom migrates — both chain
+                        # ends stay bonded to their neighbors.
                         mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
-                        if r_xyz['symbols'][mig_idx] != 'H':
+                        atom_in_bb = any(mig_idx in b for b in bb)
+                        if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
                             acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
-                            atom_to_idx_rc2 = {a: idx for idx, a in enumerate(r_mol.atoms)}
                             don_idx = None
                             for nbr in r_mol.atoms[mig_idx].bonds:
                                 ni = atom_to_idx_rc2[nbr]
@@ -1990,11 +1992,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                             rc_xyz = _ring_closure_xyz(r_xyz, r_mol,
                                                        forming_bond=bond_pair)
                             if rc_xyz is not None:
-                                # For non-H migrating atoms (F, Cl, etc.),
-                                # reposition to the midpoint between donor and
-                                # acceptor for a symmetric TS ring.
+                                # Reposition only for true atom migration (atom
+                                # in both bb and fb), not pure ring closure.
                                 mig_idx = bond_pair[0] if r_xyz['symbols'][bond_pair[0]] != 'H' else bond_pair[1]
-                                if r_xyz['symbols'][mig_idx] != 'H':
+                                atom_in_bb = any(mig_idx in b for b in bb)
+                                if r_xyz['symbols'][mig_idx] != 'H' and atom_in_bb:
                                     acc_idx = bond_pair[1] if mig_idx == bond_pair[0] else bond_pair[0]
                                     atom_to_idx_rc = {a: idx for idx, a in enumerate(r_mol.atoms)}
                                     don_idx = None
