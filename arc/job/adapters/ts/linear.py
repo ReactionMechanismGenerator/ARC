@@ -653,7 +653,30 @@ def _reposition_migrating_atom(xyz: dict,
     # Height above midpoint so that d(mig, donor) = d_target.
     height_sq = d_target ** 2 - half_da ** 2
     height = np.sqrt(max(height_sq, 0.1))
-    coords[mig_idx] = midpoint + offset_dir * height
+    new_pos = midpoint + offset_dir * height
+    displacement = new_pos - coords[mig_idx]
+    # Move the entire fragment bonded to mig_idx (e.g. CH3 group),
+    # excluding donor and acceptor, so H's travel with the migrating atom.
+    from collections import deque as _deque
+    n = len(xyz['symbols'])
+    adj: Dict[int, Set[int]] = {k: set() for k in range(n)}
+    for a in range(n):
+        for b in range(a + 1, n):
+            d_ab = float(np.linalg.norm(coords[a] - coords[b]))
+            thresh = 1.3 if 'H' in (xyz['symbols'][a], xyz['symbols'][b]) else 1.8
+            if d_ab < thresh:
+                adj[a].add(b)
+                adj[b].add(a)
+    fragment: Set[int] = set()
+    queue = _deque([mig_idx])
+    while queue:
+        node = queue.popleft()
+        if node in fragment or node in (don_idx, acc_idx):
+            continue
+        fragment.add(node)
+        queue.extend(adj[node] - fragment - {don_idx, acc_idx})
+    for k in fragment:
+        coords[k] += displacement
     return {'symbols': xyz['symbols'],
             'isotopes': xyz['isotopes'],
             'coords': tuple(tuple(row) for row in coords)}
@@ -1353,6 +1376,8 @@ def interpolate_addition(rxn: 'ARCReaction',
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[dict] = []
     for xyz_candidate in ts_xyzs:
+        if colliding_atoms(xyz_candidate):
+            continue
         if not any(almost_equal_coords(xyz_candidate, u)
                    for u in unique + prior):
             unique.append(xyz_candidate)
@@ -1521,6 +1546,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                            f'{op_xyz["symbols"]} do not match reactant symbols {r_xyz["symbols"]}; '
                            f'skipping path.')
             continue
+
 
         # Ring-scission fast path: when the family was discovered in reverse
         # (product has a ring that the reactant doesn't) and there are only
@@ -1747,6 +1773,27 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             if ts_4c is not None:
                 ts_xyzs.append(ts_4c)
                 logger.debug(f'Linear (rxn={rxn.label}, path={i}): used 4-center interchange builder.')
+
+        # 3-center shift: when breaking and forming bonds share a non-H
+        # atom (e.g. 1,2_shiftC, Intra_R_Add_Exo_scission), reposition
+        # the shared atom symmetrically between the other two to form a
+        # 3-membered ring TS.
+        if len(bb) == 1 and len(fb) == 1:
+            bb_atoms = {a for bond in bb for a in bond}
+            fb_atoms = {a for bond in fb for a in bond}
+            shared_3c = bb_atoms & fb_atoms
+            if len(shared_3c) == 1:
+                pivot = next(iter(shared_3c))
+                if r_xyz['symbols'][pivot] != 'H':
+                    bb_other = bb[0][0] if bb[0][1] == pivot else bb[0][1]
+                    fb_other = fb[0][0] if fb[0][1] == pivot else fb[0][1]
+                    ts_3c = _reposition_migrating_atom(
+                        dict(r_xyz), np.array(r_xyz['coords'], dtype=float),
+                        mig_idx=pivot, don_idx=bb_other, acc_idx=fb_other)
+                    if ts_3c is not None and not colliding_atoms(ts_3c):
+                        ts_xyzs.append(ts_3c)
+                        logger.debug(f'Linear (rxn={rxn.label}, path={i}): '
+                                     f'used 3-center shift builder (pivot={pivot}).')
 
     # Trivial atom-map fallback: when no product_dicts could be determined (e.g., the
     # reaction family is unknown) fall back to an identity atom map and determine
@@ -2023,6 +2070,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
     prior: List[dict] = list(existing_xyzs or [])
     unique: List[dict] = []
     for xyz in ts_xyzs:
+        if colliding_atoms(xyz):
+            continue
         if not any(almost_equal_coords(xyz, other)
                    for other in unique + prior):
             unique.append(xyz)
@@ -2055,6 +2104,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
             unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
                       for xyz in unique]
+        # Final collision filter after all post-processing.
+        unique = [xyz for xyz in unique if not colliding_atoms(xyz)]
 
     return unique
 
