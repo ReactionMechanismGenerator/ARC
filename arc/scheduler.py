@@ -29,7 +29,6 @@ from arc.common import (extremum_list,
                         torsions_to_scans,
                         )
 from arc.exceptions import (InputError,
-                            SanitizationError,
                             SchedulerError,
                             SpeciesError,
                             TrshError,
@@ -38,6 +37,8 @@ from arc.imports import settings
 from arc.job.adapters.common import all_families_ts_adapters, default_incore_adapters, ts_adapters_by_rmg_family
 from arc.job.factory import job_factory
 from arc.job.local import check_running_jobs_ids
+from arc.job.pipe.pipe_coordinator import PipeCoordinator
+from arc.job.pipe.pipe_planner import PipePlanner
 from arc.job.ssh import SSHClient
 from arc.job.trsh import (scan_quality_check,
                           trsh_conformer_isomorphism,
@@ -505,10 +506,83 @@ class Scheduler(object):
                 if species.is_ts:
                     # This is a TS loaded from a YAML file
                     species.ts_conf_spawned = True
+        # Pipe mode: coordinator manages run lifecycle, planner handles family routing
+        self.pipe_coordinator = PipeCoordinator(self)
+        self.pipe_planner = PipePlanner(self, self.pipe_coordinator)
+        # Backward-compatible alias to coordinator-owned state.
+        # ``active_pipes`` is owned and mutated by ``PipeCoordinator``; this alias
+        # exists so that scheduler-level loop conditions (``while ... or self.active_pipes``)
+        # and logging can reference it directly without going through the coordinator.
+        self.active_pipes = self.pipe_coordinator.active_pipes
+        # Deferred pipe batching accumulators — flushed once per main-loop iteration.
+        self._pending_pipe_sp: set = set()          # species labels
+        self._pending_pipe_freq: set = set()        # species labels
+        self._pending_pipe_irc: set = set()         # (label, direction) tuples
+        self._pending_pipe_conf_sp: dict = dict()   # {label: set of conformer indices}
+
         self.save_restart = True
         self.timer = True
         if not self.testing:
             self.schedule_jobs()
+
+    def flush_pending_pipe_batches(self) -> None:
+        """
+        Attempt to submit accumulated deferred pipe batches for SP, freq, IRC, and conf_sp.
+
+        For each family:
+          1. Snapshot and clear the pending set.
+          2. Ask the planner for the handled subset.
+          3. Fall back to per-job submission for the unhandled remainder.
+
+        Called once per main-loop iteration, after all newly-ready work has been
+        discovered and before the loop sleeps.
+        """
+        self._flush_pending_pipe_sp()
+        self._flush_pending_pipe_freq()
+        self._flush_pending_pipe_irc()
+        self._flush_pending_pipe_conf_sp()
+
+    def _flush_pending_pipe_sp(self) -> None:
+        """Flush pending species SP jobs through planner or fallback."""
+        if not self._pending_pipe_sp:
+            return
+        pending = set(self._pending_pipe_sp)
+        self._pending_pipe_sp.clear()
+        piped = self.pipe_planner.try_pipe_species_sp(sorted(pending))
+        for label in sorted(pending - piped):
+            self.run_sp_job(label)
+
+    def _flush_pending_pipe_freq(self) -> None:
+        """Flush pending species freq jobs through planner or fallback."""
+        if not self._pending_pipe_freq:
+            return
+        pending = set(self._pending_pipe_freq)
+        self._pending_pipe_freq.clear()
+        piped = self.pipe_planner.try_pipe_species_freq(sorted(pending))
+        for label in sorted(pending - piped):
+            self.run_freq_job(label)
+
+    def _flush_pending_pipe_irc(self) -> None:
+        """Flush pending IRC jobs through planner or fallback."""
+        if not self._pending_pipe_irc:
+            return
+        pending = set(self._pending_pipe_irc)
+        self._pending_pipe_irc.clear()
+        piped = self.pipe_planner.try_pipe_irc(sorted(pending))
+        for label, direction in sorted(pending - piped):
+            self.run_irc_job(label=label, irc_direction=direction)
+
+    def _flush_pending_pipe_conf_sp(self) -> None:
+        """Flush pending conformer SP jobs through planner or fallback."""
+        if not self._pending_pipe_conf_sp:
+            return
+        pending = dict(self._pending_pipe_conf_sp)
+        self._pending_pipe_conf_sp.clear()
+        for label in sorted(pending):
+            conformer_indices = pending[label]
+            piped = self.pipe_planner.try_pipe_conf_sp(label, sorted(conformer_indices))
+            for i in sorted(conformer_indices - piped):
+                self.run_sp_job(label=label, level=self.conformer_sp_level, conformer=i)
 
     def schedule_jobs(self):
         """
@@ -526,7 +600,9 @@ class Scheduler(object):
                         self.run_opt_job(species.label, fine=self.fine_only)
         self.run_conformer_jobs()
         self.spawn_ts_jobs()  # If all reactants/products are already known (Arkane yml or restart), spawn TS searches.
-        while self.running_jobs != {}:
+        while self.running_jobs != {} or self.active_pipes \
+                or self._pending_pipe_sp or self._pending_pipe_freq \
+                or self._pending_pipe_irc or self._pending_pipe_conf_sp:
             self.timer = True
             for label in self.unique_species_labels:
                 if label in self.output and self.output[label]['convergence'] is False:
@@ -551,9 +627,8 @@ class Scheduler(object):
                             if successful_server_termination:
                                 troubleshooting_conformer = self.parse_conformer(job=job, label=label, i=i)
                                 if 'conf_opt' in job_name and self.job_types['conf_sp'] and not troubleshooting_conformer:
-                                    self.run_sp_job(label=label,
-                                                    level=self.conformer_sp_level,
-                                                    conformer=i)
+                                    # Accumulate for deferred pipe batching of conf_sp.
+                                    self._pending_pipe_conf_sp.setdefault(label, set()).add(i)
                                 if troubleshooting_conformer:
                                     break
                             # Just terminated a conformer job.
@@ -732,12 +807,23 @@ class Scheduler(object):
                         # Delete the label only if it represents an empty entry.
                         del self.running_jobs[label]
 
-            if self.timer and len(job_list):
+            # Poll active pipe runs (per-run failures are handled inside poll_pipes).
+            if self.active_pipes:
+                self.pipe_coordinator.poll_pipes()
+
+            # Flush deferred pipe batches (SP, freq, IRC, conf_sp) after all
+            # newly-ready work has been discovered and before the loop sleeps.
+            self.flush_pending_pipe_batches()
+
+            should_sleep = self.timer and (self.running_jobs or self.active_pipes)
+            if should_sleep:
                 time.sleep(30)  # wait 30 sec before bugging the servers again.
             t = time.time() - self.report_time
-            if t > 3600 and self.running_jobs:
+            if t > 3600 and (self.running_jobs or self.active_pipes):
                 self.report_time = time.time()
                 logger.info(f'Currently running jobs:\n{pprint.pformat(self.running_jobs)}')
+                if self.active_pipes:
+                    logger.info(f'Active pipe runs: {list(self.active_pipes.keys())}')
 
         # Generate a TS report:
         self.generate_final_ts_guess_report()
@@ -1160,15 +1246,22 @@ class Scheduler(object):
         )
         successful_tsgs = [tsg for tsg in self.species_dict[label].ts_guesses if tsg.success]
         if len(successful_tsgs) > 1:
-            self.job_dict[label]['conf_opt'] = dict()
+            xyzs = [tsg.initial_xyz for tsg in successful_tsgs]
+            piped_indices = self.pipe_planner.try_pipe_ts_opt(label, xyzs, self.ts_guess_level)
+            if not piped_indices:
+                self.job_dict[label]['conf_opt'] = dict()
             for i, tsg in enumerate(successful_tsgs):
+                tsg.conformer_index = i  # Store the conformer index to match them later.
+                if i in piped_indices:
+                    continue
+                if 'conf_opt' not in self.job_dict[label]:
+                    self.job_dict[label]['conf_opt'] = dict()
                 self.run_job(label=label,
                              xyz=tsg.initial_xyz,
                              level_of_theory=self.ts_guess_level,
                              job_type='conf_opt',
                              conformer=i,
                              )
-                tsg.conformer_index = i  # Store the conformer index in the TSGuess object to match them later.
         elif len(successful_tsgs) == 1:
             if 'opt' not in self.job_dict[label].keys() and 'composite' not in self.job_dict[label].keys():
                 # proceed only if opt (/composite) not already spawned
@@ -1356,6 +1449,7 @@ class Scheduler(object):
             label (str): The species label.
         """
         if self.job_types['rotors'] and isinstance(self.species_dict[label].rotors_dict, dict):
+            ess_rotor_indices = []  # Collected for potential pipe batching below.
             for i, rotor in self.species_dict[label].rotors_dict.items():
                 if rotor['scan_path'] and os.path.isfile(rotor['scan_path']):
                     continue
@@ -1412,29 +1506,37 @@ class Scheduler(object):
                         else:
                             self.spawn_directed_scan_jobs(label, rotor_index=i)
                 else:
-                    # This is a "normal" scan (not directed).
-                    # Check that this job isn't already running on the server (from a restarted project).
-                    if 'scan' not in self.job_dict[label].keys():
-                        # We're spawning the first scan job for this species.
-                        self.job_dict[label]['scan'] = dict()
-                    # Check that this job isn't already running on the server (from a restarted project).
-                    for scan_job in self.job_dict[label]['scan'].values():
-                        if torsions == scan_job.torsions and scan_job.job_name in self.running_jobs[label]:
-                            break
-                    else:
-                        if self.species_dict[label].multi_species:
-                            if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
-                                return
-                            self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
-                            label = [species.label for species in self.species_list
+                    # This is a "normal" ESS scan (not directed). Collect for potential pipe batching.
+                    ess_rotor_indices.append(i)
+
+            # Attempt to batch ESS scans through pipe mode; fall back per-rotor for the rest.
+            piped_rotors = self.pipe_planner.try_pipe_rotor_scans_1d(label, ess_rotor_indices) \
+                if ess_rotor_indices else set()
+            for i in ess_rotor_indices:
+                if i in piped_rotors:
+                    continue
+                rotor = self.species_dict[label].rotors_dict[i]
+                torsions = rotor['torsion']
+                if 'scan' not in self.job_dict[label].keys():
+                    self.job_dict[label]['scan'] = dict()
+                for scan_job in self.job_dict[label]['scan'].values():
+                    if torsions == scan_job.torsions and scan_job.job_name in self.running_jobs[label]:
+                        break
+                else:
+                    job_label = label
+                    if self.species_dict[label].multi_species:
+                        if self.output_multi_spc[self.species_dict[label].multi_species].get('scan', False):
+                            return
+                        self.output_multi_spc[self.species_dict[label].multi_species]['scan'] = True
+                        job_label = [species.label for species in self.species_list
                                      if species.multi_species == self.species_dict[label].multi_species]
-                        self.run_job(label=label,
-                                     xyz=self.species_dict[label].get_xyz(generate=False),
-                                     level_of_theory=self.scan_level,
-                                     job_type='scan',
-                                     torsions=torsions,
-                                     rotor_index=i,
-                                     )
+                    self.run_job(label=job_label,
+                                 xyz=self.species_dict[label].get_xyz(generate=False),
+                                 level_of_theory=self.scan_level,
+                                 job_type='scan',
+                                 torsions=torsions,
+                                 rotor_index=i,
+                                 )
 
     def run_irc_job(self, label, irc_direction='forward'):
         """
@@ -1503,24 +1605,22 @@ class Scheduler(object):
             self.run_opt_job(label, fine=self.fine_only)
             return None
 
-        # Spawn IRC if requested and if relevant.
+        # Enqueue IRC if requested and if relevant (deferred for pipe batching).
         if label in self.output.keys() and self.job_types['irc'] and self.species_dict[label].is_ts:
-            self.run_irc_job(label=label, irc_direction='forward')
-            self.run_irc_job(label=label, irc_direction='reverse')
+            self._pending_pipe_irc.add((label, 'forward'))
+            self._pending_pipe_irc.add((label, 'reverse'))
 
-        # Spawn freq (or check it if this is a composite job) for polyatomic molecules.
+        # Enqueue freq (deferred for pipe batching), or check it if composite.
         if label in self.output.keys() and self.species_dict[label].number_of_atoms > 1 \
                 and self.species_dict[label].irc_label is None:
             if 'freq' not in job_name and self.job_types['freq']:
-                # This is either an opt or a composite job (not an optfreq job), spawn freq.
-                self.run_freq_job(label)
+                self._pending_pipe_freq.add(label)
             if 'optfreq' in job_name:
-                # This is an 'optfreq' job type, don't spawn freq (but do check it).
                 self.check_freq_job(label=label, job=self.job_dict[label]['optfreq'][job_name])
 
-        # Spawn sp after an opt (non-composite) job.
+        # Enqueue sp after an opt (non-composite) job (deferred for pipe batching).
         if not composite and self.job_types['sp'] and self.species_dict[label].irc_label is None:
-            self.run_sp_job(label)
+            self._pending_pipe_sp.add(label)
 
         # Perceive the Molecule from xyz.
         # Useful for TS species where xyz might not be given at the outset to perceive a .mol attribute.
@@ -1862,14 +1962,20 @@ class Scheduler(object):
         if self.species_dict[label].initial_xyz is None and self.species_dict[label].final_xyz is None \
                 and not self.testing:
             if len(self.species_dict[label].conformers) > 1:
-                self.job_dict[label]['conf_opt'] = dict()
+                piped_conformers = self.pipe_planner.try_pipe_conformers(label)
+                if not piped_conformers:
+                    self.job_dict[label]['conf_opt'] = dict()
                 for i, xyz in enumerate(self.species_dict[label].conformers):
+                    if i in piped_conformers:
+                        continue
+                    if 'conf_opt' not in self.job_dict[label]:
+                        self.job_dict[label]['conf_opt'] = dict()
                     self.run_job(label=label,
-                                 xyz=xyz,
-                                 job_type='conf_opt',
-                                 level_of_theory=self.conformer_opt_level,
-                                 conformer=i,
-                                 )
+                                     xyz=xyz,
+                                     job_type='conf_opt',
+                                     level_of_theory=self.conformer_opt_level,
+                                     conformer=i,
+                                     )
             elif len(self.species_dict[label].conformers) == 1:
                 logger.info(f'Only one conformer is available for species {label}, using it as initial xyz.')
                 self.species_dict[label].initial_xyz = self.species_dict[label].conformers[0]
