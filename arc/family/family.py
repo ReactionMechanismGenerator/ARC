@@ -325,8 +325,14 @@ class ReactionFamily(object):
             if action[0] in ['CHANGE_BOND', 'FORM_BOND', 'BREAK_BOND']:
                 structure.reset_connectivity_values()
                 label_1, info, label_2 = action[1:]
-                atom_1 = structure.get_labeled_atoms(label_1)[0]
-                atom_2 = structure.get_labeled_atoms(label_2)[0]
+                labeled_1 = structure.get_labeled_atoms(label_1)
+                atom_1 = labeled_1[0] if labeled_1 else None
+                if label_1 == label_2 and len(labeled_1) >= 2:
+                    # Same label on two different atoms (e.g., R_Recombination: * + * → *-*)
+                    atom_2 = labeled_1[1]
+                else:
+                    labeled_2 = structure.get_labeled_atoms(label_2)
+                    atom_2 = labeled_2[0] if labeled_2 else None
                 if atom_1 is None or atom_2 is None or atom_1 is atom_2:
                     raise ValueError('Invalid atom labels in reaction recipe.')
                 if action[0] == 'CHANGE_BOND':
@@ -357,10 +363,11 @@ class ReactionFamily(object):
             elif action[0] in ['LOSE_RADICAL', 'GAIN_RADICAL', 'LOSE_PAIR', 'GAIN_PAIR']:
                 label, change = action[1:]
                 change = int(change)
-                atom = structure.get_labeled_atoms(label)[0]
-                if atom is None:
+                labeled_atoms = structure.get_labeled_atoms(label)
+                if not labeled_atoms:
                     raise ValueError(f'Unable to find atom with label "{label}" while applying reaction recipe.')
-                atom.apply_action([action[0], label, change])
+                for atom in labeled_atoms:
+                    atom.apply_action([action[0], label, change])
             else:
                 raise ValueError(f'Unknown action "{action[0]}" encountered.')
         if 'validAromatic' in structure.props and not structure.props['validAromatic']:
