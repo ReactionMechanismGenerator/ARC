@@ -17,6 +17,7 @@ from arc.family.family import (ReactionFamily,
                                check_product_isomorphism,
                                descent_complex_group,
                                determine_possible_reaction_products_from_family,
+                               filter_products_by_reaction,
                                get_reaction_family_products,
                                get_all_families,
                                get_entries,
@@ -1337,6 +1338,148 @@ H       1.24252625    0.91583948   -0.84155142"""
             self.assertNotIn('_2', label, f'Unexpected suffix in r_label_map key: {label}')
         for label in pd['p_label_map']:
             self.assertNotIn('_2', label, f'Unexpected suffix in p_label_map key: {label}')
+
+    def test_check_product_isomorphism_inchi_fallback_rejects_different_multiplicity(self):
+        """Test that the InChI fallback in check_product_isomorphism rejects
+        molecules with same InChI but different multiplicity.
+        [CH2][CH2] (triplet biradical) vs C=C (singlet ethylene) have
+        identical InChIs but are structurally different species."""
+        biradical = Molecule(smiles='[CH2][CH2]')
+        ethylene = Molecule(smiles='C=C')
+        ethylene_species = ARCSpecies(label='C2H4', smiles='C=C')
+        # Biradical should NOT match ethylene
+        self.assertFalse(check_product_isomorphism([biradical], [ethylene_species]))
+        # Ethylene should match itself
+        self.assertTrue(check_product_isomorphism([ethylene], [ethylene_species]))
+
+    def test_check_product_isomorphism_inchi_fallback_accepts_same_multiplicity(self):
+        """Test that the InChI fallback correctly matches molecules with
+        same InChI AND same multiplicity but different Lewis structures.
+        O=C=C(O)C=O and O=C[C-](O)C#[O+] are different Lewis structures
+        of the same molecule."""
+        mol_a = Molecule(smiles='O=C=C(O)C=O')
+        spc_b = ARCSpecies(label='test', smiles='O=C=C(O)C=O')
+        self.assertTrue(check_product_isomorphism([mol_a], [spc_b]))
+
+    def test_check_product_isomorphism_length_mismatch(self):
+        """Test that check_product_isomorphism returns False for length mismatch."""
+        mol = Molecule(smiles='C')
+        spc = ARCSpecies(label='CH4', smiles='C')
+        self.assertFalse(check_product_isomorphism([mol, mol], [spc]))
+        self.assertFalse(check_product_isomorphism([], [spc]))
+
+    def test_disproportionation_not_matched_for_triplet_products(self):
+        """Test that Disproportionation is NOT matched when the template generates
+        a singlet product but the actual species is triplet.
+        C2H5 + OH → C2H4 + H2O: Disproportionation template generates O=O (singlet)
+        but actual O2 is [O][O] (triplet). Only H_Abstraction should NOT match either
+        since [CH2][CH2] (biradical) != C=C (ethylene)."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='C2H5', smiles='C[CH2]'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='C2H4', smiles='C=C'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn.family, 'Disproportionation')
+        self.assertFalse(rxn.family_own_reverse)
+
+    def test_h_abstraction_not_confused_with_disproportionation(self):
+        """Test that a true H_Abstraction (CH4 + OH → CH3 + H2O) is correctly
+        identified and NOT classified as Disproportionation."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        self.assertEqual(rxn.family, 'H_Abstraction')
+        self.assertTrue(rxn.family_own_reverse)
+
+    def test_apply_recipe_form_bond_duplicate_labels(self):
+        """Test that apply_recipe handles FORM_BOND with duplicate labels (*,*).
+        R_Recombination uses ['FORM_BOND', '*', 1, '*'] where both atoms
+        share the same label."""
+        fam = ReactionFamily(label='R_Recombination')
+        ch3 = ARCSpecies(label='CH3', smiles='[CH3]')
+        r_species = [ch3, ARCSpecies(label='CH3_2', smiles='[CH3]')]
+        products = fam.generate_products(reactants=r_species)
+        self.assertGreater(len(products), 0)
+        for group_labels, product_lists in products.items():
+            for product_list in product_lists:
+                template_mols = product_list[0]
+                # Should produce ethane (CC), not crash
+                self.assertEqual(len(template_mols), 1)
+                self.assertTrue(template_mols[0].is_isomorphic(Molecule(smiles='CC')))
+
+    def test_apply_recipe_lose_radical_all_labeled_atoms(self):
+        """Test that LOSE_RADICAL is applied to ALL atoms with the same label,
+        not just the first one. R_Recombination's recipe ['LOSE_RADICAL', '*', '1']
+        should remove radicals from both * atoms."""
+        fam = ReactionFamily(label='R_Recombination')
+        h1 = ARCSpecies(label='H1', smiles='[H]')
+        h2 = ARCSpecies(label='H2', smiles='[H]')
+        products = fam.generate_products(reactants=[h1, h2])
+        self.assertGreater(len(products), 0)
+        for group_labels, product_lists in products.items():
+            for product_list in product_lists:
+                template_mols = product_list[0]
+                # H + H → H2, no radicals remaining
+                self.assertEqual(template_mols[0].get_radical_count(), 0)
+
+    def test_filter_products_by_reaction(self):
+        """Test filter_products_by_reaction with matching and non-matching products."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        # Get unfiltered products
+        all_prods = determine_possible_reaction_products_from_family(rxn, 'H_Abstraction')
+        self.assertGreater(len(all_prods), 0)
+        # Filter should keep only those matching rxn products
+        filtered = filter_products_by_reaction(rxn=rxn, product_dicts=all_prods)
+        self.assertGreater(len(filtered), 0)
+        for pd in filtered:
+            self.assertEqual(pd['family'], 'H_Abstraction')
+
+    def test_filter_products_rejects_wrong_product_count(self):
+        """Test that filter_products_by_reaction rejects templates with wrong product count."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        # Fabricate a product_dict with 1 product (should need 2)
+        fake = [{'family': 'H_Abstraction', 'group_labels': ('X_H', 'Y_rad'),
+                 'products': [Molecule(smiles='C')],
+                 'r_label_map': {'*1': 0}, 'p_label_map': {'*1': 0},
+                 'own_reverse': True, 'discovered_in_reverse': False}]
+        filtered = filter_products_by_reaction(rxn=rxn, product_dicts=fake)
+        self.assertEqual(len(filtered), 0)
+
+    def test_get_reaction_family_products_skips_unsupported_groups(self):
+        """Test that get_reaction_family_products gracefully skips families
+        with unsupported atom types rather than crashing."""
+        rxn = ARCReaction(r_species=[ARCSpecies(label='CH4', smiles='C'),
+                                     ARCSpecies(label='OH', smiles='[OH]')],
+                          p_species=[ARCSpecies(label='CH3', smiles='[CH3]'),
+                                     ARCSpecies(label='H2O', smiles='O')])
+        # Using 'all' families includes some with unsupported atom types (e.g., Na)
+        products = get_reaction_family_products(rxn, rmg_family_set='all')
+        self.assertIsInstance(products, list)
+        # Should still find H_Abstraction despite some families failing
+        families = set(p['family'] for p in products)
+        self.assertIn('H_Abstraction', families)
+
+    def test_determine_family_for_various_reactions(self):
+        """Test family identification for a range of reaction types."""
+        test_cases = [
+            # (r_smiles_list, p_smiles_list, expected_family)
+            (['C', '[OH]'], ['[CH3]', 'O'], 'H_Abstraction'),
+            (['C[CH2]', '[OH]'], ['C=C', 'O'], 'Disproportionation'),
+            (['[CH2]CC[CH2]'], ['C1CCC1'], 'Birad_recombination'),
+        ]
+        for r_smiles, p_smiles, expected in test_cases:
+            r_species = [ARCSpecies(label=f'R{i}', smiles=s) for i, s in enumerate(r_smiles)]
+            p_species = [ARCSpecies(label=f'P{i}', smiles=s) for i, s in enumerate(p_smiles)]
+            rxn = ARCReaction(r_species=r_species, p_species=p_species)
+            self.assertEqual(rxn.family, expected,
+                             f'Expected {expected} for {" + ".join(r_smiles)} => {" + ".join(p_smiles)}, '
+                             f'got {rxn.family}')
 
     def test_check_family_name(self):
         """Test check family name function"""
