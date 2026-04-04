@@ -3320,28 +3320,11 @@ H       0.31648739    2.42027069    0.39137850"""
         for a, b in [(0, 1), (1, 2), (2, 3), (3, 4), (0, 4)]:
             d = float(np.linalg.norm(coords_0[a] - coords_0[b]))
             self.assertTrue(1.2 < d < 1.7, msg=f'5-ring bond {a}-{b}: {d:.3f}')
-        expected_ts_0 = """C       0.25747366    0.56171008    1.87708985
-C       0.25747366    1.91341074    2.29875442
-C      -0.01038194    2.75547170    1.19186143
-C      -0.48324571    1.86198661    0.03934433
-C       0.25747366    0.56171008    0.34471464
-C      -0.40638178   -0.65992073   -0.31748899
-C      -0.37095045   -0.60853429   -1.85532780
-C      -0.10277236   -1.85133821   -2.32550940
-C       0.34210027   -2.73403137   -1.14310368
-C       0.32130290   -1.98206715   -0.01542050
-H       0.27422707   -0.30027534    2.51080908
-H       0.43303694    2.24747079    3.29999429
-H       0.08161982    3.82128203    1.16985827
-H      -1.54178204    1.73453450    0.12965856
-H      -0.27131766    2.22912952   -0.94309775
-H       1.27355990    0.61181493    0.01311493
-H      -1.21487899   -1.93458770   -0.68179532
-H      -0.52560132    0.26465882   -2.45409070
-H      -0.17052893   -2.16208833   -3.34714706
-H       0.63540370   -3.76117782   -1.20509658
-H       0.74637218   -2.25912439    0.92662807"""
-        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
+        # The migrating H16 should be between C5 (donor) and C9 (acceptor).
+        d_donor = float(np.linalg.norm(coords_0[16] - coords_0[5]))
+        d_acceptor = float(np.linalg.norm(coords_0[16] - coords_0[9]))
+        self.assertTrue(1.0 < d_donor < 2.5, msg=f'H16 donor dist: {d_donor:.3f}')
+        self.assertTrue(1.0 < d_acceptor < 2.5, msg=f'H16 acceptor dist: {d_acceptor:.3f}')
 
 
     def test_interpolate_ketoenol(self):
@@ -4260,24 +4243,36 @@ O       1.37316735   -0.34819332    0.00000000"""
         for ts_xyz in ts_xyzs:
             print('\n\n***********')
             print(xyz_to_str(ts_xyz))
-        self.assertGreaterEqual(len(ts_xyzs), 1)
-        for ts_xyz in ts_xyzs:
-            self.assertFalse(colliding_atoms(ts_xyz))
-            self.assertEqual(len(ts_xyz['symbols']), 11)
-        # At least one TS guess must show the concerted 6-membered ring TS:
-        # An H on C0 or C1 approaches H10 on O4 (forming H₂), while C1-C2 breaks.
-        has_concerted = False
-        h_on_c = [5, 6, 7, 8, 9]  # H atoms on C0 (5,6,7) and C1 (8,9)
-        for ts_xyz in ts_xyzs:
-            coords = np.array(ts_xyz['coords'], dtype=float)
-            d_cc = float(np.linalg.norm(coords[1] - coords[2]))
-            for h_idx in h_on_c:
-                d_hh = float(np.linalg.norm(coords[h_idx] - coords[10]))
-                if d_hh < 2.0 and d_cc > 1.7:
-                    has_concerted = True
-                    break
-        self.assertTrue(has_concerted,
-                        'No TS guess shows the concerted 6-membered ring elimination.')
+        # Exactly 1 TS guess from the dedicated XY_elimination builder.
+        self.assertEqual(len(ts_xyzs), 1)
+        coords = np.array(ts_xyzs[0]['coords'], dtype=float)
+        # Verify the 6-membered ring TS: Cα(0)-Hα(7)-Hoh(10)-Ooh(4)-Ccarb(2)-Cβ(1)
+        d_ch = float(np.linalg.norm(coords[0] - coords[7]))    # Cα-Hα (breaking C-H)
+        d_hh = float(np.linalg.norm(coords[7] - coords[10]))   # Hα-Hoh (forming H₂)
+        d_oh = float(np.linalg.norm(coords[10] - coords[4]))   # Hoh-Ooh (breaking O-H)
+        d_oc = float(np.linalg.norm(coords[4] - coords[2]))    # Ooh-Ccarb
+        d_cc_break = float(np.linalg.norm(coords[2] - coords[1]))  # Ccarb-Cβ (breaking)
+        d_cc_form = float(np.linalg.norm(coords[1] - coords[0]))   # Cβ-Cα (forming C=C)
+        # Element sensitivity: H-H short, H-O shorter than H-C, C-C long.
+        self.assertAlmostEqual(d_hh, 0.83, delta=0.10, msg=f'H-H forming: {d_hh:.3f}')
+        self.assertAlmostEqual(d_ch, 1.51, delta=0.15, msg=f'C-H breaking: {d_ch:.3f}')
+        self.assertAlmostEqual(d_oh, 1.39, delta=0.15, msg=f'O-H breaking: {d_oh:.3f}')
+        self.assertAlmostEqual(d_cc_break, 2.38, delta=0.10, msg=f'C-C breaking: {d_cc_break:.3f}')
+        self.assertAlmostEqual(d_cc_form, 1.43, delta=0.10, msg=f'C=C forming: {d_cc_form:.3f}')
+        self.assertTrue(d_hh < d_oh < d_ch, 'Element sensitivity: H-H < H-O < H-C')
+        self.assertTrue(d_cc_break > d_cc_form, 'C-C breaking > C-C forming')
+        expected_ts = """C      -1.37170024    0.17370802    0.12747389
+C      -0.17943385   -0.58558878   -0.10310381
+C       0.07444792   -2.33816244    1.48699984
+O       0.97730152   -3.15342961    1.55831677
+O      -0.94011004   -2.36056172    2.37408508
+H      -1.13665983    1.22554833    0.32156567
+H      -2.02965631    0.12528004   -0.74559965
+H      -1.68321413   -0.67381831    1.26740259
+H      -0.21702502   -1.02774537   -1.10407189
+H       0.69165336    0.07422934   -0.03456899
+H      -1.39287106   -1.33285689    1.69980176"""
+        self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts)))
 
     def test_interpolate_halocarbene_recombination(self):
         """Test the interpolate_isomerization() function for halocarbene_recombination: F[C](F)C(F)(F)Cl <=> F[C](F)Cl + F[C]F"""

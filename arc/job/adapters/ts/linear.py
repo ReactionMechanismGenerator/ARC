@@ -215,6 +215,7 @@ from arc.job.adapters.ts.linear_utils.addition import (
     stretch_bond,
     stretch_core_from_large,
 )
+from arc.job.adapters.ts.linear_utils.families import build_xy_elimination_ts
 
 
 logger = get_logger()
@@ -1114,6 +1115,23 @@ def interpolate_addition(rxn: 'ARCReaction',
     ts_xyzs: List[dict] = []
     seen_split_sets: Set[frozenset] = set()
     verified_guess_count: int = 0
+
+    # --- Dedicated family builders (fire first, return immediately if matched) ---
+    # Dispatch by family name when known, fall back to structural detection
+    # for unrecognized families.
+    _family_name = rxn.family or ''
+    for pd in rxn.product_dicts:
+        if pd.get('family'):
+            _family_name = pd['family']
+            break
+
+    # XY_elimination_hydroxyl: concerted 6-membered ring elimination.
+    if _family_name.startswith('XY_elimination') or (
+            not _family_name and len(multi_species) >= 3):
+        ts_family = build_xy_elimination_ts(uni_xyz, uni_mol)
+        if ts_family is not None:
+            logger.debug(f'Linear addition (rxn={rxn.label}): used XY_elimination dedicated builder.')
+            return [ts_family]
 
     # Build a set of bonds present in the unimolecular species' graph (used
     # by both the template-guided path and the fragmentation fallback).

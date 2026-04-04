@@ -422,33 +422,84 @@ def build_concerted_ts(uni_xyz: dict,
     symbols = uni_xyz['symbols']
     coords = np.array(uni_xyz['coords'], dtype=float)
 
+    # Compute element-aware target distances.
+    # Breaking (split) bonds: heavy-heavy bonds stretch MORE than X-H bonds.
+    # Forming (cross) bonds: H-H forms quickly (target close to equilibrium).
+    split_targets: Dict[Tuple[int, int], float] = {}
+    for a, b in split_bonds:
+        sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+        both_heavy = symbols[a] != 'H' and symbols[b] != 'H'
+        if both_heavy:
+            # Heavy-heavy breaking bond stretches significantly.
+            split_targets[(a, b)] = sbl + 2.0 * PAULING_DELTA
+        else:
+            split_targets[(a, b)] = sbl + PAULING_DELTA
+
+    cross_targets: Dict[Tuple[int, int], float] = {}
+    for a, b in cross_bonds:
+        sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+        both_h = symbols[a] == 'H' and symbols[b] == 'H'
+        if both_h:
+            # H-H forms quickly — target close to equilibrium.
+            cross_targets[(a, b)] = sbl * 1.12
+        else:
+            cross_targets[(a, b)] = sbl + PAULING_DELTA
+
+    # Also identify bonds between ring atoms that should strengthen
+    # (e.g. C-C becoming C=C, C-O becoming C=O in CO₂).
+    ring_atoms = set()
+    for a, b in split_bonds + cross_bonds:
+        ring_atoms.update((a, b))
+    strengthen_targets: Dict[Tuple[int, int], float] = {}
+    atom_to_idx_conc = {atom: idx for idx, atom in enumerate(uni_mol.atoms)}
+    for atom in uni_mol.atoms:
+        ia = atom_to_idx_conc[atom]
+        if ia not in ring_atoms:
+            continue
+        for nbr, bond in atom.bonds.items():
+            ib = atom_to_idx_conc[nbr]
+            if ib not in ring_atoms or ib <= ia:
+                continue
+            key = (ia, ib)
+            if key in split_targets or key in cross_targets:
+                continue
+            # This is a ring bond that isn't split or cross — it may
+            # strengthen (single→double).  Shorten by 5%.
+            sbl = get_single_bond_length(symbols[ia], symbols[ib]) or 1.5
+            strengthen_targets[key] = sbl * 0.95
+
     for _ in range(10):  # iterate to converge coupled adjustments
-        for a, b in split_bonds:
+        for (a, b), d_target in split_targets.items():
             d_cur = float(np.linalg.norm(coords[a] - coords[b]))
             if d_cur < 1e-6:
                 continue
-            sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
-            d_target = sbl + PAULING_DELTA
             if d_cur < d_target:
                 vec = coords[b] - coords[a]
                 direction = vec / d_cur
-                # Move each atom half the deficit — converges in ~3 iterations
                 half_push = (d_target - d_cur) * 0.5
                 coords[a] -= direction * half_push
                 coords[b] += direction * half_push
 
-        for a, b in cross_bonds:
+        for (a, b), d_target in cross_targets.items():
             d_cur = float(np.linalg.norm(coords[a] - coords[b]))
             if d_cur < 1e-6:
                 continue
-            sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
-            d_target = sbl + PAULING_DELTA
             if d_cur > d_target:
                 vec = coords[b] - coords[a]
                 direction = vec / d_cur
                 half_pull = (d_cur - d_target) * 0.5
                 coords[a] += direction * half_pull
                 coords[b] -= direction * half_pull
+
+        for (a, b), d_target in strengthen_targets.items():
+            d_cur = float(np.linalg.norm(coords[a] - coords[b]))
+            if d_cur < 1e-6 or d_cur < d_target:
+                continue
+            vec = coords[b] - coords[a]
+            direction = vec / d_cur
+            half_pull = (d_cur - d_target) * 0.3  # gentle
+            coords[a] += direction * half_pull
+            coords[b] -= direction * half_pull
 
     # Resolve collisions: push apart any atom pair closer than 0.7× SBL.
     # The concerted stretching can drag atoms through each other when the
