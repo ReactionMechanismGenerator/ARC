@@ -173,7 +173,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
-from arc.common import almost_equal_coords, get_logger
+from arc.common import almost_equal_coords, get_logger, get_single_bond_length
 from arc.job.adapter import JobAdapter
 from arc.job.adapters.common import _initialize_adapter, ts_adapters_by_rmg_family
 from arc.job.factory import register_job_adapter
@@ -1291,6 +1291,122 @@ def interpolate_addition(rxn: 'ARCReaction',
                     if is_valid:
                         ts_xyzs.append(ts_xyz)
 
+    # ----- SN2-like supplement: ring-close then stretch leaving group -----
+    # For reactions where a bond breaks and a bond forms at the same pivot
+    # atom (e.g. intra_substitutionCS_cyclization), build the TS by:
+    #   1. Ring-closing the forming bond (bringing the attacking atom close)
+    #   2. Stretching the breaking bond (moving the leaving group away)
+    #   3. Slightly stretching the forming bond to TS distance
+    for product_dict in rxn.product_dicts:
+        r_label_map = product_dict.get('r_label_map')
+        if r_label_map is None:
+            continue
+        bb_sn2, fb_sn2 = rxn.get_expected_changing_bonds(r_label_dict=r_label_map)
+        if not bb_sn2 or not fb_sn2 or len(bb_sn2) != 1 or len(fb_sn2) != 1:
+            continue
+        bb_atoms_sn2 = {a for bond in bb_sn2 for a in bond}
+        fb_atoms_sn2 = {a for bond in fb_sn2 for a in bond}
+        shared = bb_atoms_sn2 & fb_atoms_sn2
+        if len(shared) != 1:
+            continue
+        pivot = next(iter(shared))
+        if uni_xyz['symbols'][pivot] == 'H':
+            continue
+        bb_other = bb_sn2[0][0] if bb_sn2[0][1] == pivot else bb_sn2[0][1]
+        fb_other = fb_sn2[0][0] if fb_sn2[0][1] == pivot else fb_sn2[0][1]
+
+        # Step 1: ring-close the forming bond.
+        rc_sn2 = ring_closure_xyz(uni_xyz, uni_mol, forming_bond=(fb_other, pivot))
+        if rc_sn2 is None:
+            continue
+        sn2_coords = np.array(rc_sn2['coords'], dtype=float)
+
+        # Build molecular-graph adjacency (not distance-based) for
+        # fragment detection — avoids false bonds from close contacts.
+        mol_adj: Dict[int, Set[int]] = {k: set() for k in range(len(uni_xyz['symbols']))}
+        atom_to_idx_sn2 = {a: idx for idx, a in enumerate(uni_mol.atoms)}
+        for atom in uni_mol.atoms:
+            i = atom_to_idx_sn2[atom]
+            for nbr in atom.bonds:
+                mol_adj[i].add(atom_to_idx_sn2[nbr])
+
+        # Step 1.5: orient the leaving group away from the attacking atom.
+        # After ring closure, the leaving group (bb_other and its fragment)
+        # may have folded inward toward the ring.  Check the angle
+        # fb_other-pivot-bb_other: if < 90° the leaving group is on the
+        # same side as the attacker.  Reflect it through the pivot to the
+        # opposite side.
+        vec_attack = sn2_coords[fb_other] - sn2_coords[pivot]
+        vec_leave_cur = sn2_coords[bb_other] - sn2_coords[pivot]
+        d_att = float(np.linalg.norm(vec_attack))
+        d_lea = float(np.linalg.norm(vec_leave_cur))
+        if d_att > 1e-6 and d_lea > 1e-6:
+            cos_angle = np.dot(vec_attack, vec_leave_cur) / (d_att * d_lea)
+            if cos_angle > 0:  # angle < 90° → leaving group on same side
+                # Reflect the leaving-group fragment through the pivot.
+                # New position: pivot + reflected vector.
+                leave_frag: Set[int] = set()
+                q_leave = deque([bb_other])
+                while q_leave:
+                    node = q_leave.popleft()
+                    if node in leave_frag or node == pivot:
+                        continue
+                    leave_frag.add(node)
+                    q_leave.extend(mol_adj[node] - leave_frag - {pivot})
+                # Reflect each atom: new_pos = 2*pivot - old_pos
+                for k in leave_frag:
+                    sn2_coords[k] = 2.0 * sn2_coords[pivot] - sn2_coords[k]
+
+        # Step 2: stretch the breaking bond (move leaving-group fragment).
+        sbl_break = get_single_bond_length(
+            uni_xyz['symbols'][pivot], uni_xyz['symbols'][bb_other]) or 1.8
+        d_break_target = sbl_break * 1.5  # ~2.7 Å for C-S
+        vec_leave = sn2_coords[bb_other] - sn2_coords[pivot]
+        d_break_cur = float(np.linalg.norm(vec_leave))
+        if d_break_cur > 1e-6 and d_break_target > d_break_cur:
+            direction = vec_leave / d_break_cur
+            displacement = direction * (d_break_target - d_break_cur)
+            # Move the leaving-group fragment (BFS from bb_other, not crossing pivot).
+            frag: Set[int] = set()
+            queue_sn2 = deque([bb_other])
+            while queue_sn2:
+                node = queue_sn2.popleft()
+                if node in frag or node == pivot:
+                    continue
+                frag.add(node)
+                queue_sn2.extend(mol_adj[node] - frag - {pivot})
+            for k in frag:
+                sn2_coords[k] += displacement
+
+        # Step 3: slightly stretch the forming bond.
+        sbl_form = get_single_bond_length(
+            uni_xyz['symbols'][pivot], uni_xyz['symbols'][fb_other]) or 1.5
+        d_form_target = sbl_form * 1.5  # ~2.3 Å for C-C
+        vec_form = sn2_coords[fb_other] - sn2_coords[pivot]
+        d_form_cur = float(np.linalg.norm(vec_form))
+        if d_form_cur > 1e-6 and d_form_target > d_form_cur:
+            direction_form = vec_form / d_form_cur
+            disp_form = direction_form * (d_form_target - d_form_cur)
+            # Move the attacking-atom fragment.
+            frag_form: Set[int] = set()
+            queue_form = deque([fb_other])
+            while queue_form:
+                node = queue_form.popleft()
+                if node in frag_form or node == pivot:
+                    continue
+                frag_form.add(node)
+                queue_form.extend(mol_adj[node] - frag_form - {pivot})
+            for k in frag_form:
+                sn2_coords[k] += disp_form
+
+        ts_sn2 = {'symbols': uni_xyz['symbols'], 'isotopes': uni_xyz['isotopes'],
+                   'coords': tuple(tuple(row) for row in sn2_coords)}
+        if not colliding_atoms(ts_sn2):
+            ts_xyzs.append(ts_sn2)
+            logger.debug(f'Linear (rxn={rxn.label}): used SN2-like builder '
+                         f'(pivot={pivot}, leaving={bb_other}, attacking={fb_other}).')
+            break
+
     # ----- Strategy 2: fragmentation supplement -----
     # Always run fragmentation-based search in addition to the template path.
     # The template's r_label_map can mis-identify the primary fragmentation
@@ -1530,7 +1646,8 @@ def _strategy_ring_closure(ctx: _PathContext) -> _StrategyResult:
         path_len = get_path_length(ctx.r_mol, bond_pair[0], bond_pair[1])
         use_rc = (site_dist > RING_CLOSURE_THRESHOLD
                   or path_has_cumulated_bonds(ctx.r_mol, bond_pair)
-                  or (not both_h and path_len is not None and path_len >= 3))
+                  or (not both_h and path_len is not None and path_len >= 3
+                      and site_dist > 3.0))
         if not use_rc:
             continue
         if abs(ctx.weight - 0.5) > 0.01:
@@ -1615,11 +1732,97 @@ def _strategy_zmat_interpolation(ctx: _PathContext) -> _StrategyResult:
     return _StrategyResult(guesses=guesses, halt=False)
 
 
+def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
+    """Build TS by contracting short forming bonds from the reactant geometry.
+
+    When forming-bond atoms are already close (< 3.0 Å) and there are no
+    breaking bonds, the TS is essentially the reactant with the terminal
+    atom moved partway toward its partner.  This preserves the existing
+    ring/backbone and avoids Z-mat interpolation artifacts (bivalent H's).
+
+    Fires before Z-mat interpolation.  Dominant: halts the pipeline on
+    success to prevent the Z-mat path from producing artifacts.
+    """
+    if ctx.bb or not ctx.fb:
+        return _StrategyResult()
+    guesses = []
+    for bond_pair in ctx.fb:
+        r_coords_arr = np.array(ctx.r_xyz['coords'], dtype=float)
+        site_dist = float(np.linalg.norm(r_coords_arr[bond_pair[0]] - r_coords_arr[bond_pair[1]]))
+        if site_dist > 3.0 or site_dist < 1e-6:
+            continue
+        # Identify the terminal atom (fewer heavy neighbors) to move.
+        atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
+        n_heavy_0 = sum(1 for nbr in ctx.r_mol.atoms[bond_pair[0]].bonds
+                        if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
+        n_heavy_1 = sum(1 for nbr in ctx.r_mol.atoms[bond_pair[1]].bonds
+                        if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
+        if n_heavy_0 <= n_heavy_1:
+            mover, target = bond_pair[0], bond_pair[1]
+        else:
+            mover, target = bond_pair[1], bond_pair[0]
+        # Target distance: ~1.5× the single bond length.
+        sbl = get_single_bond_length(
+            ctx.r_xyz['symbols'][mover], ctx.r_xyz['symbols'][target]) or 1.5
+        d_target = sbl * 1.35
+        if d_target >= site_dist:
+            continue  # already close enough
+        # Move only the mover atom and its H-only substituents.
+        # Don't move backbone/ring neighbors — they should stay in place.
+        vec = r_coords_arr[target] - r_coords_arr[mover]
+        direction = vec / site_dist
+        shift = direction * (site_dist - d_target) * ctx.weight / 0.5
+        frag: Set[int] = {mover}
+        for nbr in ctx.r_mol.atoms[mover].bonds:
+            ni = atom_to_idx[nbr]
+            if ctx.r_mol.atoms[ni].symbol == 'H':
+                frag.add(ni)
+        coords_dc = r_coords_arr.copy()
+        for k in frag:
+            coords_dc[k] += shift
+        # Breathing compensation: if the contraction compressed any mover–neighbor
+        # bond below single-bond length, push the neighbor (+ its H's) outward.
+        for nbr in ctx.r_mol.atoms[mover].bonds:
+            ni = atom_to_idx[nbr]
+            if ni == target or ni in frag:
+                continue
+            new_dist = float(np.linalg.norm(coords_dc[mover] - coords_dc[ni]))
+            sbl_mn = get_single_bond_length(
+                ctx.r_xyz['symbols'][mover], ctx.r_xyz['symbols'][ni]) or 1.5
+            if new_dist < sbl_mn:
+                vec_mn = coords_dc[ni] - coords_dc[mover]
+                dir_mn = vec_mn / new_dist
+                push_dist = sbl_mn - new_dist
+                nbr_frag: Set[int] = {ni}
+                for nbr2 in ctx.r_mol.atoms[ni].bonds:
+                    ni2 = atom_to_idx[nbr2]
+                    if ctx.r_xyz['symbols'][ni2] == 'H':
+                        nbr_frag.add(ni2)
+                for k in nbr_frag:
+                    coords_dc[k] += dir_mn * push_dist
+        ts_dc = {'symbols': ctx.r_xyz['symbols'], 'isotopes': ctx.r_xyz['isotopes'],
+                  'coords': tuple(tuple(row) for row in coords_dc)}
+        if not colliding_atoms(ts_dc):
+            guesses.append(ts_dc)
+            logger.debug(f'Linear ({ctx.label}): used direct-contraction builder '
+                         f'(mover={mover}, target={target}, d={site_dist:.2f}→{site_dist-float(np.linalg.norm(shift)):.2f}).')
+    return _StrategyResult(guesses=guesses, halt=False)
+
+
 def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
     """Build TS for 3-center atom shifts (e.g. 1,2_shiftC).
 
-    When breaking and forming bonds share a non-H atom, reposition it
-    symmetrically between the other two atoms.  Supplementary: never halts.
+    When breaking and forming bonds share a non-H atom (the pivot),
+    form a 3-membered ring TS.
+
+    Two cases:
+    - **Pivot has ≤2 heavy neighbors** (terminal/chain): reposition the
+      pivot between the other two atoms (e.g. halogen migration).
+    - **Pivot has ≥3 heavy neighbors** (ring junction): keep the pivot
+      in place and reposition the migrating group (bb_other) toward
+      the forming-bond partner (fb_other).  This preserves the ring.
+
+    Supplementary: never halts.
     """
     if len(ctx.bb) != 1 or len(ctx.fb) != 1:
         return _StrategyResult()
@@ -1633,11 +1836,30 @@ def _strategy_3center_shift(ctx: _PathContext) -> _StrategyResult:
         return _StrategyResult()
     bb_other = ctx.bb[0][0] if ctx.bb[0][1] == pivot else ctx.bb[0][1]
     fb_other = ctx.fb[0][0] if ctx.fb[0][1] == pivot else ctx.fb[0][1]
-    ts_3c = _reposition_migrating_atom(
-        dict(ctx.r_xyz), np.array(ctx.r_xyz['coords'], dtype=float),
-        mig_idx=pivot, don_idx=bb_other, acc_idx=fb_other)
+
+    # Count heavy-atom neighbors of the pivot.
+    atom_to_idx = {a: idx for idx, a in enumerate(ctx.r_mol.atoms)}
+    n_heavy_pivot = sum(1 for nbr in ctx.r_mol.atoms[pivot].bonds
+                        if ctx.r_mol.atoms[atom_to_idx[nbr]].symbol != 'H')
+
+    if n_heavy_pivot >= 3:
+        # Pivot is a ring/junction atom — keep it fixed.
+        # Stretch the bb_other-pivot bond: move bb_other (and its H's)
+        # AWAY from pivot along the pivot→bb_other direction.  This
+        # keeps the pivot's ring intact while partially detaching the
+        # migrating group, which stays bonded to fb_other.
+        ts_3c = _build_ring_scission_ts(
+            ctx.r_xyz, breaking_bonds=[(bb_other, pivot)],
+            weight=ctx.weight, stretch_factor=1.6)
+    else:
+        # Pivot is terminal/chain — reposition it between the other two.
+        ts_3c = _reposition_migrating_atom(
+            dict(ctx.r_xyz), np.array(ctx.r_xyz['coords'], dtype=float),
+            mig_idx=pivot, don_idx=bb_other, acc_idx=fb_other)
+
     if ts_3c is not None and not colliding_atoms(ts_3c):
-        logger.debug(f'Linear ({ctx.label}): used 3-center shift builder (pivot={pivot}).')
+        logger.debug(f'Linear ({ctx.label}): used 3-center shift builder '
+                     f'(pivot={pivot}, n_heavy={n_heavy_pivot}).')
         return _StrategyResult(guesses=[ts_3c], halt=False)
     return _StrategyResult()
 
@@ -1817,6 +2039,7 @@ def interpolate_isomerization(rxn: 'ARCReaction',
 
         # Strategy pipeline: dominant strategies halt on success.
         for strategy in [_strategy_ring_scission,
+                         _strategy_direct_contraction,
                          _strategy_ring_closure,
                          _strategy_zmat_interpolation,
                          _strategy_3center_shift]:
@@ -1824,6 +2047,72 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             if result.guesses:
                 ts_xyzs.extend(result.guesses)
             if result.halt:
+                break
+
+    # Direct-contraction supplement: when the per-path pipeline produced no
+    # guesses (e.g. atom map failed) but the family recipe has fb-only with
+    # short forming bonds, contract them directly from the reactant geometry.
+    if not ts_xyzs:
+        for product_dict in rxn.product_dicts:
+            rl = product_dict.get('r_label_map')
+            if rl is None:
+                continue
+            bb_dc, fb_dc = rxn.get_expected_changing_bonds(r_label_dict=rl)
+            if bb_dc or not fb_dc:
+                continue
+            for bond_pair_dc in fb_dc:
+                r_coords_dc = np.array(r_xyz['coords'], dtype=float)
+                site_d = float(np.linalg.norm(r_coords_dc[bond_pair_dc[0]] - r_coords_dc[bond_pair_dc[1]]))
+                if site_d > 3.0 or site_d < 1e-6:
+                    continue
+                atom_to_idx_dc = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                nh0 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[0]].bonds
+                          if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
+                nh1 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[1]].bonds
+                          if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
+                mover = bond_pair_dc[0] if nh0 <= nh1 else bond_pair_dc[1]
+                target_dc = bond_pair_dc[1] if mover == bond_pair_dc[0] else bond_pair_dc[0]
+                sbl_dc = get_single_bond_length(
+                    r_xyz['symbols'][mover], r_xyz['symbols'][target_dc]) or 1.5
+                d_tgt = sbl_dc * 1.35
+                if d_tgt >= site_d:
+                    continue
+                vec_dc = r_coords_dc[target_dc] - r_coords_dc[mover]
+                shift_dc = (vec_dc / site_d) * (site_d - d_tgt) * weight / 0.5
+                # Only move the mover and its H-only substituents.
+                frag_dc: Set[int] = {mover}
+                for nbr_dc in r_mol.atoms[mover].bonds:
+                    ni_dc = atom_to_idx_dc[nbr_dc]
+                    if r_mol.atoms[ni_dc].symbol == 'H':
+                        frag_dc.add(ni_dc)
+                for k in frag_dc:
+                    r_coords_dc[k] += shift_dc
+                # Breathing compensation: push compressed neighbors outward.
+                for nbr_bc in r_mol.atoms[mover].bonds:
+                    ni_bc = atom_to_idx_dc[nbr_bc]
+                    if ni_bc == target_dc or ni_bc in frag_dc:
+                        continue
+                    new_d = float(np.linalg.norm(r_coords_dc[mover] - r_coords_dc[ni_bc]))
+                    sbl_bc = get_single_bond_length(
+                        r_xyz['symbols'][mover], r_xyz['symbols'][ni_bc]) or 1.5
+                    if new_d < sbl_bc:
+                        vec_bc = r_coords_dc[ni_bc] - r_coords_dc[mover]
+                        dir_bc = vec_bc / new_d
+                        push_d = sbl_bc - new_d
+                        bc_frag: Set[int] = {ni_bc}
+                        for nbr2_bc in r_mol.atoms[ni_bc].bonds:
+                            ni2_bc = atom_to_idx_dc[nbr2_bc]
+                            if r_xyz['symbols'][ni2_bc] == 'H':
+                                bc_frag.add(ni2_bc)
+                        for k in bc_frag:
+                            r_coords_dc[k] += dir_bc * push_d
+                ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
+                          'coords': tuple(tuple(row) for row in r_coords_dc)}
+                if not colliding_atoms(ts_dc):
+                    ts_xyzs.append(ts_dc)
+                    logger.debug(f'Linear (rxn={rxn.label}): direct-contraction from recipe '
+                                 f'(mover={mover}, target={target_dc}).')
+            if ts_xyzs:
                 break
 
     # Trivial atom-map fallback: when no product_dicts could be determined (e.g., the
@@ -2014,7 +2303,8 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     path_len = get_path_length(r_mol, bond_pair[0], bond_pair[1])
                     use_rc = (site_dist > RING_CLOSURE_THRESHOLD
                               or path_has_cumulated_bonds(r_mol, bond_pair)
-                              or (not both_h_fb and path_len is not None and path_len >= 3))
+                              or (not both_h_fb and path_len is not None and path_len >= 3
+                                  and site_dist > 3.0))
                     if use_rc:
                         needs_ring_closure = True
                         if abs(weight - 0.5) <= 0.01:
@@ -2056,6 +2346,51 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                                         ts_xyzs.append(rc_try)
                                         used_ring_closure = True
                                         break
+
+                # Direct contraction: when the forming bond is short (< 3.0 Å)
+                # and there are no breaking bonds, just contract the forming
+                # bond from the reactant geometry.  This avoids Z-mat artifacts.
+                if not bb and fb:
+                    for bond_pair_dc in fb:
+                        r_coords_dc = np.array(r_xyz['coords'], dtype=float)
+                        site_d = float(np.linalg.norm(r_coords_dc[bond_pair_dc[0]] - r_coords_dc[bond_pair_dc[1]]))
+                        if site_d > 3.0 or site_d < 1e-6:
+                            continue
+                        atom_to_idx_dc = {a: idx for idx, a in enumerate(r_mol.atoms)}
+                        nh0 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[0]].bonds
+                                  if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
+                        nh1 = sum(1 for nbr in r_mol.atoms[bond_pair_dc[1]].bonds
+                                  if r_mol.atoms[atom_to_idx_dc[nbr]].symbol != 'H')
+                        mover = bond_pair_dc[0] if nh0 <= nh1 else bond_pair_dc[1]
+                        target = bond_pair_dc[1] if mover == bond_pair_dc[0] else bond_pair_dc[0]
+                        sbl_dc = get_single_bond_length(
+                            r_xyz['symbols'][mover], r_xyz['symbols'][target]) or 1.5
+                        d_tgt = sbl_dc * 1.35
+                        if d_tgt >= site_d:
+                            continue
+                        vec_dc = r_coords_dc[target] - r_coords_dc[mover]
+                        shift_dc = (vec_dc / site_d) * (site_d - d_tgt) * weight / 0.5
+                        mol_adj_dc2: Dict[int, Set[int]] = {k: set() for k in range(n_atoms)}
+                        for atom_dc in r_mol.atoms:
+                            ii = atom_to_idx_dc[atom_dc]
+                            for nbr_dc in atom_dc.bonds:
+                                mol_adj_dc2[ii].add(atom_to_idx_dc[nbr_dc])
+                        frag_dc: Set[int] = set()
+                        q_dc = deque([mover])
+                        while q_dc:
+                            nd = q_dc.popleft()
+                            if nd in frag_dc or nd == target:
+                                continue
+                            frag_dc.add(nd)
+                            q_dc.extend(mol_adj_dc2[nd] - frag_dc - {target})
+                        for k in frag_dc:
+                            r_coords_dc[k] += shift_dc
+                        ts_dc = {'symbols': r_xyz['symbols'], 'isotopes': r_xyz['isotopes'],
+                                  'coords': tuple(tuple(row) for row in r_coords_dc)}
+                        if not colliding_atoms(ts_dc):
+                            ts_xyzs.append(ts_dc)
+                            logger.debug(f'Linear (rxn={rxn.label}): trivial-fallback direct-contraction '
+                                         f'(mover={mover}, target={target}).')
 
                 if not used_ring_closure and not needs_ring_closure:
                     # With the backbone atom map the reactive set is small and
@@ -2136,8 +2471,21 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
             unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
                       for xyz in unique]
-        # Final collision filter after all post-processing.
-        unique = [xyz for xyz in unique if not colliding_atoms(xyz)]
+        # Final collision and bivalent-H filter after all post-processing.
+        def _has_bivalent_h(xyz_dict: dict) -> bool:
+            """Return True if any H is within tight bonding distance of 2+ heavy atoms."""
+            coords_check = np.array(xyz_dict['coords'], dtype=float)
+            for h, sym in enumerate(xyz_dict['symbols']):
+                if sym != 'H':
+                    continue
+                n_close = sum(1 for j, sj in enumerate(xyz_dict['symbols'])
+                              if sj != 'H' and j != h
+                              and float(np.linalg.norm(coords_check[h] - coords_check[j])) < 1.15)
+                if n_close >= 2:
+                    return True
+            return False
+        unique = [xyz for xyz in unique
+                  if not colliding_atoms(xyz) and not _has_bivalent_h(xyz)]
 
     return unique
 
