@@ -1503,11 +1503,125 @@ def interpolate_addition(rxn: 'ARCReaction',
         cut_lists = isomorphism_verified
     else:
         cut_lists = isomorphism_verified + composition_filtered
+
+    # For 3+-product reactions, synthesise 3-bond cuts by merging pairs of
+    # 2-bond cuts that share exactly one bond.  This handles concerted
+    # eliminations (e.g. XY_elimination_hydroxyl) where two H atoms must
+    # detach simultaneously and merge into H₂.
+    if len(multi_species) >= 3:
+        merged_cuts: List[List[Tuple[int, int]]] = []
+        seen_parent_pairs: Set[Tuple[int, int]] = set()
+        all_2bond = [c for c in cut_lists if len(c) == 2]
+        for ci in range(len(all_2bond)):
+            for cj in range(ci + 1, len(all_2bond)):
+                shared = set(map(tuple, all_2bond[ci])) & set(map(tuple, all_2bond[cj]))
+                if len(shared) == 1:
+                    merged = list(set(map(tuple, all_2bond[ci])) | set(map(tuple, all_2bond[cj])))
+                    if frozenset(merged) in seen_split_sets:
+                        continue
+                    # Deduplicate by parent-atom pair: only keep one merged
+                    # cut per unique pair of heavy-atom parents of the
+                    # detached H atoms.  This avoids producing 5 nearly
+                    # identical concerted guesses for (H5-H10, H6-H10, H7-H10, ...).
+                    h_parents = []
+                    for a, b in merged:
+                        for idx in (a, b):
+                            if uni_xyz['symbols'][idx] == 'H':
+                                for nbr in uni_mol.atoms[idx].bonds:
+                                    pi = atom_to_idx[nbr]
+                                    if uni_xyz['symbols'][pi] != 'H':
+                                        h_parents.append(pi)
+                                        break
+                    parent_key = tuple(sorted(set(h_parents)))
+                    if parent_key in seen_parent_pairs:
+                        continue
+                    seen_parent_pairs.add(parent_key)
+                    merged_cuts.append(merged)
+        # Put merged cuts FIRST so concerted guesses get priority.
+        cut_lists = merged_cuts + cut_lists
+
     for cut in cut_lists:
         sb_key = frozenset(cut)
         if sb_key in seen_split_sets:
             continue
         seen_split_sets.add(sb_key)
+
+        # --- Detect cross bonds for concerted builder ---
+        # After cutting split bonds, find fragments. If two single-atom
+        # fragments can merge to match a product (e.g. two H's → H₂),
+        # the bond between them is a cross bond.
+        _adj_cut: Dict[int, Set[int]] = {k: set() for k in range(len(uni_mol.atoms))}
+        for atom in uni_mol.atoms:
+            ia = atom_to_idx[atom]
+            for nbr in atom.edges:
+                ib = atom_to_idx[nbr]
+                _adj_cut[ia].add(ib)
+        for a, b in cut:
+            _adj_cut[a].discard(b)
+            _adj_cut[b].discard(a)
+        _vis: Set[int] = set()
+        _frags: List[Set[int]] = []
+        for s in range(len(uni_mol.atoms)):
+            if s in _vis:
+                continue
+            comp: Set[int] = set()
+            stk = [s]
+            while stk:
+                n = stk.pop()
+                if n in _vis:
+                    continue
+                _vis.add(n)
+                comp.add(n)
+                stk.extend(_adj_cut[n] - _vis)
+            _frags.append(comp)
+        # Identify cross bonds: single-atom H fragments that should merge
+        # into H₂.  Only pair H atoms from DIFFERENT parent heavy atoms —
+        # two H's from the same CH₃ group would not form H₂ in a concerted TS.
+        h_singletons = [f for f in _frags if len(f) == 1
+                        and uni_xyz['symbols'][next(iter(f))] == 'H']
+        cross_bonds_frag: List[Tuple[int, int]] = []
+        if len(h_singletons) >= 2:
+            has_h2_product = any(
+                len(sp.mol.atoms) == 2
+                and all(a.element.symbol == 'H' for a in sp.mol.atoms)
+                for sp in multi_species)
+            if has_h2_product:
+                # Find parent heavy atom for each singleton H.
+                _h_parent: Dict[int, int] = {}
+                for sf in h_singletons:
+                    h_idx = next(iter(sf))
+                    for nbr in uni_mol.atoms[h_idx].bonds:
+                        pi = atom_to_idx[nbr]
+                        if uni_xyz['symbols'][pi] != 'H':
+                            _h_parent[h_idx] = pi
+                            break
+                for si in range(len(h_singletons)):
+                    for sj in range(si + 1, len(h_singletons)):
+                        ai = next(iter(h_singletons[si]))
+                        aj = next(iter(h_singletons[sj]))
+                        if _h_parent.get(ai) != _h_parent.get(aj):
+                            cross_bonds_frag.append((min(ai, aj), max(ai, aj)))
+                            break  # one cross bond per cut is enough
+                    if cross_bonds_frag:
+                        break
+
+        # Try concerted builder when cross bonds are detected.
+        # When it succeeds, skip the stretch_bond fallback for this cut —
+        # the concerted geometry is strictly better than fragment-stretching
+        # which produces "pull one H off" artifacts.
+        used_concerted = False
+        if cross_bonds_frag and len(cut) >= 2:
+            ts_conc = build_concerted_ts(uni_xyz, uni_mol, cut, cross_bonds_frag, weight)
+            if ts_conc is not None and not colliding_atoms(ts_conc):
+                ts_xyzs.append(ts_conc)
+                used_concerted = True
+                logger.debug(f'Linear addition (rxn={rxn.label}, frag-fallback): '
+                             f'used concerted-TS builder (split={cut}, '
+                             f'cross={cross_bonds_frag}).')
+
+        if used_concerted:
+            continue  # skip stretch_bond fallback for this cut
+
         # Apply ring contraction on original geometry first, then stretch.
         ring_xyzs = apply_intra_frag_contraction(
             uni_xyz, uni_mol, cut, None, multi_species,
@@ -1538,6 +1652,12 @@ def interpolate_addition(rxn: 'ARCReaction',
         if not any(almost_equal_coords(xyz_candidate, u)
                    for u in unique + prior):
             unique.append(xyz_candidate)
+
+    # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
+    if len(unique) > 5:
+        logger.debug(f'Linear addition (rxn={rxn.label}): capping {len(unique)} guesses to 5.')
+        unique = unique[:5]
+
     return unique if unique else []
 
 
@@ -2547,6 +2667,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             return False
         unique = [xyz for xyz in unique
                   if not colliding_atoms(xyz) and not _has_bivalent_h(xyz)]
+
+    # Cap: keep at most 5 guesses to avoid flooding downstream DFT.
+    if len(unique) > 5:
+        logger.debug(f'Linear (rxn={rxn.label}): capping {len(unique)} guesses to 5.')
+        unique = unique[:5]
 
     return unique
 

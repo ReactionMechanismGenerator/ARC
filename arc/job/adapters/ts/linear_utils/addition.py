@@ -422,7 +422,7 @@ def build_concerted_ts(uni_xyz: dict,
     symbols = uni_xyz['symbols']
     coords = np.array(uni_xyz['coords'], dtype=float)
 
-    for _ in range(3):  # iterate to let coupled adjustments converge
+    for _ in range(10):  # iterate to converge coupled adjustments
         for a, b in split_bonds:
             d_cur = float(np.linalg.norm(coords[a] - coords[b]))
             if d_cur < 1e-6:
@@ -432,7 +432,8 @@ def build_concerted_ts(uni_xyz: dict,
             if d_cur < d_target:
                 vec = coords[b] - coords[a]
                 direction = vec / d_cur
-                half_push = (d_target - d_cur) * weight * 0.5
+                # Move each atom half the deficit — converges in ~3 iterations
+                half_push = (d_target - d_cur) * 0.5
                 coords[a] -= direction * half_push
                 coords[b] += direction * half_push
 
@@ -445,9 +446,32 @@ def build_concerted_ts(uni_xyz: dict,
             if d_cur > d_target:
                 vec = coords[b] - coords[a]
                 direction = vec / d_cur
-                half_pull = (d_cur - d_target) * weight * 0.5
+                half_pull = (d_cur - d_target) * 0.5
                 coords[a] += direction * half_pull
                 coords[b] -= direction * half_pull
+
+    # Resolve collisions: push apart any atom pair closer than 0.7× SBL.
+    # The concerted stretching can drag atoms through each other when the
+    # ring geometry is tight.  A gentle repulsive pass fixes this.
+    reactive_indices = set()
+    for a, b in split_bonds + cross_bonds:
+        reactive_indices.update((a, b))
+    for _ in range(5):
+        any_collision = False
+        for i in range(len(symbols)):
+            for j in range(i + 1, len(symbols)):
+                d = float(np.linalg.norm(coords[i] - coords[j]))
+                sbl_ij = get_single_bond_length(symbols[i], symbols[j]) or 1.5
+                min_d = sbl_ij * 0.7
+                if d < min_d and d > 1e-6:
+                    any_collision = True
+                    vec = coords[j] - coords[i]
+                    direction = vec / d
+                    push = (min_d - d) * 0.5
+                    coords[i] -= direction * push
+                    coords[j] += direction * push
+        if not any_collision:
+            break
 
     ts_xyz = {
         'symbols': symbols,

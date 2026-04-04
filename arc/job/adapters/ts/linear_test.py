@@ -4227,7 +4227,7 @@ H      -1.12089093    1.00131310   -0.21289037"""
         self.assertTrue(almost_equal_coords(ts_xyzs[0], str_to_xyz(expected_ts_0)))
         self.assertTrue(almost_equal_coords(ts_xyzs[1], str_to_xyz(expected_ts_1)))
 
-    def test_interpolate_xy_elimination_hydroxyl(self):  # TODO: got this wrong. the resulting guesses now detach each H seperately. This is not the template. Diagnose the recipe and the expected ring TS, summarize the comment I gave above for this reaction, come up with a plan to get it right
+    def test_interpolate_xy_elimination_hydroxyl(self):
         """Test the interpolate_isomerization() function for XY_elimination_hydroxyl: CCC(=O)O <=> C=C + [H][H] + O=C=O"""
         r_xyz = """C      -1.44342440    0.21938567    0.14134495
 C      -0.17943385   -0.58558878   -0.10310381
@@ -4264,6 +4264,20 @@ O       1.37316735   -0.34819332    0.00000000"""
         for ts_xyz in ts_xyzs:
             self.assertFalse(colliding_atoms(ts_xyz))
             self.assertEqual(len(ts_xyz['symbols']), 11)
+        # At least one TS guess must show the concerted 6-membered ring TS:
+        # An H on C0 or C1 approaches H10 on O4 (forming H₂), while C1-C2 breaks.
+        has_concerted = False
+        h_on_c = [5, 6, 7, 8, 9]  # H atoms on C0 (5,6,7) and C1 (8,9)
+        for ts_xyz in ts_xyzs:
+            coords = np.array(ts_xyz['coords'], dtype=float)
+            d_cc = float(np.linalg.norm(coords[1] - coords[2]))
+            for h_idx in h_on_c:
+                d_hh = float(np.linalg.norm(coords[h_idx] - coords[10]))
+                if d_hh < 2.0 and d_cc > 1.7:
+                    has_concerted = True
+                    break
+        self.assertTrue(has_concerted,
+                        'No TS guess shows the concerted 6-membered ring elimination.')
 
     def test_interpolate_halocarbene_recombination(self):
         """Test the interpolate_isomerization() function for halocarbene_recombination: F[C](F)C(F)(F)Cl <=> F[C](F)Cl + F[C]F"""
