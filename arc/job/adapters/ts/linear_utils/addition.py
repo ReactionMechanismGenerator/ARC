@@ -388,6 +388,77 @@ def map_and_verify_fragments(uni_mol: 'Molecule',
     return None
 
 
+def build_concerted_ts(uni_xyz: dict,
+                       uni_mol: 'Molecule',
+                       split_bonds: List[Tuple[int, int]],
+                       cross_bonds: List[Tuple[int, int]],
+                       weight: float = 0.5,
+                       ) -> Optional[dict]:
+    """
+    Build a TS guess for concerted multi-bond reactions by simultaneously
+    stretching breaking bonds and contracting forming bonds.
+
+    For each **split bond** (breaking), both endpoints are pushed apart
+    symmetrically toward the Pauling TS estimate.  For each **cross bond**
+    (forming), both endpoints are pulled together toward the Pauling TS
+    estimate.  The displacements are scaled by *weight* and applied
+    iteratively (3 rounds) to allow coupled adjustments to converge.
+
+    This handles concerted eliminations (e.g. XY_elimination_hydroxyl)
+    and retro-cycloadditions where multiple bonds change simultaneously.
+
+    Args:
+        uni_xyz: Unimolecular-species XYZ coordinates.
+        uni_mol: RMG Molecule of the unimolecular species.
+        split_bonds: Bonds to break (stretch).
+        cross_bonds: Bonds to form (contract).
+        weight: Interpolation weight (0 = reactant-like, 1 = product-like).
+
+    Returns:
+        TS guess XYZ dictionary, or ``None`` if validation fails.
+    """
+    if not split_bonds and not cross_bonds:
+        return None
+    symbols = uni_xyz['symbols']
+    coords = np.array(uni_xyz['coords'], dtype=float)
+
+    for _ in range(3):  # iterate to let coupled adjustments converge
+        for a, b in split_bonds:
+            d_cur = float(np.linalg.norm(coords[a] - coords[b]))
+            if d_cur < 1e-6:
+                continue
+            sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+            d_target = sbl + PAULING_DELTA
+            if d_cur < d_target:
+                vec = coords[b] - coords[a]
+                direction = vec / d_cur
+                half_push = (d_target - d_cur) * weight * 0.5
+                coords[a] -= direction * half_push
+                coords[b] += direction * half_push
+
+        for a, b in cross_bonds:
+            d_cur = float(np.linalg.norm(coords[a] - coords[b]))
+            if d_cur < 1e-6:
+                continue
+            sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+            d_target = sbl + PAULING_DELTA
+            if d_cur > d_target:
+                vec = coords[b] - coords[a]
+                direction = vec / d_cur
+                half_pull = (d_cur - d_target) * weight * 0.5
+                coords[a] += direction * half_pull
+                coords[b] -= direction * half_pull
+
+    ts_xyz = {
+        'symbols': symbols,
+        'isotopes': uni_xyz.get('isotopes', tuple(0 for _ in range(len(symbols)))),
+        'coords': tuple(tuple(float(x) for x in row) for row in coords),
+    }
+    if colliding_atoms(ts_xyz):
+        return None
+    return ts_xyz
+
+
 def stretch_bond(uni_xyz: dict,
                   uni_mol: 'Molecule',
                   split_bonds: List[Tuple[int, int]],

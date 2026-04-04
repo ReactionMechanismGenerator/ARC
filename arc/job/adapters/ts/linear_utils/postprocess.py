@@ -60,6 +60,81 @@ PAULING_DELTA: float = 0.42
 
 
 # ---------------------------------------------------------------------------
+# Recipe-aware reactive-bond adjustment
+# ---------------------------------------------------------------------------
+
+
+def adjust_reactive_bond_distances(xyz: dict,
+                                   mol: 'Molecule',
+                                   breaking_bonds: List[Tuple[int, int]],
+                                   forming_bonds: List[Tuple[int, int]],
+                                   ) -> dict:
+    """
+    Adjust reactive-bond distances toward TS-like values.
+
+    For each **breaking** heavy-atom bond that is shorter than its TS estimate,
+    stretch both endpoints symmetrically.  For each **forming** heavy-atom bond
+    that is shorter than 90 % of the single-bond length (over-compressed),
+    push the endpoints apart.
+
+    Bonds involving hydrogen are skipped — those are handled by
+    :func:`fix_forming_bond_distances` with Pauling triangulation.
+
+    The function moves only the two atoms of each bond (half the displacement
+    each), preserving the rest of the geometry.
+
+    Args:
+        xyz: TS guess XYZ coordinate dictionary.
+        mol: Reactant molecule providing bond topology.
+        breaking_bonds: Bonds that break going reactant → product.
+        forming_bonds: Bonds that form going reactant → product.
+
+    Returns:
+        Adjusted XYZ dictionary.
+    """
+    symbols = xyz['symbols']
+    coords = np.array(xyz['coords'], dtype=float)
+
+    for a, b in breaking_bonds:
+        if symbols[a] == 'H' or symbols[b] == 'H':
+            continue
+        d_cur = float(np.linalg.norm(coords[a] - coords[b]))
+        if d_cur < 1e-6:
+            continue
+        sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+        d_target = sbl + PAULING_DELTA
+        # Only stretch if the bond is at or below equilibrium length — meaning
+        # the interpolation completely failed to stretch it.  Well-interpolated
+        # TSs already have some stretching and should not be modified.
+        if d_cur < sbl:
+            vec = coords[b] - coords[a]
+            direction = vec / d_cur
+            half_push = (d_target - d_cur) * 0.5
+            coords[a] -= direction * half_push
+            coords[b] += direction * half_push
+
+    for a, b in forming_bonds:
+        if symbols[a] == 'H' or symbols[b] == 'H':
+            continue
+        d_cur = float(np.linalg.norm(coords[a] - coords[b]))
+        if d_cur < 1e-6:
+            continue
+        sbl = get_single_bond_length(symbols[a], symbols[b]) or 1.5
+        # Only push apart if over-compressed (< 90% of SBL).
+        if d_cur < sbl * 0.90:
+            d_target = sbl + PAULING_DELTA
+            vec = coords[b] - coords[a]
+            direction = vec / d_cur
+            half_push = (d_target - d_cur) * 0.5
+            coords[a] -= direction * half_push
+            coords[b] += direction * half_push
+
+    new_xyz = dict(xyz)
+    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
+    return new_xyz
+
+
+# ---------------------------------------------------------------------------
 # Rejection filters
 # ---------------------------------------------------------------------------
 
@@ -94,6 +169,48 @@ def _has_detached_hydrogen(xyz: dict,
         if sym == 'H' and (exempt_indices is None or i not in exempt_indices):
             if np.linalg.norm(heavy_coords - coords_arr[i], axis=1).min() > max_h_heavy_dist:
                 return True
+    return False
+
+
+def _has_detached_heavy_atom(xyz: dict,
+                             mol: 'Molecule',
+                             max_bond_stretch: float = 2.5,
+                             exempt_indices: Optional[Set[int]] = None,
+                             ) -> bool:
+    """
+    Return ``True`` if any heavy atom is farther than *max_bond_stretch* Å
+    from **all** of its graph-bonded neighbours.
+
+    Unlike :func:`_has_too_many_fragments` (distance-based adjacency), this
+    check uses the molecular graph so it catches atoms that drifted far from
+    their actual bonded partners but happen to be close to unrelated atoms.
+
+    Args:
+        xyz: XYZ coordinate dictionary.
+        mol: Reactant RMG Molecule providing bond topology.
+        max_bond_stretch: Maximum acceptable distance to at least one bonded
+            neighbour (Å).  Default 2.5 — generous enough for TS partial bonds
+            but catches truly detached atoms.
+        exempt_indices: Atom indices to skip (e.g. reactive atoms that are
+            expected to be far from their original partners).
+
+    Returns:
+        ``True`` if a detached heavy atom is detected.
+    """
+    symbols = xyz['symbols']
+    coords_arr = np.array(xyz['coords'], dtype=float)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    exempt = exempt_indices or set()
+    for i, sym in enumerate(symbols):
+        if sym == 'H' or i in exempt:
+            continue
+        neighbours = list(mol.atoms[i].bonds.keys())
+        if not neighbours:
+            continue
+        min_d = min(float(np.linalg.norm(coords_arr[i] - coords_arr[atom_to_idx[nbr]]))
+                    for nbr in neighbours)
+        if min_d > max_bond_stretch:
+            return True
     return False
 
 
@@ -226,7 +343,7 @@ def _has_misoriented_migrating_h(xyz: dict, forming_bonds: list, mol: 'Molecule'
             if symbols[nbr_idx] != 'H' or nbr_idx == h_idx:
                 continue
             hh_dist = float(np.linalg.norm(coords_arr[h_idx] - coords_arr[nbr_idx]))
-            if hh_dist < acceptor_dist:
+            if hh_dist < acceptor_dist * 0.85:
                 return True
     return False
 
@@ -1479,6 +1596,9 @@ def validate_ts_guess(xyz: dict,
         reason = 'detached hydrogen'
     elif _has_too_many_fragments(xyz):
         reason = 'too many fragments (3+)'
+    elif _has_detached_heavy_atom(xyz, r_mol, max_bond_stretch=2.5,
+                                  exempt_indices=reactive_indices):
+        reason = 'detached heavy atom'
     elif anchor_xyz is not None and has_excessive_backbone_drift(
             xyz, anchor_xyz, max_mean_heavy_disp=3.0,
             reactive_indices=reactive_indices):

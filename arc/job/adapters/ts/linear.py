@@ -190,6 +190,7 @@ if TYPE_CHECKING:
 
 from arc.job.adapters.ts.linear_utils.math_zmat import get_r_constraints, get_weight_grid
 from arc.job.adapters.ts.linear_utils.postprocess import (
+    adjust_reactive_bond_distances,
     has_excessive_backbone_drift,
     postprocess_ts_guess,
     validate_ts_guess,
@@ -206,6 +207,7 @@ from arc.job.adapters.ts.linear_utils.isomerization import (
 )
 from arc.job.adapters.ts.linear_utils.addition import (
     apply_intra_frag_contraction,
+    build_concerted_ts,
     find_split_bonds_by_fragmentation,
     map_and_verify_fragments,
     migrate_h_between_fragments,
@@ -1291,6 +1293,41 @@ def interpolate_addition(rxn: 'ARCReaction',
                     if is_valid:
                         ts_xyzs.append(ts_xyz)
 
+    # ----- Concerted multi-bond supplement -----
+    # For reactions with 3+ products and multiple split/cross bonds (e.g.
+    # concerted eliminations, retro-cycloadditions), simultaneously stretch
+    # breaking bonds and contract forming bonds from the unimolecular geometry.
+    # Only fires for 3+ products to avoid interfering with simple dissociations.
+    if len(multi_species) >= 3:
+        for product_dict in rxn.product_dicts:
+            r_label_map = product_dict.get('r_label_map')
+            if r_label_map is None:
+                continue
+            bb_conc, fb_conc = rxn.get_expected_changing_bonds(r_label_dict=r_label_map)
+            if not bb_conc or not fb_conc:
+                continue
+            if uni_is_product:
+                try:
+                    am = map_rxn(rxn=rxn,
+                                 product_dict_index_to_try=rxn.product_dicts.index(product_dict))
+                except Exception:
+                    am = None
+                if am is None:
+                    continue
+                sb_conc = [(min(am[a], am[b]), max(am[a], am[b])) for a, b in bb_conc]
+                cb_conc = [(min(am[a], am[b]), max(am[a], am[b])) for a, b in fb_conc]
+            else:
+                sb_conc = [(min(a, b), max(a, b)) for a, b in bb_conc]
+                cb_conc = [(min(a, b), max(a, b)) for a, b in fb_conc]
+            split_in_uni = [b for b in sb_conc if b in uni_bond_set]
+            cross_in_uni = [b for b in cb_conc if b not in uni_bond_set]
+            if len(split_in_uni) >= 2 and cross_in_uni:
+                ts_conc = build_concerted_ts(uni_xyz, uni_mol, split_in_uni, cross_in_uni, weight)
+                if ts_conc is not None:
+                    ts_xyzs.append(ts_conc)
+                    logger.debug(f'Linear addition (rxn={rxn.label}): used concerted-TS builder '
+                                 f'(split={split_in_uni}, cross={cross_in_uni}).')
+
     # ----- SN2-like supplement: ring-close then stretch leaving group -----
     # For reactions where a bond breaks and a bond forms at the same pivot
     # atom (e.g. intra_substitutionCS_cyclization), build the TS by:
@@ -1789,10 +1826,11 @@ def _strategy_direct_contraction(ctx: _PathContext) -> _StrategyResult:
             new_dist = float(np.linalg.norm(coords_dc[mover] - coords_dc[ni]))
             sbl_mn = get_single_bond_length(
                 ctx.r_xyz['symbols'][mover], ctx.r_xyz['symbols'][ni]) or 1.5
-            if new_dist < sbl_mn:
+            ts_floor = sbl_mn * 1.10  # TS bonds are ~10% longer than equilibrium
+            if new_dist < ts_floor:
                 vec_mn = coords_dc[ni] - coords_dc[mover]
                 dir_mn = vec_mn / new_dist
-                push_dist = sbl_mn - new_dist
+                push_dist = ts_floor - new_dist
                 nbr_frag: Set[int] = {ni}
                 for nbr2 in ctx.r_mol.atoms[ni].bonds:
                     ni2 = atom_to_idx[nbr2]
@@ -2095,10 +2133,11 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                     new_d = float(np.linalg.norm(r_coords_dc[mover] - r_coords_dc[ni_bc]))
                     sbl_bc = get_single_bond_length(
                         r_xyz['symbols'][mover], r_xyz['symbols'][ni_bc]) or 1.5
-                    if new_d < sbl_bc:
+                    ts_floor_bc = sbl_bc * 1.10
+                    if new_d < ts_floor_bc:
                         vec_bc = r_coords_dc[ni_bc] - r_coords_dc[mover]
                         dir_bc = vec_bc / new_d
-                        push_d = sbl_bc - new_d
+                        push_d = ts_floor_bc - new_d
                         bc_frag: Set[int] = {ni_bc}
                         for nbr2_bc in r_mol.atoms[ni_bc].bonds:
                             ni2_bc = atom_to_idx_dc[nbr2_bc]
@@ -2431,20 +2470,9 @@ def interpolate_isomerization(rxn: 'ARCReaction',
                         logger.debug(f'Linear (rxn={rxn.label}, trivial, w={weight}, type=P): '
                                      f'discarded — excessive backbone drift from anchor.')
 
-    # Deduplicate: collapse near-identical guesses from different paths, from
-    # Type R ≈ Type P (common for symmetric reactions at weight=0.5), or from
-    # weight-insensitive algorithms (e.g. ring-closure) across repeated calls.
-    prior: List[dict] = list(existing_xyzs or [])
-    unique: List[dict] = []
-    for xyz in ts_xyzs:
-        if colliding_atoms(xyz):
-            continue
-        if not any(almost_equal_coords(xyz, other)
-                   for other in unique + prior):
-            unique.append(xyz)
-
-    # Collect all forming bonds across paths for post-processing.
+    # Collect all forming/breaking bonds across paths for post-processing.
     all_forming: List[Tuple[int, int]] = []
+    all_breaking: List[Tuple[int, int]] = []
     changing_all: Set[Tuple[int, int]] = set()
     for pd in rxn.product_dicts:
         rl = pd.get('r_label_map')
@@ -2453,9 +2481,38 @@ def interpolate_isomerization(rxn: 'ARCReaction',
             for b in list(bb_i or []) + list(fb_i or []):
                 changing_all.add((min(b), max(b)))
             all_forming.extend(fb_i or [])
+            all_breaking.extend(bb_i or [])
     reactive_all: Set[int] = set()
     for b in changing_all:
         reactive_all.update(b)
+
+    # Deduplicate: collapse near-identical guesses from different paths, from
+    # Type R ≈ Type P (common for symmetric reactions at weight=0.5), or from
+    # weight-insensitive algorithms (e.g. ring-closure) across repeated calls.
+    # Two-tier dedup:
+    #   1. Exact match (almost_equal_coords) — catches identical guesses.
+    #   2. Heavy-atom match — catches guesses that differ only in H placement
+    #      (e.g. two chirality-preserving H-migration paths that produce the
+    #      same backbone with H on opposite sides).
+    prior: List[dict] = list(existing_xyzs or [])
+    unique: List[dict] = []
+
+    def _heavy_atoms_match(xyz1: dict, xyz2: dict, tol: float = 0.05) -> bool:
+        """Return True if all heavy-atom coordinates match within *tol* Å."""
+        c1 = np.array(xyz1['coords'], dtype=float)
+        c2 = np.array(xyz2['coords'], dtype=float)
+        for i, sym in enumerate(xyz1['symbols']):
+            if sym != 'H' and float(np.linalg.norm(c1[i] - c2[i])) > tol:
+                return False
+        return True
+
+    for xyz in ts_xyzs:
+        if colliding_atoms(xyz):
+            continue
+        if any(almost_equal_coords(xyz, other) or _heavy_atoms_match(xyz, other)
+               for other in unique + prior):
+            continue
+        unique.append(xyz)
 
     if unique:
         # Repair ring bonds broken by Z-matrix interpolation.
@@ -2470,6 +2527,10 @@ def interpolate_isomerization(rxn: 'ARCReaction',
         # (stretch X-H, stretch Y=Z, move H toward Y).
         if _fallback_fb is not None and _fallback_bb is not None and _fallback_changed is not None:
             unique = [_fix_rh_add_motif(xyz, r_mol, _fallback_fb, _fallback_bb, _fallback_changed)
+                      for xyz in unique]
+        # Adjust reactive-bond distances toward TS-like values using the recipe.
+        if all_breaking or all_forming:
+            unique = [adjust_reactive_bond_distances(xyz, r_mol, all_breaking, all_forming)
                       for xyz in unique]
         # Final collision and bivalent-H filter after all post-processing.
         def _has_bivalent_h(xyz_dict: dict) -> bool:
