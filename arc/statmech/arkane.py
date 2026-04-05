@@ -344,6 +344,11 @@ class ArkaneAdapter(StatmechAdapter, ABC):
         atom_energies = f'\natomEnergies = {aec_dict[self.sp_level.simple()]}' \
             if self.sp_level.simple() in aec_dict else ''
 
+        if not model_chemistry and not atom_energies:
+            logger.warning(f'SP level {self.sp_level} is not recognized by Arkane and has no AEC entry in ARC. '
+                           f'Atom and bond energy corrections will be DISABLED for this Arkane run. '
+                           f'Thermo and kinetics results will lack these corrections.')
+
         freq_scale_factor = f'\nfrequencyScaleFactor = {self.freq_scale_factor}' \
             if self.freq_scale_factor is not None else ''
         if self.reactions is not None:
@@ -359,8 +364,8 @@ class ArkaneAdapter(StatmechAdapter, ABC):
             atom_energies=atom_energies,
             freq_scale_factor=freq_scale_factor,
             use_hindered_rotors=True if not skip_rotors else False,
-            use_aec=True,
-            use_bac=True if self.bac_type is not None else False,
+            use_aec=bool(model_chemistry or atom_energies),
+            use_bac=True if self.bac_type is not None and bool(model_chemistry or atom_energies) else False,
             bac_type=self.bac_type,
             species_list=species_list,
             ts_list=ts_list,
@@ -484,6 +489,9 @@ class ArkaneAdapter(StatmechAdapter, ABC):
                     spc.thermo.H298 = content[lbl]['H298']
                     spc.thermo.S298 = content[lbl]['S298']
                     spc.thermo.data = content[lbl]['data']
+                    spc.thermo.nasa_low = content[lbl].get('nasa_low')
+                    spc.thermo.nasa_high = content[lbl].get('nasa_high')
+                    spc.thermo.cp_data = content[lbl].get('cp_data')
 
                     line = (
                         f"   {lbl:<{label_width}}  "
@@ -504,6 +512,14 @@ class ArkaneAdapter(StatmechAdapter, ABC):
 
         for rxn in self.reactions:
             parse_reaction_kinetics(rxn, output_content)
+
+        # Parse conformer statmech (external_symmetry, optical_isomers) for all
+        # species involved in the kinetics — the thermo path handles this via
+        # parse_species_thermo, but kinetics-only runs skip thermo entirely.
+        for species in self.species:
+            _parse_conformer_statmech(species, output_content)
+        for rxn in self.reactions:
+            _parse_conformer_statmech(rxn.ts_species, output_content)
 
 
 def run_arkane(statmech_dir: str) -> bool:
@@ -1106,6 +1122,8 @@ def parse_species_thermo(species, output_content: str) -> None:
     e0 = parse_e0(species.label, output_content)
     if e0 is not None:
         species.e0 = e0
+    # Parse statmech properties from the conformer block
+    _parse_conformer_statmech(species, output_content)
     # Parse thermo data
     thermo_match = re.search(
         rf"thermo\(\s*label\s*=\s*['\"]{re.escape(species.label)}['\"].*?thermo\s*=\s*ThermoData\((.*?)\)\s*\)",
@@ -1167,7 +1185,7 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
         return None
 
     def find_scalar(key):
-        pat = rf"{key}\s*=\s*([-+]?[\d.eE+-]+)"
+        pat = rf"\b{key}\s*=\s*([-+]?[\d.eE+-]+)"
         m = re.search(pat, arr_block)
         return float(m.group(1)) if m else None
 
@@ -1179,8 +1197,61 @@ def parse_reaction_kinetics(reaction, output_content: str) -> None:
     kinetics["Tmax"] = find_tuple("Tmax")
     m_comment = re.search(r"comment\s*=\s*['\"](.*?)['\"]", arr_block, re.DOTALL)
     if m_comment:
-        kinetics["comment"] = m_comment.group(1).strip()
+        comment = m_comment.group(1).strip()
+        kinetics["comment"] = comment
+        # Parse uncertainties and fit metadata from the comment string.
+        # Format: "Fitted to 50 data points; dA = *|/ 1.48466, dn = +|- 0.0514738, dEa = +|- 0.294364 kJ/mol"
+        m_npts = re.search(r'Fitted to (\d+) data points', comment)
+        if m_npts:
+            kinetics['n_data_points'] = int(m_npts.group(1))
+        m_da = re.search(r'dA\s*=\s*\*\|/\s*([\d.eE+-]+)', comment)
+        if m_da:
+            kinetics['dA'] = float(m_da.group(1))
+        m_dn = re.search(r'dn\s*=\s*\+\|-\s*([\d.eE+-]+)', comment)
+        if m_dn:
+            kinetics['dn'] = float(m_dn.group(1))
+        m_dea = re.search(r'dEa\s*=\s*\+\|-\s*([\d.eE+-]+)\s*(kJ/mol)?', comment)
+        if m_dea:
+            kinetics['dEa'] = float(m_dea.group(1))
+            kinetics['dEa_units'] = m_dea.group(2) or 'kJ/mol'
     reaction.kinetics = kinetics
+
+
+def _parse_conformer_statmech(species, content: str) -> None:
+    """
+    Parse external_symmetry and optical_isomers from the Arkane conformer block.
+
+    These live inside the conformer's modes list, e.g.::
+
+        NonlinearRotor(symmetry=2, ...)
+        optical_isomers = 1,
+    """
+    label = species.label
+    # Find the start of the conformer block, then use balanced-paren matching
+    # to find the full block (regex `.*?)` fails because of nested parens).
+    start_pattern = rf"conformer\(\s*label\s*=\s*['\"]{re.escape(label)}['\"]"
+    m_start = re.search(start_pattern, content, re.DOTALL)
+    if not m_start:
+        return
+    idx = m_start.start() + len('conformer(')
+    depth = 1
+    while idx < len(content) and depth > 0:
+        if content[idx] == '(':
+            depth += 1
+        elif content[idx] == ')':
+            depth -= 1
+        idx += 1
+    if depth != 0:
+        return
+    block = content[m_start.start():idx]
+    # optical_isomers
+    oi_match = re.search(r'optical_isomers\s*=\s*(\d+)', block)
+    if oi_match and species.optical_isomers is None:
+        species.optical_isomers = int(oi_match.group(1))
+    # external_symmetry from NonlinearRotor or LinearRotor
+    sym_match = re.search(r'(?:NonlinearRotor|LinearRotor)\s*\(.*?symmetry\s*=\s*(\d+)', block, re.DOTALL)
+    if sym_match and species.external_symmetry is None:
+        species.external_symmetry = int(sym_match.group(1))
 
 
 def parse_e0(label: str, content: str) -> float | None:
@@ -1241,10 +1312,13 @@ def parse_thermo_data_block(block: str) -> dict:
             if key in ['Tdata', 'Cpdata']:  # Handle list values
                 try:
                     value = eval(value_str, {'__builtins__': None}, {})
-                except ValueError:
+                except (ValueError, SyntaxError, TypeError, NameError):
                     value = value_str
             else:  # Handle scalar values
-                value = value_str
+                try:
+                    value = float(value_str)
+                except (ValueError, TypeError):
+                    value = value_str
             thermo_data[key] = value
     return thermo_data
 

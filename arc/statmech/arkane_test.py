@@ -408,5 +408,166 @@ class TestArkaneAdapter(unittest.TestCase):
             shutil.rmtree(os.path.join(ARC_TESTING_PATH, folder), ignore_errors=True)
 
 
+class TestArkaneOutputParsing(unittest.TestCase):
+    """Tests for parsing functions that read Arkane output.py content."""
+
+    def test_parse_e0(self):
+        """Test parse_e0 extracts E0 from conformer blocks."""
+        from arc.statmech.arkane import parse_e0
+        content = """
+conformer(
+    label = 'CH4',
+    E0 = (-88.8458, 'kJ/mol'),
+    modes = [NonlinearRotor(symmetry=12)],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        self.assertAlmostEqual(parse_e0('CH4', content), -88.8458)
+        self.assertIsNone(parse_e0('missing_species', content))
+
+    def test_parse_e0_positive(self):
+        from arc.statmech.arkane import parse_e0
+        content = "conformer(label='CHO', E0=(44.0971, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)"
+        self.assertAlmostEqual(parse_e0('CHO', content), 44.0971)
+
+    def test_parse_conformer_statmech(self):
+        """Test extraction of external_symmetry and optical_isomers."""
+        from arc.statmech.arkane import _parse_conformer_statmech
+        from unittest.mock import MagicMock
+        content = """
+conformer(
+    label = 'H2O',
+    E0 = (-200.0, 'kJ/mol'),
+    modes = [
+        NonlinearRotor(
+            inertia = ([1.0, 2.0, 3.0], 'amu*angstrom^2'),
+            symmetry = 2,
+        ),
+    ],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        spc = MagicMock()
+        spc.label = 'H2O'
+        spc.optical_isomers = None
+        spc.external_symmetry = None
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.optical_isomers, 1)
+        self.assertEqual(spc.external_symmetry, 2)
+
+    def test_parse_conformer_statmech_linear(self):
+        """Test with LinearRotor."""
+        from arc.statmech.arkane import _parse_conformer_statmech
+        from unittest.mock import MagicMock
+        content = """
+conformer(
+    label = 'CO2',
+    E0 = (-100.0, 'kJ/mol'),
+    modes = [LinearRotor(inertia=(44.0, 'amu*angstrom^2'), symmetry=2)],
+    spin_multiplicity = 1,
+    optical_isomers = 1,
+)
+"""
+        spc = MagicMock()
+        spc.label = 'CO2'
+        spc.optical_isomers = None
+        spc.external_symmetry = None
+        _parse_conformer_statmech(spc, content)
+        self.assertEqual(spc.external_symmetry, 2)
+        self.assertEqual(spc.optical_isomers, 1)
+
+    def test_parse_reaction_kinetics_with_uncertainties(self):
+        """Test that dA, dn, dEa, n_data_points are parsed from the comment."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'A + B <=> C + D',
+    kinetics = Arrhenius(
+        A = (1.2e10, 'cm^3/(mol*s)'),
+        n = 2.5,
+        Ea = (45.6, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (3000, 'K'),
+        comment = 'Fitted to 50 data points; dA = *|/ 1.48, dn = +|- 0.05, dEa = +|- 0.29 kJ/mol',
+    ),
+)
+"""
+        rxn = MagicMock()
+        rxn.label = 'A + B <=> C + D'
+        rxn.ts_species = MagicMock()
+        rxn.ts_species.label = 'TS0'
+        rxn.ts_species.e0 = None
+        parse_reaction_kinetics(rxn, content)
+        self.assertIsNotNone(rxn.kinetics)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 1.2e10)
+        self.assertAlmostEqual(rxn.kinetics['n'], 2.5)
+        self.assertAlmostEqual(rxn.kinetics['Ea'][0], 45.6)
+        self.assertAlmostEqual(rxn.kinetics['dA'], 1.48)
+        self.assertAlmostEqual(rxn.kinetics['dn'], 0.05)
+        self.assertAlmostEqual(rxn.kinetics['dEa'], 0.29)
+        self.assertEqual(rxn.kinetics['dEa_units'], 'kJ/mol')
+        self.assertEqual(rxn.kinetics['n_data_points'], 50)
+
+    def test_parse_reaction_kinetics_no_comment(self):
+        """Kinetics without a comment should still parse A, n, Ea."""
+        from arc.statmech.arkane import parse_reaction_kinetics
+        from unittest.mock import MagicMock
+        content = """
+conformer(label='TS0', E0=(50.0, 'kJ/mol'), modes=[], spin_multiplicity=2, optical_isomers=1)
+
+kinetics(
+    label = 'X <=> Y',
+    kinetics = Arrhenius(
+        A = (5.0, 's^-1'),
+        n = 1.0,
+        Ea = (20.0, 'kJ/mol'),
+        T0 = (1, 'K'),
+        Tmin = (300, 'K'),
+        Tmax = (2000, 'K'),
+    ),
+)
+"""
+        rxn = MagicMock()
+        rxn.label = 'X <=> Y'
+        rxn.ts_species = MagicMock()
+        rxn.ts_species.label = 'TS0'
+        rxn.ts_species.e0 = None
+        parse_reaction_kinetics(rxn, content)
+        self.assertAlmostEqual(rxn.kinetics['A'][0], 5.0)
+        self.assertAlmostEqual(rxn.kinetics['n'], 1.0)
+        self.assertNotIn('dA', rxn.kinetics)
+
+    def test_parse_thermo_data_block_scalars_are_float(self):
+        """Verify Tmin, Tmax, H298, S298 are parsed as floats, not strings."""
+        from arc.statmech.arkane import parse_thermo_data_block
+        block = """
+            H298 = (-108.9, 'kJ/mol'),
+            S298 = (218.4, 'J/(mol*K)'),
+            Tmin = (10.0, 'K'),
+            Tmax = (3000.0, 'K'),
+        """
+        result = parse_thermo_data_block(block)
+        self.assertIsInstance(result['Tmin'], float)
+        self.assertIsInstance(result['Tmax'], float)
+        self.assertAlmostEqual(result['Tmin'], 10.0)
+        self.assertAlmostEqual(result['Tmax'], 3000.0)
+
+    def test_find_scalar_word_boundary(self):
+        """The ``n`` parameter must not match ``Tmin`` or substrings in the comment."""
+        import re
+        # Simulate find_scalar with word boundary
+        arr_block = "A = (1.0, 's^-1'), n = 2.5, Ea = (30.0, 'kJ/mol'), Tmin = (300, 'K')"
+        pat = rf"\bn\s*=\s*([-+]?[\d.eE+-]+)"
+        m = re.search(pat, arr_block)
+        self.assertIsNotNone(m)
+        self.assertAlmostEqual(float(m.group(1)), 2.5)
+
+
 if __name__ == '__main__':
     unittest.main(testRunner=unittest.TextTestRunner(verbosity=2))

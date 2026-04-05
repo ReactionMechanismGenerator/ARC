@@ -459,10 +459,12 @@ def assign_frequency_scale_factor(level: Union[str, Level]) -> Optional[int]:
     """
     freq_scale_factors = read_yaml_file(os.path.join(ARC_PATH, 'data', 'freq_scale_factors.yml'))['freq_scale_factors']
     if isinstance(level, str):
-        if level in freq_scale_factors:
-            return freq_scale_factors[level]
+        entry = freq_scale_factors.get(level)
+        if entry is not None:
+            return entry['factor'] if isinstance(entry, dict) else entry
         level = Level(repr=level)
     level_str = str(level)
-    if level_str in freq_scale_factors:
-        return freq_scale_factors[level_str]
+    entry = freq_scale_factors.get(level_str)
+    if entry is not None:
+        return entry['factor'] if isinstance(entry, dict) else entry
     return None
