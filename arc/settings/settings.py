@@ -313,9 +313,11 @@ pipe_settings = {
     'max_workers': 100,        # Upper bound on array worker slots per PipeRun.
     'max_attempts': 3,         # Retry budget per task before terminal failure.
     'lease_duration_s': 86400, # Worker lease duration in seconds (default 24h).
-    'env_setup': {},           # Engine-specific shell setup commands, e.g.,
-                               # {'gaussian': 'source /usr/local/g09/setup.sh',
-                               #  'orca': 'source /usr/local/orca/setup.sh'}
+    'env_setup': {},           # Engine-specific shell setup commands, nested by version, e.g.,
+                               # {'gaussian': {'g16': 'source /usr/local/g16/setup.sh',
+                               #               'g09': 'source /usr/local/g09/setup.sh'},
+                               #  'orca': {'6.0': 'source /usr/local/orca-6.0/setup.sh',
+                               #           '5.4': 'source /usr/local/orca-5.0.4/setup.sh'}}
 }
 
 # Criteria for identification of imaginary frequencies for transition states.
