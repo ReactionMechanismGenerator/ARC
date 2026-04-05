@@ -262,6 +262,10 @@ def _run_adapter(spec: TaskSpec, scratch_dir: str, job_type: str, **extra_kwargs
         **extra_kwargs,
     )
     job.execute()
+    output_file = getattr(job, 'local_path_to_output_file', None)
+    if output_file and not os.path.isfile(output_file):
+        raise RuntimeError(f'{spec.engine} produced no output file at {output_file}. '
+                           f'The engine may not be installed or configured on this node.')
 
 
 # ---------------------------------------------------------------------------

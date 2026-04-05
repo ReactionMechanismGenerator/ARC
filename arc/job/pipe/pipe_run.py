@@ -211,6 +211,10 @@ class PipeRun:
                 f'No pipe submit template for cluster software: {self.cluster_software}. '
                 f'Available templates: {list(pipe_submit.keys())}')
         cpus, memory_mb, array_size = self._submission_resources()
+        server = servers_dict.get('local', {})
+        queue, _ = next(iter(server.get('queues', {}).items()), ('', None))
+        engine = self.tasks[0].engine if self.tasks else ''
+        env_setup = pipe_settings.get('env_setup', {}).get(engine, '')
         content = pipe_submit[template_key].format(
             name=f'pipe_{self.run_id}',
             max_task_num=array_size,
@@ -218,6 +222,8 @@ class PipeRun:
             python_exe=sys.executable,
             cpus=cpus,
             memory=memory_mb,
+            queue=queue,
+            env_setup=env_setup,
         )
         filename = 'submit.sub' if self.cluster_software == 'htcondor' else 'submit.sh'
         submit_path = os.path.join(self.pipe_root, filename)
