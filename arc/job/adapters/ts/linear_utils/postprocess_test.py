@@ -466,6 +466,38 @@ class TestGeometryFixers(unittest.TestCase):
         np.testing.assert_allclose(coords_new, coords_orig, atol=0.01)
 
 
+    def test_orient_h_on_reactive_centers(self):
+        """Test that H atoms on reactive centres are flipped away from the reactive direction."""
+        from arc.job.adapters.ts.linear_utils.postprocess import orient_h_on_reactive_centers
+        from arc.species import ARCSpecies
+        # Simple case: CH3 radical approaching a C atom.
+        # Put two H atoms on C0 pointing TOWARD the forming-bond partner C1.
+        mol = ARCSpecies(label='test', smiles='[CH2]C', xyz={
+            'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1, 1, 1),
+            'coords': ((0, 0, 0), (2, 0, 0),
+                       (0.5, 0.5, 0),   # H2 on C0 — pointing toward C1 (wrong)
+                       (0.5, -0.5, 0),   # H3 on C0 — pointing toward C1 (wrong)
+                       (-0.5, 0, 0.9),   # H4 on C0 — pointing away (OK)
+                       (2.5, 0.5, 0),    # H5 on C1
+                       (2.5, -0.5, 0))   # H6 on C1
+        }).mol
+        xyz = {
+            'symbols': ('C', 'C', 'H', 'H', 'H', 'H', 'H'),
+            'isotopes': (12, 12, 1, 1, 1, 1, 1),
+            'coords': ((0, 0, 0), (2, 0, 0),
+                       (0.5, 0.5, 0), (0.5, -0.5, 0), (-0.5, 0, 0.9),
+                       (2.5, 0.5, 0), (2.5, -0.5, 0))
+        }
+        result = orient_h_on_reactive_centers(xyz, mol,
+                                              breaking_bonds=[],
+                                              forming_bonds=[(0, 1)])
+        coords_new = np.array(result['coords'])
+        # After flipping, H2 and H3 should have negative x (away from C1).
+        h_avg_x = (coords_new[2][0] + coords_new[3][0]) / 2
+        self.assertLess(h_avg_x, 0, 'H atoms should point away from forming bond partner')
+
+
 class TestPostprocessConstants(unittest.TestCase):
     """Tests for module-level constants."""
 

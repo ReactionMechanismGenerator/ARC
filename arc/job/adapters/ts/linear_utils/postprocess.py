@@ -134,6 +134,111 @@ def adjust_reactive_bond_distances(xyz: dict,
     return new_xyz
 
 
+def orient_h_on_reactive_centers(xyz: dict,
+                                 mol: 'Molecule',
+                                 breaking_bonds: List[Tuple[int, int]],
+                                 forming_bonds: List[Tuple[int, int]],
+                                 ) -> dict:
+    """
+    Orient H atoms on reactive heavy-atom centres away from the reaction axis.
+
+    For each heavy atom that participates in a forming or breaking bond, the
+    function checks whether its H substituents point *toward* the reactive
+    bond partner(s).  If so, the H atoms are reflected through the plane
+    perpendicular to the reactive axis at the parent atom, flipping them to
+    the opposite (chemically correct) hemisphere.
+
+    This produces the standard geometry where, for example, the CH₂ group
+    on a radical centre points away from the forming bond, and H atoms on a
+    carbon adjacent to a breaking bond point away from the leaving group.
+
+    Args:
+        xyz: TS guess XYZ coordinate dictionary.
+        mol: Reactant molecule providing bond topology.
+        breaking_bonds: Bonds that break going reactant → product.
+        forming_bonds: Bonds that form going reactant → product.
+
+    Returns:
+        Adjusted XYZ dictionary.
+    """
+    symbols = xyz['symbols']
+    coords = np.array(xyz['coords'], dtype=float)
+    atom_to_idx = {atom: idx for idx, atom in enumerate(mol.atoms)}
+    all_bonds = list(breaking_bonds) + list(forming_bonds)
+    if not all_bonds:
+        return xyz
+
+    # Collect reactive heavy atoms and their reactive-bond partners.
+    reactive_partners: dict = {}  # heavy_idx -> list of partner indices
+    for a, b in all_bonds:
+        if symbols[a] != 'H' and symbols[b] != 'H':
+            reactive_partners.setdefault(a, []).append(b)
+            reactive_partners.setdefault(b, []).append(a)
+        elif symbols[a] == 'H':
+            reactive_partners.setdefault(b, []).append(a)
+        else:
+            reactive_partners.setdefault(a, []).append(b)
+
+    for heavy_idx, partners in reactive_partners.items():
+        if symbols[heavy_idx] == 'H':
+            continue
+        # Only apply to terminal CH₂/CH₃ groups (≤1 heavy-atom neighbour) —
+        # internal CH groups on sp3 centres have tetrahedral geometry where
+        # flipping would be wrong.
+        n_heavy_nbr = sum(1 for nbr in mol.atoms[heavy_idx].bonds
+                          if symbols[atom_to_idx[nbr]] != 'H')
+        if n_heavy_nbr > 1:
+            continue
+        # Find H substituents bonded to this heavy atom in the reactant.
+        h_indices = []
+        for nbr in mol.atoms[heavy_idx].bonds:
+            ni = atom_to_idx[nbr]
+            if symbols[ni] == 'H' and ni not in {p for p in partners if symbols[p] == 'H'}:
+                h_indices.append(ni)
+        if not h_indices:
+            continue
+
+        # Compute the reactive direction: average vector toward partners.
+        heavy_partners = [p for p in partners if symbols[p] != 'H']
+        if not heavy_partners:
+            continue
+        reactive_dir = np.zeros(3)
+        for p in heavy_partners:
+            v = coords[p] - coords[heavy_idx]
+            d = float(np.linalg.norm(v))
+            if d > 1e-6:
+                reactive_dir += v / d
+        rd_norm = float(np.linalg.norm(reactive_dir))
+        if rd_norm < 1e-6:
+            continue
+        reactive_dir /= rd_norm
+
+        # Compute average H direction.
+        h_avg = np.zeros(3)
+        for hi in h_indices:
+            v = coords[hi] - coords[heavy_idx]
+            d = float(np.linalg.norm(v))
+            if d > 1e-6:
+                h_avg += v / d
+        h_avg_norm = float(np.linalg.norm(h_avg))
+        if h_avg_norm < 1e-6:
+            continue
+        h_avg /= h_avg_norm
+
+        # If H atoms strongly point toward the reactive direction (positive dot),
+        # reflect them through the perpendicular plane.
+        dot = float(np.dot(h_avg, reactive_dir))
+        if dot > 0.5:  # H's clearly on the wrong side
+            for hi in h_indices:
+                v = coords[hi] - coords[heavy_idx]
+                proj = np.dot(v, reactive_dir) * reactive_dir
+                coords[hi] = coords[heavy_idx] + (v - 2.0 * proj)
+
+    new_xyz = dict(xyz)
+    new_xyz['coords'] = tuple(tuple(float(v) for v in row) for row in coords)
+    return new_xyz
+
+
 # ---------------------------------------------------------------------------
 # Rejection filters
 # ---------------------------------------------------------------------------
