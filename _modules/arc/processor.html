@@ -105,6 +105,19 @@
 <span class="n">EA_UNIT_CONVERSION</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;J/mol&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;kJ/mol&#39;</span><span class="p">:</span> <span class="mf">1e+3</span><span class="p">,</span> <span class="s1">&#39;cal/mol&#39;</span><span class="p">:</span> <span class="mf">4.184</span><span class="p">,</span> <span class="s1">&#39;kcal/mol&#39;</span><span class="p">:</span> <span class="mf">4.184e+3</span><span class="p">}</span>
 
 
+<div class="viewcode-block" id="resolve_neb_level">
+<a class="viewcode-back" href="../../api/processor.html#arc.processor.resolve_neb_level">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_neb_level</span><span class="p">(</span><span class="n">ts_adapters</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Level</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine the NEB level of theory if NEB was a configured TS adapter.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ts_adapters</span> <span class="ow">and</span> <span class="s1">&#39;orca_neb&#39;</span> <span class="ow">in</span> <span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">ts_adapters</span><span class="p">):</span>
+        <span class="n">orca_neb_settings</span> <span class="o">=</span> <span class="n">settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;orca_neb_settings&#39;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="n">neb_level_repr</span> <span class="o">=</span> <span class="n">orca_neb_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;level&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">neb_level_repr</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Level</span><span class="p">(</span><span class="nb">repr</span><span class="o">=</span><span class="n">neb_level_repr</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
 <div class="viewcode-block" id="process_arc_project">
 <a class="viewcode-back" href="../../api/processor.html#arc.processor.process_arc_project">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">process_arc_project</span><span class="p">(</span><span class="n">thermo_adapter</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>

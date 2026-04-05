@@ -118,7 +118,8 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.level</span><span class="w"> </span><span class="kn">import</span> <span class="n">Level</span><span class="p">,</span> <span class="n">assign_frequency_scale_factor</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">_registered_job_adapters</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.job.ssh</span><span class="w"> </span><span class="kn">import</span> <span class="n">SSHClient</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">arc.processor</span><span class="w"> </span><span class="kn">import</span> <span class="n">process_arc_project</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.output</span><span class="w"> </span><span class="kn">import</span> <span class="n">write_output_yml</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">arc.processor</span><span class="w"> </span><span class="kn">import</span> <span class="n">process_arc_project</span><span class="p">,</span> <span class="n">resolve_neb_level</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.reaction</span><span class="w"> </span><span class="kn">import</span> <span class="n">ARCReaction</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.scheduler</span><span class="w"> </span><span class="kn">import</span> <span class="n">Scheduler</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">arc.species.converter</span><span class="w"> </span><span class="kn">import</span> <span class="n">str_to_xyz</span>
@@ -731,6 +732,35 @@
                             <span class="n">skip_nmd</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">skip_nmd</span><span class="p">,</span>
                             <span class="p">)</span>
 
+        <span class="c1"># Determine whether the user supplied the scale factor explicitly, or ARC looked it up.</span>
+        <span class="n">_freq_level_for_lookup</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span>
+        <span class="n">_yml_scale</span> <span class="o">=</span> <span class="n">assign_frequency_scale_factor</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">_freq_level_for_lookup</span><span class="p">)</span> <span class="k">if</span> <span class="n">_freq_level_for_lookup</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">_user_provided_scale</span> <span class="o">=</span> <span class="p">(</span><span class="n">_yml_scale</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">_yml_scale</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span><span class="p">)</span>
+
+        <span class="n">neb_level</span> <span class="o">=</span> <span class="n">resolve_neb_level</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ts_adapters</span><span class="p">)</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">write_output_yml</span><span class="p">(</span>
+                <span class="n">project</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="p">,</span>
+                <span class="n">project_directory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">project_directory</span><span class="p">,</span>
+                <span class="n">species_dict</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">species_dict</span><span class="p">,</span>
+                <span class="n">reactions</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scheduler</span><span class="o">.</span><span class="n">rxn_list</span><span class="p">,</span>
+                <span class="n">output_dict</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span><span class="p">,</span>
+                <span class="n">opt_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">opt_level</span><span class="p">,</span>
+                <span class="n">freq_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_level</span><span class="p">,</span>
+                <span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span><span class="p">,</span>
+                <span class="n">neb_level</span><span class="o">=</span><span class="n">neb_level</span><span class="p">,</span>
+                <span class="n">composite_method</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span><span class="p">,</span>
+                <span class="n">freq_scale_factor</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">freq_scale_factor</span><span class="p">,</span>
+                <span class="n">freq_scale_factor_user_provided</span><span class="o">=</span><span class="n">_user_provided_scale</span><span class="p">,</span>
+                <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span>
+                <span class="n">arkane_level_of_theory</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span>
+                <span class="n">irc_requested</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">job_types</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;irc&#39;</span><span class="p">,</span> <span class="kc">True</span><span class="p">),</span>
+                <span class="n">t0</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">t0</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Could not write output.yml: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+
         <span class="n">status_dict</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>
         <span class="n">log_footer</span><span class="p">(</span><span class="n">execution_time</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">execution_time</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">status_dict</span></div>
@@ -1301,10 +1331,10 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">composite_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
                 <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_level</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">check_arkane_bacs</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Could not determine a level of theory to be used for Arkane!&#39;</span><span class="p">)</span></div>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s1">&#39;Could not determine a level of theory to be used for Arkane!&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check_arkane_bacs</span><span class="p">(</span><span class="n">sp_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">arkane_level_of_theory</span><span class="p">,</span> <span class="n">bac_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bac_type</span><span class="p">,</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">compute_thermo</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="ARC.backup_restart">
